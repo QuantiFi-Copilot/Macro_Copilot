@@ -135,7 +135,10 @@ def card_for_template(template: WorkflowTemplate) -> TemplateCard:
             # surface the issue explicitly in the card.
             terminal_artifact_type = f"Unknown[{terminal_node.operator_name}]"
         else:
-            terminal_artifact_type = spec.output_type
+            # PART D migration: structured ``OutputDescriptor``
+            # replaces the bare ``output_type: str`` field; the
+            # closed-enum value is read off ``output.artifact_type``.
+            terminal_artifact_type = spec.output.artifact_type.value
     else:
         terminal_artifact_type = "Unknown"
 

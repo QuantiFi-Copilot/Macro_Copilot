@@ -172,7 +172,10 @@ def validate_workflow(
                 f"{target_node.operator_name!r}.  Known slots: "
                 f"{sorted(spec.input_slots.keys())}."
             )
-        if binding.target_input_slot not in spec.accepts_scalar_input:
+        # Per-slot ``accepts_scalar`` flag on the SlotDescriptor
+        # replaces the prior per-operator ``accepts_scalar_input``
+        # tuple (PART D migration).
+        if not spec.input_slots[binding.target_input_slot].accepts_scalar:
             raise WorkflowValidationError(
                 f"Workflow {workflow.workflow_id!r}: literal binding "
                 f"targets slot {binding.target_input_slot!r} on "
@@ -180,7 +183,8 @@ def validate_workflow(
                 "slot does not accept scalar literals.  Use a "
                 "WorkflowEdge from an upstream artifact-producing "
                 "node instead, or pick an operator whose slot is "
-                "in ``OperatorSpec.accepts_scalar_input``."
+                "declared with ``accepts_scalar=True`` on its "
+                "``SlotDescriptor``."
             )
 
     # ------------------------------------------------------------------
@@ -232,13 +236,15 @@ def validate_workflow(
             continue  # the hook is authoritative for this operator
 
         # Substrate-default: every slot must be bound (via edge or,
-        # for scalar-accepting slots, via literal), unless it is in
-        # ``accepts_scalar_input`` AND no arity hook is declared
-        # (in which case the operator's own runtime check is the
-        # authoritative arity gate).
-        for slot_name, slot_type in spec.input_slots.items():
+        # for scalar-accepting slots, via literal), unless its
+        # ``SlotDescriptor.accepts_scalar`` is True AND no arity hook
+        # is declared (in which case the operator's own runtime check
+        # is the authoritative arity gate).  PART D migration: drives
+        # off the per-slot descriptor flag instead of the per-operator
+        # ``accepts_scalar_input`` tuple.
+        for slot_name, descriptor in spec.input_slots.items():
             if (
-                slot_name in spec.accepts_scalar_input
+                descriptor.accepts_scalar
                 and slot_name not in bound_edge_slots
                 and slot_name not in bound_literal_slots
             ):
@@ -254,7 +260,8 @@ def validate_workflow(
                     f"Workflow {workflow.workflow_id!r}: operator "
                     f"node {node.node_id!r} ({node.operator_name!r}) "
                     f"has unbound required input slot "
-                    f"{slot_name!r} (type {slot_type!r}).  Add a "
+                    f"{slot_name!r} (type "
+                    f"{descriptor.artifact_type.value!r}).  Add a "
                     "``WorkflowEdge`` whose target_input_slot binds "
                     "this slot, or (if the slot accepts scalars) a "
                     "``LiteralBinding`` with a literal value."
@@ -273,17 +280,15 @@ def validate_workflow(
             # Already raised above — defensive skip.
             continue
         target_spec = OPERATOR_REGISTRY[target_node.operator_name]
-        slot_type = target_spec.input_slots.get(edge.target_input_slot)
-        if slot_type is None:
+        descriptor = target_spec.input_slots.get(edge.target_input_slot)
+        if descriptor is None:
             continue  # already raised above
-        # Strip ``List[X]`` to ``X`` for element-type comparison;
-        # list-aggregation across edges is the substrate's
-        # representation for list-shaped slots.
-        expected_element = (
-            slot_type[len("List[") : -1]
-            if slot_type.startswith("List[") and slot_type.endswith("]")
-            else slot_type
-        )
+        # PART D migration: the element type is the descriptor's
+        # ``artifact_type`` (a str-valued enum member).  List-shaped
+        # slots are flagged by ``descriptor.is_list`` rather than the
+        # prior ``"List[X]"`` string-prefix encoding; the element
+        # type itself is the same enum value either way.
+        expected_element = descriptor.artifact_type.value
 
         # Source type — primitives produce whichever artifact type the
         # PrimitiveSpec's ``output_artifact_type`` declares (``Series``
@@ -292,7 +297,8 @@ def validate_workflow(
         # and ``compute_financing_rate_tool``).  When the resolver is
         # unavailable, fall back to ``Series`` (pre-PR-20 behaviour) so
         # validation without a resolver stays permissive.
-        # Operators produce whatever ``OperatorSpec.output_type`` declares.
+        # Operators produce whatever ``OperatorSpec.output.artifact_type``
+        # declares (PART D migration — was ``output_type``).
         if isinstance(source_node, PrimitiveNode):
             source_type = "Series"
             if primitive_resolver is not None:
@@ -309,7 +315,7 @@ def validate_workflow(
                     pass
         elif isinstance(source_node, OperatorNode):
             source_spec = OPERATOR_REGISTRY[source_node.operator_name]
-            source_type = source_spec.output_type
+            source_type = source_spec.output.artifact_type.value
         else:
             continue  # unreachable
 

@@ -38,6 +38,10 @@ Public API
 - ``OPERATOR_REGISTRY``, ``known_operators``, ``OperatorSpec`` —
   closed-family operator dispatch (substrate-internal but
   exposed for diagnostic / catalogue purposes).
+- ``SlotDescriptor``, ``OutputDescriptor`` — structured per-slot
+  and per-output metadata on ``OperatorSpec`` (replaces the prior
+  string-encoded ``Dict[str, str]`` slots + bare ``output_type``
+  + sibling ``accepts_scalar_input`` tuple).
 - ``PrimitiveResolver``, ``PrimitiveSpec`` — caller-supplied
   primitive dispatch protocol.
 - ``ARTIFACT_TYPE_NAMES``, ``artifact_type_name`` — closed enum
@@ -56,6 +60,10 @@ from shared.workflow.registry import (
     PrimitiveSpec,
     artifact_type_name,
     known_operators,
+)
+from shared.workflow.slots import (
+    OutputDescriptor,
+    SlotDescriptor,
 )
 from shared.workflow.result import (
     TerminalArtifact,
@@ -136,6 +144,8 @@ __all__ = [
     "PrimitiveSpec",
     "ARTIFACT_TYPE_NAMES",
     "artifact_type_name",
+    "SlotDescriptor",
+    "OutputDescriptor",
     # Template layer
     "WorkflowTemplate",
     "WorkflowArchetype",

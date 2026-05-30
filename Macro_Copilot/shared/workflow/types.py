@@ -187,8 +187,8 @@ class WorkflowEdge(BaseModel):
 class LiteralBinding(BaseModel):
     """Binds a literal scalar value to an operator's named input
     slot.  Sibling of ``WorkflowEdge`` for the case where the slot
-    legitimately accepts a scalar (declared via
-    ``OperatorSpec.accepts_scalar_input``).
+    legitimately accepts a scalar (declared on the slot's
+    ``SlotDescriptor.accepts_scalar`` field).
 
     Why a sibling type, not an extension of WorkflowEdge
     -----------------------------------------------------
@@ -213,10 +213,10 @@ class LiteralBinding(BaseModel):
         confirms it references a real OperatorNode.
     target_input_slot :
         Which named input slot on the target operator receives the
-        literal.  Validator confirms the slot is in
-        ``accepts_scalar_input`` for the target operator (you
-        cannot bind a literal to a slot that only accepts an
-        artifact).
+        literal.  Validator confirms the slot's
+        ``SlotDescriptor.accepts_scalar`` is True for the target
+        operator (you cannot bind a literal to a slot that only
+        accepts an artifact).
     value :
         The literal scalar value (int / float / str / bool).
     """

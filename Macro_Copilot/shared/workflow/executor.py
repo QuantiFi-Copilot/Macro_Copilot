@@ -324,13 +324,18 @@ def _execute_operator_node(
     # take exactly one source — either an upstream edge OR a
     # literal scalar binding (mutually exclusive — bug if both).
     call_kwargs: Dict[str, Any] = {}
-    for slot_name, slot_type in spec.input_slots.items():
+    for slot_name, descriptor in spec.input_slots.items():
         edges = edges_by_target.get(slot_name, [])
         literals = literals_by_target.get(slot_name, [])
         upstream_artifacts = [
             node_artifacts[edge.source_node_id] for edge in edges
         ]
-        if slot_type.startswith("List[") and slot_type.endswith("]"):
+        # PART D migration: list-shape and scalar-acceptance are now
+        # read off the structured ``SlotDescriptor`` (``is_list`` /
+        # ``accepts_scalar``) instead of the prior ``"List[X]"``
+        # string-prefix encoding and per-operator
+        # ``accepts_scalar_input`` tuple.
+        if descriptor.is_list:
             # List-shaped slot — pass the list (possibly empty;
             # operators that require min length will surface the
             # error at their own validator).  Literal bindings on
@@ -340,7 +345,7 @@ def _execute_operator_node(
             # runtime if the caller forces it.
             call_kwargs[slot_name] = upstream_artifacts
         elif (
-            slot_name in spec.accepts_scalar_input
+            descriptor.accepts_scalar
             and not edges
             and not literals
         ):
@@ -376,7 +381,8 @@ def _execute_operator_node(
                         f"node {node.node_id!r} ({node.operator_name!r}) "
                         f"expects exactly one upstream edge for "
                         f"scalar input slot {slot_name!r} (type "
-                        f"{slot_type!r}); got {len(upstream_artifacts)}."
+                        f"{descriptor.artifact_type.value!r}); got "
+                        f"{len(upstream_artifacts)}."
                     )
                 call_kwargs[slot_name] = upstream_artifacts[0]
 
