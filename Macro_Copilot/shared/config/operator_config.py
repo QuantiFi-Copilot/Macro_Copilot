@@ -73,8 +73,15 @@ OperatorMethodFamily = Literal[
 ]
 
 
-class OperatorConfigError(Exception):
-    """Raised on missing / malformed / invalid operator config YAML."""
+class OperatorConfigError(ValueError):
+    """Raised on missing / malformed / invalid operator config YAML.
+
+    Subclasses ``ValueError`` (OPR13 / ADR 0016 Decision 3 — one error
+    family): a config-identity or load failure inside any operator must
+    surface as a ``ValueError`` so the orchestration/template layer's
+    ``except ValueError`` envelope catches it uniformly, rather than
+    escaping as a bare ``Exception`` through all 9 operators (ERR-1).
+    """
 
 
 # ============================================================================

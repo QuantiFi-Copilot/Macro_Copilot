@@ -103,6 +103,17 @@ def test_conformant_set_and_registry_agree():
     assert not (_PENDING_ABI & _PENDING_TRADE_RELOCATION)
 
 
+def test_operator_config_error_is_valueerror():
+    """OPR13 / ADR 0016 Decision 3 (one error family): OperatorConfigError
+    must subclass ValueError, else a config-identity/load failure escapes
+    every operator as a bare Exception the orchestration envelope misses
+    (ERR-1).  The per-operator conformance test checks each <Op>Error but
+    never reaches this shared config error, so it is asserted explicitly."""
+    from shared.config.operator_config import OperatorConfigError
+
+    assert issubclass(OperatorConfigError, ValueError)
+
+
 @pytest.mark.parametrize("name", sorted(OPERATOR_REGISTRY))
 def test_basic_registry_shape(name):
     """Universally-true checks that hold for every operator (legacy too)."""
