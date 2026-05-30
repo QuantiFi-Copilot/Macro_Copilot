@@ -1,0 +1,79 @@
+operator:
+  name: rolling_statistic
+  method_family: single_series_transform
+  version: "1.0.0"
+  description: >-
+    Generic windowed reducer over a Series — emits a Series of the same
+    index with a rolling mean / std / min / max / sum computed over a
+    trailing window.  Finance-blind: runs unchanged on rates, FX,
+    equities, or any numeric series.  Output units PRESERVE the input
+    unit (a rolling mean of percent is in percent, a rolling sum of
+    bps is in bps, etc.) — no coercion.
+
+# Every consequential method variant is offloaded here so the operator
+# is not opinionated and the caller can switch seamlessly (OPR7/OPR8).
+# The schema defaults in schemas.py mirror these values and a test
+# asserts they do not diverge.
+defaults:
+  statistic:
+    value: mean
+    source: operator_v1_default
+    rationale: >-
+      ``mean`` is the most common rolling reducer (rolling average,
+      moving average).  ``std`` is the natural rolling-volatility
+      primitive; ``min``/``max`` are the rolling-range building blocks;
+      ``sum`` is the rolling-aggregate.  All five are implemented.
+    valid_values: [mean, std, min, max, sum]
+  window:
+    value: 20
+    source: operator_v1_default
+    rationale: >-
+      20 is a conventional 1-month business-day window for macro
+      analytics (≈ one trading month).  Callers should override for
+      tactical (e.g. 5) or strategic (e.g. 252) horizons.
+  min_periods:
+    value: null
+    source: operator_v1_default
+    rationale: >-
+      ``None`` defers to ``window`` at runtime — the strict choice
+      (no partial-window stats).  Set explicitly to allow earlier
+      warmup at the cost of noisier first observations.
+  ddof:
+    value: 1
+    source: operator_v1_default
+    rationale: >-
+      Delta degrees of freedom for ``statistic='std'``; ignored for
+      every other statistic.  ``1`` (sample) is the desk-default;
+      ``0`` (population) is supported.
+    valid_values: [0, 1]
+  look_ahead_safe:
+    value: false
+    source: operator_v1_default
+    rationale: >-
+      Default ``false``: a rolling MEAN / STD / MIN / MAX / SUM of a
+      series is a SMOOTHING transform, not a forward-looking signal —
+      the natural reading at time ``t`` is "average/vol/sum/etc OVER
+      the window ending at ``t`` (inclusive)".  Set ``true`` to shift
+      the rolling stat by one period so the value at ``t`` reflects
+      data <= ``t-1`` — only choose this when the rolling stat will
+      be combined with the same-day raw value (the same look-ahead
+      hazard ``rolling_zscore`` defaults true for).
+
+methodology:
+  what_it_does: >-
+    Computes a trailing-window reducer (mean / std / min / max / sum)
+    over a single Series and emits a Series of the same index and
+    length.  Output UNITS PRESERVE the input unit — no coercion.
+    Output FREQUENCY preserves the input frequency.  Warmup positions
+    (fewer than ``min_periods`` valid observations) emit ``NaN`` —
+    legitimate missingness from insufficient history.  The operator
+    raises ``RollingStatisticError`` for an empty input, a non-Series
+    input, or an unsupported statistic value; for ``statistic='std'``
+    with ``window < 2`` (std is undefined on one observation); and
+    when the entire output is ``NaN``.  Variants are baked into the
+    operator; new statistics ship as additions here AND in the
+    operator's implemented set, never as silent fallbacks (OPR8
+    honest refusal).
+  planned_extensions:
+    - "rolling_median / rolling_quantile: separate statistic variants admitted as extensions once a workflow needs them — they extend the implemented set in lock-step with the valid_values list above."
+    - "ewma: a SEPARATE operator (exponential weighting is mechanically distinct from a rectangular window) per OPR2 constant-output discipline."

@@ -48,12 +48,29 @@ from shared.operators.conditional_aggregate import (
     conditional_aggregate,
     ConditionalAggregateParams,
 )
+from shared.operators.cointegration import cointegration, CointegrationParams
 from shared.operators.correlation import correlation, CorrelationParams
 from shared.operators.convert_units import convert_units, ConvertUnitsParams
 from shared.operators.event_windows import event_windows, EventWindowsParams
 from shared.operators.rolling_regression import (
     rolling_regression,
     RollingRegressionParams,
+)
+from shared.operators.percentile_rank import (
+    percentile_rank,
+    PercentileRankParams,
+)
+from shared.operators.rolling_correlation import (
+    rolling_correlation,
+    RollingCorrelationParams,
+)
+from shared.operators.rolling_statistic import (
+    rolling_statistic,
+    RollingStatisticParams,
+)
+from shared.operators.rolling_zscore import (
+    rolling_zscore,
+    RollingZscoreParams,
 )
 from shared.operators.select_from_series_set import (
     select_from_series_set,
@@ -408,6 +425,64 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         # Output is a SeriesSet keyed by {beta, alpha, r_squared}.
         input_slots={"lhs": "Series", "rhs": "Series"},
         output_type="SeriesSet",
+    ),
+    # v2.0 (ADR 0016) — single_series_transform: trailing-window
+    # standardisation of a Series.  One Series in, one Series out
+    # (always in Z_SCORE units).  The composition primitive for any
+    # "where are we vs our own recent history" question.
+    "rolling_zscore": OperatorSpec(
+        operator_name="rolling_zscore",
+        callable=rolling_zscore,
+        params_class=RollingZscoreParams,
+        input_slots={"series": "Series"},
+        output_type="Series",
+    ),
+    # v2.0 (ADR 0016) — single_series_transform: generic windowed
+    # reducer (mean / std / min / max / sum) over a Series.  One Series
+    # in, one Series out (input unit preserved).  The composition
+    # primitive for rolling vol, moving averages, rolling ranges.
+    "rolling_statistic": OperatorSpec(
+        operator_name="rolling_statistic",
+        callable=rolling_statistic,
+        params_class=RollingStatisticParams,
+        input_slots={"series": "Series"},
+        output_type="Series",
+    ),
+    # v2.0 (ADR 0016) — single_series_transform: trailing- or
+    # expanding-window percentile rank ("where does today sit vs
+    # history").  One Series in, one Series out, always in PCT_RANK
+    # units (0–100).  The canonical macro "rich/cheap vs history"
+    # primitive.
+    "percentile_rank": OperatorSpec(
+        operator_name="percentile_rank",
+        callable=percentile_rank,
+        params_class=PercentileRankParams,
+        input_slots={"series": "Series"},
+        output_type="Series",
+    ),
+    # v2.0 (ADR 0016) — statistical_relationship: windowed correlation
+    # between two index-aligned Series.  Two Series in, one Series out
+    # (rolling coefficients in RATIO units).  The SEPARATE-operator
+    # counterpart of ``correlation`` per OPR2 — does NOT align, does
+    # NOT take a window flag on ``correlation`` itself.
+    "rolling_correlation": OperatorSpec(
+        operator_name="rolling_correlation",
+        callable=rolling_correlation,
+        params_class=RollingCorrelationParams,
+        input_slots={"left": "Series", "right": "Series"},
+        output_type="Series",
+    ),
+    # v2.0 (ADR 0016) — statistical_relationship: Engle–Granger
+    # two-step cointegration test between two index-aligned Series.
+    # Two Series in, one ScalarMetric out (the ADF test statistic, in
+    # RATIO units — dimensionless).  The pairs / relative-value
+    # workhorse for "is this spread stationary?" research.
+    "cointegration": OperatorSpec(
+        operator_name="cointegration",
+        callable=cointegration,
+        params_class=CointegrationParams,
+        input_slots={"left": "Series", "right": "Series"},
+        output_type="ScalarMetric",
     ),
     "summarize_series": OperatorSpec(
         operator_name="summarize_series",

@@ -1,0 +1,98 @@
+operator:
+  name: cointegration
+  method_family: statistical_relationship
+  version: "1.0.0"
+  description: >-
+    Engle–Granger two-step cointegration test between two index-aligned
+    numeric Series.  Emits a single ``ScalarMetric`` carrying the
+    augmented-Dickey-Fuller test statistic on the cointegrating
+    regression residuals, with the p-value, n_obs, regression beta,
+    chosen lag, and trend recorded in lineage params.  Finance-blind:
+    runs unchanged on any two numeric series (the test asks "is there
+    a stationary linear combination?" — equally applicable to rates,
+    FX, equities, or temperature series).
+
+# Every consequential method variant is offloaded here so the operator
+# is not opinionated and the caller can switch seamlessly (OPR7/OPR8).
+# Method ``engle_granger`` is implemented; alternative tests (Johansen,
+# Phillips–Ouliaris) ship as separate operators per OPR2.
+defaults:
+  method:
+    value: engle_granger
+    source: operator_v1_default
+    rationale: >-
+      Engle–Granger (1987) two-step test is the canonical bivariate
+      cointegration test and the natural pair for our existing
+      rolling_regression (Granger's own primitive for pairs research).
+      Johansen handles multivariate systems and ships as a separate
+      operator when needed.
+    valid_values: [engle_granger]
+  trend:
+    value: c
+    source: operator_v1_default
+    rationale: >-
+      Constant (``c``) in the cointegrating regression — the standard
+      Engle–Granger setup.  Pass ``ct`` to include a linear trend
+      (drift), ``ctt`` for quadratic, or ``n`` for no constant.  The
+      choice changes the critical-value table used by adfuller, so it
+      is exposed (OPR8).
+    valid_values: [c, ct, ctt, n]
+  max_lag:
+    value: null
+    source: operator_v1_default
+    rationale: >-
+      ``None`` defers to ``autolag``'s automatic selection (the default
+      below).  Set explicitly to fix the augmented-DF lag length.
+  autolag:
+    value: aic
+    source: operator_v1_default
+    rationale: >-
+      ``aic`` (Akaike) is statsmodels' default and the convention in
+      the cointegration literature.  ``bic`` (Schwarz) penalises lags
+      more aggressively; ``t-stat`` uses sequential significance.  Set
+      ``null`` to use ``max_lag`` directly without selection.
+    valid_values: [aic, bic, t-stat, null]
+  min_periods:
+    value: 30
+    source: operator_v1_default
+    rationale: >-
+      The Engle–Granger test's small-sample properties are poor below
+      ~30 observations; 30 is a conservative floor.  Increase for more
+      reliable critical values; lower with caution (the test will run
+      but the p-value's small-sample bias grows).
+
+methodology:
+  what_it_does: >-
+    Two-step Engle–Granger test on a bivariate (left, right) pair.
+    Step 1: fit the cointegrating OLS regression ``left = α + β * right
+    [+ trend terms] + ε`` with the trend specification chosen in
+    ``trend``.  Step 2: run the augmented Dickey–Fuller test
+    (``statsmodels.tsa.stattools.coint``) on the OLS residuals with
+    the chosen ``max_lag``/``autolag``.
+
+    Output ``ScalarMetric``: ``value`` = the ADF test statistic
+    (negative; more negative = stronger evidence against H0=
+    no cointegration), ``units`` = ``RATIO`` (a test stat is
+    dimensionless).  The p-value, n_obs, regression beta, regression
+    intercept, both inputs' units, and the chosen trend / lag / autolag
+    are recorded in the lineage ``OperatorStep`` params (sanitised) so
+    a downstream consumer can recover them without re-running the test.
+
+    The two inputs MUST share an identical ``DatetimeIndex`` (align
+    upstream with ``align_series`` — this operator does NOT align).
+    Strict-by-default on frequency and missingness (OPR11);
+    unit-INVARIANT (test stat is dimensionless; both units recorded for
+    provenance).
+
+    Refused as ``CointegrationError``:
+      - non-Series input,
+      - index mismatch,
+      - fewer than ``min_periods`` overlapping non-NaN pairs,
+      - zero-variance input (test is undefined; statsmodels raises),
+      - non-finite test statistic (statsmodels returns ``-inf`` for
+        (near-)perfectly colinear inputs — refuse rather than emit a
+        non-finite ``ScalarMetric``, which the artifact layer rejects
+        anyway).
+  planned_extensions:
+    - "method='johansen' (Johansen multivariate cointegration): admitted as a SEPARATE operator (different input shape — N series, not 2) when a workflow needs it.  Listed here for reference only; not switched on this operator's ``method`` flag."
+    - "method='phillips_ouliaris' (Phillips–Ouliaris non-parametric residual test): admitted as a SEPARATE operator only if AEG is found inadequate for some recipe; not yet built."

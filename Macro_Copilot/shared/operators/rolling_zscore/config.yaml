@@ -1,0 +1,69 @@
+operator:
+  name: rolling_zscore
+  method_family: single_series_transform
+  version: "1.0.0"
+  description: >-
+    Rolling z-score of a Series over a trailing window:
+    ``(x - rolling_mean) / rolling_std``.  Finance-blind — runs unchanged on
+    rates, FX, equities, or any numeric series.  Output is ALWAYS in
+    ``Z_SCORE`` units; output frequency inherits the input.  Strict
+    look-ahead hygiene by default (the z at time ``t`` uses only
+    observations <= ``t-1``).
+
+# Every consequential method variant is offloaded here so the operator
+# is not opinionated and the caller can switch seamlessly (OPR7/OPR8).
+# The schema defaults in schemas.py mirror these values and a test
+# asserts they do not diverge.
+defaults:
+  window:
+    value: 60
+    source: operator_v1_default
+    rationale: >-
+      60 is the conventional 3-month business-day rolling window for
+      macro z-scores (≈ one quarter of trading days).  Callers should
+      override for tactical (e.g. 20) or strategic (e.g. 252) horizons.
+  min_periods:
+    value: null
+    source: operator_v1_default
+    rationale: >-
+      ``None`` defers to ``window`` at runtime — the strict choice
+      (no partial-window stats).  Set explicitly to allow earlier
+      warmup at the cost of noisier first observations.
+  ddof:
+    value: 1
+    source: operator_v1_default
+    rationale: >-
+      Sample standard deviation (``ddof=1``) is the desk-default —
+      consistent with ``threshold_events`` and ``summarize_series``.
+      ``ddof=0`` (population / biased estimator) is supported.
+    valid_values: [0, 1]
+  look_ahead_safe:
+    value: true
+    source: operator_v1_default
+    rationale: >-
+      Default ``true`` so the z at time ``t`` reflects only data
+      <= ``t-1`` (the rolling mean/std are shifted by one period).
+      This is the canonical event-study hygiene — an in-sample z
+      includes the observation it is trying to characterise.
+
+methodology:
+  what_it_does: >-
+    Standardises a single Series via its own trailing rolling mean and
+    standard deviation: ``z_t = (x_t - rolling_mean_t) / rolling_std_t``.
+    Output is a Series of the SAME index and length as the input,
+    always in ``Z_SCORE`` units, with input frequency preserved.  When
+    ``look_ahead_safe=True`` (default), both rolling statistics are
+    shifted by one period so the z at time ``t`` is the standardisation
+    of the new observation against the *prior* window.  Warmup
+    positions (fewer than ``min_periods`` valid observations in the
+    window) emit ``NaN`` — that is legitimate missingness from
+    insufficient history, not a refusal.  Where the rolling std is
+    zero (a degenerate window of constants) the z is undefined and
+    that position is also ``NaN``.  The operator raises
+    ``RollingZscoreError`` when the ENTIRE output is ``NaN`` (e.g.
+    ``window`` longer than the series), when the input is empty, or
+    when the input is not a Series — an undefined refused is a typed
+    operator refusal, never an empty payload.
+  planned_extensions:
+    - "ewma_zscore: a SEPARATE operator emitting a Series (not a basis switch here) per OPR2 constant-output discipline."
+    - "cross_sectional_zscore: a SEPARATE operator in the cross_sectional family — standardises across series at each date, not within a series across time."

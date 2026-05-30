@@ -1,0 +1,68 @@
+operator:
+  name: rolling_correlation
+  method_family: statistical_relationship
+  version: "1.0.0"
+  description: >-
+    Windowed correlation between two index-aligned numeric Series:
+    emits a Series of correlation coefficients in ``RATIO`` units.
+    Finance-blind and unit-INVARIANT: a correlation is dimensionless,
+    so it imposes no same-unit requirement — only a shared
+    ``DatetimeIndex`` and an agreed cadence.  Distinct from
+    ``correlation`` (which emits a full-sample ``ScalarMetric``) per
+    OPR2 constant-output discipline.
+
+# Every consequential method variant is offloaded here so the operator
+# is not opinionated and the caller can switch seamlessly (OPR7/OPR8).
+# All implemented methods are baked into the operator's Python; the
+# declared-but-unbuilt method (kendall) refuses cleanly (OPR8 honest
+# refusal).  The schema defaults in schemas.py mirror these values and
+# a test asserts they do not diverge.
+defaults:
+  method:
+    value: pearson
+    source: operator_v1_default
+    rationale: >-
+      Pearson is the desk-default linear correlation; Spearman (rank)
+      captures monotonic non-linear association.  Kendall is declared
+      in valid_values as a planned extension but is not yet
+      implemented — mirrors ``correlation``'s set so the two are
+      directly substitutable.
+    valid_values: [pearson, spearman, kendall]
+  window:
+    value: 60
+    source: operator_v1_default
+    rationale: >-
+      60 ≈ 3 months of business days — the conventional rolling
+      correlation window for macro analytics.  Override for tactical
+      (e.g. 20) or strategic (e.g. 252) horizons.
+  min_periods:
+    value: null
+    source: operator_v1_default
+    rationale: >-
+      ``None`` defers to ``window`` at runtime — the strict choice
+      (no partial-window correlations).  A correlation needs at least
+      2 overlapping non-NaN observations to be defined; the operator
+      enforces ``window >= 2``.
+
+methodology:
+  what_it_does: >-
+    Computes a windowed correlation coefficient between two Series
+    over a trailing window of length ``window``, emitting a Series in
+    ``RATIO`` units (coefficients in ``[-1, 1]``).  The two inputs
+    MUST share an identical ``DatetimeIndex`` (align upstream with
+    ``align_series`` — this operator does NOT align).  Strict-by-
+    default on frequency and missingness (OPR11); unit-INVARIANT by
+    design (both inputs' units are recorded in lineage for
+    provenance, but the output is dimensionless).
+
+    Warmup positions (fewer than ``min_periods`` overlapping non-NaN
+    observations within the window) emit ``NaN`` — legitimate
+    missingness from insufficient history.  Where a window is
+    degenerate (zero variance in either side), the correlation at
+    that position is ``NaN``.  When EVERY window is degenerate or
+    has insufficient overlap, the operator raises
+    ``RollingCorrelationError`` (a typed refusal, not an empty
+    Series).
+  planned_extensions:
+    - "method='kendall' (Kendall's tau): declared in valid_values but not yet implemented; raises NotImplementedError (OPR8 honest refusal).  Mirrors correlation."
+    - "exponentially_weighted_correlation: a SEPARATE operator (EWMA mechanics are distinct from a rectangular window) per OPR2 constant-output discipline."

@@ -40,12 +40,17 @@ from shared.workflow.registry import ARTIFACT_TYPE_NAMES, OPERATOR_REGISTRY
 # The full OPR16 conformance gate runs over this set; Step 3 grew it
 # from {correlation} to include the 8 migrated finance-blind operators.
 _V2_CONFORMANT = {
+    "cointegration",
     "correlation",
     "align_series",
     "apply_mask",
     "conditional_aggregate",
     "event_windows",
+    "percentile_rank",
+    "rolling_correlation",
     "rolling_regression",
+    "rolling_statistic",
+    "rolling_zscore",
     "select_from_series_set",
     "series_arithmetic",
     "summarize_series",
@@ -200,6 +205,8 @@ _MULTI_ARTIFACT_OPS = {
     "align_series",
     "series_arithmetic",
     "rolling_regression",
+    "rolling_correlation",
+    "cointegration",
     "apply_mask",
     "event_windows",
 }

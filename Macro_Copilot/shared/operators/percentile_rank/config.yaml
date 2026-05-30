@@ -1,0 +1,80 @@
+operator:
+  name: percentile_rank
+  method_family: single_series_transform
+  version: "1.0.0"
+  description: >-
+    Trailing- or expanding-window percentile rank of a Series.  For each
+    point, computes the percentile rank of that observation within its
+    own (optionally) trailing history.  The canonical "where are we vs
+    history" primitive — "today's 10y yield sits at the 95th percentile
+    of its 1-year history".  Finance-blind: runs unchanged on rates,
+    FX, equities, or any numeric series.  Output is ALWAYS in
+    ``PCT_RANK`` units (0–100, the enum-canonical semantic).
+
+# Every consequential method variant is offloaded here so the operator
+# is not opinionated and the caller can switch seamlessly (OPR7/OPR8).
+# The schema defaults in schemas.py mirror these values.
+defaults:
+  window:
+    value: 252
+    source: operator_v1_default
+    rationale: >-
+      252 ≈ 1 year of business days — the conventional 1-year rolling
+      percentile rank in macro research.  Set to ``null`` for an
+      expanding window (rank vs ALL history up to that point); choose
+      larger (e.g. 2520 ≈ 10y) for longer-horizon percentile framings.
+  min_periods:
+    value: 20
+    source: operator_v1_default
+    rationale: >-
+      20 observations is the floor below which a percentile rank is
+      too coarse to be informative (every observation moves the rank
+      by ~5 percentile points).  Increase for tighter confidence in
+      the rank; lower with caution.
+  method:
+    value: mean
+    source: operator_v1_default
+    rationale: >-
+      ``mean`` is the average of ``weak`` (<=) and ``strict`` (<) —
+      the standard "midrank" tie-handling convention from statistics
+      textbooks and the most natural reading of percentile rank.
+      ``rank`` / ``weak`` / ``strict`` are supported for callers who
+      want explicit handling (see ``scipy.stats.percentileofscore``).
+    valid_values: [mean, weak, strict, rank]
+  look_ahead_safe:
+    value: true
+    source: operator_v1_default
+    rationale: >-
+      Default ``true``: at time ``t`` the rank is computed against
+      history ``[t-window, t-1]`` — STRICTLY excluding the current
+      observation, so the signal does not "predict" itself.  This is
+      the canonical event-study hygiene.  Set ``false`` to include
+      the current observation in its own ranking history (in-sample
+      rank; reasonable for descriptive snapshots, not for signals
+      that will be acted on).
+
+methodology:
+  what_it_does: >-
+    For each point ``x_t`` in the input Series, computes the percentile
+    rank of ``x_t`` within its trailing (or expanding) history using
+    ``scipy.stats.percentileofscore`` with the chosen tie-handling
+    ``method``.  Output ALWAYS in ``PCT_RANK`` units on the 0–100
+    convention (matching the closed enum's documented semantics —
+    "0–100 percentile rank").  Output frequency inherits the input.
+
+    Look-ahead hygiene: when ``look_ahead_safe=True`` (default), the
+    history slice STRICTLY excludes the current observation — at time
+    ``t`` the rank is computed against ``[t-window, t-1]``.  When
+    ``False``, the slice is ``[t-window+1, t]`` (the current
+    observation is included in its own ranking history) — this is the
+    in-sample rank and is appropriate for descriptive snapshots but
+    will inflate the signal of an extreme observation.
+
+    Warmup positions (fewer than ``min_periods`` non-NaN observations
+    in the available history) emit ``NaN`` — legitimate missingness
+    from insufficient history.  The operator raises
+    ``PercentileRankError`` for an empty input, a non-Series input,
+    a declared-but-unbuilt method, or an entirely all-NaN output.
+  planned_extensions:
+    - "cross_sectional_rank: a SEPARATE operator in the cross_sectional family — ranks across series at each date (e.g. country rank), not within a series across time."
+    - "quantile_membership: a SEPARATE masking operator emitting an EventSet for 'observations in the top decile vs the bottom decile' — distinct shape from a percentile Series."
