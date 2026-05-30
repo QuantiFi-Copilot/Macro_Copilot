@@ -54,7 +54,7 @@ import numpy as np
 import pandas as pd
 
 from shared.artifacts.lineage import Lineage, OperatorStep
-from shared.artifacts.missingness import MissingnessPolicy
+from shared.artifacts.missingness import CombinedMissingnessV1, MissingnessPolicy
 from shared.artifacts.types import Series
 from shared.artifacts.units import TimeSeriesUnits
 from shared.config.operator_config import (
@@ -397,12 +397,16 @@ def series_arithmetic(
             # We only get here when require_matching_frequency=False
             # (strict path raised already).  Drop the tag to None.
             output_frequency = None
-        # When require_matching_missingness=False let strict mismatch
-        # through, output policy is "left's policy" — a deliberate
-        # simplification for v1.  The lenient choice is logged in
-        # the step's params; introducing a structured combined-policy
-        # wrapper is deferred until a real workflow demands it.
-        output_missingness = left.missingness_policy
+        # When require_matching_missingness=False let a strict mismatch
+        # through, emit an HONEST combined policy reflecting both inputs
+        # rather than silently keeping left's (OPR11 / M5).  When the
+        # policies already agree, keep the single policy unchanged.
+        if left.missingness_policy == right.missingness_policy:
+            output_missingness = left.missingness_policy
+        else:
+            output_missingness = CombinedMissingnessV1(
+                components=(left.missingness_policy, right.missingness_policy),
+            )
 
     return Series(
         series_key=_compose_series_key(left, op, right),

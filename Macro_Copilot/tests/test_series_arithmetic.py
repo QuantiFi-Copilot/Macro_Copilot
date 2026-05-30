@@ -576,8 +576,12 @@ class TestRHSMissingnessCompatibility:
                 op="subtract", require_matching_missingness=False,
             ),
         )
-        # v1 simplification: output preserves left's policy.
-        assert isinstance(out.missingness_policy, CleanSingleSeriesV1)
+        # M5: differing policies under the lenient opt-out yield an honest
+        # CombinedMissingnessV1 reflecting BOTH inputs (not silently left's).
+        from shared.artifacts.missingness import CombinedMissingnessV1
+        assert isinstance(out.missingness_policy, CombinedMissingnessV1)
+        kinds = {c.kind for c in out.missingness_policy.components}
+        assert kinds == {"clean_single_series_v1", "raw_no_cleaning"}
         # Lenient choice recorded.
         assert out.lineage.steps[-1].params[
             "require_matching_missingness"

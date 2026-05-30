@@ -81,16 +81,40 @@ class AlignSeriesFFillV1(BaseModel):
     fill_limit: Optional[int] = None
 
 
+class CombinedMissingnessV1(BaseModel):
+    """Missingness policy emitted when a multi-artifact operator combines
+    inputs with DIFFERENT upstream policies under an explicit lenient
+    opt-out (``require_matching_missingness=False``).
+
+    Honest record (OPR11) that the output mixes regimes, rather than
+    silently adopting one input's policy and discarding the others'.
+    ``components`` preserves every input's declared policy in input
+    order so a consumer can introspect the mix.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["combined_missingness_v1"] = "combined_missingness_v1"
+    components: tuple["MissingnessPolicy", ...] = Field(..., min_length=2)
+
+
 # Discriminated union — Pydantic uses the ``kind`` field to pick the
 # right model on deserialization.  Closed by construction; adding a
 # policy requires editing this union and the imports above.
 MissingnessPolicy = Annotated[
-    Union[CleanSingleSeriesV1, RawNoCleaning, AlignSeriesFFillV1],
+    Union[
+        CleanSingleSeriesV1,
+        RawNoCleaning,
+        AlignSeriesFFillV1,
+        CombinedMissingnessV1,
+    ],
     Field(discriminator="kind"),
 ]
 
-# Resolve the recursive forward reference on AlignSeriesFFillV1.upstream.
+# Resolve the recursive forward references (AlignSeriesFFillV1.upstream,
+# CombinedMissingnessV1.components).
 AlignSeriesFFillV1.model_rebuild()
+CombinedMissingnessV1.model_rebuild()
 
 
 __all__ = [
@@ -98,4 +122,5 @@ __all__ = [
     "CleanSingleSeriesV1",
     "RawNoCleaning",
     "AlignSeriesFFillV1",
+    "CombinedMissingnessV1",
 ]

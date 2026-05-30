@@ -47,6 +47,7 @@ import pandas as pd
 
 from shared.analytics.regression import rolling_ols
 from shared.artifacts.lineage import Lineage, OperatorStep
+from shared.artifacts.missingness import CombinedMissingnessV1
 from shared.artifacts.types import Series, SeriesSet
 from shared.artifacts.units import TimeSeriesUnits
 from shared.config.operator_config import (
@@ -247,6 +248,11 @@ def rolling_regression(
         "lhs_basis": params.lhs_basis,
         "rhs_basis": params.rhs_basis,
         "add_constant": params.add_constant,
+        # OPR11 / M5 — record the relaxation so a reviewer sees a relaxed
+        # flag where it was relaxed (and so two calls with different
+        # strictness aren't conflated).
+        "require_matching_frequency": params.require_matching_frequency,
+        "require_matching_missingness": params.require_matching_missingness,
         "lhs_series_key": lhs.series_key,
         "rhs_series_key": rhs.series_key,
         "effective_lhs_unit": str(eff_lhs_unit.value),
@@ -276,10 +282,19 @@ def rolling_regression(
         "alpha": eff_lhs_unit,
         "r_squared": TimeSeriesUnits.RATIO,
     }
+    # Under a lenient missingness opt-out (require_matching_missingness=
+    # False) lhs/rhs may carry different policies; emit an honest combined
+    # policy rather than silently keeping lhs's (OPR11 / M5).
+    if lhs.missingness_policy == rhs.missingness_policy:
+        combined_missingness = lhs.missingness_policy
+    else:
+        combined_missingness = CombinedMissingnessV1(
+            components=(lhs.missingness_policy, rhs.missingness_policy),
+        )
     missingness_by_key = {
-        "beta": lhs.missingness_policy,
-        "alpha": lhs.missingness_policy,
-        "r_squared": lhs.missingness_policy,
+        "beta": combined_missingness,
+        "alpha": combined_missingness,
+        "r_squared": combined_missingness,
     }
     upstream_lineage_by_key = {
         "beta": lhs.lineage,

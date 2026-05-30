@@ -16,6 +16,9 @@ exposed as caller-controlled parameters.  ``event_windows`` exposes:
                                    each cell value MEANS
   - ``require_matching_frequency`` bool — frequency-tag agreement
                                    between events.mask and target
+  - ``require_matching_missingness`` bool — OPR11 uniformity flag
+                                   (vacuous: an EventSet is a boolean
+                                   mask with no missingness regime)
 
 Phase 1A surface is intentionally minimal (build plan v5 — strip to
 the Q1 minimum).  Per the v5 plan + R3, structural metadata is
@@ -67,6 +70,12 @@ class EventWindowsParams(BaseModel):
     incomplete_window_policy: Optional[IncompleteWindowPolicy] = None
     units_basis: Optional[UnitsBasis] = None
     require_matching_frequency: bool = True
+    # OPR11 uniformity flag.  An EventSet is a boolean mask with no
+    # missingness regime, so there is no second policy to compare against
+    # — the flag is exposed strict-by-default for symmetry with the other
+    # multi-artifact operators, but the check is vacuous (the windowed
+    # output's values come from the target Series).
+    require_matching_missingness: bool = True
 
     @model_validator(mode="after")
     def _validate_window(self) -> "EventWindowsParams":
