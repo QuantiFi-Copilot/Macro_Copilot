@@ -2160,8 +2160,8 @@
     "hash": "03f3789a8340642454df064e4057afa2"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_operator_registry_consistency.py": {
-    "mtime": 1780160486.6471605,
-    "hash": "256535e056a4f76c4ce369b27ab41459"
+    "mtime": 1780175954.083139,
+    "hash": "6c0068fa350c0f43460adb2620659e09"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_real_yield_level_parity.py": {
     "mtime": 1779731367.2889328,
@@ -2184,7 +2184,7 @@
     "hash": "039cbd4a575b583a883417265466b8a0"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_operator_rolling_zscore.py": {
-    "mtime": 1780159645.079046,
+    "mtime": 1780168278.6799386,
     "hash": "7e0d4035e1a82fc59b82123c2df53cbf"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_futures_strip_snapshot_compute.py": {
@@ -2260,7 +2260,7 @@
     "hash": "8e97275d613bbd434aa0794cb0fe4871"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_operator_percentile_rank.py": {
-    "mtime": 1780160057.3944683,
+    "mtime": 1780168278.6794724,
     "hash": "d7e69d4b076d21dc6bc1c6263f28083d"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_cross_country_real_yield_spread_simple_parity.py": {
@@ -2290,6 +2290,10 @@
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_ois_forward_rate_sql_validation.py": {
     "mtime": 1777904026.7479079,
     "hash": "41cb4bc09cfea9148368f0445b30980c"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_slot_descriptor.py": {
+    "mtime": 1780175594.1367722,
+    "hash": "112c225eb51e57faaca54c9abfdd4524"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_operator_config.py": {
     "mtime": 1777904026.7497334,
@@ -2376,7 +2380,7 @@
     "hash": "313a57a9c2d7901017ab464febf2b654"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_operator_cointegration.py": {
-    "mtime": 1780163727.653227,
+    "mtime": 1780168278.6793704,
     "hash": "2e76b2e1877b9d0d0d16f66e039745c7"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_inflation_swap_curve_spread_parity.py": {
@@ -2696,8 +2700,8 @@
     "hash": "394a7a98e11311f7be00d3fa208f087f"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_artifact_closed_family_lockstep.py": {
-    "mtime": 1780148083.74834,
-    "hash": "ccb30691c6f3942e63d387b5cb6662d1"
+    "mtime": 1780174716.1221986,
+    "hash": "1ed01ca1bfa7aad4bdd44227a7bb85ed"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_nfp_surprise_sql_validation.py": {
     "mtime": 1779640182.3367774,
@@ -2936,7 +2940,7 @@
     "hash": "ab336a71a04e70e3bbde5f9d741dc8d7"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_operator_rolling_statistic.py": {
-    "mtime": 1780163713.8255706,
+    "mtime": 1780168278.6798391,
     "hash": "f69fb3aa8b7daeecd92c6face9551fc0"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_futures_volume_oi_sql_validation.py": {
@@ -2972,7 +2976,7 @@
     "hash": "9263e0eef5c9be35261ef34995101fe5"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_operator_rolling_correlation.py": {
-    "mtime": 1780160258.3622887,
+    "mtime": 1780168278.6797075,
     "hash": "a1808017c2a5bf27cbdbf775b4635eaf"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_futures_price_level_wiring.py": {
@@ -3459,6 +3463,10 @@
     "mtime": 1780152918.3204355,
     "hash": "e79ec1ff6613add724af956e2d1c5f2a"
   },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/shared/artifacts/registry.py": {
+    "mtime": 1780174618.4286962,
+    "hash": "5289a4f402453c2b57e8e0c50dfec1ad"
+  },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/artifacts/__init__.py": {
     "mtime": 1780108310.9024253,
     "hash": "96a7ec671e59b9665d1141494a66b184"
@@ -3500,15 +3508,15 @@
     "hash": "4db1c4bd8c2165f3e1aec795286db5da"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/rolling_zscore/operator.py": {
-    "mtime": 1780159526.2075315,
+    "mtime": 1780168278.678958,
     "hash": "0f0dc8882d796aa6956ef2fdff040ffa"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/rolling_zscore/__init__.py": {
-    "mtime": 1780159533.1084146,
+    "mtime": 1780168278.6787694,
     "hash": "785b24aa50ed3feabaadf278cfddc2b8"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/rolling_zscore/schemas.py": {
-    "mtime": 1780159489.533153,
+    "mtime": 1780168278.679041,
     "hash": "5bc49b898f018c96d1e1f108e9a918c4"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/conditional_aggregate/operator.py": {
@@ -3560,15 +3568,15 @@
     "hash": "371bc71317764720b2d55eb15a4412a0"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/cointegration/operator.py": {
-    "mtime": 1780163948.3267179,
+    "mtime": 1780168278.6765866,
     "hash": "8290f113c6dec040bfb51c963c490c22"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/cointegration/__init__.py": {
-    "mtime": 1780160456.7336826,
+    "mtime": 1780168278.6756737,
     "hash": "e6643945989471d458e3fed7aadb33bb"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/cointegration/schemas.py": {
-    "mtime": 1780160385.9576783,
+    "mtime": 1780168278.6769183,
     "hash": "e124b7b0421ed198c4f76259323a172c"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/series_arithmetic/operator.py": {
@@ -3596,15 +3604,15 @@
     "hash": "dba23ecfc875f14c267f2c0f037759c7"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/rolling_statistic/operator.py": {
-    "mtime": 1780163591.1054566,
+    "mtime": 1780168278.678606,
     "hash": "d1a894873a036238c3f9773a6fc14a42"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/rolling_statistic/__init__.py": {
-    "mtime": 1780159758.5447977,
+    "mtime": 1780168278.6781569,
     "hash": "a93a47b2096848449413e13ec6ef9f98"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/rolling_statistic/schemas.py": {
-    "mtime": 1780159707.4039037,
+    "mtime": 1780168278.678691,
     "hash": "e667faad6c53c1e2b7900fc25af7eb74"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/select_from_series_set/operator.py": {
@@ -3632,15 +3640,15 @@
     "hash": "5e97a632e0f20485de7eec6822298f48"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/percentile_rank/operator.py": {
-    "mtime": 1780159958.8907707,
+    "mtime": 1780168278.6776319,
     "hash": "9bf29d6098abdc17a401a8a4ace84ed1"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/percentile_rank/__init__.py": {
-    "mtime": 1780159965.0718138,
+    "mtime": 1780168278.6771939,
     "hash": "abca074e4e2cf2b5b70d06e97739a80e"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/percentile_rank/schemas.py": {
-    "mtime": 1780159921.3184593,
+    "mtime": 1780168278.6777265,
     "hash": "e57618ca9645ff055d5255aa2d46e3a7"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/event_windows/operator.py": {
@@ -3668,15 +3676,15 @@
     "hash": "4705a7d09c590d90169496e3b2714e2b"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/rolling_correlation/operator.py": {
-    "mtime": 1780160162.0642195,
+    "mtime": 1780168278.6780026,
     "hash": "c000f5ff6f853b4582359c211dc4e515"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/rolling_correlation/__init__.py": {
-    "mtime": 1780160169.9020178,
+    "mtime": 1780168278.6778083,
     "hash": "adcfa196cfa1d85725b402886735d250"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/rolling_correlation/schemas.py": {
-    "mtime": 1780160106.0878282,
+    "mtime": 1780168278.678079,
     "hash": "133040bbd122dff0cf1524f5ada5f6c8"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/config/__init__.py": {
@@ -3703,33 +3711,37 @@
     "mtime": 1777766933.7612798,
     "hash": "4b92b97fb1eb484325971984194bfb17"
   },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/shared/workflow/slots.py": {
+    "mtime": 1780174843.68835,
+    "hash": "769e587f1c04d4c2d27aa427fc9c76d5"
+  },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/workflow/registry.py": {
-    "mtime": 1780160473.9942346,
-    "hash": "3f1bc88ea3c7944aec981bc319bdc7be"
+    "mtime": 1780174977.950953,
+    "hash": "2f27ae95379bf719bd80f43c41d28e77"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/workflow/template_loader.py": {
     "mtime": 1777929662.3095336,
     "hash": "ea2f8fc56ca762276b5b10a610acd347"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/workflow/__init__.py": {
-    "mtime": 1777941863.9473326,
-    "hash": "c8378722b4af8203f0ef797a59f2b013"
+    "mtime": 1780175317.427168,
+    "hash": "b9a3bb7e4402d22ca4a1b46a1affa846"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/workflow/types.py": {
-    "mtime": 1777927975.1440268,
-    "hash": "a58ff36aa151b113c8d9322728bf5e90"
+    "mtime": 1780175317.4281762,
+    "hash": "57935073ed3f52965ef3b692e86c671f"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/workflow/result.py": {
     "mtime": 1780155381.2328396,
     "hash": "75c06bbdae720d5055cd1a0fd69f2dc3"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/workflow/validate.py": {
-    "mtime": 1778982035.642208,
-    "hash": "1ad293c5b7809d2829fffbbaaedbfa3d"
+    "mtime": 1780175317.4285042,
+    "hash": "d0903dc3e9a240237b3a46633784ec58"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/workflow/template_card.py": {
-    "mtime": 1777931004.471127,
-    "hash": "8a64b477ff82496901d93ffefd878b16"
+    "mtime": 1780175317.4278443,
+    "hash": "69d9f7bf36b70b9430263c4d22235afc"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/workflow/template.py": {
     "mtime": 1778982035.6420355,
@@ -3740,8 +3752,8 @@
     "hash": "01e1c19304f7279d63b051f0cd7a2f54"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/workflow/executor.py": {
-    "mtime": 1780151900.5704434,
-    "hash": "32b45d349008e6d75745afe422a73801"
+    "mtime": 1780175317.4275126,
+    "hash": "0d021ab73e171b03f60f2090aa9c567f"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/analytics/curve_bootstrap.py": {
     "mtime": 1776809210.3406096,
@@ -4020,7 +4032,7 @@
     "hash": "6ffbe231ee50adb0459ce04fa25384d4"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/environment.yml": {
-    "mtime": 1780160340.2292616,
+    "mtime": 1780168278.6162305,
     "hash": "5405fdce4fbb7ccd522c8935107ab786"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/WORKFLOW_GAUNTLET.md": {
@@ -4744,7 +4756,7 @@
     "hash": "c5888692bea8e902d4b6d2dd19b9b0a1"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/rolling_zscore/config.yaml": {
-    "mtime": 1780159477.9036584,
+    "mtime": 1780168278.6788442,
     "hash": "bce8d5e8c87d7614da60a962ed2f5e02"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/conditional_aggregate/config.yaml": {
@@ -4764,7 +4776,7 @@
     "hash": "bc2c20d9400f158679efa751803b8362"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/cointegration/config.yaml": {
-    "mtime": 1780160369.830308,
+    "mtime": 1780168278.676012,
     "hash": "82ae0b88f1057ad4f5e4dd723b458904"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/series_arithmetic/config.yaml": {
@@ -4776,7 +4788,7 @@
     "hash": "5c2c07a4386487188c859d48706db87e"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/rolling_statistic/config.yaml": {
-    "mtime": 1780159691.0155306,
+    "mtime": 1780168278.6782374,
     "hash": "9e793e360f5d777ba01d336f91fc926d"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/select_from_series_set/config.yaml": {
@@ -4788,7 +4800,7 @@
     "hash": "97e726a67ba80a0aab3f8e49a0c70a64"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/percentile_rank/config.yaml": {
-    "mtime": 1780159907.504788,
+    "mtime": 1780168278.6772828,
     "hash": "027e9dcea471783463f89774f2c38307"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/event_windows/config.yaml": {
@@ -4800,12 +4812,8 @@
     "hash": "3498e10ba2cb7267941dc455e2cdf8f5"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/rolling_correlation/config.yaml": {
-    "mtime": 1780160089.6859605,
+    "mtime": 1780168278.6778884,
     "hash": "66655a13df84757b41c8eab35e1125b7"
-  },
-  "/Volumes/Sreeram/Macro/Macro_Copilot/graphify-out/converted/rates_playbook_planning_manifest_784d2d10.md": {
-    "mtime": 1780164145.2420192,
-    "hash": "411f509e99c9fd44c55add78551d2ad0"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/docs/problems.md": {
     "mtime": 1776374343.8135002,
