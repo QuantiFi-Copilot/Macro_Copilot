@@ -8,10 +8,18 @@ contract clauses that can be checked without executing it:
   (a) signature params == input_slots ∪ {params, config}            (OPR9/OPR15)
   (b) ``params`` default is None (config-default resolution)         (OPR8)
   (c) ``<Operator>Error`` subclasses ValueError                     (OPR13)
-  (d) output_type + every input-slot type ∈ the closed family       (OPR9)
+  (d) output.artifact_type + every input-slot descriptor.artifact_type
+      ∈ the closed family ``ARTIFACT_TYPE_NAMES``                    (OPR9)
   (e) ``__init__`` exports {CONFIG_PATH, <op>, <Params>, <Error>}    (OPR16)
   (f) config.operator.name == registry key
       AND config.operator.version == module._OPERATOR_VERSION        (OPR12)
+
+The slot-shape contract is read from the structured ``SlotDescriptor`` /
+``OutputDescriptor`` types introduced in the PART B refactor: each input
+slot's ``descriptor.artifact_type`` (an ``ArtifactTypeName`` member) is
+checked for closed-family membership, and ``descriptor.is_list`` is the
+canonical replacement for the prior ``"List[X]"`` string-prefix encoding
+(no string-stripping required).
 
 Running this test IS the verification step — "is the operator
 conformant?" is answered by ``pytest``, not by hand-review.
@@ -34,6 +42,7 @@ import pytest
 
 from shared.config.operator_config import load_operator_config
 from shared.workflow.registry import ARTIFACT_TYPE_NAMES, OPERATOR_REGISTRY
+from shared.workflow.slots import OutputDescriptor, SlotDescriptor
 
 
 # Operators built to (or migrated to) the v2.0 contract (ADR 0016).
@@ -66,12 +75,6 @@ _V2_CONFORMANT = {
 # reserved (currently empty) for any future operator genuinely blocked
 # on a substrate ABI change before it can conform.
 _PENDING_ABI: set[str] = set()
-
-
-def _strip_list(slot_type: str) -> str:
-    if slot_type.startswith("List[") and slot_type.endswith("]"):
-        return slot_type[len("List["):-1]
-    return slot_type
 
 
 def test_every_registry_operator_is_classified():
@@ -114,17 +117,43 @@ def test_operator_config_error_is_valueerror():
 
 @pytest.mark.parametrize("name", sorted(OPERATOR_REGISTRY))
 def test_basic_registry_shape(name):
-    """Universally-true checks that hold for every operator (legacy too)."""
+    """Universally-true checks that hold for every operator (legacy too).
+
+    Reads the structured ``OutputDescriptor`` / ``SlotDescriptor`` types
+    (PART B refactor): no string parsing — ``descriptor.artifact_type``
+    is an ``ArtifactTypeName`` member whose ``.value`` is checked for
+    closed-family membership; ``descriptor.is_list`` is the canonical
+    list-shape flag.
+    """
     spec = OPERATOR_REGISTRY[name]
     assert spec.operator_name == name
     assert callable(spec.callable)
-    assert spec.output_type in ARTIFACT_TYPE_NAMES, (
-        f"{name}.output_type={spec.output_type!r} not in closed family"
+
+    # Output side: structured descriptor with a closed-family artifact type.
+    assert isinstance(spec.output, OutputDescriptor), (
+        f"{name}.output must be an OutputDescriptor (PART B), got "
+        f"{type(spec.output).__name__}"
     )
-    for slot, slot_type in spec.input_slots.items():
-        base = _strip_list(slot_type)
-        assert base in ARTIFACT_TYPE_NAMES, (
-            f"{name}.{slot} type {slot_type!r} not in closed family"
+    assert spec.output.artifact_type in ARTIFACT_TYPE_NAMES, (
+        f"{name}.output.artifact_type={spec.output.artifact_type!r} "
+        "not in closed family ARTIFACT_TYPE_NAMES"
+    )
+
+    # Input side: each slot is a SlotDescriptor; its ``artifact_type`` is
+    # checked against the closed family.  ``is_list`` is a structured bool
+    # (the prior ``"List[X]"`` string prefix has no string form to parse).
+    for slot, descriptor in spec.input_slots.items():
+        assert isinstance(descriptor, SlotDescriptor), (
+            f"{name}.{slot} must be a SlotDescriptor (PART B), got "
+            f"{type(descriptor).__name__}"
+        )
+        assert descriptor.artifact_type in ARTIFACT_TYPE_NAMES, (
+            f"{name}.{slot} artifact_type={descriptor.artifact_type!r} "
+            "not in closed family ARTIFACT_TYPE_NAMES"
+        )
+        assert isinstance(descriptor.is_list, bool), (
+            f"{name}.{slot} is_list must be a bool flag, got "
+            f"{type(descriptor.is_list).__name__}"
         )
 
 
@@ -152,10 +181,17 @@ def test_v2_operator_conforms(name):
         f"{name}: config must default to None"
     )
 
-    # (d) every slot + output type is in the closed family
-    assert spec.output_type in ARTIFACT_TYPE_NAMES
-    for slot_type in spec.input_slots.values():
-        assert _strip_list(slot_type) in ARTIFACT_TYPE_NAMES
+    # (d) every slot + output type is in the closed family — read from
+    # the structured descriptors (PART B): ``output.artifact_type`` and
+    # each ``SlotDescriptor.artifact_type`` are ``ArtifactTypeName``
+    # members validated at construction; their values must still be in
+    # ``ARTIFACT_TYPE_NAMES`` (which is derived from the same enum).
+    # ``descriptor.is_list`` replaces the prior ``"List[X]"`` string
+    # prefix; no string parsing required.
+    assert spec.output.artifact_type in ARTIFACT_TYPE_NAMES
+    for descriptor in spec.input_slots.values():
+        assert descriptor.artifact_type in ARTIFACT_TYPE_NAMES
+        assert isinstance(descriptor.is_list, bool)
 
     # operator module identity
     op_module = importlib.import_module(fn.__module__)
