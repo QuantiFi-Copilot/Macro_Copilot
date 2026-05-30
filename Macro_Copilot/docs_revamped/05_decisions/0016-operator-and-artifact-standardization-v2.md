@@ -76,9 +76,66 @@ A full per-operator cross-verification of the 9 migrated operators against OPR1�
 
 - **F1 (OPR6) — the `level_change`→`BPS` ×100 transition** in `event_windows` and `rolling_regression` is the **one remaining finance-flavoured behaviour** in the 9. It is precisely the v1 residue that **Decision 4 already supersedes** ("the single dedicated `convert_units` operator is the only conversion site"). It is a *lossless, declared, lineage-recorded* conversion between two substrate-sanctioned units (`PERCENT`/`BPS`) — not finance math. **Decision: schedule the extraction; do not change behaviour now.** A blast-radius measurement found the BPS output of these two operators is consumed by ≈27 in-repo sites — almost entirely the **B-layer** `rates_agent` product tools (`half_life`, `beta_adjusted_spread`, `yield_change_attribution_pca`, `pca_yield_curve`, the `rolling_regression` tool, the MCP server, the tool-metadata DB) and their tests. Flipping `level_change` to unit-preserving mid-session would land **100× scale errors** across a layer explicitly out of scope for component-A work, violating the standing "operators must still work as expected" constraint. The extraction (introduce `convert_units`; make `level_change` unit-preserving; migrate the B-layer consumers **in lock-step**) is folded into migration step (5) "pin the metadata algebra", to be executed when the B layer can move with it. Both operators carry an in-code marker pointing here. Net: the operators are **structurally set in stone** (the gate forbids regression); F1 is the single bounded, documented, scheduled exception to absolute finance-blindness, with its endgame already fixed by Decision 4.
 
+## Phase 1+2 implementation close-out (status reconciliation)
+
+This reconciles the contracts to the as-built state after the Phase 1+2
+implementation pass, so the READMEs are honest about what is **enforced today**
+vs **scheduled** (closing the "contracts describe a target as if already done"
+gap the audit flagged).
+
+**Implemented + enforced today** (each landed with a verified zero-regression
+full-suite run):
+
+- **One error family (OPR13).** `OperatorConfigError` and `WorkflowExecutionError`
+  subclass `ValueError`; operators own every reachable failure surface (typed
+  guards for wrong-type, NaN/Inf params, divide-by-zero, and ±Inf outputs).
+- **Artifacts held to the operator layer's strictness (ART11, Decision 5).** One
+  shared index validator (sorted, duplicate-free `DatetimeIndex`), a shared
+  finiteness validator (±Inf rejected, NaN allowed) and a numeric-dtype guard
+  across `Series`/`SeriesSet`/`EventSet`/`Panel`/`WindowedPanel`; EventSet
+  semantic invariants; WindowedPanel offset checks.
+- **Lineage integrity (ART9).** `head_hash == steps[-1].hash`, chain
+  connectivity, and recompute-on-construct (`.build()`-only) all enforced.
+- **Frequency is load-bearing (Decision 3).** Derived at the adapter bridge
+  (`infer_freq` → `B/D/W/M/Q/Y`/`irregular`) and populated on every artifact, so
+  the `require_matching_frequency` checks are real, not no-ops.
+- **Metadata-flag algebra unified (OPR11).** Every multi-artifact operator
+  exposes both `require_matching_*` flags; a lenient missingness opt-out emits an
+  honest `CombinedMissingnessV1`.
+- **`convert_units` built (Decision 4)** — the single sanctioned unit-conversion
+  site.
+- **Finance-blindness is ABSOLUTE (Decision 1 / OPR6, no carve-out).** The F1
+  `level_change`→BPS election was **extracted** — `event_windows` and
+  `rolling_regression` are unit-preserving, and the product templates convert via
+  an explicit `convert_units` node. The trade trio and `TradeSet` were **removed**
+  from the operator/artifact layer (registry = 11 finance-blind operators; closed
+  family = 6 types). The OPR16 gate now proves every registered operator is
+  conformant — there is no `_PENDING_*` bucket sanctioning finance-aware operators.
+- **Closed-family single source (ART2/ART6).** `ARTIFACT_TYPE_NAMES` is the
+  canonical enum; the lock-step test asserts all five derived sites agree.
+
+**Scheduled** (documented; the bare-string / current behaviour is what ships
+today — where the READMEs use the present tense for these, read them as the
+*planned* ABI, not the as-built one):
+
+- **Structured `SlotDescriptor` / `OutputDescriptor` ABI (OPR9/OPR15)** — the
+  ADR's migration step 4, a Tier-2 composition enabler. Today the registry uses
+  bare class-name slot strings, which work; the descriptor migration is a
+  separate ABI pass and changes no Phase 1+2 correctness/hardening guarantee.
+- **`ddof` (conditional_aggregate / summarize_series / threshold_events) and the
+  rolling-regression condition-number threshold as config-exposed params
+  (OPR7).** Currently fixed at their documented planned-extension defaults
+  (sample std `ddof=1`; `1e10`) — sensible and lineage-recorded, just not yet
+  caller-tunable.
+- **OPR16 gate clause (g)** (execute each operator on a synthetic fixture and
+  assert the lineage extends by exactly one step) plus the gate's
+  metadata-flag/semver assertions — additive lock-in; the gate already
+  mechanically enforces the structural conformance clauses.
+
 ## Version log
 
 | Version | Date | Change |
 |---|---|---|
 | v1 | 2026-05-30 | Initial ADR recording the operator + artifact v2.0 standardization decisions (absolute finance-blindness; toolbox admission; one error family; load-bearing frequency + refuse-don't-coerce units; artifacts as a co-equal component hardened in lock-step; `ScalarMetric` admitted, `TradeSet` removed; uniform params signature; structured `SlotDescriptor`; config identity; rerun-determinism; the OPR16 meta-test gate). Operationalises the operator/artifact contracts v2.0. |
 | v2 | 2026-05-30 | Step-3 cross-verification close-out: all 9 migrated operators confirmed structurally conformant (OPR16 gate green) + `series_arithmetic` OPR15 discriminator fix. Recorded four residual findings — F2/F3/F4 fixed in place (rolling_regression OPR11 opt-in metadata knobs; typed NaN/Inf refusals in threshold_events + series_arithmetic; non-SeriesSet + Series÷Series ±inf guards), and **F1** (the `level_change`→BPS residue in `event_windows`/`rolling_regression`): **decision to schedule the lock-step A+B extraction** (≈27 B-layer consumers; superseded in principle by Decision 4's `convert_units`-only rule) rather than break behaviour mid-session. |
+| v3 | 2026-05-30 | Phase 1+2 implementation close-out (see section above). Landed, verified zero-regression: error-family fix (OperatorConfigError/WorkflowExecutionError→ValueError); artifact hardening (shared index/finiteness/dtype validators, EventSet/WindowedPanel invariants); lineage integrity guards (ART9); frequency derived at the bridge (Decision 3); unified metadata-flag algebra + CombinedMissingnessV1 (OPR11); `convert_units` built (Decision 4); **F1 extracted** — operators are unit-preserving, templates convert explicitly (OPR6 now absolute in code); **trade trio + TradeSet removed** (registry = 11 finance-blind operators, closed family = 6 types). Scheduled (documented above): structured `SlotDescriptor` ABI (migration step 4), `ddof`/condition-number config exposure (OPR7), OPR16 clause (g). |
