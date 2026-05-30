@@ -2180,8 +2180,8 @@
     "hash": "fda82a881e39f5764ed6b1ce334008aa"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_series_arithmetic.py": {
-    "mtime": 1777904026.7500973,
-    "hash": "f921d9ca7ef73161880534f9e6854f3c"
+    "mtime": 1780117712.8029895,
+    "hash": "5027eb5ed9a20f9458fd705714ac57aa"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_futures_strip_snapshot_compute.py": {
     "mtime": 1779724486.0278435,
@@ -2516,8 +2516,8 @@
     "hash": "3964d1582c96da97e39f82273ab0fd7f"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_operator_rolling_regression.py": {
-    "mtime": 1777939302.6903713,
-    "hash": "62ca85aaad9e44c545d7cdbe65cc7c07"
+    "mtime": 1780117712.8018644,
+    "hash": "f4ff3c849e9eb87e7cf21bdae56e20f8"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_pr19_primitives_unit.py": {
     "mtime": 1778982035.6514516,
@@ -2556,8 +2556,8 @@
     "hash": "01e689ccd7f8817b1d2a2596d2328252"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_operator_select_from_series_set.py": {
-    "mtime": 1777939302.6911325,
-    "hash": "2ac6f29a3628700e62f61a6945bb690d"
+    "mtime": 1780117712.8026714,
+    "hash": "b99e6b336d6fa1e16a82d90dda84449a"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_get_otr_history_wiring.py": {
     "mtime": 1779629554.3461592,
@@ -2760,8 +2760,8 @@
     "hash": "bb2eac7914bf9ee50e1cc90f377d76bf"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_threshold_events.py": {
-    "mtime": 1777904026.7510648,
-    "hash": "36cf35a4f7c78650a7346b8117556c1b"
+    "mtime": 1780117712.8035707,
+    "hash": "0397ee4867d145a2dcb9d4583851d39d"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_workspace_handoff_completeness.py": {
     "mtime": 1778982035.6532173,
@@ -3484,16 +3484,16 @@
     "hash": "bfacf67a323210ae86c51c78a50154f5"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/rolling_regression/operator.py": {
-    "mtime": 1780110303.5762167,
-    "hash": "a35c1b725935f1c19135636fbf234bdf"
+    "mtime": 1780117712.7991517,
+    "hash": "1c048a26f2a4e6dbeabf6b19e10f4e3e"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/rolling_regression/__init__.py": {
     "mtime": 1777939302.6835592,
     "hash": "dae5b70ef92ca8ebe049374ceb9df21e"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/rolling_regression/schemas.py": {
-    "mtime": 1777939302.6850922,
-    "hash": "7122ee6a56b43377afd90c3556dd9dec"
+    "mtime": 1780117712.800025,
+    "hash": "1deba6c5193fbfd1de1c4969f6507251"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/conditional_aggregate/operator.py": {
     "mtime": 1780110255.9922597,
@@ -3532,8 +3532,8 @@
     "hash": "04c7a186ebc5d4729373b86614640241"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/threshold_events/operator.py": {
-    "mtime": 1780110312.008172,
-    "hash": "c4629d0eb515b36b7d6f49067a5870a2"
+    "mtime": 1780117712.8013678,
+    "hash": "ee7d1062c30370f8735f77b440002399"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/threshold_events/__init__.py": {
     "mtime": 1780109919.9570048,
@@ -3568,8 +3568,8 @@
     "hash": "371bc71317764720b2d55eb15a4412a0"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/series_arithmetic/operator.py": {
-    "mtime": 1780110261.6296864,
-    "hash": "7abbfebca3c1acf673785a344c887bce"
+    "mtime": 1780117712.8006718,
+    "hash": "1394fa1b414d446ac779948c79de83a5"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/series_arithmetic/__init__.py": {
     "mtime": 1780109925.6686127,
@@ -3592,8 +3592,8 @@
     "hash": "af5284aaf80278b7801c88b6e574c98d"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/select_from_series_set/operator.py": {
-    "mtime": 1780110306.3318062,
-    "hash": "c86d86c5b601fb15bf3884079f05c12f"
+    "mtime": 1780117712.8003209,
+    "hash": "a4670d0d30ed0fe6bb5a218f7af8ce91"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/select_from_series_set/__init__.py": {
     "mtime": 1777939302.6855316,
@@ -3628,8 +3628,8 @@
     "hash": "f7d6b88a2749f2188c63e851c439d3b9"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/event_windows/operator.py": {
-    "mtime": 1780110258.8708026,
-    "hash": "3b96537055bd0315a6f96db305f7deb3"
+    "mtime": 1780117712.7982347,
+    "hash": "09016da370d61f894e5c1bc9e5a31a4a"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/event_windows/__init__.py": {
     "mtime": 1780109916.233338,
@@ -4752,7 +4752,7 @@
     "hash": "d02bc2b14dd242c8b5d76468ca6cafba"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/graphify-out/converted/rates_playbook_planning_manifest_784d2d10.md": {
-    "mtime": 1780115584.351423,
+    "mtime": 1780117762.6768246,
     "hash": "411f509e99c9fd44c55add78551d2ad0"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/docs/problems.md": {
@@ -4984,8 +4984,8 @@
     "hash": "50d0cc02a9d405ce5c3132504ecb7837"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/docs_revamped/05_decisions/0016-operator-and-artifact-standardization-v2.md": {
-    "mtime": 1780106688.863694,
-    "hash": "d2a112eefea758ec34133c2aa5dfdff4"
+    "mtime": 1780117712.7970674,
+    "hash": "ed49635e71805a8323bd650d10ca2b87"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/docs_revamped/02_components/surface_contract.md": {
     "mtime": 1780108158.834141,
