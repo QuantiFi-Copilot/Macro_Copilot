@@ -89,6 +89,20 @@ from rates_agent.inflation_indexed_bonds.tools.breakeven_butterfly import (
     BreakevenButterflyOutput,
     calculate_breakeven_butterfly,
 )
+# Standalone-bridge endpoint for the same-country bond-implied breakeven
+# curve spread primitive (2-point tenor spread on a single nominal/linker
+# pair — the inflation-compensation term-structure object).  Per
+# ``docs_revamped/03_standards/methodology_exposure.md §5`` every new tool
+# ships its OWN typed-detail endpoint consumed by both the extended and
+# compact Build views (rendering_density dual-view) + the Monitor tile.
+# Same-country invariant inherited transitively from the spot breakeven
+# primitive's ``_enforce_same_country_invariant`` guard.
+from rates_agent.inflation_indexed_bonds.tools.breakeven_curve_spread import (
+    CONFIG_PATH as BREAKEVEN_CURVE_SPREAD_CONFIG_PATH,
+    BreakevenCurveSpreadInput,
+    BreakevenCurveSpreadOutput,
+    calculate_breakeven_curve_spread,
+)
 # Standalone-bridge endpoint for the same-country linker real-yield
 # butterfly primitive (3-point curvature on a SINGLE linker curve — no
 # nominal pair).  Per ``docs_revamped/03_standards/methodology_exposure.md
@@ -686,6 +700,83 @@ def breakeven_butterfly_detail(
         result,
         f"Breakeven butterfly for {nominal_curve_family} vs "
         f"{linker_curve_family} {short_tenor}/{belly_tenor}/{long_tenor}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/breakeven-curve-spread  — same-country breakeven curve spread bridge
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# breakeven_curve_spread primitive ships its OWN typed-detail endpoint.
+# Same-country 2-point tenor spread on a single nominal/linker pair (e.g.
+# UST/USD_TIPS 2s10s breakeven, UK_GILT/GBP_LINKER 5s30s breakeven).  The
+# same payload feeds BOTH the extended and compact Build views and the
+# Monitor tile (rendering_density.md §10).  The rolling-z-score conventions
+# are YAML-locked on this primitive — no input-layer overrides for window /
+# min-periods / ddof (mirrors the sibling breakeven-butterfly bridge).
+# ============================================================================
+@router.get(
+    "/detail/breakeven-curve-spread",
+    response_model=BreakevenCurveSpreadOutput,
+    summary="Bond-Implied Breakeven Curve Spread Detail (standalone bridge)",
+)
+def breakeven_curve_spread_detail(
+    engine: Engine = Depends(get_engine),
+    nominal_curve_family: str = Query(..., description="Nominal sovereign curve family — UST / UK_GILT / FR_OAT / CANADA_GOVT"),
+    linker_curve_family: str = Query(..., description="Linker curve family — USD_TIPS / GBP_LINKER / EUR_FR_LINKER / CAD_RRB"),
+    short_tenor: str = Query(..., description="Short tenor of the spread (e.g. '2Y' for 2s10s)"),
+    long_tenor: str = Query(..., description="Long tenor of the spread (e.g. '10Y' for 2s10s) — must be strictly longer than short_tenor"),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic for ALL FOUR underlying series "
+            "(nominal + linker at each endpoint tenor).  Omit (None) to "
+            "use the tool's bundled ``default_field_name`` convention "
+            "(currently 'YLD_YTM_MID')."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the
+    frontend module's ``surfaces/BuildExtended.tsx``,
+    ``surfaces/BuildCompact.tsx``, AND the Monitor widget per the
+    rendering-density dual-view + monitor contract.
+
+    The breakeven-curve-spread primitive intentionally does NOT expose
+    the Phase-1 z-score overrides at its Input layer — its rolling-z-
+    score conventions are sourced from the YAML at compute() time only
+    (mirrors the sibling breakeven-butterfly primitive).
+    """
+    try:
+        params = BreakevenCurveSpreadInput(
+            nominal_curve_family=nominal_curve_family,
+            linker_curve_family=linker_curve_family,
+            short_tenor=short_tenor,
+            long_tenor=long_tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        bcs_config = load_tool_config(BREAKEVEN_CURVE_SPREAD_CONFIG_PATH)
+        result = calculate_breakeven_curve_spread(
+            engine=engine, params=params, config=bcs_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/breakeven-curve-spread: tool failed for %s vs %s %s/%s",
+            nominal_curve_family, linker_curve_family,
+            short_tenor, long_tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Breakeven curve spread for {nominal_curve_family} vs "
+        f"{linker_curve_family} {short_tenor}/{long_tenor}",
     )
     return result
 

@@ -17,6 +17,7 @@ import type {
   RealYieldLevelOutput,
   BreakevenInflationSimpleOutput,
   BreakevenButterflyOutput,
+  BreakevenCurveSpreadOutput,
   RealYieldButterflyOutput,
   RealYieldCurveSpreadOutput,
   CrossMarketInflationSwapSpreadOutput,
@@ -187,6 +188,34 @@ export function fetchDetailBreakevenButterfly(
 ): Promise<BreakevenButterflyOutput> {
   return fetchJSON(
     `${RATES_PREFIX}/detail/breakeven-butterfly${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/breakeven-curve-spread  — standalone bridge for the same-country
+// bond-implied breakeven curve spread (2-point tenor spread on a single
+// nominal/linker pair, e.g. UST/USD_TIPS 2s10s breakeven).  Own typed
+// helper per the standalone-bridge contract; consumed by BOTH Build
+// views and the Monitor tile.  Rolling-z-score conventions are YAML-
+// locked on this primitive — only ``lookback_days`` + ``field_name`` are
+// exposed at the input layer (mirrors the sibling breakeven-butterfly
+// bridge).
+// ---------------------------------------------------------------------------
+
+export type BreakevenCurveSpreadDetailParams = {
+  nominal_curve_family: string;
+  linker_curve_family: string;
+  short_tenor: string;
+  long_tenor: string;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailBreakevenCurveSpread(
+  params: BreakevenCurveSpreadDetailParams,
+): Promise<BreakevenCurveSpreadOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/breakeven-curve-spread${buildQuery(params)}`,
   );
 }
 

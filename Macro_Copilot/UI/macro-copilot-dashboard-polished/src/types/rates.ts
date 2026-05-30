@@ -369,6 +369,65 @@ export type BreakevenButterflyOutput = {
   time_series_zscore: TimeSeries;
 };
 
+// --- /detail/breakeven-curve-spread ---
+// Standalone-bridge type for the same-country bond-implied breakeven curve
+// spread primitive (2-point tenor spread on a single nominal/linker pair —
+// e.g. UST/USD_TIPS 2s10s breakeven).  Own type — the object is the TERM
+// STRUCTURE of inflation compensation (long_breakeven_bps -
+// short_breakeven_bps), distinct from a breakeven butterfly (3-point
+// curvature) and from a real-yield curve spread.  Inflation-compensation
+// term structure carrying IRP + liquidity premia at each of two endpoints,
+// NOT pure expected-inflation term structure.  Units: BPS.
+
+export type BreakevenCurveSpreadCurrentMetrics = {
+  as_of_date: string;
+  nominal_curve_family: string;
+  linker_curve_family: string;
+  short_tenor: string;
+  long_tenor: string;
+  /** Human-readable label, e.g. "UST/USD_TIPS 2s10s breakeven". */
+  spread_label: string;
+  /** Current breakeven curve spread in BPS (long − short).  POSITIVE =
+   *  upward-sloping breakeven curve (long-end inflation compensation
+   *  higher than short-end); NEGATIVE = inverted (front-end higher). */
+  current_spread_bps: number | null;
+  daily_change_bps: number | null;
+  weekly_change_bps: number | null;
+  monthly_change_bps: number | null;
+  /** Rolling 252-trading-day z-score of the spread (bps) by default. */
+  current_z_score: number | null;
+  rolling_window_days: number;
+  high_252d_bps: number | null;
+  low_252d_bps: number | null;
+  percentile_252d: number | null;
+  /** Endpoint breakevens used to form the spread (bps). */
+  short_breakeven_bps: number | null;
+  long_breakeven_bps: number | null;
+  short_years: number;
+  long_years: number;
+  /** Wire-honesty disclosure threaded from config.yaml:methodology.what_it_does. */
+  methodology_label: string;
+};
+
+/** Bespoke per-row shape (spread bps + z-score in one row). */
+export type BreakevenCurveSpreadTimeSeriesRow = {
+  date: string;
+  spread_bps: number;
+  z_score: number | null;
+};
+
+export type BreakevenCurveSpreadOutput = {
+  current_metrics: BreakevenCurveSpreadCurrentMetrics;
+  /** Bespoke wire-frozen shape — spread (bps) + z-score per row. */
+  time_series: BreakevenCurveSpreadTimeSeriesRow[];
+  /** Canonical TimeSeriesUnits.BPS series of the spread.  Required —
+   *  mirrors the Pydantic Output where the field is non-optional. */
+  time_series_spread: TimeSeries;
+  /** Canonical TimeSeriesUnits.Z_SCORE series of the rolling z-score.
+   *  Required — mirrors the Pydantic Output where the field is non-optional. */
+  time_series_zscore: TimeSeries;
+};
+
 // --- /detail/real-yield-butterfly ---
 // Standalone-bridge type for the same-country linker real-yield butterfly
 // (3-point curvature on a SINGLE linker curve, e.g. USD_TIPS 5s10s30s
