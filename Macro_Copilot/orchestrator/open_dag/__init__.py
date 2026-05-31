@@ -73,6 +73,19 @@ from orchestrator.open_dag.composer import (
     render_composer_user_message,
     render_operator_catalogue_block,
 )
+from orchestrator.open_dag.coverage_gate import (
+    CoverageGate,
+    GateStatus,
+    GateVerdict,
+    render_gate_user_message,
+    warnings_to_string_list,
+)
+from orchestrator.open_dag.dag_echo import (
+    DagEcho,
+    build_and_render_dag_echo,
+    build_dag_echo,
+    render_dag_echo,
+)
 from orchestrator.open_dag.composer_golden_shapes import (
     GOLDEN_COINTEGRATION,
     GOLDEN_EVENT_REGIME,
@@ -162,4 +175,15 @@ __all__ = [
     "render_golden_few_shots",
     "render_shape_as_composer_output",
     "render_shape_for_prompt",
+    # Coverage gate (PR-8)
+    "CoverageGate",
+    "GateStatus",
+    "GateVerdict",
+    "render_gate_user_message",
+    "warnings_to_string_list",
+    # DAG echo (PR-8)
+    "DagEcho",
+    "build_dag_echo",
+    "build_and_render_dag_echo",
+    "render_dag_echo",
 ]
