@@ -9,7 +9,15 @@ trace on the frontend.
 Event types
 -----------
 - ``status``            generic status chip: {"status": "thinking" | "synthesising" | "routing" | ...}
-- ``route_decision``    supervisor's pick: {"action", "domains", "rationale", "adjustments"}
+- ``route_decision``    supervisor's pick: {"action", "domains",
+                        "rationale", "adjustments", "intent_tag",
+                        "decomposition"}.  PR-5: ``intent_tag`` is one
+                        of the nine ``orchestrator.contracts.IntentTag``
+                        values (or null on clarify); ``decomposition``
+                        is a list of {"name", "nl_description",
+                        "domain_hint"} dicts naming the input economic
+                        quantities the L1 router identified in the
+                        prompt.
 - ``child_started``     a domain child begins: {"domain": "ois"}
 - ``child_finished``    a domain child finishes: {"domain", "status", "duration_ms"}
 - ``tool_call``         a child's tool is invoked: {"tool", "label", "params", "domain"}

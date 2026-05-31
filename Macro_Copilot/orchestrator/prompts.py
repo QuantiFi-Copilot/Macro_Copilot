@@ -223,6 +223,44 @@ the coverage oracle for the downstream verification step.  An empty \
 decomposition on a non-clarify action is a soft warning the \
 verification step will surface.
 
+DECOMPOSITION SHAPE RULE (CRITICAL): decomposition entries name the \
+INPUT economic quantities the downstream layers can FETCH as a single \
+typed leaf — i.e. quantities a domain primitive returns directly.  \
+They do NOT name already-computed downstream outputs that only exist \
+AFTER an operator (z-score, regression beta, correlation coefficient, \
+event-window panel) runs.
+
+How to apply the rule:
+
+  (i) If the user's quantity is something a domain primitive returns \
+DIRECTLY as a typed Series / Panel (e.g. a curve spread via \
+calculate_curve_spread_tool, a breakeven via \
+calculate_breakeven_inflation_simple_tool, a cross-market spread via \
+calculate_cross_market_spread_tool), it IS a leaf — decompose it as \
+one entry.
+
+  (ii) If the user's quantity only exists AFTER applying an operator \
+(z-score, rolling correlation coefficient, regression beta, event \
+window summary), DO NOT decompose to the post-operator output.  \
+Decompose to the INPUT(s) the operator needs.
+
+Examples of (ii) — the most common errors L1 must avoid:
+
+  - "z-score of SOFR 5Y" → decomposition: SOFR 5Y RATE (the input), \
+not 'SOFR 5Y z-score'.  rolling_zscore is an operator, not a \
+primitive.
+  - "is the 2s10s spread stationary?" → decomposition: TWO yield \
+legs (2Y and 10Y).  Cointegration is an operator that takes two \
+series; never decompose to a single precomputed spread because the \
+pair-stats shape would be invisible to the downstream verification.
+  - "rolling correlation of X and Y" → decomposition: X and Y as two \
+entries, not 'X_Y_rolling_correlation'.
+
+Composite nouns built from market-implied measures (e.g. '5y5y real \
+yield' = forward(nominal sovereign, breakeven from linkers)) also \
+decompose into their constituent legs — see the COMPOSITE NOUNS \
+section below.
+
 For the ``clarify`` action, leave ``decomposition`` empty and \
 ``intent_tag`` null — the intent is unknown until the user disambiguates.
 
@@ -258,21 +296,33 @@ User: "Correlation between US 2s10s and 5Y breakeven over the last 5 years."
   "rationale": "pair-stats over a 5y window across two named quantities" }
 
 User: "Is the UST 5s30s spread stationary?"
+(Cointegration tests whether a linear combination of two series is \
+stationary.  Decompose into the TWO INPUT yields — L3 wires the \
+cointegration operator, which produces the spread internally.  Never \
+decompose to a precomputed spread; that would hide the pair-stats \
+shape from the downstream verification step.)
 { "action": "single_domain", "domains": ["sovereign_bonds"],
   "intent_tag": "cointegration",
-  "decomposition": [{"name": "ust_5s30s",
-                     "nl_description": "UST 5Y-30Y curve spread",
-                     "domain_hint": "sovereign_bonds"}],
-  "rationale": "stationarity test on a curve spread" }
+  "decomposition": [
+    {"name": "ust_5y_yield",
+     "nl_description": "UST 5Y benchmark yield level",
+     "domain_hint": "sovereign_bonds"},
+    {"name": "ust_30y_yield",
+     "nl_description": "UST 30Y benchmark yield level",
+     "domain_hint": "sovereign_bonds"}],
+  "rationale": "Engle-Granger cointegration on the 5Y / 30Y pair" }
 
 User: "Z-score of SOFR 5Y vs its 1y history."
+(Decomposition is the INPUT quantity — the raw SOFR 5Y rate.  L3 \
+wires the rolling_zscore operator that produces the standardised \
+output.  Never put the already-transformed quantity in decomposition \
+or the leaf would be a derived series.)
 { "action": "single_domain", "domains": ["ois"],
   "intent_tag": "transform",
-  "decomposition": [{"name": "sofr_5y_zscore",
-                     "nl_description": "SOFR OIS 5Y rate standardised \
-against its trailing 1y history",
+  "decomposition": [{"name": "sofr_5y_rate",
+                     "nl_description": "SOFR OIS 5Y rate level",
                      "domain_hint": "ois"}],
-  "rationale": "single-series transform on SOFR 5Y" }
+  "rationale": "single-series transform (rolling z-score) on SOFR 5Y" }
 
 User: "Show the 5 biggest OIS dislocations today."
 { "action": "single_domain", "domains": ["ois"],

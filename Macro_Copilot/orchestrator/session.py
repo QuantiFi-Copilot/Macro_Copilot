@@ -1217,6 +1217,24 @@ class CopilotSession:
                         "domains": [d.value for d in decision.domains],
                         "rationale": decision.rationale,
                         "adjustments": list(decision.adjustments),
+                        # PR-5: emit the L1 decomposition + intent so
+                        # downstream eval / debug panels can audit
+                        # whether routing under-scoped the query
+                        # (Boundary B's failure mode) without
+                        # consuming the RouteDecision object directly.
+                        "intent_tag": (
+                            decision.intent_tag.value
+                            if decision.intent_tag is not None
+                            else None
+                        ),
+                        "decomposition": [
+                            {
+                                "name": q.name,
+                                "nl_description": q.nl_description,
+                                "domain_hint": q.domain_hint.value,
+                            }
+                            for q in decision.decomposition
+                        ],
                     },
                 )
             )

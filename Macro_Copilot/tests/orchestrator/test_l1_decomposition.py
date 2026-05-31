@@ -181,8 +181,15 @@ class TestNormaliserClarifyClearsDecomposition:
         assert any("clarify with intent_tag" in a for a in out.adjustments)
 
 
-class TestNormaliserDomainHintFiltering:
-    def test_decomposition_entry_outside_domains_dropped(self) -> None:
+class TestNormaliserPreservesDecompositionEvidence:
+    """PR-5A corrective per Codex finding #2: the normaliser MUST NOT
+    silently drop decomposition entries whose domain_hint isn't in
+    routing domains.  Doing so destroys the gold signal for the
+    'L1 dropped a domain' under-scoping failure mode that Boundary B
+    (PR-8) is built to catch.  Instead, KEEP every entry and append
+    a structured adjustment naming the mismatch."""
+
+    def test_out_of_domain_entry_kept_with_adjustment(self) -> None:
         raw = RouteDecision(
             action=RouteAction.SINGLE_DOMAIN,
             domains=[Domain.SOVEREIGN_BONDS],
@@ -193,7 +200,7 @@ class TestNormaliserDomainHintFiltering:
                     name="us_10y_yield", nl_description="UST 10Y",
                     domain_hint=Domain.SOVEREIGN_BONDS,
                 ),
-                # Leaked entry — domain_hint not in the active domains list.
+                # Leaked entry — domain_hint not in active domains.
                 EconomicQuantity(
                     name="ois_5y_rate", nl_description="SOFR 5Y rate",
                     domain_hint=Domain.OIS,
@@ -201,18 +208,20 @@ class TestNormaliserDomainHintFiltering:
             ],
         )
         out = _normalise_route_decision(raw)
-        # Leaked entry dropped; kept entry preserved.
-        assert len(out.decomposition) == 1
-        assert out.decomposition[0].name == "us_10y_yield"
+        # BOTH entries kept — the leaked one is evidence for
+        # Boundary B, not a typo to delete.
+        names = {q.name for q in out.decomposition}
+        assert names == {"us_10y_yield", "ois_5y_rate"}
+        # Adjustment note naming the offending entry + its
+        # disagreement with the routing.
         assert any(
-            "dropped decomposition entries" in a
+            "decomposition implies domain 'ois'" in a
             and "ois_5y_rate" in a
+            and "Possible under-scoped routing" in a
             for a in out.adjustments
         )
 
-    def test_all_entries_outside_domains_results_in_empty_decomposition(
-        self,
-    ) -> None:
+    def test_all_entries_out_of_domains_kept_no_empty_alarm(self) -> None:
         raw = RouteDecision(
             action=RouteAction.SINGLE_DOMAIN,
             domains=[Domain.SOVEREIGN_BONDS],
@@ -230,12 +239,18 @@ class TestNormaliserDomainHintFiltering:
             ],
         )
         out = _normalise_route_decision(raw)
-        assert out.decomposition == []
-        # Both messages — the leaked-entries note AND the soft
-        # "empty decomposition" note.
-        assert any("dropped decomposition" in a for a in out.adjustments)
-        assert any(
-            "empty decomposition" in a for a in out.adjustments
+        # All entries preserved.
+        assert len(out.decomposition) == 2
+        # Two routing-vs-decomposition mismatch adjustments.
+        mismatch_notes = [
+            a for a in out.adjustments
+            if "Possible under-scoped routing" in a
+        ]
+        assert len(mismatch_notes) == 2
+        # The "empty decomposition" warning MUST NOT fire — the
+        # decomposition isn't empty.
+        assert all(
+            "empty decomposition" not in a for a in out.adjustments
         )
 
 
@@ -274,6 +289,63 @@ class TestNormaliserEmptyDecompositionSoftSignal:
         out = _normalise_route_decision(raw)
         assert all(
             "empty decomposition" not in a for a in out.adjustments
+        )
+
+
+# ============================================================================
+# MISSING INTENT_TAG ON NON-CLARIFY (PR-5A corrective Codex #3)
+# ============================================================================
+
+
+class TestNormaliserFlagsMissingIntentTagOnNonClarify:
+    """The prompt + contract require intent_tag for non-clarify actions
+    (L3 / PR-7 frames operator choice off it).  When the LLM omits it,
+    the normaliser MUST record an adjustment so observability + PR-8
+    can detect the gap.  We do NOT demote to clarify — intent_tag is
+    metadata for L3, not a routing decision."""
+
+    def test_non_clarify_without_intent_tag_records_adjustment(self) -> None:
+        raw = RouteDecision(
+            action=RouteAction.SINGLE_DOMAIN,
+            domains=[Domain.OIS],
+            rationale="single ois",
+            # intent_tag deliberately omitted.
+            decomposition=[
+                EconomicQuantity(
+                    name="sofr_5y_rate", nl_description="SOFR 5Y rate",
+                    domain_hint=Domain.OIS,
+                ),
+            ],
+        )
+        out = _normalise_route_decision(raw)
+        # Action and decomposition preserved (no demotion).
+        assert out.action == RouteAction.SINGLE_DOMAIN
+        assert out.intent_tag is None
+        assert len(out.decomposition) == 1
+        # Soft signal recorded.
+        assert any(
+            "intent_tag=null" in a
+            and "Boundary B" in a
+            for a in out.adjustments
+        )
+
+    def test_non_clarify_with_intent_tag_no_intent_adjustment(self) -> None:
+        raw = RouteDecision(
+            action=RouteAction.SINGLE_DOMAIN,
+            domains=[Domain.OIS],
+            rationale="single ois",
+            intent_tag=IntentTag.LOOKUP,
+            decomposition=[
+                EconomicQuantity(
+                    name="sofr_5y_rate", nl_description="SOFR 5Y rate",
+                    domain_hint=Domain.OIS,
+                ),
+            ],
+        )
+        out = _normalise_route_decision(raw)
+        # No adjustment about missing intent_tag.
+        assert all(
+            "intent_tag=null" not in a for a in out.adjustments
         )
 
 
@@ -326,11 +398,20 @@ class TestNormaliserBackwardCompat:
         )
         out = _normalise_route_decision(raw)
         assert out.domains == [Domain.OIS]
-        # The Y entry's domain_hint (SOVEREIGN_BONDS) is no longer in
-        # the active domain list after the keep-first reduction, so
-        # it's dropped — proves the decomposition normaliser runs
-        # AFTER the action↔domains reconciliation.
-        assert {q.name for q in out.decomposition} == {"x"}
+        # PR-5A corrective: the Y entry whose domain_hint (SOVEREIGN_BONDS)
+        # was dropped during action↔domain reconciliation is now KEPT
+        # in the decomposition; Boundary B (PR-8) reads the
+        # routing-vs-decomposition mismatch as gold evidence that the
+        # supervisor may have over-narrowed the action.  Both names
+        # survive.
+        assert {q.name for q in out.decomposition} == {"x", "y"}
+        # And an adjustment surfaces the mismatch for downstream
+        # inspection.
+        assert any(
+            "decomposition implies domain 'sovereign_bonds'" in a
+            and "Possible under-scoped routing" in a
+            for a in out.adjustments
+        )
 
     def test_clarify_clears_domains_and_decomposition_and_intent(self) -> None:
         raw = RouteDecision(
@@ -350,6 +431,213 @@ class TestNormaliserBackwardCompat:
         assert out.domains == []
         assert out.decomposition == []
         assert out.intent_tag is None
+
+
+# ============================================================================
+# CANONICAL / COMPOSITE / CLARIFY FIXTURE TESTS (PR-5A corrective Codex #4)
+# ============================================================================
+#
+# Plan tmp/orchestration.md §PR-5 calls for tests of the canonical
+# query, composite-noun query, and clarify path with actual
+# RouteDecision fixtures.  These tests construct the expected shape
+# the LLM should produce (per the prompt few-shots) and verify it
+# survives ``_normalise_route_decision`` cleanly — i.e. no spurious
+# adjustments fire on a contract-correct decision.
+
+
+class TestCanonicalQueryFixture:
+    """The plan's canonical PoC query.  Verifies the contract shape
+    survives normalisation: cross-domain action, two-leg
+    decomposition, intent=relationship, no adjustments."""
+
+    def _fixture(self) -> RouteDecision:
+        return RouteDecision(
+            action=RouteAction.MULTI_DOMAIN,
+            domains=[Domain.SOVEREIGN_BONDS, Domain.INFLATION_INDEXED_BONDS],
+            rationale="pair-stats over a 5y window across two named quantities",
+            intent_tag=IntentTag.RELATIONSHIP,
+            decomposition=[
+                EconomicQuantity(
+                    name="us_2s10s",
+                    nl_description="UST curve spread, 2Y minus 10Y",
+                    domain_hint=Domain.SOVEREIGN_BONDS,
+                ),
+                EconomicQuantity(
+                    name="us_5y_breakeven",
+                    nl_description="USD breakeven at 5Y tenor from TIPS",
+                    domain_hint=Domain.INFLATION_INDEXED_BONDS,
+                ),
+            ],
+        )
+
+    def test_canonical_passes_normaliser_unchanged(self) -> None:
+        raw = self._fixture()
+        out = _normalise_route_decision(raw)
+        assert out.action == RouteAction.MULTI_DOMAIN
+        assert out.domains == raw.domains
+        assert out.intent_tag == IntentTag.RELATIONSHIP
+        assert [q.name for q in out.decomposition] == [
+            "us_2s10s", "us_5y_breakeven",
+        ]
+        # No adjustments — contract-correct decision.
+        assert out.adjustments == []
+
+    def test_canonical_decomposition_pairs_with_domains(self) -> None:
+        # Every decomposition entry's domain_hint must be in domains.
+        raw = self._fixture()
+        domain_set = set(raw.domains)
+        for q in raw.decomposition:
+            assert q.domain_hint in domain_set
+
+
+class TestCompositeNounFixture:
+    """The plan's composite-noun example: '5y5y real yield' decomposes
+    into forward(nominal sovereign, breakeven from linkers).  Two
+    legs, each in its own domain, intent=transform."""
+
+    def _fixture(self) -> RouteDecision:
+        return RouteDecision(
+            action=RouteAction.MULTI_DOMAIN,
+            domains=[Domain.SOVEREIGN_BONDS, Domain.INFLATION_INDEXED_BONDS],
+            rationale=(
+                "composite noun decomposed into forward nominal + "
+                "forward breakeven legs"
+            ),
+            intent_tag=IntentTag.TRANSFORM,
+            decomposition=[
+                EconomicQuantity(
+                    name="us_5y5y_nominal_forward",
+                    nl_description="5y-forward 5y nominal UST yield",
+                    domain_hint=Domain.SOVEREIGN_BONDS,
+                ),
+                EconomicQuantity(
+                    name="us_5y5y_breakeven_forward",
+                    nl_description=(
+                        "5y-forward 5y breakeven inflation from linkers"
+                    ),
+                    domain_hint=Domain.INFLATION_INDEXED_BONDS,
+                ),
+            ],
+        )
+
+    def test_composite_noun_passes_normaliser_unchanged(self) -> None:
+        raw = self._fixture()
+        out = _normalise_route_decision(raw)
+        assert out.action == RouteAction.MULTI_DOMAIN
+        assert {q.name for q in out.decomposition} == {
+            "us_5y5y_nominal_forward",
+            "us_5y5y_breakeven_forward",
+        }
+        assert out.intent_tag == IntentTag.TRANSFORM
+        assert out.adjustments == []
+
+    def test_composite_noun_does_not_collapse_to_one_entry(self) -> None:
+        # Plan §PR-5 explicitly bans collapsing the composite to one
+        # entry — both constituent legs must be present.
+        raw = self._fixture()
+        assert len(raw.decomposition) == 2
+
+
+class TestClarifyPathFixture:
+    """The plan's clarify path: ambiguous query → action=clarify,
+    null intent_tag, empty decomposition, populated
+    clarification_question."""
+
+    def _fixture(self) -> RouteDecision:
+        return RouteDecision(
+            action=RouteAction.CLARIFY,
+            domains=[],
+            rationale="no tenor or curve identifier given",
+            clarification_question="Sovereign 10Y or SOFR 10Y?",
+            intent_tag=None,
+            decomposition=[],
+        )
+
+    def test_clarify_passes_normaliser_unchanged(self) -> None:
+        raw = self._fixture()
+        out = _normalise_route_decision(raw)
+        assert out.action == RouteAction.CLARIFY
+        assert out.domains == []
+        assert out.intent_tag is None
+        assert out.decomposition == []
+        assert out.clarification_question == "Sovereign 10Y or SOFR 10Y?"
+        # Contract-correct clarify: no adjustments.
+        assert out.adjustments == []
+
+
+# ============================================================================
+# DECOMPOSITION-SHAPE-RULE FIXTURES (PR-5A corrective Codex #1)
+# ============================================================================
+
+
+class TestZScoreDecomposesToInput:
+    """Plan + prompt rule: 'z-score of SOFR 5Y' decomposes to the
+    INPUT rate, not the already-standardised output.  L3 wires
+    rolling_zscore."""
+
+    def _fixture(self) -> RouteDecision:
+        return RouteDecision(
+            action=RouteAction.SINGLE_DOMAIN,
+            domains=[Domain.OIS],
+            rationale="single-series transform (rolling z-score) on SOFR 5Y",
+            intent_tag=IntentTag.TRANSFORM,
+            decomposition=[
+                EconomicQuantity(
+                    name="sofr_5y_rate",
+                    nl_description="SOFR OIS 5Y rate level",
+                    domain_hint=Domain.OIS,
+                ),
+            ],
+        )
+
+    def test_zscore_decomposition_is_input_quantity(self) -> None:
+        raw = self._fixture()
+        out = _normalise_route_decision(raw)
+        # The leaf is the input RATE — NOT a z-score-named entry.
+        names = [q.name for q in out.decomposition]
+        assert "sofr_5y_rate" in names
+        assert not any("zscore" in n for n in names), (
+            "decomposition must NOT name the post-operator output "
+            "(z-score); per plan, decompose to the INPUT rate and "
+            "let L3 apply rolling_zscore."
+        )
+        assert out.adjustments == []
+
+
+class TestCointegrationDecomposesToTwoLegs:
+    """Plan + prompt rule: cointegration questions decompose into the
+    TWO input series the operator needs.  Never one precomputed spread."""
+
+    def _fixture(self) -> RouteDecision:
+        return RouteDecision(
+            action=RouteAction.SINGLE_DOMAIN,
+            domains=[Domain.SOVEREIGN_BONDS],
+            rationale="Engle-Granger cointegration on the 5Y / 30Y pair",
+            intent_tag=IntentTag.COINTEGRATION,
+            decomposition=[
+                EconomicQuantity(
+                    name="ust_5y_yield",
+                    nl_description="UST 5Y benchmark yield level",
+                    domain_hint=Domain.SOVEREIGN_BONDS,
+                ),
+                EconomicQuantity(
+                    name="ust_30y_yield",
+                    nl_description="UST 30Y benchmark yield level",
+                    domain_hint=Domain.SOVEREIGN_BONDS,
+                ),
+            ],
+        )
+
+    def test_cointegration_decomposition_has_two_input_legs(self) -> None:
+        raw = self._fixture()
+        out = _normalise_route_decision(raw)
+        assert len(out.decomposition) == 2
+        names = [q.name for q in out.decomposition]
+        assert names == ["ust_5y_yield", "ust_30y_yield"]
+        # And NOT a single precomputed spread name.
+        assert not any("spread" in n for n in names)
+        assert not any("5s30s" in n for n in names)
+        assert out.adjustments == []
 
 
 # ============================================================================
@@ -407,6 +695,19 @@ class TestSupervisorPromptCarriesPR5Guidance:
         msg = SUPERVISOR_SYSTEM_PROMPT.upper()
         assert "SINGLE-DOMAIN" in msg or "SINGLE DOMAIN" in msg
         assert "STILL PRODUCE DECOMPOSITION" in SUPERVISOR_SYSTEM_PROMPT.upper()
+
+    def test_prompt_carries_decomposition_shape_rule(self) -> None:
+        # PR-5A corrective per Codex finding #1: the prompt must teach
+        # L1 to decompose to INPUT quantities (DAG leaves), not
+        # already-computed outputs.  This is the rule that prevents
+        # 'z-score' / 'rolling correlation' / 'beta' from leaking into
+        # decomposition entries.
+        assert "DECOMPOSITION SHAPE RULE" in SUPERVISOR_SYSTEM_PROMPT
+        # The rule must explicitly name the two failure modes the
+        # downstream verification step needs to detect.
+        assert "z-score" in SUPERVISOR_SYSTEM_PROMPT.lower()
+        assert "rolling_zscore" in SUPERVISOR_SYSTEM_PROMPT
+        assert "rolling correlation" in SUPERVISOR_SYSTEM_PROMPT.lower()
 
 
 # ============================================================================

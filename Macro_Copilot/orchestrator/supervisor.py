@@ -367,27 +367,33 @@ def _normalise_route_decision(decision: RouteDecision) -> RouteDecision:
             adjustments.append(note)
             intent_tag = None
     else:
-        # Non-clarify: drop decomposition entries whose domain_hint
-        # leaked outside the active domains list.  Keeps the
-        # coverage-oracle honest for Boundary B.
+        # Non-clarify: KEEP every decomposition entry (PR-5A
+        # corrective per Codex finding #2).  Decomposition is
+        # LLM-authored evidence of what the LLM thought the query
+        # asked for; if any entry's domain_hint is outside the
+        # routing domains list, that's the GOLD signal for the
+        # 'L1 dropped a domain' under-scoping failure mode that
+        # Boundary B (PR-8) is built to catch.  Silently dropping
+        # the entry would destroy that signal.
+        #
+        # Instead: surface a structured adjustment naming each
+        # mismatched entry so Boundary B + the eval/debug surfaces
+        # see the routing-vs-decomposition gap.  Boundary B reads
+        # adjustments + decomposition together to decide whether
+        # the assembled DAG honestly answers the prompt.
         domain_set = set(domains)
-        kept: list = []
-        dropped: list = []
         for q in decomposition:
-            if q.domain_hint in domain_set:
-                kept.append(q)
-            else:
-                dropped.append(q)
-        if dropped:
-            note = (
-                f"dropped decomposition entries with domain_hint "
-                f"outside active domains "
-                f"{sorted(d.value for d in domain_set)}: "
-                f"{[(q.name, q.domain_hint.value) for q in dropped]}"
-            )
-            logger.warning("Supervisor: %s", note)
-            adjustments.append(note)
-        decomposition = kept
+            if q.domain_hint not in domain_set:
+                note = (
+                    f"decomposition implies domain "
+                    f"{q.domain_hint.value!r} (entry "
+                    f"{q.name!r}) but routing domains are "
+                    f"{sorted(d.value for d in domain_set)}.  "
+                    "Possible under-scoped routing — Boundary B "
+                    "should treat as supplementary evidence."
+                )
+                logger.warning("Supervisor: %s", note)
+                adjustments.append(note)
 
         if not decomposition:
             # Non-clarify action with empty decomposition: surface
@@ -398,6 +404,21 @@ def _normalise_route_decision(decision: RouteDecision) -> RouteDecision:
                 "Boundary B will have no supplementary evidence — "
                 "tune the supervisor prompt to elicit at least one "
                 "EconomicQuantity per domain"
+            )
+            logger.warning("Supervisor: %s", note)
+            adjustments.append(note)
+
+        # Codex finding #3 (PR-5A): a non-clarify action MUST carry
+        # an intent_tag (the prompt requires it; L3 / PR-7 frames
+        # operator choice off it).  Don't demote here — that would
+        # turn a metadata gap into a routing change — but DO flag
+        # for observability + Boundary B weighting.
+        if intent_tag is None:
+            note = (
+                "non-clarify action with intent_tag=null; the "
+                "supervisor prompt requires an intent tag — L3 "
+                "will fall back to generic shape selection.  "
+                "Boundary B should weight this as a soft signal."
             )
             logger.warning("Supervisor: %s", note)
             adjustments.append(note)
