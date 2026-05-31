@@ -76,6 +76,26 @@ from shared.workflow.types import (
 
 
 # ============================================================================
+# ERRORS
+# ============================================================================
+
+
+class DagEchoError(ValueError):
+    """Raised by ``build_dag_echo`` when its inputs are structurally
+    inconsistent — for example a ``PrimitiveNode`` in the assembled
+    Workflow that has no matching ``BoundLeaf`` (caller bug: the gate
+    was handed an incomplete pair).
+
+    Per PR-8A Codex F1: silently skipping the unmatched node makes an
+    incomplete DAG look cleaner to the gate than it actually is.  The
+    hard-block discipline requires that an incoherent input fails
+    closed BEFORE the LLM sees it.  ``CoverageGate.check`` catches
+    this exception and converts to a structured REFUSE verdict so the
+    public API still never raises.
+    """
+
+
+# ============================================================================
 # ECHO PAYLOAD — the structured intermediate used by render_dag_echo
 # ============================================================================
 
@@ -227,10 +247,54 @@ def build_dag_echo(
     iteration order: leaves sorted by leaf_id, operators by node_id,
     edges by (source, target, slot).
     """
-    # Index leaves so we can look up declared fields per primitive node.
-    leaves_by_id: Dict[str, BoundLeaf] = {
-        l.leaf_id: l for l in leaves if not l.is_refusal
+    # PR-8A Codex F1: HARD coverage check.  Build two views and
+    # compare:
+    #
+    #   primitive_node_ids — every PrimitiveNode in the assembled
+    #     workflow (these are the leaves the gate must see).
+    #   non_refusal_leaf_ids — every BoundLeaf the caller supplied
+    #     that's actually a binding (not a refusal — refusals never
+    #     reach a CLEAN AssemblyResult).
+    #
+    # The two sets MUST be equal.  Any mismatch (missing, extra,
+    # refusal-in-clean-input) means the gate was handed an incoherent
+    # pair and the echo would silently misrepresent the DAG.  Refuse
+    # at the substrate level; CoverageGate.check catches and converts
+    # to a structured REFUSE verdict.
+    primitive_node_ids = {
+        n.node_id for n in workflow.nodes if isinstance(n, PrimitiveNode)
     }
+    leaves_by_id: Dict[str, BoundLeaf] = {}
+    for l in leaves:
+        if l.is_refusal:
+            # CLEAN AssemblyResult never carries refusals — caller bug.
+            raise DagEchoError(
+                f"build_dag_echo: BoundLeaf {l.leaf_id!r} is a refusal "
+                "but the input AssemblyResult was supposed to be CLEAN.  "
+                "Refusals cannot reach the Coverage Gate."
+            )
+        if l.leaf_id in leaves_by_id:
+            raise DagEchoError(
+                f"build_dag_echo: duplicate BoundLeaf for leaf_id="
+                f"{l.leaf_id!r}.  Caller MUST supply at most one "
+                "BoundLeaf per substituted PrimitiveNode."
+            )
+        leaves_by_id[l.leaf_id] = l
+
+    missing = sorted(primitive_node_ids - set(leaves_by_id.keys()))
+    extra = sorted(set(leaves_by_id.keys()) - primitive_node_ids)
+    if missing or extra:
+        raise DagEchoError(
+            f"build_dag_echo: leaf coverage mismatch.  "
+            f"Workflow has PrimitiveNode ids "
+            f"{sorted(primitive_node_ids)!r}; caller supplied BoundLeaf "
+            f"ids {sorted(leaves_by_id.keys())!r}.  "
+            f"Missing (in workflow but no BoundLeaf): {missing!r}.  "
+            f"Extra (BoundLeaf but no PrimitiveNode): {extra!r}.  "
+            "The two sets MUST match exactly — silently omitting a "
+            "leaf from the echo would mis-represent the DAG to the "
+            "Coverage Gate."
+        )
 
     # Build leaf echoes from the assembled Workflow's PrimitiveNodes
     # (one per substituted hole).  Iterate by node_id sort order so the
@@ -239,14 +303,9 @@ def build_dag_echo(
     for node in sorted(workflow.nodes, key=lambda n: n.node_id):
         if not isinstance(node, PrimitiveNode):
             continue
-        bound = leaves_by_id.get(node.node_id)
-        if bound is None:
-            # Defensive — should not happen.  AssemblyResult.CLEAN
-            # invariant guarantees every PrimitiveNode came from a
-            # successfully-bound leaf.  Skip silently rather than
-            # crashing the echo (the gate's downstream callers can
-            # detect missing leaves via a separate assert if needed).
-            continue
+        # Coverage check above guarantees every PrimitiveNode has a
+        # matching non-refusal BoundLeaf — no None branch needed.
+        bound = leaves_by_id[node.node_id]
         leaf_echoes.append(_LeafEcho(
             leaf_id=node.node_id,
             domain=bound.domain,
@@ -306,18 +365,13 @@ def build_dag_echo(
         terminal_label = terminal_node.operator_name
         terminal_kind = "operator"
     elif isinstance(terminal_node, PrimitiveNode):
-        bound = leaves_by_id.get(terminal_node.node_id)
-        terminal_artifact_type = (
-            bound.declared_output_artifact_type.value
-            if bound is not None else "Unknown"
-        )
+        # Coverage check above guarantees a BoundLeaf exists for every
+        # PrimitiveNode in the workflow, so the lookup is safe.
+        bound = leaves_by_id[terminal_node.node_id]
+        terminal_artifact_type = bound.declared_output_artifact_type.value
         # Primitive-blindness — don't leak tool_name.  Surface the
         # leaf's semantic_role as the human-readable label.
-        terminal_label = (
-            f"{bound.declared_semantic_role} (leaf)"
-            if bound is not None
-            else f"{terminal_node.node_id} (leaf)"
-        )
+        terminal_label = f"{bound.declared_semantic_role} (leaf)"
         terminal_kind = "primitive"
     else:  # defensive
         terminal_artifact_type = "Unknown"
@@ -414,6 +468,7 @@ def build_and_render_dag_echo(
 
 __all__ = [
     "DagEcho",
+    "DagEchoError",
     "build_dag_echo",
     "render_dag_echo",
     "build_and_render_dag_echo",

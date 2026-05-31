@@ -15,8 +15,11 @@ The Boundary B Coverage Gate.  A **hard-block** LLM call between
     surfaced ``soft_warnings`` from Boundary A.
 
   - The pipeline NEVER executes when ``status != PASS``.  This is
-    R8's hard-block discipline: the orchestrator (PR-10) must check
-    the gate's status before kicking off the executor.
+    R8's hard-block discipline.  PR-8 exposes the typed contract
+    here via ``GateVerdict.is_pass`` / ``is_hard_block``; PR-10's
+    orchestrator wiring binds it to executor dispatch.  Live
+    enforcement is deferred to PR-10 per the plan's "End-to-end
+    wiring" stage.
 
 Why a hard-block gate
 =====================
@@ -85,6 +88,7 @@ from orchestrator.contracts import EconomicQuantity, RouteDecision
 from orchestrator.open_dag.contracts import BoundLeaf
 from orchestrator.open_dag.dag_echo import (
     DagEcho,
+    DagEchoError,
     build_dag_echo,
     render_dag_echo,
 )
@@ -120,6 +124,23 @@ class GateVerdict(BaseModel):
     check ``verdict.is_pass`` before executing the DAG.  REFUSE +
     CLARIFY are both hard-block flavours; the difference is which
     user-facing message the orchestrator routes to next.
+
+    PR-8A scope clarification (Codex F3+F4):
+      - The hard-block **contract** is exposed here via ``is_pass``
+        / ``is_hard_block``.  Live ENFORCEMENT (the executor refusing
+        to run when ``is_pass`` is False) is wired in PR-10's
+        orchestrator layer per the plan's "End-to-end wiring" stage;
+        PR-8 ships the typed surface only.
+      - The verdict's ``reason`` field is always populated for the
+        audit trail.  Surfacing it in **lineage** (so the L6 answer
+        template can echo the gate's verdict + reason before any
+        downstream prose) is PR-9's lineage chain work — also
+        documented in the plan's PR-9 acceptance criteria.
+
+    Both deferrals are intentional: PR-8 establishes the contract +
+    the LLM-driven verdict logic + the fail-closed discipline; PR-9
+    threads the verdict through lineage; PR-10 binds it to executor
+    dispatch.
 
     Frozen.  ``model_validator`` enforces the CLARIFY → question
     invariant + the PASS-must-not-have-clarification rule so a
@@ -282,23 +303,84 @@ def _format_decomposition_block(
     return "\n".join(lines)
 
 
+# Closed allowlist of ``ValidationError.detail`` keys safe to surface
+# at L4.5.  Every key produced by the PR-4 contract_check is in this
+# set (``field``, ``expected``, ``declared``, ``requested``); any
+# future ``detail`` key the substrate adds is dropped here until it's
+# audited and added explicitly.
+#
+# Per PR-8A Codex F2: the raw ``message`` text and the raw ``detail``
+# dict can contain interpolated ``mcp_tool_name`` strings (the
+# Assembler's f-string formatters include them — see assembler.py
+# lines 705-825).  An allowlist + a redaction step is the only way
+# to keep L4.5 primitive-blind without changing the substrate's
+# message format.
+_SAFE_WARNING_DETAIL_KEYS = frozenset({
+    "field",
+    "expected",
+    "declared",
+    "requested",
+})
+
+
+def _redacted_warning_view(warning: ValidationError) -> Dict[str, Any]:
+    """Render one ``ValidationError`` (warning) as a gate-safe dict.
+
+    Only ``code`` + ``severity`` + ``owner_layer`` + ``leaf_id`` +
+    ``node_id`` + an allowlisted slice of ``detail`` are surfaced.
+    The free-form ``message`` text and ``tool_name`` field are
+    REDACTED entirely — primitive identities have been observed in
+    them via the Assembler's f-string interpolation, and at L4.5 the
+    gate must remain primitive-blind.
+
+    For each allowlisted ``detail`` value the gate surfaces the
+    closed-substrate string (e.g. ``ArtifactTypeName.SERIES.value`` →
+    ``"Series"``).  These values come from PR-4 contract_check
+    detail-dict construction (assembler.py lines 716-820) and never
+    contain primitive identities.
+    """
+    safe_detail = {
+        k: v for k, v in warning.detail.items()
+        if k in _SAFE_WARNING_DETAIL_KEYS
+    }
+    return {
+        "code": warning.code.value,
+        "severity": warning.severity.value,
+        "owner_layer": warning.owner_layer.value,
+        "leaf_id": warning.leaf_id,
+        "node_id": warning.node_id,
+        "detail": safe_detail,
+    }
+
+
 def _format_warnings_block(warnings: Sequence[ValidationError]) -> str:
     """Render Boundary A's SOFT warnings (free-form role /
-    output-meaning mismatches).  Surfaced as plain English without
-    the primitive's tool_name (primitive-blindness — same discipline
-    as the repair prompt in PR-7A F2).
+    output-meaning mismatches) for the gate's USER MESSAGE.
+
+    PR-8A Codex F2: uses ``_redacted_warning_view`` so the gate-side
+    prompt does NOT include the raw ``message`` text or
+    ``tool_name`` — both have been observed to interpolate primitive
+    identities at the substrate's f-string layer.  The gate gets the
+    structural diagnostic (code + which closed-substrate field
+    mismatched + the expected-vs-declared values) it needs to bias
+    its verdict; primitive identities never cross this boundary.
     """
     if not warnings:
         return "BOUNDARY A SOFT WARNINGS: (none)"
     lines: List[str] = []
-    lines.append(f"BOUNDARY A SOFT WARNINGS ({len(warnings)} — bias your verdict toward CLARIFY when relevant):")
+    lines.append(
+        f"BOUNDARY A SOFT WARNINGS ({len(warnings)} — bias your "
+        "verdict toward CLARIFY when relevant):"
+    )
     for i, w in enumerate(warnings, start=1):
-        # Surface code + node_id + detail; NOT tool_name (P11 redaction).
+        view = _redacted_warning_view(w)
         lines.append(
-            f"  {i}. code={w.code.value} | node_id={w.node_id} | "
-            f"detail={dict(w.detail)}"
+            f"  {i}. code={view['code']} | "
+            f"owner_layer={view['owner_layer']} | "
+            f"leaf_id={view['leaf_id']} | "
+            f"node_id={view['node_id']} | "
+            f"detail={view['detail']}"
         )
-        lines.append(f"      message: {w.message}")
     return "\n".join(lines)
 
 
@@ -306,12 +388,29 @@ def warnings_to_string_list(
     warnings: Sequence[ValidationError],
 ) -> List[str]:
     """Convert Boundary A's structured warnings into the
-    ``soft_warnings: list[str]`` field on ``GateVerdict``.  Used by
-    ``CoverageGate.check`` to populate the verdict's audit trail."""
-    return [
-        f"{w.code.value} on node {w.node_id}: {w.message}"
-        for w in warnings
-    ]
+    ``soft_warnings: list[str]`` field on ``GateVerdict``.
+
+    PR-8A Codex F2: each entry uses ``_redacted_warning_view`` so the
+    verdict's audit trail does NOT contain the raw ``message`` text
+    or ``tool_name``.  The trail still names the diagnostic kind
+    (E_TYPE_MISMATCH / E_ROLE_DISCRIMINANT_MISMATCH / etc.), the
+    leaf, and the structural mismatch (expected vs declared on the
+    relevant closed-substrate field) — enough for downstream lineage
+    (PR-9) to act on without leaking primitive identity.
+    """
+    out: List[str] = []
+    for w in warnings:
+        view = _redacted_warning_view(w)
+        detail_str = (
+            ", ".join(f"{k}={v}" for k, v in view["detail"].items())
+            if view["detail"] else ""
+        )
+        suffix = f" ({detail_str})" if detail_str else ""
+        out.append(
+            f"{view['code']} on leaf {view['leaf_id']} / "
+            f"node {view['node_id']}{suffix}"
+        )
+    return out
 
 
 def render_gate_user_message(
@@ -505,14 +604,34 @@ class CoverageGate:
             )
         workflow: Workflow = assembly_result.workflow  # type: ignore[assignment]
 
-        # Build the DAG echo (deterministic, primitive-blind).
-        echo: DagEcho = build_dag_echo(workflow, leaves)
-        echo_text: str = render_dag_echo(echo)
-
         # Surface Boundary A's SOFT warnings into both the prompt and
-        # the verdict's audit-trail field.
+        # the verdict's audit-trail field.  Computed BEFORE the echo
+        # so the fail-closed branch below can still attach warnings.
         warnings = assembly_result.validation_result.warnings
         soft_warnings_str = warnings_to_string_list(warnings)
+
+        # Build the DAG echo (deterministic, primitive-blind).
+        # PR-8A Codex F1: an incoherent (workflow, leaves) pair raises
+        # DagEchoError — convert to a REFUSE verdict so the gate's
+        # fail-closed discipline catches the caller-bug case the same
+        # way it catches LLM failures.
+        try:
+            echo: DagEcho = build_dag_echo(workflow, leaves)
+        except DagEchoError as exc:
+            logger.warning(
+                "CoverageGate: build_dag_echo refused — %s", exc,
+            )
+            return GateVerdict(
+                status="REFUSE",
+                reason=(
+                    f"CoverageGate: leaf coverage mismatch between the "
+                    f"assembled workflow and the supplied BoundLeaf "
+                    f"list — {exc}.  Refusing by default per the hard-"
+                    "block discipline (R8)."
+                ),
+                soft_warnings=soft_warnings_str,
+            )
+        echo_text: str = render_dag_echo(echo)
 
         user_text = render_gate_user_message(
             user_prompt=user_prompt,

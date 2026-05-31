@@ -914,3 +914,268 @@ class TestHardBlockInvariant:
         )
         assert not clarify.is_pass
         assert clarify.is_hard_block
+
+
+# ============================================================================
+# PR-8A — CODEX AUDIT CORRECTIVE TESTS
+# ============================================================================
+
+
+class TestPR8A_F1_CoverageMismatchFailsClosed:
+    """PR-8A Codex F1: ``build_dag_echo`` must NOT silently skip a
+    PrimitiveNode whose leaf is missing.  An incomplete echo would
+    make the DAG look cleaner to the gate than it actually is —
+    breaking the hard-block discipline.  Coverage mismatches raise
+    ``DagEchoError``; the gate catches and converts to a structured
+    REFUSE so the public API still never raises."""
+
+    def test_build_dag_echo_raises_on_missing_leaf(self):
+        from orchestrator.open_dag.dag_echo import DagEchoError
+        result, leaves = _assemble_correlation_clean()
+        # Drop one BoundLeaf — coverage mismatch.
+        with pytest.raises(DagEchoError, match="Missing"):
+            build_dag_echo(result.workflow, [leaves[0]])
+
+    def test_build_dag_echo_raises_on_extra_leaf(self):
+        from orchestrator.open_dag.dag_echo import DagEchoError
+        result, leaves = _assemble_correlation_clean()
+        extra = _mk_bound_leaf(
+            "leaf_extra",
+            role="extra_role",
+            meaning="extra meaning",
+        )
+        with pytest.raises(DagEchoError, match="Extra"):
+            build_dag_echo(result.workflow, list(leaves) + [extra])
+
+    def test_build_dag_echo_raises_on_duplicate_leaf_id(self):
+        from orchestrator.open_dag.dag_echo import DagEchoError
+        result, leaves = _assemble_correlation_clean()
+        # Duplicate leaf_a — caller bug.
+        dup = _mk_bound_leaf("leaf_a", role="dup_role", meaning="dup")
+        with pytest.raises(DagEchoError, match="duplicate"):
+            build_dag_echo(result.workflow, list(leaves) + [dup])
+
+    def test_build_dag_echo_raises_on_refusal_in_clean_input(self):
+        from orchestrator.open_dag.dag_echo import DagEchoError
+        result, leaves = _assemble_correlation_clean()
+        # Construct a refusal BoundLeaf and append.
+        refusal_leaf = BoundLeaf(
+            leaf_id="leaf_a",
+            domain="sovereign_bonds",
+            fit_confidence=0.0,
+            refusal="selector declined",
+        )
+        # Replace leaf_a with the refusal — CLEAN AssemblyResult
+        # invariant says refusals never reach here.
+        bad_leaves = [refusal_leaf, leaves[1]]
+        with pytest.raises(DagEchoError, match="refusal"):
+            build_dag_echo(result.workflow, bad_leaves)
+
+
+@pytest.mark.asyncio
+class TestPR8A_F1_GateRefusesOnCoverageMismatch:
+    """The public API never raises — ``CoverageGate.check`` catches
+    DagEchoError and converts to a REFUSE verdict.  Same fail-closed
+    discipline as LLM timeouts / exceptions."""
+
+    async def test_gate_refuses_on_missing_leaf(self):
+        result, leaves = _assemble_correlation_clean()
+        parsed = _GateLLMOutput(status="PASS", reason="ok")
+        gate = _make_gate_with_state(gate_model=_MockGateModel(parsed=parsed))
+        verdict = await gate.check(
+            user_prompt="p",
+            assembly_result=result,
+            route_decision=_basic_route_decision(),
+            leaves=[leaves[0]],  # missing leaf_b
+        )
+        assert verdict.status == "REFUSE", (
+            "Coverage mismatch must fail closed — gate must NOT "
+            "consult the LLM with an incomplete echo"
+        )
+        assert "coverage mismatch" in verdict.reason.lower()
+
+    async def test_gate_refuses_on_extra_leaf(self):
+        result, leaves = _assemble_correlation_clean()
+        extra = _mk_bound_leaf("phantom", role="x", meaning="x")
+        parsed = _GateLLMOutput(status="PASS", reason="ok")
+        gate = _make_gate_with_state(gate_model=_MockGateModel(parsed=parsed))
+        verdict = await gate.check(
+            user_prompt="p",
+            assembly_result=result,
+            route_decision=_basic_route_decision(),
+            leaves=list(leaves) + [extra],
+        )
+        assert verdict.status == "REFUSE"
+
+    async def test_gate_does_not_call_llm_on_coverage_mismatch(self):
+        # The LLM model's `calls` list must remain empty — the fail-
+        # closed branch returns BEFORE consulting the model.
+        result, leaves = _assemble_correlation_clean()
+        mock = _MockGateModel(parsed=_GateLLMOutput(status="PASS", reason="ok"))
+        gate = _make_gate_with_state(gate_model=mock)
+        await gate.check(
+            user_prompt="p",
+            assembly_result=result,
+            route_decision=_basic_route_decision(),
+            leaves=[leaves[0]],
+        )
+        assert mock.calls == [], (
+            "Gate must not consult the LLM when the input pair is "
+            "incoherent — incomplete echo never reaches the model"
+        )
+
+
+class TestPR8A_F2_WarningChannelDoesNotLeakPrimitives:
+    """PR-8A Codex F2: the PR-8 redaction only stripped the named
+    ``ValidationError.tool_name`` field.  But the Assembler's PR-4
+    contract_check interpolates ``bound.mcp_tool_name!r`` INSIDE the
+    ``message`` f-string — and the prior renderer surfaced
+    ``message`` verbatim.  Same risk on the ``detail`` dict for any
+    future key the substrate adds.
+
+    Fix: allowlist-based renderer.  These tests use sentinel strings
+    in both ``message`` and unsafe ``detail`` keys, then assert the
+    rendered prompt + soft_warnings list never contain them."""
+
+    @staticmethod
+    def _warning_with_secrets() -> ValidationError:
+        return ValidationError(
+            code=ErrorCode.E_ROLE_DISCRIMINANT_MISMATCH,
+            owner_layer=OwnerLayer.L2_BINDING,
+            severity=Severity.WARNING,
+            message=(
+                "leaked SECRET_TOOL_NAME_IN_MESSAGE in this free-form "
+                "string — exactly the assembler's PR-4 pattern"
+            ),
+            leaf_id="leaf_a",
+            node_id="leaf_a",
+            tool_name="SECRET_TOOL_NAME_IN_FIELD",
+            detail={
+                # The PR-4-safe keys (passed through):
+                "field": "semantic_role",
+                "requested": "spread_level",
+                "declared": "level_series",
+                # An unsafe sentinel key that future substrate code
+                # might add — MUST be dropped by the allowlist.
+                "primitive_provenance": "SECRET_TOOL_NAME_IN_DETAIL",
+            },
+        )
+
+    def test_message_text_not_in_rendered_warning_block(self):
+        from orchestrator.open_dag.coverage_gate import _format_warnings_block
+
+        w = self._warning_with_secrets()
+        text = _format_warnings_block([w])
+        # All three sentinels (message, field, detail-unsafe-key) must
+        # be absent from the rendered block.
+        assert "SECRET_TOOL_NAME_IN_MESSAGE" not in text
+        assert "SECRET_TOOL_NAME_IN_FIELD" not in text
+        assert "SECRET_TOOL_NAME_IN_DETAIL" not in text
+
+    def test_safe_detail_keys_still_surfaced(self):
+        from orchestrator.open_dag.coverage_gate import _format_warnings_block
+
+        w = self._warning_with_secrets()
+        text = _format_warnings_block([w])
+        # The structural diagnostic the gate needs IS present —
+        # allowlisted keys pass through.
+        assert "semantic_role" in text
+        assert "spread_level" in text
+        assert "level_series" in text
+        # The code + node_id are present so the gate can reason about
+        # which leaf has the warning.
+        assert "E_ROLE_DISCRIMINANT_MISMATCH" in text
+        assert "leaf_a" in text
+
+    def test_warnings_to_string_list_does_not_leak(self):
+        w = self._warning_with_secrets()
+        out = warnings_to_string_list([w])
+        assert len(out) == 1
+        assert "SECRET_TOOL_NAME_IN_MESSAGE" not in out[0]
+        assert "SECRET_TOOL_NAME_IN_FIELD" not in out[0]
+        assert "SECRET_TOOL_NAME_IN_DETAIL" not in out[0]
+        # Structural identity preserved (downstream lineage can act
+        # on the warning).
+        assert "E_ROLE_DISCRIMINANT_MISMATCH" in out[0]
+        assert "leaf_a" in out[0]
+
+    @pytest.mark.asyncio
+    async def test_gate_user_message_does_not_leak_secrets(self):
+        # End-to-end via CoverageGate.check — surface the secrets-
+        # bearing warning through the AssemblyResult and confirm the
+        # mocked LLM call received a message without leakage.
+        result_clean, leaves = _assemble_correlation_clean()
+        w = self._warning_with_secrets()
+        result_with_warning = AssemblyResult(
+            status=AssemblyStatus.CLEAN,
+            workflow=result_clean.workflow,
+            validation_result=ValidationResult(
+                workflow_id=result_clean.workflow.workflow_id,
+                errors=(w,),
+            ),
+        )
+
+        captured_messages: list = []
+
+        class _CapturingModel:
+            async def ainvoke(self, messages):
+                captured_messages.append(messages)
+                return {
+                    "raw": SimpleNamespace(usage_metadata=None),
+                    "parsed": _GateLLMOutput(status="PASS", reason="ok"),
+                    "parsing_error": None,
+                }
+
+        gate = _make_gate_with_state(gate_model=_CapturingModel())
+        verdict = await gate.check(
+            user_prompt="p",
+            assembly_result=result_with_warning,
+            route_decision=_basic_route_decision(),
+            leaves=leaves,
+        )
+        # The verdict's soft_warnings list also goes through the
+        # redacted view.
+        for line in verdict.soft_warnings:
+            assert "SECRET_TOOL_NAME_IN_MESSAGE" not in line
+            assert "SECRET_TOOL_NAME_IN_FIELD" not in line
+            assert "SECRET_TOOL_NAME_IN_DETAIL" not in line
+        # The user message handed to the LLM also doesn't leak.
+        assert len(captured_messages) == 1
+        human_content = captured_messages[0][1].content
+        assert "SECRET_TOOL_NAME_IN_MESSAGE" not in human_content
+        assert "SECRET_TOOL_NAME_IN_FIELD" not in human_content
+        assert "SECRET_TOOL_NAME_IN_DETAIL" not in human_content
+
+
+class TestPR8A_F3_HardBlockEnforcementDeferredToPR10:
+    """PR-8A Codex F3 (documentation clarification): GateVerdict
+    docstring + module docstring now explicitly call out that the
+    typed CONTRACT is exposed here (is_pass / is_hard_block) but live
+    ENFORCEMENT (the executor refusing to run when is_pass is False)
+    is PR-10's wiring layer.  These tests anchor the contract surface
+    so PR-10's tests can grep against the same flags."""
+
+    def test_is_pass_only_true_for_pass(self):
+        assert GateVerdict(status="PASS", reason="x").is_pass is True
+        assert GateVerdict(status="REFUSE", reason="x").is_pass is False
+        assert GateVerdict(
+            status="CLARIFY", reason="x",
+            clarification_question="?",
+        ).is_pass is False
+
+    def test_is_hard_block_inverse_of_is_pass(self):
+        for status, extra in (
+            ("PASS", {}),
+            ("REFUSE", {}),
+            ("CLARIFY", {"clarification_question": "?"}),
+        ):
+            v = GateVerdict(status=status, reason="x", **extra)  # type: ignore[arg-type]
+            assert v.is_hard_block == (not v.is_pass)
+
+    def test_gateverdict_docstring_documents_deferral(self):
+        # PR-8A explicitly documents the PR-10 deferral so a future
+        # reader doesn't believe the hard-block is live yet.
+        assert "PR-10" in GateVerdict.__doc__
+        # And PR-9 deferral for lineage observability.
+        assert "PR-9" in GateVerdict.__doc__
+        assert "lineage" in GateVerdict.__doc__.lower()
