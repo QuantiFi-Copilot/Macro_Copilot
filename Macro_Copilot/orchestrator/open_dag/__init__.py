@@ -83,6 +83,7 @@ from orchestrator.open_dag.composer_golden_shapes import (
     GOLDEN_SHAPES_BY_INTENT,
     GOLDEN_TRANSFORM_ROLLING_ZSCORE,
     render_golden_few_shots,
+    render_shape_as_composer_output,
     render_shape_for_prompt,
 )
 from orchestrator.open_dag.contracts import (
@@ -159,5 +160,6 @@ __all__ = [
     "GOLDEN_SHAPES_BY_INTENT",
     "GOLDEN_TRANSFORM_ROLLING_ZSCORE",
     "render_golden_few_shots",
+    "render_shape_as_composer_output",
     "render_shape_for_prompt",
 ]

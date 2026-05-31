@@ -620,21 +620,43 @@ def render_composer_repair_user_message(
     The repair system prompt
     (``orchestrator.prompts.COMPOSER_REPAIR_PROMPT``) carries the
     static instructions + the additive-only patch discipline + the
-    adapter whitelist.  The user message carries the assembled
-    workflow + the structured validation errors the Assembler routed
-    to L3_WIRING.
+    adapter whitelist.  The user message carries the **redacted**
+    post-substitution workflow + the structured validation errors the
+    Assembler routed to L3_WIRING.
+
+    Per PR-7A Codex F2: the Workflow's PrimitiveNode entries carry
+    ``tool_name`` / ``output_field`` / primitive-side ``params`` —
+    surfacing those in the L3 LLM prompt violates the Composer's
+    primitive-blindness discipline (P11).  The repair prompt uses
+    ``_workflow_to_redacted_dict`` which keeps the SHAPE topology
+    (node_ids, operator nodes, edges, slots) and elides primitive
+    identities.  L3 can still pinpoint where to wire an adapter or
+    rewire an edge because the validation errors carry the relevant
+    ``node_id`` + ``detail`` payload.
+
+    Similarly, ``ValidationError.tool_name`` is omitted from the
+    rendered diagnostics — when the substrate flags a unit / type
+    mismatch, the *kind* of mismatch (unit X expected, unit Y
+    declared) is what the Composer needs to pick an adapter; the
+    primitive's tool_name is not.
     """
     lines: List[str] = []
-    lines.append("ASSEMBLED WORKFLOW (post-substitution):")
-    lines.append(json.dumps(_workflow_to_dict(workflow), indent=2, sort_keys=True))
+    lines.append("ASSEMBLED SHAPE (post-substitution, primitive identities redacted):")
+    lines.append(json.dumps(
+        _workflow_to_redacted_dict(workflow), indent=2, sort_keys=True,
+    ))
     lines.append("")
     lines.append(f"L3_WIRING HARD ERRORS ({len(errors)}):")
     for i, e in enumerate(errors, start=1):
-        # ValidationError has: code, owner_layer, severity, message,
-        # leaf_id, node_id, tool_name, detail — render compactly.
+        # ValidationError surface in the repair prompt: code +
+        # node_id + detail (closed-substrate fields the validator
+        # populated for the diagnostic).  tool_name is REDACTED so
+        # the Composer cannot infer the primitive's identity from
+        # the error stream — primitive-blindness on the diagnostic
+        # surface too.
         lines.append(
             f"  {i}. code={e.code.value} | node_id={e.node_id} | "
-            f"tool_name={e.tool_name} | detail={dict(e.detail)}"
+            f"detail={dict(e.detail)}"
         )
         lines.append(f"      message: {e.message}")
     lines.append("")
@@ -647,30 +669,52 @@ def render_composer_repair_user_message(
     return "\n".join(lines)
 
 
-def _workflow_to_dict(workflow: "Workflow") -> Dict[str, Any]:
-    """Render a Workflow as a small JSON-friendly dict for the repair
-    prompt.  Mirrors ``orchestrator.open_dag.composer_golden_shapes.
-    render_shape_for_prompt`` but for the post-substitution Workflow
-    (PrimitiveNode instead of LeafHole)."""
+def _workflow_to_redacted_dict(workflow: "Workflow") -> Dict[str, Any]:
+    """Render a post-substitution Workflow as a SHAPE-LEVEL view —
+    structural information only, primitive identities ELIDED.
+
+    Per PR-7A Codex F2: the Composer must remain primitive-blind
+    even in repair.  This function surfaces what the Composer
+    legitimately needs to author additive patches:
+
+      - every node's ``node_id`` so the patch can reference it
+      - every operator node's ``operator_name`` + operator-side
+        ``params`` (so the Composer can read the existing knob set
+        when deciding whether to rewire vs adapt)
+      - every edge's (source, target, target_input_slot) so the
+        Composer knows where to splice an InsertAdapterNode
+      - literal bindings + terminal — same structural reasoning
+
+    Primitive nodes are surfaced as ``{kind: "primitive",
+    node_id: ...}`` only.  Their ``tool_name`` (which would tell L3
+    which domain's MCP tool the Selector picked), ``output_field``
+    (which would reveal the primitive's output-schema vocabulary),
+    and primitive-side ``params`` (which would expose domain-specific
+    instrument identifiers) are stripped.
+
+    This is the symmetric counterpart of L2 Selectors not seeing
+    operators: L3 doesn't see primitives, even at the post-substitution
+    boundary.
+    """
     nodes: List[Dict[str, Any]] = []
     for n in workflow.nodes:
         kind = getattr(n, "kind", None)
         if kind == "primitive":
+            # PR-7A Codex F2: REDACTED.  Only the structural identity
+            # (node_id + kind label) crosses the L3 boundary.
             nodes.append({
                 "kind": "primitive",
                 "node_id": n.node_id,
-                "tool_name": n.tool_name,
-                "output_field": n.output_field,
-                "params": dict(n.params),
             })
         elif kind == "operator":
+            # Operators are L3's own vocabulary — full surface.
             nodes.append({
                 "kind": "operator",
                 "node_id": n.node_id,
                 "operator_name": n.operator_name,
                 "params": dict(n.params),
             })
-        else:  # defensive
+        else:  # defensive — unknown future node kind
             nodes.append({"kind": kind, "node_id": n.node_id})
     return {
         "workflow_id": workflow.workflow_id,
@@ -693,6 +737,14 @@ def _workflow_to_dict(workflow: "Workflow") -> Dict[str, Any]:
         ],
         "terminal_node_id": workflow.terminal_node_id,
     }
+
+
+# Backwards-compatible alias for the prior name.  Older callers (and
+# this module's own __all__ pre-PR-7A) referenced ``_workflow_to_dict``.
+# The alias preserves the import surface but the implementation is the
+# redacted variant — primitive identities are NEVER serialised again
+# from this module's surface, even by accident.
+_workflow_to_dict = _workflow_to_redacted_dict
 
 
 # ============================================================================

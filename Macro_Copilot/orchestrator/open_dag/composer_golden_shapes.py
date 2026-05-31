@@ -181,20 +181,30 @@ def _pair_stats_upstream(
             "the same DatetimeIndex as the first leg"
         ),
     )
+    # PR-7A Codex F1: align_series MUST set ``output_keys`` explicitly.
+    # Without it, the operator's runtime keys the output SeriesSet by
+    # each input Series's own ``series_key`` field — values L3 doesn't
+    # know (they live behind the primitive selector boundary).  Pinning
+    # output_keys to the LeafHole node_ids lets the downstream
+    # ``select_from_series_set`` nodes reference the keys by name.
     align = OperatorNode(
         node_id=align_node_id,
         operator_name="align_series",
-        params={},
+        params={"output_keys": [leaf_a_key, leaf_b_key]},
     )
+    # PR-7A Codex F1: the real ``SelectFromSeriesSetParams`` field is
+    # ``series_key`` (not ``key``).  Using the wrong name was a silent
+    # runtime failure in PR-7 — the few-shots taught the LLM an
+    # invalid wiring.
     select_a = OperatorNode(
         node_id=select_a_id,
         operator_name="select_from_series_set",
-        params={"key": leaf_a_key},
+        params={"series_key": leaf_a_key},
     )
     select_b = OperatorNode(
         node_id=select_b_id,
         operator_name="select_from_series_set",
-        params={"key": leaf_b_key},
+        params={"series_key": leaf_b_key},
     )
 
     edges = [
@@ -418,20 +428,27 @@ def _build_event_regime_shape() -> ShapeSpec:
             "event dates"
         ),
     )
+    # PR-7A Codex F1: real ``ThresholdEventsParams`` uses ``rule`` (a
+    # ThresholdRule literal of {"abs_above", "above", "below"}) and
+    # ``rolling_window`` — NOT the prior PR-7 names ``comparison`` and
+    # ``window`` which both fail Pydantic validation.
     threshold = OperatorNode(
         node_id="threshold",
         operator_name="threshold_events",
         params={
+            "rule": "above",
             "threshold": 1.5,
-            "comparison": "above",
             "threshold_basis": "rolling_zscore",
-            "window": 252,
+            "rolling_window": 252,
         },
     )
+    # PR-7A Codex F1: real ``EventWindowsParams`` uses ``pre_window`` +
+    # ``post_window`` (non-negative ints, days before / after the event
+    # date) — NOT an ``offsets`` list.
     windows = OperatorNode(
         node_id="windows",
         operator_name="event_windows",
-        params={"offsets": [-1, 0, 1, 5]},
+        params={"pre_window": 1, "post_window": 5},
     )
     aggregate = OperatorNode(
         node_id="aggregate",
@@ -609,13 +626,13 @@ def _literal_dict(binding: LiteralBinding) -> Dict[str, Any]:
 
 
 def render_shape_for_prompt(shape: ShapeSpec) -> str:
-    """Render one ShapeSpec as a deterministic JSON block the Composer
-    prompt embeds verbatim as a few-shot.
+    """Render one ShapeSpec as a deterministic JSON block (ShapeSpec
+    shape — single discriminated ``nodes`` list).
 
-    Plain JSON output (no YAML, no Python repr) so the LLM sees the
-    same shape it must emit in its structured output (the LLM's output
-    schema is parsed by Pydantic — JSON is the wire format).  Sorted
-    keys for byte-stability so the Anthropic prompt cache hits cleanly.
+    Kept for backward-compat with PR-7's tests; the **Composer
+    few-shots** use ``render_shape_as_composer_output`` (see below)
+    which mirrors the FLAT ``ComposerLLMOutput`` schema the LLM must
+    emit.
     """
     payload: Dict[str, Any] = {
         "workflow_id": shape.workflow_id,
@@ -629,16 +646,86 @@ def render_shape_for_prompt(shape: ShapeSpec) -> str:
     return json.dumps(payload, indent=2, sort_keys=True)
 
 
+def _leaf_hole_decl_dict(node: LeafHole) -> Dict[str, Any]:
+    """Render one LeafHole as a ``_LeafHoleDecl``-shaped dict (no
+    ``kind`` discriminator; flattened LeafRequest fields)."""
+    req = node.leaf_request
+    return {
+        "node_id": node.node_id,
+        "required_artifact_type": req.required_artifact_type.value,
+        "expected_units": (
+            req.expected_units.value if req.expected_units else None
+        ),
+        "expected_frequency": (
+            req.expected_frequency.value if req.expected_frequency else None
+        ),
+        "domain_hint": req.domain_hint,
+        "semantic_role": req.semantic_role,
+        "requested_output_meaning": req.requested_output_meaning,
+        "nl_intent": req.nl_intent,
+    }
+
+
+def _operator_node_decl_dict(node: OperatorNode) -> Dict[str, Any]:
+    """Render one OperatorNode as an ``_OperatorNodeDecl``-shaped dict
+    (no ``kind`` discriminator)."""
+    return {
+        "node_id": node.node_id,
+        "operator_name": node.operator_name,
+        "params": dict(node.params),
+    }
+
+
+def render_shape_as_composer_output(shape: ShapeSpec) -> str:
+    """Render one ShapeSpec in **flat ComposerLLMOutput JSON shape** —
+    the exact schema the Composer LLM is expected to emit.
+
+    Per PR-7A Codex F3: the prior PR-7 few-shots showed the LLM
+    ShapeSpec-shaped JSON (single discriminated ``nodes`` list with
+    ``kind`` discriminators), but the LLM's structured-output schema
+    (``ComposerLLMOutput``) is FLAT — ``leaf_holes`` and
+    ``operator_nodes`` as separate top-level lists.  That mismatch
+    would teach the model to emit an inconsistent payload.  This
+    renderer mirrors the LLM-output schema exactly so the few-shots
+    serve as the model's wire-format ground truth.
+
+    Deterministic (sorted keys) — cache-friendly.
+    """
+    leaf_holes: List[Dict[str, Any]] = []
+    operator_nodes: List[Dict[str, Any]] = []
+    for n in shape.nodes:
+        if isinstance(n, LeafHole):
+            leaf_holes.append(_leaf_hole_decl_dict(n))
+        else:
+            operator_nodes.append(_operator_node_decl_dict(n))
+    payload: Dict[str, Any] = {
+        "workflow_id": shape.workflow_id,
+        "leaf_holes": leaf_holes,
+        "operator_nodes": operator_nodes,
+        "edges": [_edge_dict(e) for e in shape.edges],
+        "literal_bindings": [
+            _literal_dict(b) for b in shape.literal_bindings
+        ],
+        "terminal_node_id": shape.terminal_node_id,
+        "refusal": None,
+    }
+    return json.dumps(payload, indent=2, sort_keys=True)
+
+
 def render_golden_few_shots() -> str:
     """Render every golden shape as a deterministic concatenated text
     block the Composer's system prompt embeds verbatim.  Wraps each
     shape in a labelled banner so the LLM can see where each example
     begins / ends.
+
+    Per PR-7A Codex F3: emits the FLAT ``ComposerLLMOutput`` shape
+    (matches the LLM's structured-output schema) — NOT the older
+    ShapeSpec discriminated-union shape.
     """
     blocks: List[str] = []
     for i, shape in enumerate(GOLDEN_SHAPES, start=1):
         blocks.append(f"--- GOLDEN SHAPE #{i}: {shape.workflow_id} ---")
-        blocks.append(render_shape_for_prompt(shape))
+        blocks.append(render_shape_as_composer_output(shape))
     return "\n".join(blocks)
 
 
@@ -652,5 +739,6 @@ __all__ = [
     "GOLDEN_SHAPES_BY_INTENT",
     "GOLDEN_SHAPES",
     "render_shape_for_prompt",
+    "render_shape_as_composer_output",
     "render_golden_few_shots",
 ]

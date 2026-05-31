@@ -746,7 +746,12 @@ class TestRepairUserMessage:
             ),
         ]
         msg = render_composer_repair_user_message(workflow=wf, errors=errs)
-        assert "ASSEMBLED WORKFLOW" in msg
+        # PR-7A Codex F2: banner renamed from "ASSEMBLED WORKFLOW" to
+        # "ASSEMBLED SHAPE (post-substitution, primitive identities
+        # redacted)" to make the redaction explicit at the prompt
+        # level.
+        assert "ASSEMBLED SHAPE" in msg
+        assert "redacted" in msg
         assert "E_UNIT_MISMATCH" in msg
         assert "left units bps != right units percent" in msg
 
@@ -1140,3 +1145,437 @@ class TestCatalogueBlock:
         assert "series_set" in block
         # And align_series's list-shaped slot.
         assert "series_list" in block
+
+
+# ============================================================================
+# PR-7A — CODEX AUDIT CORRECTIVE TESTS
+# ============================================================================
+
+
+class TestPR7A_F1_GoldenParamsValidateAgainstOperatorSchemas:
+    """PR-7A Codex F1: every operator node in every golden shape must
+    instantiate its operator's ``params_class`` cleanly.  The PR-7
+    tests only checked structural ShapeSpec validity (which passes
+    even with garbage params); this regression keeps the schemas in
+    lockstep so a future operator param-rename surfaces here, not in
+    production."""
+
+    def test_every_golden_operator_params_round_trip(self):
+        from shared.workflow.types import OperatorNode
+
+        failures: list[str] = []
+        ok_count = 0
+        for shape in GOLDEN_SHAPES:
+            for node in shape.nodes:
+                if not isinstance(node, OperatorNode):
+                    continue
+                spec = OPERATOR_REGISTRY[node.operator_name]
+                pc = spec.params_class
+                if pc is None:
+                    continue
+                try:
+                    pc(**node.params)
+                    ok_count += 1
+                except Exception as exc:
+                    failures.append(
+                        f"{shape.workflow_id} / {node.node_id} / "
+                        f"{node.operator_name}: {type(exc).__name__}: "
+                        f"{exc}"
+                    )
+        assert not failures, (
+            "Golden shapes contain operator params that fail real "
+            "*Params validation:\n  " + "\n  ".join(failures)
+        )
+        # Sanity-check the iteration actually ran.
+        assert ok_count >= 12, (
+            f"Expected at least 12 operator nodes across goldens; "
+            f"got {ok_count}"
+        )
+
+    def test_select_from_series_set_uses_series_key(self):
+        # Specifically guard against regressing to {"key": ...}.
+        for shape in GOLDEN_SHAPES:
+            for node in shape.nodes:
+                if (
+                    isinstance(node, OperatorNode)
+                    and node.operator_name == "select_from_series_set"
+                ):
+                    assert "series_key" in node.params, (
+                        f"{shape.workflow_id} / {node.node_id}: "
+                        "select_from_series_set must use 'series_key' "
+                        "(not 'key')"
+                    )
+                    assert "key" not in node.params
+
+    def test_align_series_sets_output_keys(self):
+        # align_series in the canonical pair-stats shapes MUST pin
+        # output_keys so the downstream selects can reference the
+        # SeriesSet by stable strings.
+        pair_stats = [
+            GOLDEN_RELATIONSHIP_CORRELATION,
+            GOLDEN_RELATIONSHIP_ROLLING_CORRELATION,
+            GOLDEN_COINTEGRATION,
+            GOLDEN_REGRESSION_ROLLING_BETA,
+        ]
+        for shape in pair_stats:
+            align = [
+                n for n in shape.nodes
+                if isinstance(n, OperatorNode)
+                and n.operator_name == "align_series"
+            ]
+            assert len(align) == 1
+            assert "output_keys" in align[0].params, (
+                f"{shape.workflow_id}: align_series must declare "
+                "output_keys so the downstream selects are addressable"
+            )
+            assert align[0].params["output_keys"] == ["leaf_a", "leaf_b"]
+
+    def test_threshold_events_uses_rule_and_rolling_window(self):
+        shape = GOLDEN_EVENT_REGIME
+        threshold = next(
+            n for n in shape.nodes
+            if isinstance(n, OperatorNode)
+            and n.operator_name == "threshold_events"
+        )
+        assert "rule" in threshold.params
+        assert threshold.params["rule"] in ("abs_above", "above", "below")
+        assert "rolling_window" in threshold.params
+        # Guard against the old (wrong) names regressing.
+        assert "comparison" not in threshold.params
+        assert "window" not in threshold.params
+
+    def test_event_windows_uses_pre_post_window(self):
+        shape = GOLDEN_EVENT_REGIME
+        windows = next(
+            n for n in shape.nodes
+            if isinstance(n, OperatorNode)
+            and n.operator_name == "event_windows"
+        )
+        assert "pre_window" in windows.params
+        assert "post_window" in windows.params
+        # Guard against the old (wrong) `offsets` regressing.
+        assert "offsets" not in windows.params
+
+
+class TestPR7A_F2_RepairPromptRedactsPrimitives:
+    """PR-7A Codex F2: the Composer.repair user message must NOT
+    surface PrimitiveNode tool_name / output_field / primitive params.
+    L3 must stay primitive-blind even at the post-substitution
+    repair-time boundary."""
+
+    def _stub_workflow_with_primitive(self) -> Workflow:
+        return Workflow(
+            workflow_id="repair_stub",
+            nodes=[
+                PrimitiveNode(
+                    node_id="leaf_a",
+                    tool_name="SECRET_PRIMITIVE_TOOL_NAME",
+                    output_field="SECRET_OUTPUT_FIELD",
+                    params={"SECRET_PARAM_KEY": "SECRET_PARAM_VALUE"},
+                ),
+                OperatorNode(
+                    node_id="op",
+                    operator_name="rolling_zscore",
+                    params={"window": 60},
+                ),
+            ],
+            edges=[
+                WorkflowEdge(
+                    source_node_id="leaf_a",
+                    target_node_id="op",
+                    target_input_slot="series",
+                ),
+            ],
+            terminal_node_id="op",
+        )
+
+    def test_primitive_tool_name_not_in_repair_prompt(self):
+        wf = self._stub_workflow_with_primitive()
+        msg = render_composer_repair_user_message(workflow=wf, errors=[])
+        assert "SECRET_PRIMITIVE_TOOL_NAME" not in msg, (
+            "PrimitiveNode.tool_name leaked into the L3 repair "
+            "prompt — violates the primitive-blindness discipline"
+        )
+
+    def test_primitive_output_field_not_in_repair_prompt(self):
+        wf = self._stub_workflow_with_primitive()
+        msg = render_composer_repair_user_message(workflow=wf, errors=[])
+        assert "SECRET_OUTPUT_FIELD" not in msg
+
+    def test_primitive_params_not_in_repair_prompt(self):
+        wf = self._stub_workflow_with_primitive()
+        msg = render_composer_repair_user_message(workflow=wf, errors=[])
+        assert "SECRET_PARAM_KEY" not in msg
+        assert "SECRET_PARAM_VALUE" not in msg
+
+    def test_operator_node_still_visible(self):
+        # The redaction strips PRIMITIVE identity only — operator
+        # nodes (L3's own vocabulary) stay full-fidelity so the
+        # Composer can read existing params when deciding rewires.
+        wf = self._stub_workflow_with_primitive()
+        msg = render_composer_repair_user_message(workflow=wf, errors=[])
+        assert "rolling_zscore" in msg
+        # The window=60 param IS the operator's L3-visible knob.
+        assert '"window": 60' in msg or "'window': 60" in msg
+
+    def test_validation_error_tool_name_redacted(self):
+        # The diagnostic surface MUST also elide tool_name — otherwise
+        # the error stream becomes a side channel that leaks primitive
+        # identity into the repair prompt.
+        wf = self._stub_workflow_with_primitive()
+        err = ValidationError(
+            code=ErrorCode.E_UNIT_MISMATCH,
+            owner_layer=OwnerLayer.L3_WIRING,
+            severity=Severity.ERROR,
+            message="m",
+            node_id="op",
+            tool_name="ANOTHER_SECRET_TOOL_NAME",
+        )
+        msg = render_composer_repair_user_message(workflow=wf, errors=[err])
+        assert "ANOTHER_SECRET_TOOL_NAME" not in msg
+        # But the error code IS surfaced — it's the closed-substrate
+        # diagnostic the Composer needs.
+        assert "E_UNIT_MISMATCH" in msg
+
+
+class TestPR7A_F3_GoldensRenderInComposerLLMOutputShape:
+    """PR-7A Codex F3: the few-shots embedded in the Composer prompt
+    must use the FLAT ``ComposerLLMOutput`` shape (leaf_holes +
+    operator_nodes as separate top-level lists), not the discriminated
+    ShapeSpec shape.  Otherwise the LLM sees a contradictory example
+    vs. its required output schema."""
+
+    def test_render_shape_as_composer_output_parses_via_llm_schema(self):
+        # Every golden round-trips: render → JSON → ComposerLLMOutput
+        # → llm_output_to_shape_spec → original-equivalent ShapeSpec.
+        from orchestrator.open_dag.composer_golden_shapes import (
+            render_shape_as_composer_output,
+        )
+
+        for shape in GOLDEN_SHAPES:
+            rendered = render_shape_as_composer_output(shape)
+            output = ComposerLLMOutput.model_validate(json.loads(rendered))
+            re_shape = llm_output_to_shape_spec(output)
+            assert re_shape.workflow_id == shape.workflow_id
+            assert re_shape.terminal_node_id == shape.terminal_node_id
+            assert len(re_shape.nodes) == len(shape.nodes)
+            assert len(re_shape.edges) == len(shape.edges)
+
+    def test_render_shape_as_composer_output_is_flat(self):
+        from orchestrator.open_dag.composer_golden_shapes import (
+            render_shape_as_composer_output,
+        )
+
+        rendered = render_shape_as_composer_output(GOLDEN_RELATIONSHIP_CORRELATION)
+        payload = json.loads(rendered)
+        # Flat shape — separate leaf_holes + operator_nodes lists, NO
+        # discriminated "nodes" list.
+        assert "leaf_holes" in payload
+        assert "operator_nodes" in payload
+        assert "nodes" not in payload, (
+            "Flat ComposerLLMOutput shape must NOT have a 'nodes' "
+            "key — that would be the old ShapeSpec format"
+        )
+        # No 'kind' discriminator on individual entries either.
+        for h in payload["leaf_holes"]:
+            assert "kind" not in h
+        for o in payload["operator_nodes"]:
+            assert "kind" not in o
+
+    def test_render_golden_few_shots_uses_flat_format(self):
+        rendered = render_golden_few_shots()
+        # The flat format MUST surface "leaf_holes" + "operator_nodes"
+        # in every shape; the old ShapeSpec format would surface
+        # "nodes" + "kind" discriminators.  Sanity check both.
+        assert '"leaf_holes"' in rendered
+        assert '"operator_nodes"' in rendered
+
+    def test_every_golden_round_trips_via_llm_output_validate(self):
+        # End-to-end: parse the rendered string of every golden via
+        # the LLM's own structured-output Pydantic schema.  If this
+        # passes for every golden, the LLM CANNOT be confused by the
+        # few-shots vs its expected output shape.
+        from orchestrator.open_dag.composer_golden_shapes import (
+            render_shape_as_composer_output,
+        )
+
+        for shape in GOLDEN_SHAPES:
+            rendered = render_shape_as_composer_output(shape)
+            parsed = ComposerLLMOutput.model_validate_json(rendered)
+            assert parsed.refusal is None
+            assert parsed.workflow_id == shape.workflow_id
+            assert parsed.terminal_node_id == shape.terminal_node_id
+
+
+class TestPR7A_F5_LookupScanPromptRelaxed:
+    """PR-7A Codex F5: the COMPOSER_SYSTEM_PROMPT must allow:
+      - lookup with a comparative phrasing (X vs 1y range) to compose
+        a TRANSFORM operator on top of the leaf, NOT just emit a bare
+        leaf.
+      - scan to refuse OR re-express as TRANSFORM when bridgeable —
+        not categorically refuse.
+    """
+
+    def test_lookup_rule_allows_transform_composition(self, composer_system_text):
+        # The relaxed prompt names percentile_rank / rolling_zscore /
+        # rolling_statistic as legitimate TRANSFORMs the Composer
+        # MAY layer on top of a lookup leaf.
+        assert "percentile_rank" in composer_system_text
+        assert "rolling_zscore" in composer_system_text
+        assert "rolling_statistic" in composer_system_text
+
+    def test_lookup_rule_mentions_comparative_phrasings(self, composer_system_text):
+        # The relaxed rule explicitly names comparative phrasings so
+        # the LLM doesn't read the rigid bare-leaf interpretation.
+        text_lower = composer_system_text.lower()
+        assert "comparative" in text_lower or "ranking" in text_lower
+
+    def test_scan_rule_allows_transform_reexpression(self, composer_system_text):
+        # Scan should NOT categorically refuse — the prompt must
+        # describe the re-expression-as-TRANSFORM escape hatch.
+        text_lower = composer_system_text.lower()
+        # The relaxed prompt mentions TERMINAL_ONLY_SNAPSHOT (the
+        # condition under which refusal IS correct) so the LLM
+        # understands the bounded scope of refusal.
+        assert "terminal_only_snapshot" in text_lower
+        # And it mentions the TRANSFORM proxy escape hatch.
+        assert "re-expressed" in text_lower or "transform" in text_lower
+
+    def test_lookup_rule_no_longer_categorical_no_operators(
+        self, composer_system_text,
+    ):
+        # The OLD wording said "Emit one LeafHole ... No operators."
+        # That exact sentence must NOT appear after PR-7A.
+        assert "Emit one LeafHole \\\nwith terminal_node_id = leaf_hole.node_id.  No operators." not in composer_system_text
+        # The relaxed rule explicitly allows operator composition.
+        assert "TRANSFORM operator" in composer_system_text
+
+
+class TestPR7A_GoldenPairStatsAssembleClean:
+    """End-to-end assembly check: with the corrected params, the
+    canonical pair-stats shapes still assemble CLEAN through the PR-4
+    Assembler (substitute + Boundary A + structural validation).
+    This is the proof that PR-7A's golden fixes don't break the
+    upstream pipeline."""
+
+    @staticmethod
+    def _stub_resolver(tool_name: str) -> PrimitiveSpec:
+        class _In(BaseModel):
+            pass
+
+        class _Out(BaseModel):
+            time_series: dict = {}
+
+        return PrimitiveSpec(
+            tool_name=tool_name,
+            callable=lambda **kw: {},
+            input_class=_In,
+            output_class=_Out,
+            config_path=Path("/tmp/stub.yaml"),
+            output_field_units={"time_series": "percent"},
+            output_artifact_type="Series",
+        )
+
+    def _mk_leaf(self, leaf_id: str, role: str, meaning: str):
+        from orchestrator.open_dag.contracts import BoundLeaf, Frequency
+
+        return BoundLeaf(
+            leaf_id=leaf_id,
+            domain="sovereign_bonds",
+            mcp_tool_name="fake",
+            resolver_tool_key="fake",
+            params={},
+            output_field="time_series",
+            declared_output_artifact_type=ArtifactTypeName.SERIES,
+            declared_units=None,
+            declared_frequency=Frequency.DAILY,
+            declared_semantic_role=role,
+            declared_output_meaning=meaning,
+            fit_confidence=0.9,
+        )
+
+    @pytest.mark.parametrize(
+        "shape_const",
+        [
+            GOLDEN_RELATIONSHIP_CORRELATION,
+            GOLDEN_RELATIONSHIP_ROLLING_CORRELATION,
+            GOLDEN_COINTEGRATION,
+            GOLDEN_REGRESSION_ROLLING_BETA,
+        ],
+    )
+    def test_pair_stats_golden_assembles_clean(self, shape_const):
+        from orchestrator.open_dag.assembler import (
+            Assembler,
+            AssemblyStatus,
+        )
+
+        # Extract semantic_role + requested_output_meaning from the
+        # golden's own LeafHoles so the leaves match the LeafRequests
+        # (Boundary A SOFT-checks these).
+        a, b = shape_const.leaf_holes()[0], shape_const.leaf_holes()[1]
+        leaves = [
+            self._mk_leaf(
+                a.node_id,
+                a.leaf_request.semantic_role,
+                a.leaf_request.requested_output_meaning,
+            ),
+            self._mk_leaf(
+                b.node_id,
+                b.leaf_request.semantic_role,
+                b.leaf_request.requested_output_meaning,
+            ),
+        ]
+        asm = Assembler(primitive_resolver=self._stub_resolver)
+        result = asm.assemble(shape_const, leaves)
+        assert result.status == AssemblyStatus.CLEAN, (
+            f"{shape_const.workflow_id}: expected CLEAN, got "
+            f"{result.status} with errors "
+            f"{[(e.code.value, e.message[:80]) for e in result.validation_result.errors]}"
+        )
+
+    def test_event_regime_golden_assembles_clean(self):
+        from orchestrator.open_dag.assembler import (
+            Assembler,
+            AssemblyStatus,
+        )
+
+        shape = GOLDEN_EVENT_REGIME
+        trigger = shape.node_by_id("leaf_trigger")
+        target = shape.node_by_id("leaf_target")
+        leaves = [
+            self._mk_leaf(
+                "leaf_trigger",
+                trigger.leaf_request.semantic_role,
+                trigger.leaf_request.requested_output_meaning,
+            ),
+            self._mk_leaf(
+                "leaf_target",
+                target.leaf_request.semantic_role,
+                target.leaf_request.requested_output_meaning,
+            ),
+        ]
+        asm = Assembler(primitive_resolver=self._stub_resolver)
+        result = asm.assemble(shape, leaves)
+        assert result.status == AssemblyStatus.CLEAN, (
+            f"event_regime: expected CLEAN, got {result.status} with "
+            f"errors {[(e.code.value, e.message[:80]) for e in result.validation_result.errors]}"
+        )
+
+    def test_transform_golden_assembles_clean(self):
+        from orchestrator.open_dag.assembler import (
+            Assembler,
+            AssemblyStatus,
+        )
+
+        shape = GOLDEN_TRANSFORM_ROLLING_ZSCORE
+        leaf = shape.node_by_id("leaf_input")
+        leaves = [
+            self._mk_leaf(
+                "leaf_input",
+                leaf.leaf_request.semantic_role,
+                leaf.leaf_request.requested_output_meaning,
+            ),
+        ]
+        asm = Assembler(primitive_resolver=self._stub_resolver)
+        result = asm.assemble(shape, leaves)
+        assert result.status == AssemblyStatus.CLEAN

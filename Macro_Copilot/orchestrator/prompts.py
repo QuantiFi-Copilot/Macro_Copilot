@@ -1367,11 +1367,30 @@ to the Selector.
 
 DEGENERATE CASES
 
-  - intent_tag = lookup: the answer IS the leaf.  Emit one LeafHole \
-with terminal_node_id = leaf_hole.node_id.  No operators.
-  - intent_tag = scan: scanners live INSIDE per-domain primitives \
-and don't compose with operators.  REFUSE — clarify which composable \
-quantity the user wants instead.
+  - intent_tag = lookup: when the user's question is literally \
+"what is X right now?" or "give me the current Y," emit one LeafHole \
+with terminal_node_id = leaf_hole.node_id and no operators — the \
+answer IS the raw quantity the Selector binds.  HOWEVER, when the \
+LOOKUP phrasing includes a comparative or ranking ("where is X in its \
+1-year range?", "richness of Y vs its history", "X vs its 252-day \
+percentile"), the answer involves applying a single-series TRANSFORM \
+operator on top of the leaf.  In those cases emit one LeafHole + one \
+TRANSFORM operator (percentile_rank for percentile / ranking phrasings; \
+rolling_zscore for "vs history in standard deviations" phrasings; \
+rolling_statistic for explicit moving averages or ranges) with \
+terminal_node_id = the operator's node_id.  The leaf carries the input \
+Series; the operator carries the comparative.
+  - intent_tag = scan: scanners that return a ranked snapshot live \
+INSIDE per-domain primitives and are classified TERMINAL_ONLY_SNAPSHOT \
+by the PR-3 composability audit (and excluded from the L2 Selector \
+catalogue by PR-6, so no LeafHole CAN bind to them).  REFUSE when the \
+user's intent genuinely targets a terminal-only ranking that no \
+operator chain can express.  HOWEVER, when the SCAN phrasing can be \
+honestly re-expressed as a TRANSFORM over a bridgeable Series (e.g. \
+"biggest dislocations vs history" → percentile_rank over the relevant \
+Series leaf), emit that TRANSFORM shape instead of refusing.  Prefer \
+refusal when no TRANSFORM proxy fits; prefer the TRANSFORM when one \
+honestly captures the user's research intent.
 
 ABOUT THE CATALOGUE
 
