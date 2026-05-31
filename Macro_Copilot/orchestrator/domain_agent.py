@@ -130,6 +130,7 @@ class DomainAgentSession:
         temperature: float = 0.0,
         max_tokens: int = 4096,
         checkpointer: Optional[BaseCheckpointSaver] = None,
+        primitive_resolver: Optional[Any] = None,
     ):
         self.domain = domain
         self._system_prompt = system_prompt
@@ -146,11 +147,25 @@ class DomainAgentSession:
         # restarts.
         self._checkpointer: BaseCheckpointSaver = checkpointer or MemorySaver()
 
+        # PR-6: the agent-side ``PrimitiveResolver`` (e.g.
+        # ``rates_agent.workflows.rates_primitive_resolver``) is
+        # required for ``fill_leaf`` mode but not for the legacy
+        # ``run`` (ReAct) mode.  Default ``None`` preserves back-compat
+        # for callers that only use the ReAct path; ``fill_leaf`` raises
+        # a clear error if invoked without a resolver supplied.
+        self._primitive_resolver = primitive_resolver
+
         self._mcp_client: MultiServerMCPClient | None = None
         self._graph = None
         self._cached_system_message: SystemMessage | None = None
         self._tool_names: list[str] = []
         self._is_open = False
+
+        # PR-6 fill_leaf scaffolding — populated in open().
+        self._tool_catalogue: list = []
+        self._mcp_tools_for_catalogue: list = []
+        self._cached_selector_system_message: SystemMessage | None = None
+        self._selector_model = None
 
     # ------------------------------------------------------------------
     # LIFECYCLE
@@ -240,6 +255,46 @@ class DomainAgentSession:
         # DomainAgentSessions of this CopilotSession.
         self._graph = builder.compile(checkpointer=self._checkpointer)
 
+        # PR-6 fill_leaf scaffolding.  We build the tool catalogue
+        # (one entry per MCP tool that the supplied PrimitiveResolver
+        # knows) AND construct a separate, untooled model bound to
+        # SelectorLLMOutput's structured-output schema.  Both pieces
+        # are optional — set up only when a resolver was supplied to
+        # the constructor; without one, fill_leaf raises a clear
+        # error.
+        if self._primitive_resolver is not None:
+            from orchestrator.prompts import SELECTOR_FILL_LEAF_SYSTEM_PROMPT
+            from orchestrator.selectors import render_tool_catalogue
+
+            self._mcp_tools_for_catalogue = list(tools)
+            self._tool_catalogue = render_tool_catalogue(
+                self.domain,
+                self._mcp_tools_for_catalogue,
+                self._primitive_resolver,
+            )
+            self._cached_selector_system_message = SystemMessage(
+                content=[
+                    {
+                        "type": "text",
+                        "text": SELECTOR_FILL_LEAF_SYSTEM_PROMPT,
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ]
+            )
+            # Separate model instance — NO tools bound; the Selector
+            # picks by name, never executes.  Structured-output schema
+            # forces the LLM into the SelectorLLMOutput shape.
+            from orchestrator.selectors import SelectorLLMOutput
+            self._selector_model = ChatAnthropic(
+                model=self._model_name,
+                temperature=self._temperature,
+                max_tokens=self._max_tokens,
+            ).with_structured_output(SelectorLLMOutput, include_raw=True)
+            logger.info(
+                "[%s] selector catalogue ready (%d tools)",
+                self.domain.value, len(self._tool_catalogue),
+            )
+
         self._is_open = True
         logger.info(
             "[%s] session ready (checkpointer=%s)",
@@ -269,7 +324,155 @@ class DomainAgentSession:
 
         self._graph = None
         self._cached_system_message = None
+        self._cached_selector_system_message = None
+        self._selector_model = None
+        self._tool_catalogue = []
+        self._mcp_tools_for_catalogue = []
         self._is_open = False
+
+    # ------------------------------------------------------------------
+    # FILL-LEAF (PR-6) — open-DAG Selector mode
+    # ------------------------------------------------------------------
+
+    async def fill_leaf(
+        self,
+        leaf_id: str,
+        request: "Any",  # LeafRequest — typed-imported in the body
+    ) -> "Any":  # BoundLeaf — typed-imported in the body
+        """Bind a single open-DAG leaf or refuse — no primitive execution.
+
+        Per ``tmp/orchestration.md`` §PR-6, this method:
+
+          1. Checks the request's ``domain_hint`` matches this Selector
+             (mismatch is an Assembler routing bug — raise loudly).
+          2. Renders the per-call user prompt (LeafRequest +
+             pre-built catalogue) via
+             ``orchestrator.selectors.render_user_prompt``.
+          3. Invokes the structured-output Selector model.
+          4. Transforms the LLM output into a typed ``BoundLeaf`` via
+             ``orchestrator.selectors.llm_output_to_bound_leaf``,
+             which derives ``resolver_tool_key``,
+             ``declared_output_artifact_type`` and ``declared_units``
+             from the catalogue (not the LLM).
+
+        Returns a ``BoundLeaf`` — either a clean binding (``refusal``
+        is None) or a refusal.  Never executes a primitive.
+        """
+        from langchain_core.messages import HumanMessage
+
+        from orchestrator.open_dag import BoundLeaf, LeafRequest
+        from orchestrator.selectors import (
+            SelectorBindingError,
+            assert_request_for_this_domain,
+            llm_output_to_bound_leaf,
+            render_user_prompt,
+        )
+
+        if not self._is_open:
+            raise RuntimeError(
+                f"Domain agent {self.domain.value} is not open."
+            )
+        if self._primitive_resolver is None:
+            raise RuntimeError(
+                f"Domain agent {self.domain.value} was constructed "
+                "without a primitive_resolver; fill_leaf is not "
+                "available.  Pass `primitive_resolver=` to "
+                "DomainAgentSession(...) to enable open-DAG mode."
+            )
+        if self._selector_model is None or self._cached_selector_system_message is None:
+            raise RuntimeError(
+                f"Domain agent {self.domain.value}: selector model "
+                "or cached system message missing — open() may not "
+                "have completed cleanly."
+            )
+
+        # ---- Type-safe routing guard ----
+        try:
+            assert_request_for_this_domain(request, self.domain)
+        except SelectorBindingError as exc:
+            # An upstream routing bug — raise so the Assembler hears
+            # about it instead of silently re-routing.
+            raise
+
+        # ---- Render user prompt ----
+        user_text = render_user_prompt(
+            self.domain, request, self._tool_catalogue,
+        )
+
+        # ---- Invoke structured-output model ----
+        messages = [
+            self._cached_selector_system_message,
+            HumanMessage(content=user_text),
+        ]
+        try:
+            result = await self._selector_model.ainvoke(messages)
+        except Exception as exc:
+            logger.exception(
+                "[%s] selector LLM call failed in fill_leaf",
+                self.domain.value,
+            )
+            return BoundLeaf(
+                leaf_id=leaf_id,
+                domain=self.domain.value,
+                fit_confidence=0.0,
+                refusal=(
+                    f"Selector LLM call failed: "
+                    f"{type(exc).__name__}: {exc}"
+                ),
+            )
+
+        # `with_structured_output(include_raw=True)` returns
+        # {"raw": ..., "parsed": SelectorLLMOutput, "parsing_error": Optional[Exception]}.
+        raw = result.get("raw") if isinstance(result, dict) else None
+        parsed = result.get("parsed") if isinstance(result, dict) else None
+        parsing_error = (
+            result.get("parsing_error") if isinstance(result, dict) else None
+        )
+
+        if raw is not None:
+            _log_usage(f"{self.domain.value}.selector", raw)
+
+        if parsed is None:
+            return BoundLeaf(
+                leaf_id=leaf_id,
+                domain=self.domain.value,
+                fit_confidence=0.0,
+                refusal=(
+                    f"Selector LLM did not produce a valid "
+                    f"SelectorLLMOutput; parsing_error="
+                    f"{parsing_error!r}."
+                ),
+            )
+
+        # ---- Transform LLM output → BoundLeaf ----
+        try:
+            bound = llm_output_to_bound_leaf(
+                leaf_id=leaf_id,
+                domain=self.domain,
+                output=parsed,
+                catalogue=self._tool_catalogue,
+            )
+        except SelectorBindingError as exc:
+            # leaf_id violation — convert to a refusal BoundLeaf so the
+            # Assembler sees a structured outcome instead of an
+            # exception.  The exception itself was a leaf_id contract
+            # violation, which we surface as a refusal reason.
+            return BoundLeaf(
+                leaf_id=leaf_id or "(unset)",
+                domain=self.domain.value,
+                fit_confidence=0.0,
+                refusal=f"SelectorBindingError: {exc}",
+            )
+
+        logger.info(
+            "[%s] fill_leaf leaf_id=%s tool=%s refusal=%s confidence=%.2f",
+            self.domain.value,
+            leaf_id,
+            bound.mcp_tool_name or "(refusal)",
+            "yes" if bound.is_refusal else "no",
+            bound.fit_confidence,
+        )
+        return bound
 
     # ------------------------------------------------------------------
     # RUN
