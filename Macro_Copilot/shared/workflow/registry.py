@@ -818,6 +818,78 @@ class PrimitiveResolver(Protocol):
     def __call__(self, tool_name: str) -> PrimitiveSpec: ...
 
 
+# ============================================================================
+# STATIC OUTPUT-TYPE DECLARATION (PR-3 helper for L2 Selectors)
+# ============================================================================
+
+
+def declare_primitive_output_type(
+    resolver: PrimitiveResolver,
+    tool_name: str,
+    params: Optional[Dict[str, Any]] = None,
+) -> str:
+    """Return the static output ArtifactType for a primitive, WITHOUT
+    executing it.
+
+    PR-3 contract.  L2 Selectors call this to populate
+    ``BoundLeaf.declared_output_artifact_type`` while binding a hole —
+    the value must be available statically (no DB engine touched) so
+    L4's Boundary A can validate the bound shape before any node runs.
+
+    The helper reads ``PrimitiveSpec.output_artifact_type`` directly
+    via the supplied resolver.  No callable is invoked, no engine is
+    constructed; the resolver's own dispatch is the only work.
+
+    Why a module-level helper rather than a method on the
+    ``PrimitiveResolver`` Protocol
+    -------------------------------------------------------
+    The ``PrimitiveResolver`` Protocol is a single-callable contract
+    (see above).  Today's agent-side implementation
+    (``rates_agent.workflows.rates_primitive_resolver``) is a plain
+    function; the substrate's test suite uses similar function- and
+    lambda-shaped resolvers.  Adding a method to the Protocol would
+    force every caller to switch from functions to classes (or attach
+    a method onto the function), which would break the
+    pre-existing test infrastructure that PR-1 / PR-2 leaned on.  A
+    module-level helper achieves the SAME goal — static output-type
+    declaration without execution — with zero back-compat cost.  If a
+    future resolver legitimately needs per-call custom declare logic,
+    extending the Protocol then is a clean follow-on PR.
+
+    Parameters
+    ----------
+    resolver :
+        The agent-side ``PrimitiveResolver`` (e.g.
+        ``rates_agent.workflows.rates_primitive_resolver``).
+    tool_name :
+        The resolver-safe tool key (NOT the visible MCP tool name) —
+        the same string the Selector will write into
+        ``BoundLeaf.resolver_tool_key`` (derived via
+        ``shared.workflow.resolver_keys.domain_to_resolver_key``).
+    params :
+        Reserved for primitives whose declared output type depends on
+        input params (none today; a forward-compatibility seam).
+        Currently unused; the helper reads the static
+        ``PrimitiveSpec.output_artifact_type`` field, which is
+        constant per primitive registration.
+
+    Returns
+    -------
+    str
+        One of the ``ARTIFACT_TYPE_NAMES`` values (e.g. ``"Series"``,
+        ``"Panel"``).  The Selector should construct
+        ``ArtifactTypeName(value)`` to get the typed enum member for
+        ``BoundLeaf.declared_output_artifact_type``.
+
+    Raises
+    ------
+    KeyError
+        Re-raised from the resolver when ``tool_name`` is unknown.
+    """
+    spec = resolver(tool_name)
+    return spec.output_artifact_type
+
+
 __all__ = [
     "ARTIFACT_TYPE_NAMES",
     "artifact_type_name",
@@ -826,4 +898,5 @@ __all__ = [
     "known_operators",
     "PrimitiveSpec",
     "PrimitiveResolver",
+    "declare_primitive_output_type",
 ]

@@ -52,6 +52,13 @@ from shared.workflow.executor import (
     WorkflowExecutionError,
     execute_workflow,
 )
+from shared.workflow.holes import (
+    BoundLeaf,
+    LeafHole,
+    LeafRequest,
+    ShapeNode,
+    ShapeSpec,
+)
 from shared.workflow.registry import (
     ARTIFACT_TYPE_NAMES,
     OPERATOR_REGISTRY,
@@ -59,7 +66,13 @@ from shared.workflow.registry import (
     PrimitiveResolver,
     PrimitiveSpec,
     artifact_type_name,
+    declare_primitive_output_type,
     known_operators,
+)
+from shared.workflow.resolver_keys import (
+    KNOWN_DOMAINS,
+    UnknownDomainError,
+    domain_to_resolver_key,
 )
 from shared.workflow.slots import (
     OutputDescriptor,
@@ -160,6 +173,17 @@ __all__ = [
     "artifact_type_name",
     "SlotDescriptor",
     "OutputDescriptor",
+    "declare_primitive_output_type",
+    # Hole/fill contracts (PR-3)
+    "LeafRequest",
+    "BoundLeaf",
+    "LeafHole",
+    "ShapeNode",
+    "ShapeSpec",
+    # Resolver-key adapter (PR-3)
+    "KNOWN_DOMAINS",
+    "UnknownDomainError",
+    "domain_to_resolver_key",
     # Template layer
     "WorkflowTemplate",
     "WorkflowArchetype",
