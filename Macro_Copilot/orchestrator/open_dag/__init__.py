@@ -73,12 +73,28 @@ from orchestrator.open_dag.composer import (
     render_composer_user_message,
     render_operator_catalogue_block,
 )
+from orchestrator.open_dag.answer import (
+    AnswerRenderer,
+    assemble_final_answer,
+    render_answer_user_message,
+    render_clarification,
+    render_intent_echo,
+    render_provenance_footer,
+    render_refusal,
+)
 from orchestrator.open_dag.coverage_gate import (
     CoverageGate,
     GateStatus,
     GateVerdict,
     render_gate_user_message,
     warnings_to_string_list,
+)
+from orchestrator.open_dag.intent_chain import (
+    ComposerIntentRecord,
+    GateIntentRecord,
+    IntentChain,
+    RouterIntentRecord,
+    SelectorIntentRecord,
 )
 from orchestrator.open_dag.dag_echo import (
     DagEcho,
@@ -186,4 +202,18 @@ __all__ = [
     "build_dag_echo",
     "build_and_render_dag_echo",
     "render_dag_echo",
+    # Intent chain (PR-9)
+    "IntentChain",
+    "RouterIntentRecord",
+    "SelectorIntentRecord",
+    "ComposerIntentRecord",
+    "GateIntentRecord",
+    # Answer renderer (PR-9)
+    "AnswerRenderer",
+    "assemble_final_answer",
+    "render_answer_user_message",
+    "render_clarification",
+    "render_intent_echo",
+    "render_provenance_footer",
+    "render_refusal",
 ]
