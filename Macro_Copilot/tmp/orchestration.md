@@ -2,7 +2,7 @@
 
 > **Status:** build-ready plan. To be audited by Codex before code lands.
 > **Branch:** `revamp`.
-> **Scope:** the *unconstrained* (open-DAG) orchestration lane that lets the LLM build a fresh typed DAG to answer any prompt expressible inside today's primitive + operator universe — without any one LLM ever seeing the full universe.
+> **Scope:** the *unconstrained* (open-DAG) orchestration lane that lets the LLM build a fresh typed DAG to answer any prompt expressible inside today's registered, typed primitive + operator + artifact universe — without any one LLM ever seeing the full universe.
 > **Out of scope, deliberately:** template-mode orchestration (untouched); backtest path (operators exist on disk but are unregistered — see §10); UI changes beyond the answer-rendering template.
 
 ---
@@ -11,7 +11,7 @@
 
 Macro Copilot is being built as a *digital macro analyst brain* — the bridge between quant/optimization systems and discretionary trader reasoning. The LLM is the economic-intuition brain; the primitives and operators are its deterministic math/finance instruments; a DAG is just the trader's mental sequence made auditable.
 
-This document is the PR plan for the architecture that lets the LLM construct a typed DAG to answer any prompt within today's universe (58 primitives across 6 domains, 16 registered operators, 6 closed-family artifact types), while satisfying three scaling invariants:
+This document is the PR plan for the architecture that lets the LLM construct a typed DAG to answer any prompt within today's *registered typed workflow universe* (58 MCP primitives across 6 domains, 16 registered operators, 6 closed-family artifact types, subject to the primitive-output audit in §2.5), while satisfying three scaling invariants:
 
 1. **Registration-only growth.** Adding the Nth primitive / operator / domain requires only a registration entry — zero change to composer, validator, executor, or any LLM-facing static prompt.
 2. **Per-decision context is bounded by local fan-out.** No LLM ever sees the full universe at once.
@@ -89,6 +89,23 @@ The current global resolver at [rates_agent/workflows/__init__.py](../rates_agen
 
 This is ad-hoc and not enforced by any contract today. The PR plan respects it AND wraps it: `BoundLeaf` will carry BOTH `mcp_tool_name` (what the L2 selector saw, used for lineage/audit) AND `resolver_tool_key` (what the executor dispatches on, derived from `(domain, mcp_tool_name)` by a small adapter). The same adapter is the seam where, in a follow-on cleanup, the project can migrate to a uniform `<domain>::<tool>` convention with zero impact on L2 selectors.
 
+### 2.5 Primitive-output composability audit (the honesty check)
+
+The repo has 58 MCP primitives, but "MCP-callable" and "currently bridgeable into the typed workflow executor" are not automatically the same thing.
+
+The executor today bridges primitive outputs into `Series` or `Panel` artifacts only. Several snapshot / scanner primitives are intentionally not historical `TimeSeries` outputs; their schemas say they are ranked snapshot objects, not series. Those tools are still valid primitives for the existing domain-agent path, but they are not automatically valid open-DAG leaves until they declare an artifact bridge that fits the closed six artifact types.
+
+PR-3 therefore includes a primitive declaration audit:
+
+| Declaration | Meaning | Open-DAG status |
+|---|---|---|
+| `BRIDGEABLE_SERIES` | primitive declares valid `time_series*` fields and units | usable as a `Series` leaf |
+| `BRIDGEABLE_PANEL` | primitive declares a valid `panel` output | usable as a `Panel` leaf |
+| `TERMINAL_ONLY_SNAPSHOT` | primitive returns a ranked / snapshot / facts object that does not fit the current artifact family | not composable in the first open-DAG executor path; existing domain-agent path can still answer it |
+| `UNDECLARED` | resolver registration has insufficient output metadata | PR-3 must either declare it or mark it terminal-only |
+
+This does not weaken the vision. It prevents a false claim. The PoC proves open-DAG composition over the typed registered universe; terminal-only scanner/backtest-style primitives become follow-on growth proofs once they are given either a bridge into the existing artifact family or an ADR-backed new artifact type.
+
 ---
 
 ## 3. The pipeline (end-to-end, corrected)
@@ -141,7 +158,24 @@ L4 validates structurally (Boundary A — type + role compat). L4.5 confirms bot
 
 ## 4. PR plan
 
-### 4.1 Sequencing and dependency graph
+### 4.1 Actual PR grouping
+
+The dependency graph below keeps the logical work units separate because it makes auditing easier. The actual GitHub PRs should be fewer than the logical steps where the blast radius is still reviewable.
+
+Recommended implementation grouping:
+
+| Actual PR | Logical steps included | Why this grouping is acceptable |
+|---|---|---|
+| **PR-A — Foundation** | PR-1 `ValidationResult` + PR-2 operator cards/catalogue renderer | Yes, PR-1 + PR-2 can be one PR. They are both substrate foundations, they do not touch LLM orchestration runtime, and they can be reviewed as two commits inside one PR. |
+| **PR-B — Contracts + declarations** | PR-3 hole/fill contracts + resolver-key adapter + primitive-output composability audit | Establishes the typed language between layers before any LLM calls are wired. |
+| **PR-C — Assembly + repair** | PR-4 assembler + bounded repair controller | Mechanical deterministic layer; depends on A+B. |
+| **PR-D — L1/L2/L3 reasoning lane** | PR-5 router decomposition + PR-6 selectors + PR-7 composer | The first LLM orchestration PR; all contracts already exist. |
+| **PR-E — Trust boundary + answer** | PR-8 Boundary B + PR-9 lineage/answer | Adds hard-blocking and PM-facing intent echo. |
+| **PR-F — E2E proofs** | PR-10 wiring + eval + scaling proofs + CI lints | Gating proof PR. |
+
+If PR-A becomes too large in review because the 16 operator cards are content-heavy, split PR-2 back out. Otherwise PR-A is the right consolidation and avoids unnecessary PR churn.
+
+### 4.2 Sequencing and dependency graph
 
 ```
 PR-1 (ValidationResult)  ─────┬─►  PR-4 (Assembler) ─┐
@@ -164,7 +198,7 @@ PR-9 (Lineage + answer) ◄─── cross-cutting ─────────�
 **Sequential after foundations:** PR-4 (needs 1+3), PR-6 (needs 3), PR-7 (needs 2+3+4+5), PR-8 (needs 5).
 **Cross-cutting late:** PR-9, PR-10.
 
-### 4.2 PR-by-PR
+### 4.3 Logical PR-by-PR detail
 
 Each PR section below states: scope, files added/changed, decisions enforced, tests, acceptance criteria, dependencies. Reviewers may reject any PR whose acceptance criteria are not all green.
 
@@ -175,9 +209,10 @@ Each PR section below states: scope, files added/changed, decisions enforced, te
 **Why first.** Without structured multi-error validation, the repair loop has no feedback protocol. Every downstream piece (Assembler PR-4, role-compat in Boundary A, error classification in Composer PR-7) depends on this spine. Operator-card content (PR-2) is the highest-value LLM prior, but it feeds only one consumer (the Composer); `ValidationResult` feeds the entire repair architecture. Order by what unblocks the most downstream substrate.
 
 **Scope.**
-- Refactor [shared/workflow/validate.py](../shared/workflow/validate.py) so it collects ALL errors in one pass and returns a frozen `ValidationResult`.
+- Refactor [shared/workflow/validate.py](../shared/workflow/validate.py) so the new result path collects ALL errors in one pass and returns a frozen `ValidationResult`.
 - Assign each of the existing 13 `raise WorkflowValidationError` sites a stable error code and an `owner_layer` tag.
-- Preserve the existing first-error-raise behaviour as a thin wrapper (`validate_workflow_strict`) so the current executor caller continues to work unchanged.
+- Preserve the existing public `validate_workflow(...)` first-error-raise behaviour so the current executor caller continues to work unchanged.
+- Add a new `validate_workflow_result(...) -> ValidationResult` entry point for the open-DAG repair loop.
 
 **Files.**
 - `shared/workflow/validate.py` — refactor.
@@ -199,6 +234,7 @@ Each PR section below states: scope, files added/changed, decisions enforced, te
 | `E_TYPE_MISMATCH` | L3_WIRING (when upstream is operator) / L2_BINDING (when upstream is primitive) | source artifact type ≠ slot's expected type | line 323 |
 | `E_UNKNOWN_OUTPUT_FIELD` | L2_BINDING | primitive's `output_field` not in resolver's declared set | line 381 |
 | `E_UNIT_MISMATCH` | L3_WIRING | per-operator `unit_validator` rejected | line 442 |
+| `E_FREQUENCY_MISMATCH` | L2_BINDING / L3_WIRING | open-DAG leaf contract expected a frequency that the bound leaf/operator output did not declare | new contract check in PR-3 / PR-4 |
 | `E_DAG_CYCLE` | L3_WIRING | DAG contains a cycle | line 461 |
 | `E_PRIMITIVE_RESOLVE_FAIL` | L2_BINDING | resolver could not resolve the tool name | line 476 |
 
@@ -209,13 +245,14 @@ Each PR section below states: scope, files added/changed, decisions enforced, te
 **Tests.**
 - One test per error code: synthesize a minimal workflow that triggers exactly that code.
 - Multi-error workflow: triggers ≥3 codes in one pass; assert all 3 surface in `ValidationResult.errors`.
-- Legacy wrapper: `validate_workflow_strict(bad_workflow)` raises `WorkflowValidationError` on the first error (unchanged behaviour).
+- Legacy public API: `validate_workflow(bad_workflow)` raises `WorkflowValidationError` on the first error (unchanged behaviour).
+- New API: `validate_workflow_result(bad_workflow)` returns all errors without raising.
 - Owner-layer dispatch test: each error's `owner_layer` matches the table above.
 
 **Acceptance criteria.**
-1. All 13 raise sites converted; no `raise WorkflowValidationError` remains in `validate.py` proper (now lives only inside the strict wrapper).
+1. All 13 raise sites converted into result-building helpers; `raise WorkflowValidationError` remains only in the legacy `validate_workflow(...)` wrapper.
 2. `ValidationResult.errors` is a tuple (not list — frozen Pydantic).
-3. Existing executor caller in [shared/workflow/executor.py:58](../shared/workflow/executor.py:58) imports unchanged path; existing tests stay green.
+3. Existing executor caller continues calling `validate_workflow(...)` unchanged; existing tests stay green.
 4. New tests (one per code + multi-error + legacy wrapper) green.
 5. No new dependency on any operator's `config.yaml` (this PR is structure-only; content lands in PR-2).
 
@@ -307,20 +344,21 @@ class OperatorCard(BaseModel):
 
 **Scope.**
 - New typed contracts that L3 emits and L2 fills.
-- Extended `PrimitiveResolver` protocol with a `declare_output_type(tool_name, params)` method so a selector can declare a primitive's output type without executing it.
+- Primitive declaration helper that reads static `PrimitiveSpec` metadata from the resolver without executing the primitive.
+- Primitive-output composability audit from §2.5, so the plan does not falsely treat every MCP tool as an already bridgeable workflow leaf.
 - Resolver-key adapter: a small `domain_to_resolver_key(domain, mcp_tool_name) -> str` function that encodes the current ad-hoc convention (bond_futures keeps bare name; policy_futures gets `policy_futures_` prefix; everything else uses bare name today). Centralised so a follow-on cleanup can migrate to uniform `<domain>::<tool>` with zero touches elsewhere.
 
 **Files.**
-- `shared/workflow/holes.py` — NEW. Contains:
+- `orchestrator/open_dag/contracts.py` — NEW. Contains:
   - `LeafHole(node_id, leaf_request)` — what appears in a `ShapeSpec` in place of a primitive
   - `LeafRequest(...)` — what the Composer declares per hole
   - `BoundLeaf(...)` — what each L2 selector returns
   - `ShapeSpec(...)` — a Workflow-with-holes (extends `Workflow` to allow `LeafHole` nodes)
-- `shared/workflow/resolver_keys.py` — NEW. Contains `domain_to_resolver_key()` plus the centralised collision table.
-- `shared/workflow/registry.py` — extend `PrimitiveResolver` protocol with `declare_output_type`.
-- `rates_agent/workflows/__init__.py` — implement `declare_output_type` on the rates resolver (reads `PrimitiveSpec.output_artifact_type` — no execution).
-- `tests/workflow/test_holes.py` — NEW.
-- `tests/workflow/test_resolver_keys.py` — NEW.
+- `orchestrator/open_dag/resolver_keys.py` — NEW. Contains `domain_to_resolver_key()` plus the centralised collision table. This stays in `orchestrator/`, not `shared/workflow/`, because it is domain-aware.
+- `orchestrator/open_dag/primitive_declarations.py` — NEW. Contains `PrimitiveDeclaration` and `declare_primitive_output(resolver, tool_name)` helper. It calls `primitive_resolver(tool_name)` and reads `PrimitiveSpec.output_artifact_type`, `output_field_units`, and declared output fields — no DB engine, no primitive execution.
+- `tests/orchestrator/open_dag/test_contracts.py` — NEW.
+- `tests/orchestrator/open_dag/test_resolver_keys.py` — NEW.
+- `tests/orchestrator/open_dag/test_primitive_declarations.py` — NEW.
 
 **Contract schemas.**
 
@@ -369,6 +407,8 @@ class ShapeSpec(BaseModel):                            # what L3 emits
     terminal_node_id: str
 ```
 
+These contracts live in `orchestrator/open_dag/`, not `shared/workflow/`, because they contain domain routing hints and LLM-facing intent fields. The existing `shared/workflow` substrate remains finance-blind and only sees the assembled executable `Workflow`.
+
 **Decisions enforced (the role-discriminant nuance Codex correctly pushed on).**
 
 | Field family | Comparison rule | If mismatch |
@@ -381,7 +421,7 @@ This split is the explicit answer to R5 (no curated role enum): the substrate ge
 **Resolver-key adapter:**
 
 ```python
-# shared/workflow/resolver_keys.py
+# orchestrator/open_dag/resolver_keys.py
 _DOMAIN_PREFIXED: set[Domain] = {Domain.POLICY_FUTURES}
 _BARE_NAME_DOMAINS: set[Domain] = {
     Domain.SOVEREIGN_BONDS, Domain.OIS, Domain.INFLATION_INDEXED_BONDS,
@@ -404,13 +444,15 @@ def domain_to_resolver_key(domain: Domain, mcp_tool_name: str) -> str:
 - `domain_to_resolver_key(POLICY_FUTURES, "get_futures_price_level_tool") == "policy_futures_get_futures_price_level_tool"`.
 - `domain_to_resolver_key(BOND_FUTURES, "get_futures_price_level_tool") == "get_futures_price_level_tool"`.
 - Resolver smoke test: both resolver keys resolve to DIFFERENT `PrimitiveSpec`s through `rates_agent.workflows`' resolver.
-- `declare_output_type("calculate_curve_spread_tool", {...})` returns `"Series"` without executing the primitive (no DB call).
+- `declare_primitive_output(rates_primitive_resolver, "calculate_curve_spread_tool")` returns `output_artifact_type="Series"` and declared fields without executing the primitive (no DB call).
+- Primitive-output audit: every one of the 58 MCP tools is classified as `BRIDGEABLE_SERIES`, `BRIDGEABLE_PANEL`, `TERMINAL_ONLY_SNAPSHOT`, or `UNDECLARED`; `UNDECLARED` fails the PR.
 
 **Acceptance criteria.**
 1. `ShapeSpec` / `LeafHole` / `LeafRequest` / `BoundLeaf` defined, frozen Pydantic.
 2. `domain_to_resolver_key` covers all 6 domains; collision (`get_futures_price_level_tool`) explicitly tested both ways.
-3. `PrimitiveResolver.declare_output_type` implemented in `rates_agent/workflows`; no DB engine touched.
-4. No coupling between `shared/workflow/` and any `rates_agent/` package (P11/P9 preserved).
+3. Static primitive declarations are available without extending the `PrimitiveResolver` protocol or touching the DB.
+4. Every MCP primitive is classified for open-DAG composability; terminal-only snapshot/scanner tools are explicitly marked rather than silently treated as typed workflow leaves.
+5. No domain-aware code lands in `shared/workflow/` (P9/P11 preserved).
 
 **Dependencies.** None (parallel-safe with PR-1, PR-2, PR-5).
 
@@ -422,8 +464,8 @@ def domain_to_resolver_key(domain: Domain, mcp_tool_name: str) -> str:
 - A pure-code module that takes a `ShapeSpec` + a list of `BoundLeaf`s, substitutes leaves into holes, and validates the resulting `Workflow` via PR-1's `ValidationResult`. On errors, dispatches one repair round (additive-only) by owner layer; on continued failure, refuses.
 
 **Files.**
-- `shared/workflow/assembler.py` — NEW. Contains `Assembler.assemble(shape, leaves) -> AssemblyResult`.
-- `tests/workflow/test_assembler.py` — NEW.
+- `orchestrator/open_dag/assembler.py` — NEW. Contains `Assembler.assemble(shape, leaves) -> AssemblyResult` and owns the orchestration-layer repair controller.
+- `tests/orchestrator/open_dag/test_assembler.py` — NEW.
 
 **Repair-mutation rules (the discipline that prevents oscillation).**
 
@@ -462,6 +504,7 @@ def domain_to_resolver_key(domain: Domain, mcp_tool_name: str) -> str:
 2. The trace lists every mutation applied in repair (auditable).
 3. Tests cover each error code in PR-1's taxonomy at least once.
 4. No new LLM call inside the assembler itself — it only invokes Composer/Selector callbacks supplied by the caller.
+5. No domain-aware or LLM-repair code lands in `shared/workflow/`; the shared substrate remains the typed model, registry, validator, and executor.
 
 **Dependencies.** PR-1 (error codes), PR-3 (contracts). Parallel-safe after those land.
 
@@ -528,7 +571,7 @@ class RouteDecision(BaseModel):     # EXTENDED
 ### PR-6 — L2 selectors as hole-fillers
 
 **Scope.**
-- Add a `fill_leaf(request: LeafRequest) -> BoundLeaf` mode to `DomainAgentSession` ([orchestrator/domain_agent.py](../orchestrator/domain_agent.py)). Same MCP isolation. The selector calls primitives in "describe my output type" mode (no execution) — the primitive resolver's `declare_output_type` is the channel.
+- Add a `fill_leaf(request: LeafRequest) -> BoundLeaf` mode to `DomainAgentSession` ([orchestrator/domain_agent.py](../orchestrator/domain_agent.py)). Same MCP isolation. The selector calls primitives in "describe my output type" mode (no execution) — the static `declare_primitive_output(...)` helper from PR-3 is the channel.
 - New per-domain selector prompt that frames the task as "pick the primitive that satisfies this LeafRequest; refuse if no primitive fits." Existing rich primitive docstrings via MCP are the priors.
 - Existing ReAct mode preserved — used for legacy template-less paths.
 
@@ -560,7 +603,7 @@ class DomainAgentSession:
 - Canonical: sovereign selector receives `LeafRequest(role=spread_level, nl_intent="US 2s10s, last 5 years")` → returns `BoundLeaf(mcp_tool_name=calculate_curve_spread_tool, params={curve_family:UST, short_tenor:2Y, long_tenor:10Y, lookback_days≈1825}, declared_output_artifact_type=Series, …)`.
 - Inflation-linked selector: `LeafRequest(role=breakeven_level, nl_intent="USD 5Y breakeven, last 5 years")` → returns `BoundLeaf(mcp_tool_name=calculate_breakeven_inflation_simple_tool, …)`.
 - Refusal: `LeafRequest(role=spread_level, nl_intent="JPY OIS swap spread")` to sovereign selector → returns `BoundLeaf(refusal="JPY OIS is not in this domain; route to OIS specialist.")`.
-- Output-type declaration accuracy: declared type matches what `declare_output_type` returns for the chosen tool.
+- Output-type declaration accuracy: declared type matches what `declare_primitive_output(...)` returns for the chosen tool.
 - P11 holds: selector's MCP client only sees own-domain tools (assert via `_tool_names`).
 
 **Acceptance criteria.**
@@ -580,9 +623,9 @@ class DomainAgentSession:
 - Wires into PR-4's repair loop: when the assembler raises L3_WIRING errors, the composer is called back with the full error list and emits an additive patch (NOT a new shape).
 
 **Files.**
-- `orchestrator/composer.py` — NEW. Contains `Composer.compose(prompt, decomposition, intent_tag) -> ShapeSpec` and `Composer.repair(shape, errors) -> Patch`.
+- `orchestrator/open_dag/composer.py` — NEW. Contains `Composer.compose(prompt, decomposition, intent_tag) -> ShapeSpec` and `Composer.repair(shape, errors) -> Patch`.
 - `orchestrator/prompts.py` — `COMPOSER_SYSTEM_PROMPT` and `COMPOSER_REPAIR_PROMPT`.
-- `orchestrator/composer_golden_shapes.py` — NEW. Constant module with 4–6 reference shapes the prompt embeds as few-shots.
+- `orchestrator/open_dag/composer_golden_shapes.py` — NEW. Constant module with 4–6 reference shapes the prompt embeds as few-shots.
 - `tests/orchestrator/test_composer.py` — NEW.
 
 **Golden few-shots (the minimum set, baked into the prompt).**
@@ -605,7 +648,7 @@ class DomainAgentSession:
 - Canonical query → shape matches golden #1 exactly (modulo node_ids).
 - Each intent_tag → composer picks an operator from the right family (eval set per `IntentTag`).
 - Repair: given an `E_UNIT_MISMATCH` error pointing at an edge, composer emits `AddAdapter(convert_units)` on that edge — not a new shape.
-- Refusal-on-impossible: prompt names a quantity for which no operator family fits → composer emits a `LeafHole` whose `LeafRequest.nl_intent` flags the gap; assembler routes to Boundary B.
+- Refusal-on-impossible: prompt asks for an analysis that no registered operator/artifact path can express → composer returns a structured refusal reason before assembly. It does NOT emit a fake `LeafHole` to force the pipeline onward.
 - Token-budget audit: composer's prompt input ≤ 25K tokens (catalogue + few-shots + L1 output + prompt).
 
 **Acceptance criteria.**
@@ -625,9 +668,9 @@ class DomainAgentSession:
 - Decision: pass / refuse / one precise clarification.
 
 **Files.**
-- `orchestrator/coverage_gate.py` — NEW.
+- `orchestrator/open_dag/coverage_gate.py` — NEW.
 - `orchestrator/prompts.py` — `COVERAGE_GATE_SYSTEM_PROMPT`.
-- `shared/workflow/dag_echo.py` — NEW. Code-rendered English description of an assembled Workflow + bindings (no LLM); the gate uses this as deterministic input.
+- `orchestrator/open_dag/dag_echo.py` — NEW. Code-rendered English description of an assembled Workflow + bindings (no LLM); the gate uses this as deterministic input.
 - `tests/orchestrator/test_coverage_gate.py` — NEW.
 
 **Gate output contract.**
@@ -675,7 +718,7 @@ class GateVerdict(BaseModel):
 
 **Files.**
 - `shared/artifacts/lineage.py` — add `IntentChain` record (router decomposition, selector lingo-resolution rationales, composer wiring rationale, gate verdict).
-- `orchestrator/answer.py` — NEW or extend existing answer rendering with the intent-echo template.
+- `orchestrator/open_dag/answer.py` — NEW or extend existing answer rendering with the intent-echo template.
 - `orchestrator/prompts.py` — `ANSWER_SYSTEM_PROMPT` updated with the intent-first format.
 - `tests/orchestrator/test_answer_intent_echo.py` — NEW.
 
@@ -717,14 +760,14 @@ class GateVerdict(BaseModel):
 ### PR-10 — End-to-end wiring + eval suite + scaling proofs
 
 **Scope.**
-- A new lane `orchestrator/open_dag_pipeline.py` that stitches L1 → L3 → L2 → L4 → L4.5 → L5 → L6 together.
+- A new lane `orchestrator/open_dag/pipeline.py` that stitches L1 → L3 → L2 → L4 → L4.5 → L5 → L6 together.
 - A pre-router in `CopilotSession` (very thin) that picks between the existing template path and the new open-DAG path. Simplest rule for PoC: if a template-router would match cleanly, use the template lane; otherwise route to open-DAG. (This pre-router is the only piece that *both* paths touch — kept deliberately tiny.)
 - The full eval suite covering every operator family.
 - The three scaling proofs (the actual gating deliverable).
 - CI lints.
 
 **Files.**
-- `orchestrator/open_dag_pipeline.py` — NEW.
+- `orchestrator/open_dag/pipeline.py` — NEW.
 - `orchestrator/session.py` — small extension to route new lane.
 - `tests/eval/test_open_dag_eval_matrix.py` — NEW.
 - `tests/eval/test_scaling_proofs.py` — NEW.
@@ -740,10 +783,10 @@ class GateVerdict(BaseModel):
 | RELATIONSHIP (full-sample) | "Correlation between US 2s10s and 5Y breakeven over 5y" | golden #1 |
 | RELATIONSHIP (rolling) | "Rolling 1y correlation between SOFR 2s10s and UST 2s10s" | golden #2 |
 | REGRESSION | "Rolling 1y beta of BTP-Bund to Bund 10Y yield" | golden #4 |
-| COINTEGRATION | "Is the 5s30s curve stationary over the last 5 years?" | `1 leaf (curve_spread) → cointegration → ScalarMetric` (single-input variant) |
+| COINTEGRATION | "Are US 5Y and US 30Y yields cointegrated over the last 5 years?" | `2 yield-level leaves → align_series → select×2 → cointegration → ScalarMetric` |
 | TRANSFORM | "Z-score of the SOFR 5Y vs its 1y history" | golden #6 |
 | EVENT_REGIME | "Average UST 10Y move 5 days after each NFP surprise > 50K" | `1 leaf (NFP surprise) → threshold_events → event_windows(target=UST 10Y) → conditional_aggregate → Series` |
-| SCAN | "Show the 5 biggest dislocations in OIS curve spreads today" | `1 leaf (scan_ois_extremes_tool) → ScalarMetric/SeriesSet → L6` (scanner already returns ranked) |
+| SCAN | "Show the 5 biggest dislocations in OIS curve spreads today" | If PR-3 classifies the scanner as bridgeable, execute as a typed terminal leaf. If it is `TERMINAL_ONLY_SNAPSHOT`, the open-DAG lane must refuse/hand off explicitly; this eval still passes only if the limitation is surfaced honestly and no fake typed artifact is produced. |
 | PANEL | "Build a panel of every UST curve spread today" | `1 leaf (build_sovereign_yield_panel_tool) → Panel` |
 | BASIS | "Basis between USD 5Y linker breakeven and 5Y inflation swap" | `2 leaves (breakeven, ZCIS) → align_series → select ×2 → series_arithmetic.subtract → Series` |
 | MESSY LINGO #1 | "twos tens vs five year breakeven correl, five years back" | shape == RELATIONSHIP canonical (proves lingo robustness) |
@@ -758,7 +801,7 @@ The gating metric per the handoff is **shape and intent correctness on this matr
 
 | Proof | Test |
 |---|---|
-| Registration-only growth | Add a synthetic 59th primitive (`tests/eval/synthetic_primitive_59.py`) to one domain + a synthetic 17th operator (`tests/eval/synthetic_operator_17.py`) to the registry. Assert via `git diff` that `orchestrator/composer.py`, `orchestrator/coverage_gate.py`, `shared/workflow/validate.py`, `shared/workflow/executor.py`, `orchestrator/prompts.py:SUPERVISOR_SYSTEM_PROMPT`, and every OTHER domain's MCP server file are byte-for-byte unchanged. Then prove a fresh query using the new tools composes correctly. |
+| Registration-only growth | Add a synthetic 59th primitive (`tests/eval/synthetic_primitive_59.py`) to one domain + a synthetic 17th operator (`tests/eval/synthetic_operator_17.py`) to the registry. Assert via `git diff` that `orchestrator/open_dag/composer.py`, `orchestrator/open_dag/coverage_gate.py`, `shared/workflow/validate.py`, `shared/workflow/executor.py`, `orchestrator/prompts.py:SUPERVISOR_SYSTEM_PROMPT`, and every OTHER domain's MCP server file are byte-for-byte unchanged. Then prove a fresh query using the new tools composes correctly. |
 | Context-bound | Per query in the eval matrix, instrument the pipeline to record (a) each L2 selector's MCP-visible tool count = only own-domain tools; (b) the composer's prompt does NOT mention any primitive name (grep); (c) the composer's prompt token count is unchanged when the 59th primitive is registered (delta == 0 ± token-counter noise). |
 | Two-boundary | The three adversarial entries in the eval matrix above. Plus: a contradictory free-form `semantic_role` between LeafRequest and BoundLeaf → Boundary A surfaces as WARNING → gate returns CLARIFY. |
 
@@ -772,7 +815,7 @@ The gating metric per the handoff is **shape and intent correctness on this matr
 - Backtest is EXPLICITLY out of PoC scope; the trade operators are tracked for a follow-on registration-only growth PR that will reuse the same scaling-proof harness.
 
 **Acceptance criteria.**
-1. Every eval-matrix entry passes shape/intent correctness.
+1. Every eval-matrix entry passes shape/intent correctness, or for entries classified terminal-only by PR-3, returns the explicit non-executable limitation without producing a fake typed artifact.
 2. All three scaling proofs green.
 3. CI lints integrated and enforced on PRs.
 4. Pre-router cleanly separates lanes; existing template lane unaffected (existing template tests stay green).
@@ -791,10 +834,10 @@ See PR-10 §4.2. Tabular form repeated here for top-of-file reference. The eval 
 | RELATIONSHIP (full) | "Corr US 2s10s × 5Y breakeven, 5y" | Composer emits `align → select×2 → correlation` |
 | RELATIONSHIP (rolling) | "Rolling 1y corr SOFR 2s10s × UST 2s10s" | Composer emits `align → select×2 → rolling_correlation` |
 | REGRESSION | "Rolling beta BTP-Bund to Bund 10Y" | Composer emits `align → select×2 → rolling_regression` |
-| COINTEGRATION | "5s30s stationarity over 5y" | Composer emits `curve_spread → cointegration` |
+| COINTEGRATION | "US 5Y vs US 30Y cointegration over 5y" | Composer emits `align → select×2 → cointegration` |
 | TRANSFORM | "Z-score SOFR 5Y vs 1y" | Composer emits `OIS_level → rolling_zscore` |
 | EVENT_REGIME | "UST 10Y move +5d after NFP surprises > 50K" | Composer emits `NFP → threshold → event_windows → conditional_aggregate` |
-| SCAN | "Top 5 OIS dislocations" | Composer emits `scan_ois_extremes` leaf |
+| SCAN | "Top 5 OIS dislocations" | Composer either uses a bridgeable scanner declaration or refuses/hands off as terminal-only; no fake `Series`/`Panel` artifact |
 | PANEL | "Panel of every UST curve spread" | Composer emits `build_sovereign_yield_panel` leaf |
 | BASIS | "Basis: USD 5Y linker breakeven vs 5Y inflation swap" | Composer emits `align → select×2 → series_arithmetic.subtract` |
 | MESSY LINGO ×3 | "twos tens", "reds vs greens", "rich BTP-Bund vs 3y" | Composer produces the SAME shapes as their formal-language counterparts |
@@ -809,7 +852,7 @@ See PR-10 §4.2. Tabular form repeated here for top-of-file reference. The eval 
 | Where do operator descriptions live? | `config.yaml` ONLY; renderer fuses with registry slots | P10 — single source of truth. Avoids duplication Codex correctly called out. |
 | Coverage gate disposition | Hard-block (per R8). Refuse OR one precise clarification — gate picks based on whether the gap is fixable by user input. | Hard-block is settled; the refuse-vs-clarify choice is a UX detail the gate is competent to make. |
 | Repair budget | One round, additive-only mutations (insert adapter, fix params, fix slot wiring). No primitive swap. No DAG reshape. Refuse on exhaustion. | Prevents oscillation. Codex's "you can't keep retrying" intuition formalised. |
-| Resolver collision handling | `BoundLeaf` carries `domain` + `mcp_tool_name` + `resolver_tool_key`. The assembler derives `resolver_tool_key` via `domain_to_resolver_key()` (centralised adapter at [shared/workflow/resolver_keys.py](shared/workflow/resolver_keys.py)). | Respects the current ad-hoc convention (verified in [rates_agent/workflows/__init__.py](../rates_agent/workflows/__init__.py)) without locking it in. A future cleanup to uniform `<domain>::<tool>` is a one-file change. |
+| Resolver collision handling | `BoundLeaf` carries `domain` + `mcp_tool_name` + `resolver_tool_key`. The assembler derives `resolver_tool_key` via `domain_to_resolver_key()` (centralised adapter at `orchestrator/open_dag/resolver_keys.py`). | Respects the current ad-hoc convention (verified in [rates_agent/workflows/__init__.py](../rates_agent/workflows/__init__.py)) without locking it in. A future cleanup to uniform `<domain>::<tool>` is a one-file change. |
 | Role-discriminant strictness | Closed-substrate fields hard-checked; free-form fields normalised-string compared and escalated as soft warnings, NOT hard rejects. | Avoids the "curated role enum" trap (R5) while keeping mechanical contradiction detection. |
 | Boundary B source of truth | The ORIGINAL user prompt. L1 decomposition is supplementary evidence only. | Per Codex's correction point 4: if L1 dropped a domain, the decomposition is corrupted — checking against it would miss the very failure mode the gate exists to catch. |
 | Trade operators registration | Out of PoC scope. Will be a follow-on PR that reuses the registration-only growth harness — proving the architecture, not just the registration-only claim. | Per Codex's correction point 5: be honest about what the PoC proves vs what scales onto it. |
@@ -824,6 +867,7 @@ See PR-10 §4.2. Tabular form repeated here for top-of-file reference. The eval 
 | Non-goal | Why explicit |
 |---|---|
 | Backtest end-to-end | The three trade operators (`construct_trades` / `evaluate_trades` / `summarize_trades`) are unregistered. The architecture supports them, but the PoC does not claim to compose them. Follow-on PR will register them and exercise the scaling-proof harness to prove registration-only growth on a non-trivial new operator family. |
+| Terminal-only snapshot/scanner composition | Some scanner/snapshot primitives return ranked facts rather than `Series`/`Panel` artifacts. PR-3 must classify them honestly. The first open-DAG executor path must not pretend these are typed artifacts; bridging them requires either mapping them into an existing artifact honestly or an ADR for a new artifact type. |
 | Auto-scanner (Goal 2 from the founding vision) | The PoC is Goal 1 only (user-prompted DAG construction). Auto-scanner is the next horizon and depends on Goal 1 working. |
 | Sub-domain split inside any one MCP server | The CI lint will FAIL if a domain crosses the per-domain primitive cap, forcing a split — but the actual split work is its own follow-on PR (not in this plan). |
 | Multi-asset (FX, equities) domains | The substrate is portable; the PoC only proves the 6 rates domains currently registered. Adding FX is a sibling MCP server + a domain card — registration-only growth proves this WILL work. |
@@ -856,7 +900,7 @@ Audited against Codex's two rounds of pushback (kept here for reviewer convenien
 | Canonical shape includes `select_from_series_set ×2` | Codex round 1 | The previous shape was type-invalid against `align_series` outputting `SeriesSet`. Verified in [registry.py:338](../shared/workflow/registry.py:338). |
 | `BoundLeaf` carries `domain` + `mcp_tool_name` + `resolver_tool_key` | Codex round 1 + verified in [rates_agent/workflows/__init__.py:1079,1147](../rates_agent/workflows/__init__.py:1079) | Real resolver collision already exists; the current ad-hoc convention (bond_futures bare, policy_futures prefixed) is respected via a centralised adapter. |
 | Role-discriminant: closed-substrate fields hard-checked; free-form fields normalised-string compared and escalated as SOFT warnings | Codex round 2 | Pure string equality on LLM free-form is brittle; pure structured enums violate R5 (no curated role vocab). The split solves both. |
-| Resolver-key adapter (`shared/workflow/resolver_keys.py`) | Codex round 2 + code verification | Don't put `<domain>::<tool>` directly into `PrimitiveNode.tool_name` — that would require a substrate migration. Adapter respects current convention; future migration is a one-file change. |
+| Resolver-key adapter (`orchestrator/open_dag/resolver_keys.py`) | Codex round 2 + code verification | Don't put `<domain>::<tool>` directly into `PrimitiveNode.tool_name` — that would require a substrate migration. Adapter respects current convention; future migration is a one-file change, and shared workflow remains domain-blind. |
 | Eval matrix expanded across all 9 intent families + 3 messy-lingo + 3 adversarial | Codex round 2 | Previous matrix was relationship-heavy; risk of proving only one operator family. |
 | Boundary B compares against ORIGINAL PROMPT, not L1 decomposition | Codex round 2 | If L1 dropped a domain, decomposition is corrupted; checking against it would miss the very failure the gate exists to catch. |
 | Backtest explicitly listed as non-goal | Codex round 2 | The PoC must be honest about what it proves; backtest follows via the registration-only growth harness. |
