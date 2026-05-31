@@ -96,6 +96,10 @@ from orchestrator.open_dag.intent_chain import (
     RouterIntentRecord,
     SelectorIntentRecord,
 )
+from orchestrator.open_dag.run_record import (
+    RunLineage,
+    build_run_lineage,
+)
 from orchestrator.open_dag.dag_echo import (
     DagEcho,
     build_and_render_dag_echo,
@@ -216,4 +220,7 @@ __all__ = [
     "render_intent_echo",
     "render_provenance_footer",
     "render_refusal",
+    # Run lineage (PR-9A — the IntentChain + Lineage join)
+    "RunLineage",
+    "build_run_lineage",
 ]

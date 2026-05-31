@@ -208,6 +208,23 @@ class SelectorIntentRecord(BaseModel):
             "When non-None, the bound_* fields are empty by contract."
         ),
     )
+    rationale: str = Field(
+        default="",
+        description=(
+            "PR-9A Codex F2: the selector's lingo-resolution rationale "
+            "in one English sentence.  Per the plan §PR-9 the intent "
+            "chain MUST record selector rationales alongside the "
+            "structural fields.  In V1 this is DERIVED deterministically "
+            "from declared_semantic_role + declared_output_meaning + "
+            "fit_confidence (or the refusal string in refusal mode) — "
+            "see ``_derive_selector_rationale``.  A future PR-6 "
+            "extension could add a free-form LLM-authored "
+            "``rationale`` field to ``SelectorLLMOutput`` and populate "
+            "this directly from the LLM; the IntentChain slot is here "
+            "to consume it when it arrives.  Tests assert this is "
+            "non-empty for both bound and refused selectors."
+        ),
+    )
 
     @property
     def is_refusal(self) -> bool:
@@ -268,6 +285,24 @@ class ComposerIntentRecord(BaseModel):
             "Populated when the Composer declined (no operator chain "
             "fits the prompt).  When non-None, the structural fields "
             "are empty by contract."
+        ),
+    )
+    rationale: str = Field(
+        default="",
+        description=(
+            "PR-9A Codex F2: the composer's wiring rationale in one "
+            "English sentence.  Per the plan §PR-9 the intent chain "
+            "MUST record the composer's wiring rationale alongside "
+            "the structural fields.  In V1 this is DERIVED "
+            "deterministically from operator_names + "
+            "terminal_operator_name + terminal_artifact_type (or the "
+            "refusal string in refusal mode) — see "
+            "``_derive_composer_rationale``.  A future PR-7 extension "
+            "could add a free-form LLM-authored ``rationale`` field "
+            "to ``ComposerLLMOutput`` and populate this directly; the "
+            "IntentChain slot is here to consume it when it arrives. "
+            "Tests assert this is non-empty for both bound and "
+            "refused composers."
         ),
     )
 
@@ -413,6 +448,9 @@ class IntentChain(BaseModel):
         )
 
         # --- SELECTORS ---
+        # PR-9A Codex F2: each record's ``rationale`` is derived
+        # deterministically from the BoundLeaf surface so the plan's
+        # "selector lingo-resolution rationales" slot is populated.
         selectors: List[SelectorIntentRecord] = []
         for leaf in bound_leaves:
             if leaf.is_refusal:
@@ -421,6 +459,7 @@ class IntentChain(BaseModel):
                     domain=leaf.domain,
                     fit_confidence=leaf.fit_confidence,
                     refusal=leaf.refusal,
+                    rationale=_derive_selector_rationale(leaf),
                 ))
             else:
                 selectors.append(SelectorIntentRecord(
@@ -431,13 +470,19 @@ class IntentChain(BaseModel):
                     declared_output_meaning=leaf.declared_output_meaning,
                     bound_params=dict(leaf.params),
                     fit_confidence=leaf.fit_confidence,
+                    rationale=_derive_selector_rationale(leaf),
                 ))
 
         # --- COMPOSER ---
+        # PR-9A Codex F2: ``rationale`` derived from the wiring
+        # structure so the plan's "composer wiring rationale" slot
+        # is populated.
         if shape_or_workflow is None:
             # Composer refused.
+            refusal_reason = composer_refusal or "Composer refused (no reason supplied)"
             composer = ComposerIntentRecord(
-                refusal=composer_refusal or "Composer refused (no reason supplied)",
+                refusal=refusal_reason,
+                rationale=f"REFUSED: {refusal_reason}",
             )
         else:
             composer = _composer_record_from(shape_or_workflow)
@@ -476,6 +521,70 @@ class IntentChain(BaseModel):
 # ============================================================================
 # HELPERS
 # ============================================================================
+
+
+def _derive_selector_rationale(leaf: BoundLeaf) -> str:
+    """Derive the V1 selector lingo-resolution rationale string.
+
+    Per PR-9A Codex F2 + plan §PR-9 ("selector lingo-resolution
+    rationales"): the SelectorIntentRecord MUST carry a rationale
+    field.  PR-6's SelectorLLMOutput doesn't currently emit a
+    free-form rationale (only declared_semantic_role + declared_
+    output_meaning + fit_confidence), so V1 derives the rationale
+    deterministically from those fields.  When a future PR-6
+    extension adds a free-form ``rationale`` to SelectorLLMOutput,
+    this helper can be retired and the rationale read directly off
+    the BoundLeaf.
+
+    Format:
+      - Bound: ``"<role> from <domain> (fit_confidence=<f>): <meaning>"``
+      - Refusal: ``"REFUSED on <domain>: <reason>"``
+    """
+    if leaf.is_refusal:
+        return (
+            f"REFUSED on {leaf.domain}: {leaf.refusal}"
+        )
+    return (
+        f"{leaf.declared_semantic_role} from {leaf.domain} "
+        f"(fit_confidence={leaf.fit_confidence:.2f}): "
+        f"{leaf.declared_output_meaning}"
+    )
+
+
+def _derive_composer_rationale(
+    *,
+    workflow_id: str,
+    operator_names: Tuple[str, ...],
+    terminal_operator_name: str,
+    terminal_artifact_type: str,
+) -> str:
+    """Derive the V1 composer wiring rationale string.
+
+    Per PR-9A Codex F2 + plan §PR-9 ("composer wiring rationale"):
+    the ComposerIntentRecord MUST carry a rationale field.  PR-7's
+    ComposerLLMOutput doesn't currently emit a free-form rationale
+    (only the structural ShapeSpec), so V1 derives the rationale
+    deterministically from the operator topology.  When a future
+    PR-7 extension adds a free-form ``rationale`` to
+    ComposerLLMOutput, this helper can be retired.
+
+    Format:
+      ``"Wired <workflow_id>: <op1> -> ... -> <opN>; terminal
+        <terminal_op> -> <terminal_artifact>"``
+    """
+    if not operator_names:
+        # Degenerate 1-leaf shape — terminal IS the leaf.
+        return (
+            f"Wired {workflow_id}: degenerate 1-leaf shape "
+            "(no operator chain; terminal is the bound primitive "
+            "directly)."
+        )
+    chain = " -> ".join(operator_names)
+    terminal_desc = (
+        f"{terminal_operator_name} -> {terminal_artifact_type}"
+        if terminal_operator_name else "(leaf terminal)"
+    )
+    return f"Wired {workflow_id}: {chain}; terminal {terminal_desc}."
 
 
 def _composer_record_from(
@@ -522,11 +631,18 @@ def _composer_record_from(
         terminal_operator_name = ""
         terminal_artifact_type = ""
 
+    operator_names_tuple = tuple(operator_names_sorted)
     return ComposerIntentRecord(
         workflow_id=shape_or_workflow.workflow_id,
         terminal_operator_name=terminal_operator_name,
         terminal_artifact_type=terminal_artifact_type,
-        operator_names=tuple(operator_names_sorted),
+        operator_names=operator_names_tuple,
+        rationale=_derive_composer_rationale(
+            workflow_id=shape_or_workflow.workflow_id,
+            operator_names=operator_names_tuple,
+            terminal_operator_name=terminal_operator_name,
+            terminal_artifact_type=terminal_artifact_type,
+        ),
     )
 
 

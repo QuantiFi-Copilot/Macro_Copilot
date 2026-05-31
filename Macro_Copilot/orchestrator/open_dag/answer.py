@@ -430,6 +430,15 @@ class AnswerRenderer:
             from the executed terminal artifact (a number, a Series,
             a Panel).  The LLM uses it to author the prose; the
             renderer does NOT inspect its content.
+
+            **PR-9A Codex F4 — scope clarification.** This is the
+            RENDERER CONTRACT, not a live integration with the L5
+            substrate executor.  PR-9 ships the typed answer
+            surface; PR-10's orchestrator does the typed-artifact →
+            ``executed_summary: str`` translation (Series → "last
+            value X, range Y..Z", ScalarMetric → "X (n=N)", etc.).
+            Until PR-10, the caller is responsible for producing
+            the summary string.
         lineage_head_hash :
             The substrate Lineage's head_hash (single content-
             addressed identifier).  Surfaced in the provenance
@@ -441,10 +450,36 @@ class AnswerRenderer:
 
         Returns
         -------
-        str — the final markdown answer.  Always populated; on any
-        failure mode the renderer returns a structured
-        explanation including the intent echo and an "answer
-        generation failed" note (does not crash, does not raise).
+        str — the final markdown answer.
+
+        **PR-9A Codex F3 — fail-safe scope clarification.**  Failure
+        modes split two ways:
+
+          (a) RUNTIME failures the renderer can recover from — LLM
+              timeout, LLM exception, parsing error, malformed
+              ``_AnswerLLMOutput``.  All four return a structured
+              fail-safe markdown (intent echo + provenance footer +
+              a "answer prose could not be generated" note + the
+              failure reason).  Does NOT raise.
+          (b) PROGRAMMER errors — calling ``render`` without first
+              calling ``open()``, or with internal state corrupted
+              (e.g. the cached model went missing).  Raises
+              ``RuntimeError`` so the bug surfaces immediately in
+              the caller's code, not in production output.  Programmer
+              errors are NOT runtime fail-safes.
+
+        This split mirrors the same discipline used in PR-8's
+        ``CoverageGate.check`` (runtime failures → REFUSE verdict;
+        programmer errors → raise).  Both layers stay honest about
+        which kind of failure is which.
+
+        Refusal / clarification short-circuit:
+        When ``intent_chain.gate.status`` is REFUSE or CLARIFY (or
+        more generally ``intent_chain.is_answerable`` is False),
+        ``render`` does NOT consult the LLM — it returns the gate's
+        clarification or refusal message directly via the
+        deterministic ``render_clarification`` / ``render_refusal``
+        helpers.  No LLM tokens spent, no timeout risk.
         """
         # Short-circuit: refusal / clarification.
         if intent_chain.gate.status == "REFUSE":

@@ -759,3 +759,242 @@ class TestIntentFirstOrdering:
         # generated" failure note.
         failure_idx = out.find("answer prose could not be generated")
         assert 0 == echo_idx < failure_idx
+
+
+# ============================================================================
+# PR-9A — CODEX AUDIT CORRECTIVE TESTS
+# ============================================================================
+
+
+class TestPR9A_F1_RunLineageJoinsIntentChainAndComputeChain:
+    """PR-9A Codex F1: the plan §PR-9 requires lineage to record the
+    intent chain alongside the compute chain.  PR-9 had IntentChain
+    standalone; PR-9A adds RunLineage as the typed join.  These tests
+    assert the join carries both records + the consistency invariants
+    + the convenience accessors."""
+
+    @staticmethod
+    def _fetch_step():
+        from shared.artifacts.lineage import FetchStep
+        return FetchStep.build(
+            name="fetch_single_tenor",
+            version="1.0.0",
+            params={"curve_family": "UST", "tenor": "10Y"},
+        )
+
+    def _executed_lineage(self):
+        from shared.artifacts.lineage import Lineage
+        return Lineage.from_steps([self._fetch_step()])
+
+    def test_runlineage_carries_both_records(self):
+        from orchestrator.open_dag import RunLineage
+
+        chain = _build_canonical_pass_chain()
+        lineage = self._executed_lineage()
+        run = RunLineage(intent_chain=chain, compute_lineage=lineage)
+
+        # Both records present on the join.
+        assert run.intent_chain is chain
+        assert run.compute_lineage is lineage
+        # Helper accessors.
+        assert run.is_executed
+        assert run.is_answerable
+        assert run.head_hash == lineage.head_hash
+
+    def test_runlineage_pass_dryrun_no_compute_lineage_allowed(self):
+        # A PASS gate but no execution — dry-run / planning mode.
+        from orchestrator.open_dag import RunLineage
+
+        chain = _build_canonical_pass_chain()
+        run = RunLineage(intent_chain=chain, compute_lineage=None)
+        assert run.is_executed is False
+        assert run.is_answerable is False  # answerable requires execution
+        assert run.head_hash is None
+
+    def test_runlineage_refuse_with_compute_lineage_rejected(self):
+        from orchestrator.open_dag import RunLineage
+
+        chain = _build_canonical_refuse_chain()
+        lineage = self._executed_lineage()
+        # Pydantic ValidationError wraps the underlying ValueError
+        with pytest.raises(PydanticValidationError, match="REFUSE"):
+            RunLineage(intent_chain=chain, compute_lineage=lineage)
+
+    def test_runlineage_clarify_with_compute_lineage_rejected(self):
+        from orchestrator.open_dag import RunLineage
+
+        chain = _build_canonical_clarify_chain()
+        lineage = self._executed_lineage()
+        with pytest.raises(PydanticValidationError, match="CLARIFY"):
+            RunLineage(intent_chain=chain, compute_lineage=lineage)
+
+    def test_runlineage_refuse_no_compute_lineage_ok(self):
+        from orchestrator.open_dag import RunLineage
+
+        chain = _build_canonical_refuse_chain()
+        run = RunLineage(intent_chain=chain, compute_lineage=None)
+        assert run.is_executed is False
+        assert run.head_hash is None
+        # Convenience accessors still work.
+        assert run.user_prompt == chain.user_prompt
+        assert run.workflow_id == chain.composer.workflow_id
+
+    def test_runlineage_roundtrips_through_json(self):
+        from orchestrator.open_dag import RunLineage
+
+        chain = _build_canonical_pass_chain()
+        lineage = self._executed_lineage()
+        run = RunLineage(intent_chain=chain, compute_lineage=lineage)
+
+        as_json = run.model_dump_json()
+        rebuilt = RunLineage.model_validate_json(as_json)
+        assert rebuilt.is_executed
+        assert rebuilt.head_hash == run.head_hash
+        assert rebuilt.intent_chain.user_prompt == chain.user_prompt
+        # The four sub-records are preserved through the round-trip.
+        assert rebuilt.intent_chain.router.intent_tag == chain.router.intent_tag
+        assert len(rebuilt.intent_chain.selectors) == len(chain.selectors)
+        assert rebuilt.intent_chain.composer.terminal_operator_name == \
+            chain.composer.terminal_operator_name
+        assert rebuilt.intent_chain.gate.status == chain.gate.status
+
+    def test_runlineage_summary_includes_both_halves(self):
+        from orchestrator.open_dag import RunLineage
+
+        chain = _build_canonical_pass_chain()
+        lineage = self._executed_lineage()
+        run = RunLineage(intent_chain=chain, compute_lineage=lineage)
+        summary = run.summary()
+
+        # Compute-chain side.
+        assert summary["head_hash"] == lineage.head_hash
+        assert summary["is_executed"] is True
+        # Intent-chain side.
+        assert summary["gate_status"] == "PASS"
+        assert summary["intent_tag"] == "relationship"
+        assert summary["selector_count"] == 2
+        assert summary["composer_refused"] is False
+
+    def test_build_run_lineage_factory(self):
+        from orchestrator.open_dag import build_run_lineage
+
+        chain = _build_canonical_pass_chain()
+        lineage = self._executed_lineage()
+        run = build_run_lineage(
+            intent_chain=chain,
+            compute_lineage=lineage,
+        )
+        # Same object the Pydantic ctor builds.
+        assert run.is_executed
+        assert run.head_hash == lineage.head_hash
+
+
+class TestPR9A_F2_SelectorAndComposerRationalesPopulated:
+    """PR-9A Codex F2: the plan §PR-9 explicitly lists "selector
+    lingo-resolution rationales" and "composer wiring rationale" as
+    fields the intent chain MUST capture.  PR-9 had only the
+    structural records; PR-9A adds the rationale fields, derived
+    deterministically from the existing structured data."""
+
+    def test_bound_selector_rationale_is_populated(self):
+        chain = _build_canonical_pass_chain()
+        for s in chain.selectors:
+            assert s.rationale, (
+                f"Selector {s.leaf_id} has empty rationale; PR-9A "
+                "requires every SelectorIntentRecord to carry one"
+            )
+            # The derivation includes the role + domain + confidence.
+            assert s.declared_semantic_role in s.rationale
+            assert s.domain in s.rationale
+
+    def test_refused_selector_rationale_is_populated(self):
+        refusal_leaf = BoundLeaf(
+            leaf_id="leaf_a",
+            domain="sovereign_bonds",
+            fit_confidence=0.0,
+            refusal="no tool fits the request",
+        )
+        chain = IntentChain.from_inputs(
+            user_prompt="p",
+            route_decision=_mk_route_decision(),
+            bound_leaves=[refusal_leaf],
+            shape_or_workflow=GOLDEN_TRANSFORM_ROLLING_ZSCORE,
+            gate_verdict=GateVerdict(status="PASS", reason="ok"),
+        )
+        s = chain.selectors[0]
+        assert s.rationale
+        # Refusal mode rationale surfaces the refusal reason.
+        assert "REFUSED" in s.rationale
+        assert "no tool fits the request" in s.rationale
+
+    def test_composer_rationale_is_populated(self):
+        chain = _build_canonical_pass_chain()
+        # The composer rationale describes the wiring topology.
+        assert chain.composer.rationale
+        assert chain.composer.workflow_id in chain.composer.rationale
+        assert chain.composer.terminal_operator_name in chain.composer.rationale
+
+    def test_composer_refusal_rationale_carries_reason(self):
+        chain = IntentChain.from_inputs(
+            user_prompt="impossible",
+            route_decision=_mk_route_decision(),
+            bound_leaves=[_mk_bound_leaf("leaf_a")],
+            shape_or_workflow=None,
+            gate_verdict=GateVerdict(status="PASS", reason="ok"),
+            composer_refusal="no operator chain fits",
+        )
+        assert chain.composer.rationale
+        assert "REFUSED" in chain.composer.rationale
+        assert "no operator chain fits" in chain.composer.rationale
+
+    def test_all_four_plan_required_rationales_present(self):
+        """Plan §PR-9 lists 4 rationales the intent chain MUST capture:
+        router decomposition, selector lingo-resolution rationales,
+        composer wiring rationale, gate verdict.  Assert all 4 ARE
+        on the canonical chain."""
+        chain = _build_canonical_pass_chain()
+        # Router: decomposition + rationale + adjustments.
+        assert chain.router.decomposition
+        assert chain.router.rationale
+        # Selectors: each has a non-empty rationale.
+        assert chain.selectors
+        for s in chain.selectors:
+            assert s.rationale
+        # Composer: non-empty rationale on bound shapes.
+        assert chain.composer.rationale
+        # Gate: reason + status.
+        assert chain.gate.reason
+        assert chain.gate.status
+
+
+class TestPR9A_F3_FailSafeScopeAccurate:
+    """PR-9A Codex F3: the PR-9 commit message overclaimed "every
+    failure mode... returns structured markdown."  Reality: runtime
+    failures (timeout/exception/parsing-error/malformed) fail-safe;
+    programmer errors (not-open) raise.  This is documented and
+    asserted explicitly."""
+
+    @pytest.mark.asyncio
+    async def test_not_open_raises_runtime_error_not_failsafe(self):
+        renderer = AnswerRenderer()
+        chain = _build_canonical_pass_chain()
+        # Programmer error: didn't call open().  MUST raise — not a
+        # fail-safe markdown.
+        with pytest.raises(RuntimeError, match="not open"):
+            await renderer.render(
+                intent_chain=chain,
+                executed_summary="x",
+                lineage_head_hash="h",
+            )
+
+    def test_render_docstring_documents_failure_mode_split(self):
+        # The docstring explicitly distinguishes the two flavours
+        # (runtime → fail-safe; programmer → raise) so a future
+        # reader doesn't repeat the original overclaim.
+        from orchestrator.open_dag.answer import AnswerRenderer
+        doc = AnswerRenderer.render.__doc__ or ""
+        assert "RUNTIME failures" in doc
+        assert "PROGRAMMER errors" in doc
+        # And calls out F4 (executed_summary scope) explicitly.
+        assert "RENDERER CONTRACT" in doc
+        assert "PR-10" in doc
