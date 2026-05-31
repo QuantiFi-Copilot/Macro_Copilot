@@ -96,6 +96,13 @@ from orchestrator.open_dag.intent_chain import (
     RouterIntentRecord,
     SelectorIntentRecord,
 )
+from orchestrator.open_dag.pipeline import (
+    ExecutorCallback,
+    OpenDagPipeline,
+    PipelineOutcome,
+    PipelineStatus,
+    SelectorCallback,
+)
 from orchestrator.open_dag.run_record import (
     RunLineage,
     build_run_lineage,
@@ -223,4 +230,10 @@ __all__ = [
     # Run lineage (PR-9A — the IntentChain + Lineage join)
     "RunLineage",
     "build_run_lineage",
+    # Pipeline (PR-10)
+    "OpenDagPipeline",
+    "PipelineOutcome",
+    "PipelineStatus",
+    "ExecutorCallback",
+    "SelectorCallback",
 ]
