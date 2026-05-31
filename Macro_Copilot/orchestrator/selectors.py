@@ -65,6 +65,7 @@ the substrate's typed channels.
 
 from __future__ import annotations
 
+import typing
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -78,8 +79,13 @@ from orchestrator.open_dag import (
     declare_primitive_output,
     domain_to_resolver_key,
 )
+from orchestrator.open_dag.composability_audit import (
+    Composability,
+    classify_primitive,
+)
+from shared.artifacts.types import Panel as PanelArtifact
 from shared.schemas.time_series import TimeSeriesUnits
-from shared.workflow.registry import PrimitiveResolver
+from shared.workflow.registry import PrimitiveResolver, PrimitiveSpec
 
 
 # ============================================================================
@@ -96,6 +102,14 @@ class ToolCatalogueEntry(BaseModel):
     (rich description + structured metadata) AND everything the
     post-LLM code needs to build a resolver-safe ``BoundLeaf``
     (resolver key + declared output type + declared per-field units).
+
+    Per the PR-6A corrective, every catalogue entry is classified as
+    either ``BRIDGEABLE_SERIES`` or ``BRIDGEABLE_PANEL`` (per the PR-3
+    composability audit).  ``TERMINAL_ONLY_SNAPSHOT`` and
+    ``UNDECLARED`` primitives are filtered out of the catalogue at
+    render time (``DroppedToolEntry`` records them) — the Selector
+    cannot bind to them because the open-DAG executor cannot bridge
+    their output as a typed leaf.
 
     Frozen.  Round-trips cleanly through JSON for logging.
     """
@@ -116,10 +130,51 @@ class ToolCatalogueEntry(BaseModel):
     # Resolver-safe identity (post-LLM code uses this for BoundLeaf)
     resolver_tool_key: str = Field(..., min_length=1)
 
-    # Static output metadata (from PrimitiveDeclaration)
+    # Static output metadata (from PrimitiveDeclaration + composability)
+    composability: Composability = Field(
+        ...,
+        description=(
+            "PR-3 audit classification.  Always BRIDGEABLE_SERIES or "
+            "BRIDGEABLE_PANEL for kept entries; TERMINAL_ONLY_SNAPSHOT "
+            "and UNDECLARED are filtered out before catalogue assembly."
+        ),
+    )
     output_artifact_type: str = Field(..., min_length=1)
     output_field_units: Dict[str, str] = Field(default_factory=dict)
-    available_output_fields: Tuple[str, ...] = Field(default_factory=tuple)
+    available_output_fields: Tuple[str, ...] = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Non-empty by construction.  For BRIDGEABLE_SERIES, the keys "
+            "of output_field_units.  For BRIDGEABLE_PANEL, the names of "
+            "Panel-typed fields on the primitive's *Output class "
+            "(introspected so the Selector cannot pick a non-Panel "
+            "field that would crash the executor's Panel bridge)."
+        ),
+    )
+
+
+class DroppedToolEntry(BaseModel):
+    """One row in the per-render report of MCP tools the catalogue
+    excluded.  Surfaced by ``render_tool_catalogue`` so the session's
+    logging / observability sees registration drift and composability
+    boundary refusals rather than silently shrinking the Selector's
+    menu (Codex PR-6 finding #4)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    mcp_tool_name: str = Field(..., min_length=1)
+    reason: str = Field(..., min_length=1)
+    composability: Optional[Composability] = Field(
+        default=None,
+        description=(
+            "Set when the drop was due to a composability classification "
+            "(TERMINAL_ONLY_SNAPSHOT or UNDECLARED).  Null when the "
+            "drop was due to missing resolver metadata (the tool is "
+            "MCP-visible but the resolver doesn't know it — registration "
+            "drift the session logs as a warning)."
+        ),
+    )
 
 
 # ============================================================================
@@ -231,64 +286,196 @@ class SelectorLLMOutput(BaseModel):
 # ============================================================================
 
 
+def _panel_typed_fields(output_class) -> Tuple[str, ...]:
+    """Introspect a primitive's *Output class and return the names of
+    fields whose annotation is ``Panel`` or ``Optional[Panel]``.
+
+    The Panel bridge (``shared.artifacts.adapters.from_time_series.
+    tool_output_to_artifact_panel``) requires ``output_field`` to be a
+    Panel-typed field on the output class; selecting a non-Panel field
+    (e.g. the LLM picks ``"time_series"`` because that's the
+    Series-primitive convention it saw elsewhere) causes a runtime
+    crash inside the bridge.
+
+    Per the PR-6A corrective, the Selector's catalogue exposes ONLY
+    Panel-typed fields for BRIDGEABLE_PANEL primitives so the LLM
+    cannot pick a wrong-shape field.  Returns a tuple in
+    declaration order (so the catalogue prompt is stable).
+    """
+    out: List[str] = []
+    fields = getattr(output_class, "model_fields", None)
+    if not fields:
+        return ()
+    for name, info in fields.items():
+        annotation = getattr(info, "annotation", None)
+        if annotation is PanelArtifact:
+            out.append(name)
+            continue
+        # Handle Optional[Panel] / Union[Panel, None] / etc.
+        try:
+            args = typing.get_args(annotation)
+        except Exception:
+            args = ()
+        if args and any(arg is PanelArtifact for arg in args):
+            out.append(name)
+    return tuple(out)
+
+
 def render_tool_catalogue(
     domain: Domain,
     mcp_tools: Sequence[Any],
     resolver: PrimitiveResolver,
-) -> List[ToolCatalogueEntry]:
+) -> Tuple[List[ToolCatalogueEntry], List[DroppedToolEntry]]:
     """Render the per-Selector tool catalogue.
 
-    Parameters
-    ----------
-    domain :
-        The Selector's own domain.  Used to derive resolver-safe
-        primitive keys via ``domain_to_resolver_key``.
-    mcp_tools :
-        Sequence of MCP tool descriptors.  Each must expose ``.name``
-        and ``.description`` attributes — the LangChain
-        ``MultiServerMCPClient.get_tools()`` return type satisfies this
-        in the live path; tests pass plain duck-typed objects.
-    resolver :
-        The agent-side ``PrimitiveResolver`` (e.g.
-        ``rates_agent.workflows.rates_primitive_resolver``).  Used
-        only for static metadata lookup via
-        ``declare_primitive_output`` — no callable invoked.
+    Per the PR-6A corrective (Codex audit findings #1 + #4), this
+    function honours the PR-3 composability audit:
+
+      - ``BRIDGEABLE_SERIES`` primitives become catalogue entries with
+        ``available_output_fields`` = keys of ``output_field_units``.
+      - ``BRIDGEABLE_PANEL`` primitives become catalogue entries with
+        ``available_output_fields`` = Panel-typed fields on the
+        primitive's *Output class (introspected — see
+        ``_panel_typed_fields``).
+      - ``TERMINAL_ONLY_SNAPSHOT`` primitives are EXCLUDED with a
+        ``DroppedToolEntry`` recording the reason; the open-DAG
+        executor cannot bridge their output as a typed leaf, so the
+        Selector cannot honestly bind them.
+      - ``UNDECLARED`` primitives are EXCLUDED with a structured
+        diagnostic — the resolver registration is incomplete.
+      - MCP tools the resolver doesn't know at all (registration
+        drift) are EXCLUDED with a structured diagnostic.
+      - Bridgeable primitives whose introspection finds NO usable
+        output fields (rare; defensive) are EXCLUDED as
+        ``UNDECLARED``.
 
     Returns
     -------
-    list[ToolCatalogueEntry]
-        One entry per MCP tool, in input order.  Entries whose
-        resolver lookup fails (the MCP server registered a tool but
-        no PrimitiveSpec exists) are dropped — a defensive measure
-        for the rates resolver's transition state where new MCP
-        tools may temporarily lag registry entries.
+    (kept_catalogue, dropped) :
+        ``kept_catalogue`` is the list the Selector LLM sees.  Each
+        entry's ``available_output_fields`` is non-empty by
+        construction.  ``dropped`` is a structured list the session
+        logs as a warning; surfacing it instead of silently
+        ``continue``ing is the explicit fix for Codex finding #4
+        (registration drift / composability boundary refusals must be
+        observable).
     """
-    out: List[ToolCatalogueEntry] = []
+    kept: List[ToolCatalogueEntry] = []
+    dropped: List[DroppedToolEntry] = []
     domain_value = domain.value
+
     for tool in mcp_tools:
         mcp_name = getattr(tool, "name", None)
         description = getattr(tool, "description", None)
         if not mcp_name or not description:
-            continue
+            continue  # malformed tool entry; nothing structured to record
         resolver_key = domain_to_resolver_key(domain_value, mcp_name)
+
+        # ---- resolver lookup (PrimitiveSpec) ----
         try:
-            decl: PrimitiveDeclaration = declare_primitive_output(
-                resolver, resolver_key,
-            )
+            spec: PrimitiveSpec = resolver(resolver_key)
         except KeyError:
-            # MCP exposes the tool but the resolver doesn't know it.
-            # Skip — the Selector can't bind something it has no
-            # static declaration for.
+            dropped.append(DroppedToolEntry(
+                mcp_tool_name=mcp_name,
+                reason=(
+                    f"resolver has no PrimitiveSpec for "
+                    f"resolver_tool_key={resolver_key!r}; possible "
+                    "MCP-vs-resolver registration drift"
+                ),
+                composability=None,
+            ))
             continue
-        out.append(ToolCatalogueEntry(
+
+        # ---- composability classification (PR-3 audit) ----
+        audit_entry = classify_primitive(spec)
+        cls = audit_entry.classification
+
+        if cls == Composability.TERMINAL_ONLY_SNAPSHOT:
+            dropped.append(DroppedToolEntry(
+                mcp_tool_name=mcp_name,
+                reason=(
+                    "TERMINAL_ONLY_SNAPSHOT — primitive returns a "
+                    "scanner/snapshot shape that the open-DAG executor "
+                    "cannot bridge as a typed leaf.  The existing "
+                    "domain-agent path (run) can still answer queries "
+                    "that need this primitive."
+                ),
+                composability=cls,
+            ))
+            continue
+
+        if cls == Composability.UNDECLARED:
+            dropped.append(DroppedToolEntry(
+                mcp_tool_name=mcp_name,
+                reason=(
+                    "UNDECLARED — primitive's resolver metadata is "
+                    "insufficient for the composability audit; cannot "
+                    "honestly bind"
+                ),
+                composability=cls,
+            ))
+            continue
+
+        # ---- derive available_output_fields per classification ----
+        decl: PrimitiveDeclaration = declare_primitive_output(
+            resolver, resolver_key,
+        )
+
+        if cls == Composability.BRIDGEABLE_SERIES:
+            available = decl.available_output_fields
+            if not available:
+                # Should not happen — BRIDGEABLE_SERIES requires
+                # non-empty output_field_units.  Defensive drop with
+                # diagnostic.
+                dropped.append(DroppedToolEntry(
+                    mcp_tool_name=mcp_name,
+                    reason=(
+                        "classified BRIDGEABLE_SERIES but "
+                        "available_output_fields is empty — defensive "
+                        "drop; investigate resolver registration"
+                    ),
+                    composability=cls,
+                ))
+                continue
+        elif cls == Composability.BRIDGEABLE_PANEL:
+            available = _panel_typed_fields(spec.output_class)
+            if not available:
+                # BRIDGEABLE_PANEL but no Panel-typed fields visible
+                # on the *Output class.  Drop honestly — the LLM
+                # cannot pick a safe field.
+                dropped.append(DroppedToolEntry(
+                    mcp_tool_name=mcp_name,
+                    reason=(
+                        "classified BRIDGEABLE_PANEL but no Panel-typed "
+                        "fields visible on *Output schema; cannot pick a "
+                        "safe output_field"
+                    ),
+                    composability=cls,
+                ))
+                continue
+        else:
+            # New classification value added to the enum — defensive.
+            dropped.append(DroppedToolEntry(
+                mcp_tool_name=mcp_name,
+                reason=(
+                    f"unhandled Composability classification "
+                    f"{cls.value!r} — selector module needs updating"
+                ),
+                composability=cls,
+            ))
+            continue
+
+        kept.append(ToolCatalogueEntry(
             mcp_tool_name=mcp_name,
             description=description,
             resolver_tool_key=resolver_key,
+            composability=cls,
             output_artifact_type=decl.output_artifact_type,
             output_field_units=dict(decl.output_field_units),
-            available_output_fields=decl.available_output_fields,
+            available_output_fields=available,
         ))
-    return out
+
+    return kept, dropped
 
 
 # ============================================================================
@@ -463,6 +650,32 @@ def llm_output_to_bound_leaf(
             ),
         )
 
+    # PR-6A corrective (Codex finding #1): validate the chosen
+    # output_field against the catalogue entry's declared set.  The
+    # catalogue's available_output_fields is GROUND TRUTH per
+    # composability classification (output_field_units keys for
+    # Series; Panel-typed fields for Panel).  If the LLM picks a
+    # field outside that set, the executor's bridge would crash at
+    # execute time — refuse here so the failure is honest and the
+    # Assembler's repair loop can re-bind.
+    if output_field not in entry.available_output_fields:
+        return BoundLeaf(
+            leaf_id=leaf_id,
+            domain=domain.value,
+            mcp_tool_name=chosen,
+            resolver_tool_key=entry.resolver_tool_key,
+            fit_confidence=output.fit_confidence,
+            refusal=(
+                f"Selector LLM chose output_field={output_field!r} for "
+                f"tool {chosen!r}, but the catalogue declares "
+                f"available_output_fields="
+                f"{list(entry.available_output_fields)} "
+                f"({entry.composability.value} primitive).  Refusing "
+                "rather than emitting a leaf the executor's bridge "
+                "would fail to lift."
+            ),
+        )
+
     # Derive closed-substrate fields from the catalogue (ground truth).
     declared_units_raw = entry.output_field_units.get(output_field)
     declared_units: Optional[TimeSeriesUnits] = None
@@ -541,6 +754,7 @@ def assert_request_for_this_domain(
 
 __all__ = [
     "ToolCatalogueEntry",
+    "DroppedToolEntry",
     "SelectorLLMOutput",
     "SelectorBindingError",
     "render_tool_catalogue",

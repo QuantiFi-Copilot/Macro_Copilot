@@ -39,10 +39,14 @@ Design choices
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
-from typing import Any, Awaitable, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional
+
+if TYPE_CHECKING:
+    from orchestrator.open_dag import BoundLeaf, LeafRequest
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import (
@@ -163,6 +167,7 @@ class DomainAgentSession:
 
         # PR-6 fill_leaf scaffolding — populated in open().
         self._tool_catalogue: list = []
+        self._dropped_tools: list = []
         self._mcp_tools_for_catalogue: list = []
         self._cached_selector_system_message: SystemMessage | None = None
         self._selector_model = None
@@ -257,21 +262,42 @@ class DomainAgentSession:
 
         # PR-6 fill_leaf scaffolding.  We build the tool catalogue
         # (one entry per MCP tool that the supplied PrimitiveResolver
-        # knows) AND construct a separate, untooled model bound to
-        # SelectorLLMOutput's structured-output schema.  Both pieces
-        # are optional — set up only when a resolver was supplied to
-        # the constructor; without one, fill_leaf raises a clear
-        # error.
+        # knows AND that the PR-3 composability audit classifies as
+        # bridgeable) AND construct a separate, untooled model bound
+        # to SelectorLLMOutput's structured-output schema.  Both
+        # pieces are optional — set up only when a resolver was
+        # supplied to the constructor; without one, fill_leaf raises
+        # a clear error.
         if self._primitive_resolver is not None:
             from orchestrator.prompts import SELECTOR_FILL_LEAF_SYSTEM_PROMPT
             from orchestrator.selectors import render_tool_catalogue
 
             self._mcp_tools_for_catalogue = list(tools)
-            self._tool_catalogue = render_tool_catalogue(
+            # PR-6A: render_tool_catalogue now returns
+            # (kept, dropped) per the composability-honest catalogue
+            # discipline.  Dropped entries are surfaced as warnings so
+            # registration drift / TERMINAL_ONLY_SNAPSHOT exclusions
+            # are observable rather than silent.
+            self._tool_catalogue, self._dropped_tools = render_tool_catalogue(
                 self.domain,
                 self._mcp_tools_for_catalogue,
                 self._primitive_resolver,
             )
+            if self._dropped_tools:
+                for dropped in self._dropped_tools:
+                    cls_value = (
+                        dropped.composability.value
+                        if dropped.composability is not None
+                        else "no-resolver-spec"
+                    )
+                    logger.warning(
+                        "[%s] selector catalogue dropped tool %r "
+                        "(classification=%s): %s",
+                        self.domain.value,
+                        dropped.mcp_tool_name,
+                        cls_value,
+                        dropped.reason,
+                    )
             self._cached_selector_system_message = SystemMessage(
                 content=[
                     {
@@ -291,8 +317,10 @@ class DomainAgentSession:
                 max_tokens=self._max_tokens,
             ).with_structured_output(SelectorLLMOutput, include_raw=True)
             logger.info(
-                "[%s] selector catalogue ready (%d tools)",
-                self.domain.value, len(self._tool_catalogue),
+                "[%s] selector catalogue ready (%d tools, %d dropped)",
+                self.domain.value,
+                len(self._tool_catalogue),
+                len(self._dropped_tools),
             )
 
         self._is_open = True
@@ -327,6 +355,7 @@ class DomainAgentSession:
         self._cached_selector_system_message = None
         self._selector_model = None
         self._tool_catalogue = []
+        self._dropped_tools = []
         self._mcp_tools_for_catalogue = []
         self._is_open = False
 
@@ -337,8 +366,10 @@ class DomainAgentSession:
     async def fill_leaf(
         self,
         leaf_id: str,
-        request: "Any",  # LeafRequest — typed-imported in the body
-    ) -> "Any":  # BoundLeaf — typed-imported in the body
+        request: "LeafRequest",
+        *,
+        timeout_s: float = 10.0,
+    ) -> "BoundLeaf":
         """Bind a single open-DAG leaf or refuse — no primitive execution.
 
         Per ``tmp/orchestration.md`` §PR-6, this method:
@@ -348,19 +379,28 @@ class DomainAgentSession:
           2. Renders the per-call user prompt (LeafRequest +
              pre-built catalogue) via
              ``orchestrator.selectors.render_user_prompt``.
-          3. Invokes the structured-output Selector model.
+          3. Invokes the structured-output Selector model, bounded by
+             ``timeout_s`` (PR-6A — Codex finding #3).
           4. Transforms the LLM output into a typed ``BoundLeaf`` via
              ``orchestrator.selectors.llm_output_to_bound_leaf``,
              which derives ``resolver_tool_key``,
              ``declared_output_artifact_type`` and ``declared_units``
              from the catalogue (not the LLM).
 
+        The signature differs from the plan's
+        ``fill_leaf(request, timeout_s=10.0)`` by adding a required
+        ``leaf_id`` — the BoundLeaf contract pairs each binding back
+        to its LeafHole by ``leaf_id``, and ``LeafRequest`` itself
+        does not carry that identifier.  The Assembler passes it
+        alongside the request.
+
         Returns a ``BoundLeaf`` — either a clean binding (``refusal``
-        is None) or a refusal.  Never executes a primitive.
+        is None) or a refusal.  Never executes a primitive; never
+        raises (refusal is first-class even on timeout / LLM error).
         """
         from langchain_core.messages import HumanMessage
 
-        from orchestrator.open_dag import BoundLeaf, LeafRequest
+        from orchestrator.open_dag import BoundLeaf
         from orchestrator.selectors import (
             SelectorBindingError,
             assert_request_for_this_domain,
@@ -387,25 +427,39 @@ class DomainAgentSession:
             )
 
         # ---- Type-safe routing guard ----
-        try:
-            assert_request_for_this_domain(request, self.domain)
-        except SelectorBindingError as exc:
-            # An upstream routing bug — raise so the Assembler hears
-            # about it instead of silently re-routing.
-            raise
+        # An upstream routing bug — raise so the Assembler hears about
+        # it instead of silently re-routing.
+        assert_request_for_this_domain(request, self.domain)
 
         # ---- Render user prompt ----
         user_text = render_user_prompt(
             self.domain, request, self._tool_catalogue,
         )
 
-        # ---- Invoke structured-output model ----
+        # ---- Invoke structured-output model (with timeout) ----
         messages = [
             self._cached_selector_system_message,
             HumanMessage(content=user_text),
         ]
         try:
-            result = await self._selector_model.ainvoke(messages)
+            result = await asyncio.wait_for(
+                self._selector_model.ainvoke(messages),
+                timeout=timeout_s,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "[%s] selector LLM timed out after %.1fs in fill_leaf",
+                self.domain.value, timeout_s,
+            )
+            return BoundLeaf(
+                leaf_id=leaf_id,
+                domain=self.domain.value,
+                fit_confidence=0.0,
+                refusal=(
+                    f"Selector LLM call timed out after {timeout_s}s "
+                    "without producing a structured output."
+                ),
+            )
         except Exception as exc:
             logger.exception(
                 "[%s] selector LLM call failed in fill_leaf",

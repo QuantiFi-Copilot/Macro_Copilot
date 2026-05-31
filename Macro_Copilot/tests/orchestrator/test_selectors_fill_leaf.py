@@ -111,10 +111,11 @@ class TestRenderToolCatalogue:
                 "Calculate a same-curve spread between two tenors.",
             ),
         ]
-        cat = render_tool_catalogue(
+        cat, dropped = render_tool_catalogue(
             Domain.SOVEREIGN_BONDS, tools, rates_primitive_resolver,
         )
         assert len(cat) == 1
+        assert dropped == []
         entry = cat[0]
         assert entry.mcp_tool_name == "calculate_curve_spread_tool"
         # For sovereign_bonds (bare-name domain), resolver key equals mcp name.
@@ -125,58 +126,93 @@ class TestRenderToolCatalogue:
 
     def test_renders_policy_futures_with_prefixed_resolver_key(self) -> None:
         # policy_futures uses prefixed resolver keys (see resolver_keys.py).
+        # Use a BRIDGEABLE_SERIES policy_futures primitive — most
+        # snapshot tools (price_level, volume_oi) are
+        # TERMINAL_ONLY_SNAPSHOT.
         from rates_agent.workflows import rates_primitive_resolver
 
         tools = [
             _Tool(
-                "get_futures_price_level_tool",
-                "Get the front-month futures price level for a curve family.",
+                "get_futures_butterfly_simple_tool",
+                "Compute a simple butterfly on policy-futures strips.",
             ),
         ]
-        cat = render_tool_catalogue(
+        cat, dropped = render_tool_catalogue(
             Domain.POLICY_FUTURES, tools, rates_primitive_resolver,
         )
         assert len(cat) == 1
+        assert dropped == []
         entry = cat[0]
-        assert entry.mcp_tool_name == "get_futures_price_level_tool"
+        assert entry.mcp_tool_name == "get_futures_butterfly_simple_tool"
         # Resolver key is PREFIXED for policy_futures.
         assert entry.resolver_tool_key == (
-            "policy_futures_get_futures_price_level_tool"
+            "policy_futures_get_futures_butterfly_simple_tool"
         )
 
-    def test_renders_bond_futures_with_bare_resolver_key(self) -> None:
-        # bond_futures shares the visible MCP tool name with
-        # policy_futures but keeps the bare resolver key (collision
-        # disambiguation seam from PR-3).
-        from rates_agent.workflows import rates_primitive_resolver
+    def test_bond_futures_has_no_bridgeable_primitives_in_v1(self) -> None:
+        # bond_futures registered primitives today are all
+        # TERMINAL_ONLY_SNAPSHOT (price_level, volume_oi, scanner).
+        # Catalogue legitimately empties; dropped list records the
+        # exclusion classifications so downstream observability sees
+        # the situation honestly.
+        from rates_agent.workflows import (
+            known_rates_primitives, rates_primitive_resolver,
+        )
+        from orchestrator.open_dag.composability_audit import Composability
 
+        # Use the actual MCP names bond_futures would expose.  Both
+        # are classified TERMINAL_ONLY for bond_futures.
         tools = [
-            _Tool(
-                "get_futures_price_level_tool",
-                "Get the front-month bond-future price level.",
-            ),
+            _Tool("get_futures_price_level_tool", "front-month price"),
+            _Tool("get_futures_volume_oi_tool", "front-month volume"),
         ]
-        cat = render_tool_catalogue(
+        cat, dropped = render_tool_catalogue(
             Domain.BOND_FUTURES, tools, rates_primitive_resolver,
         )
-        assert len(cat) == 1
-        entry = cat[0]
-        assert entry.resolver_tool_key == "get_futures_price_level_tool"
+        assert cat == []
+        assert len(dropped) == 2
+        for entry in dropped:
+            assert entry.composability == Composability.TERMINAL_ONLY_SNAPSHOT
+
+    def test_bond_futures_bare_resolver_key_derivation(self) -> None:
+        # PR-3 seam: bond_futures uses bare resolver keys; policy_futures
+        # uses prefixed.  Verified directly via domain_to_resolver_key
+        # since the bond_futures price_level primitive is now
+        # TERMINAL_ONLY_SNAPSHOT and excluded from the catalogue.
+        from orchestrator.open_dag.resolver_keys import (
+            domain_to_resolver_key,
+        )
+        assert (
+            domain_to_resolver_key("bond_futures", "get_futures_price_level_tool")
+            == "get_futures_price_level_tool"
+        )
+        assert (
+            domain_to_resolver_key("policy_futures", "get_futures_price_level_tool")
+            == "policy_futures_get_futures_price_level_tool"
+        )
 
     def test_drops_tool_with_no_resolver_entry(self) -> None:
+        # PR-6A corrective per Codex finding #4: the drop is no longer
+        # silent — DroppedToolEntry records the reason so registration
+        # drift is observable.
         from rates_agent.workflows import rates_primitive_resolver
 
         tools = [
             _Tool("calculate_curve_spread_tool", "OK tool"),
             _Tool("not_a_real_primitive_xyz", "Unknown tool"),
         ]
-        cat = render_tool_catalogue(
+        cat, dropped = render_tool_catalogue(
             Domain.SOVEREIGN_BONDS, tools, rates_primitive_resolver,
         )
         names = [e.mcp_tool_name for e in cat]
         assert names == ["calculate_curve_spread_tool"]
-        # Unknown tool was silently dropped — defensive against
-        # MCP-vs-resolver drift mid-deploy.
+        # The unknown tool now surfaces in the dropped list with a
+        # diagnostic reason.
+        assert len(dropped) == 1
+        assert dropped[0].mcp_tool_name == "not_a_real_primitive_xyz"
+        assert "registration drift" in dropped[0].reason
+        # composability=None because the resolver couldn't classify it.
+        assert dropped[0].composability is None
 
     def test_does_not_invoke_resolver_callable(self) -> None:
         # Synthetic resolver whose callable would assert if invoked;
@@ -207,8 +243,11 @@ class TestRenderToolCatalogue:
             return spec
 
         tools = [_Tool("silent_tool", "A docstring")]
-        cat = render_tool_catalogue(Domain.SOVEREIGN_BONDS, tools, _resolver)
+        cat, dropped = render_tool_catalogue(
+            Domain.SOVEREIGN_BONDS, tools, _resolver,
+        )
         assert len(cat) == 1
+        assert dropped == []
 
 
 # ============================================================================
@@ -218,11 +257,13 @@ class TestRenderToolCatalogue:
 
 class TestRenderUserPrompt:
     def _cat(self) -> List[ToolCatalogueEntry]:
+        from orchestrator.open_dag.composability_audit import Composability
         return [
             ToolCatalogueEntry(
                 mcp_tool_name="t1",
                 description="First tool docstring",
                 resolver_tool_key="t1",
+                composability=Composability.BRIDGEABLE_SERIES,
                 output_artifact_type="Series",
                 output_field_units={"time_series": "bps"},
                 available_output_fields=("time_series",),
@@ -231,9 +272,15 @@ class TestRenderUserPrompt:
                 mcp_tool_name="t2",
                 description="Second tool docstring",
                 resolver_tool_key="t2",
+                composability=Composability.BRIDGEABLE_PANEL,
                 output_artifact_type="Panel",
                 output_field_units={},
-                available_output_fields=(),
+                # PR-6A: Panel entries declare ACTUAL Panel-typed
+                # output_class fields (introspected at catalogue
+                # render time).  Empty tuple is no longer valid; this
+                # synthetic entry uses the canonical Panel-field name
+                # "panel".
+                available_output_fields=("panel",),
             ),
         ]
 
@@ -286,11 +333,13 @@ class TestRenderUserPrompt:
 
 class TestLLMOutputToBoundLeaf:
     def _cat(self) -> List[ToolCatalogueEntry]:
+        from orchestrator.open_dag.composability_audit import Composability
         return [
             ToolCatalogueEntry(
                 mcp_tool_name="calculate_curve_spread_tool",
                 description="Curve spread doc.",
                 resolver_tool_key="calculate_curve_spread_tool",
+                composability=Composability.BRIDGEABLE_SERIES,
                 output_artifact_type="Series",
                 output_field_units={
                     "time_series": "bps",
@@ -405,6 +454,30 @@ class TestLLMOutputToBoundLeaf:
         assert bound.is_refusal is True
         assert "chosen_output_field empty" in bound.refusal
 
+    def test_output_field_not_in_catalogue_becomes_refusal(self) -> None:
+        # PR-6A corrective per Codex finding #1: chosen_output_field
+        # MUST be in the catalogue entry's available_output_fields.
+        # The catalogue is GROUND TRUTH (output_field_units keys for
+        # Series; Panel-typed fields for Panel) so a wrong pick would
+        # crash the executor bridge.
+        output = SelectorLLMOutput(
+            chosen_mcp_tool_name="calculate_curve_spread_tool",
+            params={"curve_family": "UST"},
+            chosen_output_field="time_series_pct",  # NOT in catalogue
+            declared_semantic_role="x",
+            declared_output_meaning="x",
+            fit_confidence=0.7,
+        )
+        bound = llm_output_to_bound_leaf(
+            leaf_id="h_a",
+            domain=Domain.SOVEREIGN_BONDS,
+            output=output,
+            catalogue=self._cat(),
+        )
+        assert bound.is_refusal is True
+        assert "available_output_fields" in bound.refusal
+        assert "BRIDGEABLE_SERIES" in bound.refusal
+
     def test_resolver_key_consistent_with_catalogue(self) -> None:
         # BoundLeaf model_validator enforces
         # resolver_tool_key == domain_to_resolver_key(domain, mcp_tool_name).
@@ -490,41 +563,55 @@ class TestRoutingGuard:
 # suite's job.
 
 
-# Per-domain canonical primitives — picked because each has a clean
-# default ``time_series`` output_field declared.
-_DOMAIN_CANONICAL: Dict[Domain, str] = {
+# Per-domain canonical BRIDGEABLE primitive (None when the domain has
+# no bridgeable primitives in V1 — bond_futures' three registered
+# primitives are all TERMINAL_ONLY_SNAPSHOT).
+_DOMAIN_CANONICAL_BRIDGEABLE: Dict[Domain, str | None] = {
     Domain.SOVEREIGN_BONDS: "calculate_curve_spread_tool",
     Domain.OIS: "calculate_ois_curve_spread_tool",
     Domain.INFLATION_INDEXED_BONDS: (
         "calculate_breakeven_inflation_simple_tool"
     ),
     Domain.INFLATION_SWAPS: "calculate_inflation_swap_curve_spread_tool",
-    Domain.POLICY_FUTURES: "get_futures_calendar_spread_tool",
-    Domain.BOND_FUTURES: "get_futures_price_level_tool",
+    # PR-6A: policy_futures' price/calendar/volume tools are
+    # TERMINAL_ONLY; pick a butterfly tool that's BRIDGEABLE_SERIES.
+    Domain.POLICY_FUTURES: "get_futures_butterfly_simple_tool",
+    # V1 reality: bond_futures registers only snapshot/scanner
+    # primitives (price_level, volume_oi, scan_*).  fill_leaf in
+    # bond_futures can only refuse honestly until a bridgeable
+    # bond-futures primitive is registered.
+    Domain.BOND_FUTURES: None,
 }
 
 
 def _per_domain_catalogue(domain: Domain) -> List[ToolCatalogueEntry]:
     from rates_agent.workflows import rates_primitive_resolver
-    mcp_name = _DOMAIN_CANONICAL[domain]
+    mcp_name = _DOMAIN_CANONICAL_BRIDGEABLE[domain]
+    if mcp_name is None:
+        return []
     tools = [_Tool(mcp_name, f"Synthetic doc for {mcp_name}")]
-    return render_tool_catalogue(domain, tools, rates_primitive_resolver)
+    cat, _ = render_tool_catalogue(
+        domain, tools, rates_primitive_resolver,
+    )
+    return cat
 
 
 class TestEveryDomainFillLeaf:
-    @pytest.mark.parametrize("domain", list(Domain))
+    @pytest.mark.parametrize(
+        "domain",
+        [d for d, name in _DOMAIN_CANONICAL_BRIDGEABLE.items() if name is not None],
+    )
     def test_binding_path_returns_clean_bound_leaf(
         self, domain: Domain,
     ) -> None:
+        # Parametrised over domains with at least one BRIDGEABLE
+        # primitive registered.  Per PR-6A: every kept catalogue
+        # entry has non-empty available_output_fields by construction,
+        # so picking the first field is guaranteed safe.
         catalogue = _per_domain_catalogue(domain)
         assert catalogue, f"no catalogue entry for domain {domain.value!r}"
         entry = catalogue[0]
-        # Use the entry's first available output_field; bail if none.
-        output_field = (
-            entry.available_output_fields[0]
-            if entry.available_output_fields
-            else "time_series"
-        )
+        output_field = entry.available_output_fields[0]
         output = SelectorLLMOutput(
             chosen_mcp_tool_name=entry.mcp_tool_name,
             params={},
@@ -539,17 +626,41 @@ class TestEveryDomainFillLeaf:
             output=output,
             catalogue=catalogue,
         )
-        if bound.is_refusal:
-            # Some domains' canonical tool declares no output_fields
-            # (e.g. snapshot primitives) so the catalogue's entry has
-            # `available_output_fields=()` and the post-LLM transform
-            # refuses honestly.  That's still per-domain coverage —
-            # the path exercised the catalogue + LLM-output bridge.
-            assert "empty" in bound.refusal or "not in this domain" in bound.refusal
-        else:
-            assert bound.domain == domain.value
-            assert bound.mcp_tool_name == entry.mcp_tool_name
-            assert bound.resolver_tool_key == entry.resolver_tool_key
+        assert bound.is_refusal is False, (
+            f"unexpected refusal for {domain.value!r}: {bound.refusal}"
+        )
+        assert bound.domain == domain.value
+        assert bound.mcp_tool_name == entry.mcp_tool_name
+        assert bound.resolver_tool_key == entry.resolver_tool_key
+
+    def test_bond_futures_binding_refused_no_bridgeable_primitives(
+        self,
+    ) -> None:
+        # Acceptance-criterion-honest coverage for the one domain
+        # that has no bridgeable primitives in V1.  fill_leaf still
+        # "works" — it cleanly returns a refusal BoundLeaf when the
+        # catalogue is empty.
+        catalogue = _per_domain_catalogue(Domain.BOND_FUTURES)
+        assert catalogue == []
+        # Simulate an LLM that picked a (non-existent in catalogue)
+        # tool — post-LLM transform refuses with the catalogue-empty
+        # signature.
+        output = SelectorLLMOutput(
+            chosen_mcp_tool_name="any_tool",
+            params={},
+            chosen_output_field="any_field",
+            declared_semantic_role="x",
+            declared_output_meaning="x",
+            fit_confidence=0.0,
+        )
+        bound = llm_output_to_bound_leaf(
+            leaf_id="h_bf",
+            domain=Domain.BOND_FUTURES,
+            output=output,
+            catalogue=catalogue,
+        )
+        assert bound.is_refusal is True
+        assert "not in this domain's tool catalogue" in bound.refusal
 
     @pytest.mark.parametrize("domain", list(Domain))
     def test_refusal_path_returns_refusal_bound_leaf(
@@ -597,7 +708,7 @@ class TestOutputTypeDeclarationAccuracy:
 
         # Now ensure the catalogue + transform pipeline mirrors that.
         tools = [_Tool("calculate_curve_spread_tool", "doc")]
-        cat = render_tool_catalogue(
+        cat, _ = render_tool_catalogue(
             Domain.SOVEREIGN_BONDS, tools, rates_primitive_resolver,
         )
         output = SelectorLLMOutput(
@@ -614,7 +725,12 @@ class TestOutputTypeDeclarationAccuracy:
         )
         assert bound.declared_output_artifact_type == ArtifactTypeName.SERIES
 
-    def test_panel_primitive_declares_panel(self) -> None:
+    def test_panel_primitive_uses_panel_typed_output_field(self) -> None:
+        # PR-6A corrective per Codex finding #1: the catalogue's
+        # available_output_fields for a Panel primitive is the set of
+        # Panel-typed fields on the *Output class (introspected at
+        # render time).  For build_sovereign_yield_panel_tool the
+        # Panel-typed field is "panel" (Optional[Panel] annotation).
         from rates_agent.workflows import rates_primitive_resolver
 
         from orchestrator.open_dag import declare_primitive_output
@@ -624,18 +740,18 @@ class TestOutputTypeDeclarationAccuracy:
         assert decl.output_artifact_type == "Panel"
 
         tools = [_Tool("build_sovereign_yield_panel_tool", "doc")]
-        cat = render_tool_catalogue(
+        cat, dropped = render_tool_catalogue(
             Domain.SOVEREIGN_BONDS, tools, rates_primitive_resolver,
         )
-        # Panel-producing primitives have no output_field_units → no
-        # available_output_fields.  We supply a chosen_output_field
-        # value to force the binding path; the post-LLM transform
-        # accepts an LLM-supplied field even when the catalogue's
-        # available_output_fields is empty (declared_units stays None).
+        assert len(cat) == 1
+        assert dropped == []
+        # Panel-typed field surfaced from *Output schema introspection.
+        assert "panel" in cat[0].available_output_fields
+
         output = SelectorLLMOutput(
             chosen_mcp_tool_name="build_sovereign_yield_panel_tool",
             params={},
-            chosen_output_field="time_series",
+            chosen_output_field="panel",  # the actual Panel-typed field
             declared_semantic_role="x",
             declared_output_meaning="x",
             fit_confidence=1.0,
@@ -644,7 +760,104 @@ class TestOutputTypeDeclarationAccuracy:
             leaf_id="h", domain=Domain.SOVEREIGN_BONDS,
             output=output, catalogue=cat,
         )
+        assert bound.is_refusal is False
         assert bound.declared_output_artifact_type == ArtifactTypeName.PANEL
+        assert bound.output_field == "panel"
+
+    def test_panel_primitive_wrong_output_field_refuses(self) -> None:
+        # If the LLM picks a non-Panel field (e.g. "time_series" as it
+        # might guess from Series-primitive convention), the post-LLM
+        # transform refuses.  This prevents the runtime crash inside
+        # the Panel bridge.
+        from rates_agent.workflows import rates_primitive_resolver
+
+        tools = [_Tool("build_sovereign_yield_panel_tool", "doc")]
+        cat, _ = render_tool_catalogue(
+            Domain.SOVEREIGN_BONDS, tools, rates_primitive_resolver,
+        )
+        output = SelectorLLMOutput(
+            chosen_mcp_tool_name="build_sovereign_yield_panel_tool",
+            params={},
+            chosen_output_field="time_series",  # NOT a Panel field
+            declared_semantic_role="x",
+            declared_output_meaning="x",
+            fit_confidence=0.6,
+        )
+        bound = llm_output_to_bound_leaf(
+            leaf_id="h", domain=Domain.SOVEREIGN_BONDS,
+            output=output, catalogue=cat,
+        )
+        assert bound.is_refusal is True
+        assert "BRIDGEABLE_PANEL" in bound.refusal
+
+
+# ============================================================================
+# COMPOSABILITY EXCLUSIONS (PR-6A corrective, Codex finding #1)
+# ============================================================================
+
+
+class TestComposabilityExclusions:
+    """Per the PR-6A corrective: the catalogue MUST exclude
+    TERMINAL_ONLY_SNAPSHOT and UNDECLARED primitives, surfacing them
+    in the dropped list with a diagnostic reason."""
+
+    def test_terminal_only_snapshot_excluded(self) -> None:
+        # calculate_half_life_tool is a sovereign_bonds primitive
+        # classified TERMINAL_ONLY_SNAPSHOT by the PR-3 audit (Series
+        # artifact_type + empty output_field_units).
+        from rates_agent.workflows import rates_primitive_resolver
+        from orchestrator.open_dag.composability_audit import Composability
+
+        tools = [_Tool("calculate_half_life_tool", "half-life snapshot")]
+        cat, dropped = render_tool_catalogue(
+            Domain.SOVEREIGN_BONDS, tools, rates_primitive_resolver,
+        )
+        assert cat == []
+        assert len(dropped) == 1
+        assert dropped[0].composability == Composability.TERMINAL_ONLY_SNAPSHOT
+        assert "TERMINAL_ONLY_SNAPSHOT" in dropped[0].reason
+
+    def test_mixed_catalogue_filters_correctly(self) -> None:
+        # Mixed: one BRIDGEABLE_SERIES + one TERMINAL_ONLY_SNAPSHOT.
+        # Kept = bridgeable; dropped = snapshot.
+        from rates_agent.workflows import rates_primitive_resolver
+
+        tools = [
+            _Tool("calculate_curve_spread_tool", "spread doc"),
+            _Tool("calculate_half_life_tool", "half-life snapshot"),
+        ]
+        cat, dropped = render_tool_catalogue(
+            Domain.SOVEREIGN_BONDS, tools, rates_primitive_resolver,
+        )
+        kept_names = [e.mcp_tool_name for e in cat]
+        dropped_names = [e.mcp_tool_name for e in dropped]
+        assert kept_names == ["calculate_curve_spread_tool"]
+        assert dropped_names == ["calculate_half_life_tool"]
+
+    def test_dropped_tools_unbindable_via_llm_output(self) -> None:
+        # Even if the LLM hallucinated picking a dropped tool's
+        # name, the catalogue doesn't contain it → the post-LLM
+        # transform refuses with "not in this domain's tool catalogue".
+        from rates_agent.workflows import rates_primitive_resolver
+
+        tools = [_Tool("calculate_curve_spread_tool", "spread doc")]
+        cat, _ = render_tool_catalogue(
+            Domain.SOVEREIGN_BONDS, tools, rates_primitive_resolver,
+        )
+        output = SelectorLLMOutput(
+            chosen_mcp_tool_name="calculate_half_life_tool",  # not in catalogue
+            params={},
+            chosen_output_field="results",
+            declared_semantic_role="x",
+            declared_output_meaning="x",
+            fit_confidence=0.5,
+        )
+        bound = llm_output_to_bound_leaf(
+            leaf_id="h", domain=Domain.SOVEREIGN_BONDS,
+            output=output, catalogue=cat,
+        )
+        assert bound.is_refusal is True
+        assert "not in this domain's tool catalogue" in bound.refusal
 
 
 # ============================================================================
@@ -685,7 +898,9 @@ class TestNoPrimitiveExecution:
             return spec
 
         tools = [_Tool("silent_primitive", "A docstring")]
-        cat = render_tool_catalogue(Domain.SOVEREIGN_BONDS, tools, _resolver)
+        cat, _ = render_tool_catalogue(
+            Domain.SOVEREIGN_BONDS, tools, _resolver,
+        )
         assert len(cat) == 1
 
         # Now the full pipeline: build SelectorLLMOutput and transform.
@@ -712,38 +927,51 @@ class TestNoPrimitiveExecution:
 
 class TestP11CatalogueIsolation:
     """The Selector's catalogue is scoped to ONE domain by
-    construction.  Even if the live MCP server somehow leaked a
-    cross-domain tool name, the catalogue's resolver-key derivation
-    runs against THIS domain's convention only — and the resolver
-    lookup would fail for any tool not registered under that key.
+    construction.  P11 isolation is enforced at the MCP-subprocess
+    level (each ``MultiServerMCPClient`` connection sees only its
+    own server's tools); the catalogue's per-domain resolver-key
+    derivation is the downstream code-level half of the same
+    invariant.
 
-    This test asserts the catalogue-build never tries to resolve a
-    tool name under a foreign domain's resolver key by accident."""
+    The collision case (``get_futures_price_level_tool`` exists in
+    both bond_futures and policy_futures MCP servers) demonstrates
+    the per-domain seam.  Both primitives are currently classified
+    as ``TERMINAL_ONLY_SNAPSHOT`` so they both drop from the
+    catalogue — but the dropped record + the direct
+    ``domain_to_resolver_key`` derivation prove that the per-domain
+    resolver-key convention is respected (different domain → different
+    key for the same MCP name)."""
 
-    def test_catalogue_uses_only_own_domain_resolver_keys(self) -> None:
+    def test_collision_drops_with_per_domain_resolver_keys_intact(self) -> None:
         from rates_agent.workflows import rates_primitive_resolver
+        from orchestrator.open_dag.resolver_keys import (
+            domain_to_resolver_key,
+        )
 
-        # Pass a policy_futures-name-shaped tool but render under
-        # bond_futures — the resolver lookup uses the bare name
-        # (bond_futures convention), which would resolve to the
-        # BOND_FUTURES primitive, not the policy_futures one.  This
-        # demonstrates the per-domain scoping.
+        # Both domains' price_level primitives are TERMINAL_ONLY in V1;
+        # both drop with the SAME mcp_tool_name but logically DIFFERENT
+        # resolver keys (verified directly).
         tools = [_Tool("get_futures_price_level_tool", "doc")]
-        cat_bond = render_tool_catalogue(
+        cat_bond, dropped_bond = render_tool_catalogue(
             Domain.BOND_FUTURES, tools, rates_primitive_resolver,
         )
-        cat_policy = render_tool_catalogue(
+        cat_policy, dropped_policy = render_tool_catalogue(
             Domain.POLICY_FUTURES, tools, rates_primitive_resolver,
         )
+        assert cat_bond == cat_policy == []
+        assert len(dropped_bond) == len(dropped_policy) == 1
 
-        assert cat_bond[0].resolver_tool_key == (
-            "get_futures_price_level_tool"
+        # Direct derivation: different domain → different resolver
+        # key for the same MCP name (PR-3's collision-disambiguation
+        # seam).
+        assert (
+            domain_to_resolver_key(
+                "bond_futures", "get_futures_price_level_tool",
+            )
+            != domain_to_resolver_key(
+                "policy_futures", "get_futures_price_level_tool",
+            )
         )
-        assert cat_policy[0].resolver_tool_key == (
-            "policy_futures_get_futures_price_level_tool"
-        )
-        # Different resolver keys → different PrimitiveSpec instances
-        # via the live resolver (verified in PR-3's test_resolver_keys).
 
 
 # ============================================================================
@@ -793,6 +1021,340 @@ class TestRunModeUnaffected:
         # Scaffolding fields still empty until open() runs.
         assert session._selector_model is None
         assert session._tool_catalogue == []
+
+
+# ============================================================================
+# SESSION-LEVEL fill_leaf TESTS (PR-6A corrective per Codex finding #2)
+# ============================================================================
+#
+# These tests construct a DomainAgentSession via the public
+# constructor, MANUALLY populate the internal state that open() would
+# normally set up (catalogue, selector model, system message,
+# primitive_resolver, _is_open, _tool_names), and call fill_leaf
+# directly.  This proves the orchestration glue (routing guard,
+# prompt build, LLM invocation, output transform, refusal-on-failure
+# semantics, timeout handling) works correctly WITHOUT requiring a
+# live LangChain stack or MCP subprocess.
+
+
+class _MockSelectorModel:
+    """Stand-in for ChatAnthropic(...).with_structured_output(...) in
+    the structured-output-with-raw mode used by fill_leaf.
+
+    ``ainvoke`` is async and returns the dict shape LangChain produces
+    when ``include_raw=True``: ``{"raw": AIMessage-stand-in, "parsed":
+    SelectorLLMOutput, "parsing_error": Optional[Exception]}``.
+
+    Tests inject a desired ``SelectorLLMOutput`` (or an exception to
+    raise) via the constructor.  The instance also records ainvoke
+    calls so tests can assert the model was invoked exactly once with
+    the expected messages."""
+
+    def __init__(
+        self,
+        parsed=None,
+        raise_exception=None,
+        delay_s: float = 0.0,
+    ) -> None:
+        self._parsed = parsed
+        self._raise_exception = raise_exception
+        self._delay_s = delay_s
+        self.invocations = []
+
+    async def ainvoke(self, messages):
+        import asyncio as _asyncio
+        self.invocations.append(messages)
+        if self._delay_s > 0:
+            await _asyncio.sleep(self._delay_s)
+        if self._raise_exception is not None:
+            raise self._raise_exception
+        return {
+            "raw": SimpleNamespace(usage_metadata=None),
+            "parsed": self._parsed,
+            "parsing_error": None,
+        }
+
+
+def _make_session_with_state(
+    *,
+    domain: Domain = Domain.SOVEREIGN_BONDS,
+    catalogue=None,
+    selector_model=None,
+    primitive_resolver=None,
+    tool_names=None,
+):
+    """Construct a DomainAgentSession via the constructor and
+    populate the internal state that open() would normally fill.
+    Lets fill_leaf-level tests run without LangChain/MCP."""
+    from orchestrator.domain_agent import DomainAgentSession
+    from langchain_core.messages import SystemMessage as _SystemMessage
+
+    session = DomainAgentSession(
+        domain=domain,
+        system_prompt="test prompt",
+        mcp_servers={domain.value: {}},
+        model_name="claude-test",
+        primitive_resolver=primitive_resolver or (lambda name: None),
+    )
+    session._is_open = True
+    session._tool_catalogue = catalogue or []
+    session._dropped_tools = []
+    session._selector_model = selector_model
+    session._cached_selector_system_message = _SystemMessage(
+        content="cached selector system",
+    )
+    session._tool_names = tool_names or [
+        e.mcp_tool_name for e in (catalogue or [])
+    ]
+    return session
+
+
+def _bridgeable_catalogue_for(domain: Domain) -> List[ToolCatalogueEntry]:
+    """Build a 1-entry BRIDGEABLE_SERIES catalogue for the given domain
+    using a real registered primitive."""
+    from rates_agent.workflows import rates_primitive_resolver
+    name = _DOMAIN_CANONICAL_BRIDGEABLE[domain]
+    if name is None:
+        return []
+    tools = [_Tool(name, f"Synthetic doc for {name}")]
+    cat, _ = render_tool_catalogue(domain, tools, rates_primitive_resolver)
+    return cat
+
+
+@pytest.mark.asyncio
+class TestFillLeafSessionLevel:
+    """Per Codex finding #2: PR-6A acceptance tests must exercise the
+    actual ``DomainAgentSession.fill_leaf()`` path (not just the helper
+    functions).  These tests use mock selector models that DO NOT
+    invoke any LLM or primitive callable."""
+
+    async def test_happy_path_calls_model_and_returns_bound_leaf(
+        self,
+    ) -> None:
+        catalogue = _bridgeable_catalogue_for(Domain.SOVEREIGN_BONDS)
+        assert catalogue
+        entry = catalogue[0]
+        # The mock model returns a binding for the catalogue entry.
+        mock_model = _MockSelectorModel(
+            parsed=SelectorLLMOutput(
+                chosen_mcp_tool_name=entry.mcp_tool_name,
+                params={"curve_family": "UST"},
+                chosen_output_field=entry.available_output_fields[0],
+                declared_semantic_role="spread_level",
+                declared_output_meaning="curve spread series",
+                fit_confidence=0.92,
+            ),
+        )
+        session = _make_session_with_state(
+            domain=Domain.SOVEREIGN_BONDS,
+            catalogue=catalogue,
+            selector_model=mock_model,
+            primitive_resolver=(
+                __import__("rates_agent.workflows", fromlist=[""])
+                .rates_primitive_resolver
+            ),
+        )
+        request = _request(
+            domain=Domain.SOVEREIGN_BONDS,
+            semantic_role="spread_level",
+        )
+
+        bound = await session.fill_leaf("h_a", request)
+
+        assert bound.is_refusal is False
+        assert bound.leaf_id == "h_a"
+        assert bound.domain == "sovereign_bonds"
+        assert bound.mcp_tool_name == entry.mcp_tool_name
+        # The model was invoked exactly once.
+        assert len(mock_model.invocations) == 1
+        # The invocation included the cached system message + a human
+        # message carrying the LeafRequest + catalogue render.
+        msgs = mock_model.invocations[0]
+        assert len(msgs) == 2
+
+    async def test_refusal_returned_as_bound_leaf(self) -> None:
+        catalogue = _bridgeable_catalogue_for(Domain.SOVEREIGN_BONDS)
+        mock_model = _MockSelectorModel(
+            parsed=SelectorLLMOutput(
+                fit_confidence=0.0,
+                refusal="No primitive fits the request.",
+            ),
+        )
+        session = _make_session_with_state(
+            domain=Domain.SOVEREIGN_BONDS,
+            catalogue=catalogue,
+            selector_model=mock_model,
+        )
+        bound = await session.fill_leaf(
+            "h_a", _request(domain=Domain.SOVEREIGN_BONDS),
+        )
+        assert bound.is_refusal is True
+        assert "No primitive fits the request." in bound.refusal
+
+    async def test_cross_domain_request_raises_routing_error(self) -> None:
+        catalogue = _bridgeable_catalogue_for(Domain.SOVEREIGN_BONDS)
+        mock_model = _MockSelectorModel(parsed=None)
+        session = _make_session_with_state(
+            domain=Domain.SOVEREIGN_BONDS,
+            catalogue=catalogue,
+            selector_model=mock_model,
+        )
+        # Build a request whose domain_hint is OIS (not this session).
+        ois_request = _request(domain=Domain.OIS)
+        with pytest.raises(SelectorBindingError, match="domain_hint"):
+            await session.fill_leaf("h_a", ois_request)
+        # The mock model was NEVER invoked — guard fires pre-LLM.
+        assert mock_model.invocations == []
+
+    async def test_llm_exception_returns_refusal_bound_leaf(self) -> None:
+        catalogue = _bridgeable_catalogue_for(Domain.SOVEREIGN_BONDS)
+        mock_model = _MockSelectorModel(
+            raise_exception=RuntimeError("anthropic backend down"),
+        )
+        session = _make_session_with_state(
+            domain=Domain.SOVEREIGN_BONDS,
+            catalogue=catalogue,
+            selector_model=mock_model,
+        )
+        bound = await session.fill_leaf(
+            "h_a", _request(domain=Domain.SOVEREIGN_BONDS),
+        )
+        assert bound.is_refusal is True
+        assert "anthropic backend down" in bound.refusal
+        assert "Selector LLM call failed" in bound.refusal
+
+    async def test_timeout_returns_refusal_bound_leaf(self) -> None:
+        # The mock model sleeps longer than the requested timeout.
+        catalogue = _bridgeable_catalogue_for(Domain.SOVEREIGN_BONDS)
+        mock_model = _MockSelectorModel(
+            parsed=SelectorLLMOutput(fit_confidence=0.5, refusal="late"),
+            delay_s=0.5,
+        )
+        session = _make_session_with_state(
+            domain=Domain.SOVEREIGN_BONDS,
+            catalogue=catalogue,
+            selector_model=mock_model,
+        )
+        bound = await session.fill_leaf(
+            "h_a",
+            _request(domain=Domain.SOVEREIGN_BONDS),
+            timeout_s=0.05,
+        )
+        assert bound.is_refusal is True
+        assert "timed out" in bound.refusal
+
+    async def test_missing_resolver_raises_runtime_error(self) -> None:
+        # No primitive_resolver was supplied; fill_leaf must raise
+        # rather than silently misbehave.
+        from orchestrator.domain_agent import DomainAgentSession
+
+        session = DomainAgentSession(
+            domain=Domain.SOVEREIGN_BONDS,
+            system_prompt="test",
+            mcp_servers={"sovereign_bonds": {}},
+            model_name="claude-test",
+        )
+        # Manually mark open (without the selector scaffolding).
+        session._is_open = True
+        with pytest.raises(RuntimeError, match="primitive_resolver"):
+            await session.fill_leaf(
+                "h_a", _request(domain=Domain.SOVEREIGN_BONDS),
+            )
+
+    async def test_p11_invariant_tool_names_only_own_domain(self) -> None:
+        # P11 enforces own-domain MCP isolation.  The session's
+        # _tool_names is populated from the MCP client's get_tools()
+        # which only sees this domain's MCP server.  Verify the
+        # downstream code respects that — the catalogue + _tool_names
+        # both reflect ONLY the supplied tools.
+        catalogue = _bridgeable_catalogue_for(Domain.OIS)
+        session = _make_session_with_state(
+            domain=Domain.OIS,
+            catalogue=catalogue,
+            selector_model=_MockSelectorModel(
+                parsed=SelectorLLMOutput(fit_confidence=0.0, refusal="x"),
+            ),
+            tool_names=[e.mcp_tool_name for e in catalogue],
+        )
+        # _tool_names matches the OIS catalogue entries — no cross-
+        # domain tool leaked in.
+        assert set(session._tool_names) == {
+            e.mcp_tool_name for e in catalogue
+        }
+        # And the catalogue's resolver keys are derived under THIS
+        # domain's convention only.
+        for entry in catalogue:
+            from orchestrator.open_dag.resolver_keys import (
+                domain_to_resolver_key,
+            )
+            assert entry.resolver_tool_key == domain_to_resolver_key(
+                "ois", entry.mcp_tool_name,
+            )
+
+    async def test_no_primitive_callable_invoked_through_fill_leaf(
+        self,
+    ) -> None:
+        # Pass a resolver whose primitive's callable raises on
+        # invocation.  fill_leaf must NOT invoke the callable —
+        # it only inspects metadata in the pre-built catalogue.
+        def _explodes(*args, **kwargs):
+            raise AssertionError(
+                "fill_leaf invoked a primitive callable — violates "
+                "no-execution contract"
+            )
+
+        class _In(BaseModel):
+            pass
+
+        class _Out(BaseModel):
+            pass
+
+        spec = PrimitiveSpec(
+            tool_name="silent_tool",
+            callable=_explodes,
+            input_class=_In,
+            output_class=_Out,
+            config_path=Path("/dev/null"),
+            output_artifact_type="Series",
+            output_field_units={"time_series": "bps"},
+        )
+
+        def _silent_resolver(tool_name: str) -> PrimitiveSpec:
+            return spec
+
+        # Build a catalogue manually (since the exploding-callable
+        # resolver doesn't have rates primitives).
+        tools = [_Tool("silent_tool", "doc")]
+        catalogue, _ = render_tool_catalogue(
+            Domain.SOVEREIGN_BONDS, tools, _silent_resolver,
+        )
+        assert len(catalogue) == 1
+        entry = catalogue[0]
+
+        mock_model = _MockSelectorModel(
+            parsed=SelectorLLMOutput(
+                chosen_mcp_tool_name=entry.mcp_tool_name,
+                params={},
+                chosen_output_field=entry.available_output_fields[0],
+                declared_semantic_role="x",
+                declared_output_meaning="x",
+                fit_confidence=0.9,
+            ),
+        )
+
+        session = _make_session_with_state(
+            domain=Domain.SOVEREIGN_BONDS,
+            catalogue=catalogue,
+            selector_model=mock_model,
+            primitive_resolver=_silent_resolver,
+        )
+
+        bound = await session.fill_leaf(
+            "h_a", _request(domain=Domain.SOVEREIGN_BONDS),
+        )
+        # Either way, the exploding callable was never invoked
+        # (otherwise the AssertionError would have escaped).
+        assert bound.leaf_id == "h_a"
 
 
 # ============================================================================
