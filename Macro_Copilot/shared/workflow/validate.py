@@ -1,62 +1,71 @@
 """shared.workflow.validate — pre-execution validation of a Workflow.
 
-Static analysis pass that runs BEFORE the executor.  Catches
-shape errors at template-time rather than at execution-time so a
-bad workflow fails loudly during template authoring / orchestrator
-testing, not in the middle of a multi-node run.
+Static analysis pass that runs BEFORE the executor.  Catches shape errors
+at template-time rather than at execution-time so a bad workflow fails
+loudly during template authoring / orchestrator testing, not in the
+middle of a multi-node run.
+
+Two entry points
+----------------
+``validate_workflow_collect(workflow, primitive_resolver=None) -> ValidationResult``
+    Walks the whole DAG and returns EVERY structural problem in one pass
+    as a frozen ``ValidationResult``.  Each error carries a stable
+    ``ErrorCode`` (closed family per P8) and an ``OwnerLayer`` tag for
+    the PR-4 bounded-repair controller's dispatch.
+
+``validate_workflow(workflow, primitive_resolver=None) -> None``
+    Legacy strict wrapper, preserved verbatim for back-compat: calls
+    the collect-all path, and if any errors were collected, raises
+    ``WorkflowValidationError`` with the *first* error's message text.
+    The executor (``shared.workflow.executor.execute_workflow``) and
+    existing tests assert on these messages via ``pytest.raises(...,
+    match="…")``; the strict wrapper guarantees those assertions keep
+    matching byte-for-byte.
 
 What this module checks
 -----------------------
-1. **Cycles** — the DAG must be acyclic.  ``graphlib.TopologicalSorter``
-   raises on cycles at execution time, but we surface it earlier
-   with a more diagnostic error.
-2. **Operator existence** — every ``OperatorNode.operator_name``
-   must be in ``OPERATOR_REGISTRY``.  Caught with a clear "did
-   you mean..." pointer to known operators.
-3. **Slot existence** — every operator's named input slots
-   (per ``OperatorSpec.input_slots``) must be filled by at least
-   one edge.
-4. **Slot completeness** — every edge's ``target_input_slot``
-   must be a valid slot name on the target operator.  Misspelled
-   slot names surface here, not silently into the executor.
-5. **Type compatibility** — the source node's output artifact
-   type must match the target slot's expected input type.  For
-   list-shaped slots (e.g. ``align_series.series_list:
-   List[Series]``), every contributing edge must produce the
-   element type (``Series``).
-6. **Terminal-node connectivity** — the terminal node must be
-   reachable from at least one root in the DAG (no orphan
-   terminal).  Optional: warn if the terminal has no incoming
-   edges (a primitive-only "terminal" is legal but unusual).
-7. **Primitive resolvability** — when a ``PrimitiveResolver`` is
-   supplied, every ``PrimitiveNode.tool_name`` must resolve.
-   Without a resolver, this check is skipped (so workflow
-   templates can be statically validated without a live
-   resolver).
+1. **Operator existence** — every ``OperatorNode.operator_name`` must
+   be in ``OPERATOR_REGISTRY``.
+2. **Slot validity** — every edge's ``target_input_slot`` is a real
+   slot on the target operator; edges may not target a
+   ``PrimitiveNode`` (primitives fetch from DB themselves in v1).
+3. **Literal binding validity** — every ``LiteralBinding`` targets an
+   operator slot that accepts scalars.
+4. **Slot completeness** — every operator's required input slots are
+   bound (via edge OR, for scalar-accepting slots, via literal).
+   Operators with conditional arity (e.g. ``series_arithmetic``) use a
+   per-operator ``arity_validator`` hook.
+5. **Type compatibility** — the source node's output artifact type
+   matches the target slot's expected element type.
+6. **Output-field validity** — when the primitive resolver declares
+   ``output_field_units`` for a primitive, the node's ``output_field``
+   must be one of the declared keys.
+7. **Unit compatibility (best-effort)** — operator-declared cross-slot
+   unit-algebra checks where the substrate can trace upstream units.
+   Best-effort; when source units are unknown, runtime stays as the
+   authoritative gate.
+8. **Cycles** — the DAG must be acyclic.
+9. **Primitive resolvability** — when a ``PrimitiveResolver`` is
+   supplied, every ``PrimitiveNode.tool_name`` resolves.
 
-Output: ``WorkflowValidationError`` raised on failure (subclass
-of ``ValueError`` for caller convenience).  All errors include
-the ``workflow_id`` and the offending ``node_id`` / edge tuple
-for diagnostic clarity.
+Error-code taxonomy
+-------------------
+Each of the 13 checks above maps to exactly one ``ErrorCode`` value in
+``shared.workflow.validation_result``.  The mapping is documented in
+the order-of-checks comments inside ``validate_workflow_collect``.
+Adding a new code requires an ADR (P8 closed-family discipline).
+
+Back-compat
+-----------
+The legacy ``WorkflowValidationError`` class is preserved verbatim and
+re-exported here; the strict wrapper raises it with the same message
+text the pre-refactor validator did.  No caller needs to change.
 """
 
 from __future__ import annotations
 
 from graphlib import CycleError, TopologicalSorter
-from typing import Dict, List, Optional, Set
-
-
-def _topological_node_ids(workflow) -> List[str]:
-    """Internal helper: topological order of a workflow's node IDs,
-    for unit-propagation walks.  Distinct from the public
-    ``topological_order`` (below) which calls validate first;
-    this one is called BY validate so it cannot recurse."""
-    sorter: TopologicalSorter = TopologicalSorter()
-    for n in workflow.nodes:
-        sorter.add(n.node_id)
-    for edge in workflow.edges:
-        sorter.add(edge.target_node_id, edge.source_node_id)
-    return list(sorter.static_order())
+from typing import Dict, List, Optional
 
 from shared.workflow.registry import (
     OPERATOR_REGISTRY,
@@ -70,132 +79,93 @@ from shared.workflow.types import (
     Workflow,
     WorkflowEdge,
 )
+from shared.workflow.validation_result import (
+    ErrorCode,
+    OwnerLayer,
+    ValidationError,
+    ValidationResult,
+)
+
+
+# ============================================================================
+# LEGACY ERROR CLASS (re-export — preserved verbatim for back-compat)
+# ============================================================================
 
 
 class WorkflowValidationError(ValueError):
-    """Raised when ``validate_workflow`` finds a structural
-    problem with a Workflow before execution."""
+    """Raised by the strict-wrapper ``validate_workflow`` when one or
+    more structural problems are present.  Message text matches the
+    first collected ``ValidationError.message`` so existing
+    ``pytest.raises(..., match="…")`` assertions keep matching."""
 
 
-def validate_workflow(
+# ============================================================================
+# INTERNAL HELPERS
+# ============================================================================
+
+
+def _topological_node_ids(workflow: Workflow) -> List[str]:
+    """Internal helper: topological order of a workflow's node IDs,
+    for unit-propagation walks.  Distinct from the public
+    ``topological_order`` (below) which calls validate first;
+    this one is called BY validate so it cannot recurse.
+
+    Raises ``CycleError`` if the DAG contains a cycle.  Callers must
+    guard against this — in the collect-all validator we use the
+    separate cycle-detection pass (E_DAG_CYCLE) and skip the unit
+    propagation block when a cycle was already collected, so this
+    helper is only ever called on a known-acyclic graph at that point.
+    """
+    sorter: TopologicalSorter = TopologicalSorter()
+    for n in workflow.nodes:
+        sorter.add(n.node_id)
+    for edge in workflow.edges:
+        sorter.add(edge.target_node_id, edge.source_node_id)
+    return list(sorter.static_order())
+
+
+# ============================================================================
+# COLLECT-ALL VALIDATOR (the new substrate)
+# ============================================================================
+
+
+def validate_workflow_collect(
     workflow: Workflow,
     *,
     primitive_resolver: Optional[PrimitiveResolver] = None,
-) -> None:
-    """Validate a Workflow against the substrate's structural
-    contract.  Raises ``WorkflowValidationError`` on the first
-    error found, with a diagnostic message naming the offending
-    node / edge.
+) -> ValidationResult:
+    """Validate a Workflow against the substrate's structural contract,
+    collecting EVERY problem found into a frozen ``ValidationResult``.
+
+    Unlike the strict wrapper ``validate_workflow``, this function never
+    raises on a structural problem — it walks the whole DAG and surfaces
+    every check's outcome.  The PR-4 bounded-repair controller consumes
+    the result and dispatches retries by ``owner_layer`` in one round.
 
     Parameters
     ----------
     workflow :
-        The Workflow to validate.  Construction-time checks (node
-        ID uniqueness, edge endpoint existence, terminal-node
-        existence) have already run via the model validator;
-        this pass adds DAG-level structural checks.
+        The Workflow to validate.  Construction-time checks (node ID
+        uniqueness, edge endpoint existence, terminal-node existence)
+        have already run via the model validator; this pass adds
+        DAG-level structural checks.
     primitive_resolver :
-        Optional ``PrimitiveResolver`` for resolving primitive
-        tool names.  When supplied, each ``PrimitiveNode.tool_name``
-        is resolved at validate-time so a typo or missing primitive
-        surfaces here rather than mid-execution.  When omitted,
-        primitive-name resolution is deferred to execution time
-        (templates can still validate their non-primitive
-        structure offline).
+        Optional ``PrimitiveResolver``.  When supplied, each
+        ``PrimitiveNode.tool_name`` is resolved at validate-time AND
+        the substrate can perform best-effort output-field and unit
+        compatibility checks.  When omitted, those checks are skipped
+        (templates can still validate their non-primitive structure
+        offline).
+
+    Returns
+    -------
+    ValidationResult
+        ``is_clean`` is True iff no errors were collected.
     """
-    # ------------------------------------------------------------------
-    # 1. Operator existence — every OperatorNode names a known operator.
-    # ------------------------------------------------------------------
-    for node in workflow.nodes:
-        if isinstance(node, OperatorNode):
-            if node.operator_name not in OPERATOR_REGISTRY:
-                raise WorkflowValidationError(
-                    f"Workflow {workflow.workflow_id!r}: node "
-                    f"{node.node_id!r} references unknown operator "
-                    f"{node.operator_name!r}.  Known operators: "
-                    f"{known_operators()}.  To add a new operator, "
-                    "extend ``OPERATOR_REGISTRY`` and ensure the "
-                    "operator passes its admission checklist in "
-                    "``operator_architecture.md``."
-                )
+    errors: List[ValidationError] = []
+    wf_id = workflow.workflow_id
 
-    # ------------------------------------------------------------------
-    # 2. Slot validity — every edge's target_input_slot is a real
-    #    slot on the target operator.
-    # ------------------------------------------------------------------
-    for edge in workflow.edges:
-        target_node = workflow.node_by_id(edge.target_node_id)
-        if isinstance(target_node, OperatorNode):
-            spec = OPERATOR_REGISTRY[target_node.operator_name]
-            if edge.target_input_slot not in spec.input_slots:
-                raise WorkflowValidationError(
-                    f"Workflow {workflow.workflow_id!r}: edge "
-                    f"{edge.source_node_id!r} → {edge.target_node_id!r} "
-                    f"targets unknown input slot "
-                    f"{edge.target_input_slot!r} on operator "
-                    f"{target_node.operator_name!r}.  Known slots: "
-                    f"{sorted(spec.input_slots.keys())}."
-                )
-        elif isinstance(target_node, PrimitiveNode):
-            # PrimitiveNodes do not consume node-output edges in v1
-            # (primitives fetch from DB themselves).  An edge
-            # targeting a PrimitiveNode is a workflow-shape error.
-            raise WorkflowValidationError(
-                f"Workflow {workflow.workflow_id!r}: edge "
-                f"{edge.source_node_id!r} → {edge.target_node_id!r} "
-                f"targets a PrimitiveNode.  Primitives do not consume "
-                "node-output edges in v1 (they fetch from DB "
-                "themselves).  Composite primitives are deferred to "
-                "Phase 2 (see ``PrimitiveStep.input_hashes`` slot in "
-                "``shared.artifacts.lineage``)."
-            )
-
-    # ------------------------------------------------------------------
-    # 2b. Literal binding validity — every LiteralBinding targets a
-    #    real OperatorNode whose target slot accepts a scalar.
-    # ------------------------------------------------------------------
-    for binding in workflow.literal_bindings:
-        target_node = workflow.node_by_id(binding.target_node_id)
-        if not isinstance(target_node, OperatorNode):
-            raise WorkflowValidationError(
-                f"Workflow {workflow.workflow_id!r}: literal binding "
-                f"targets node {binding.target_node_id!r} which is "
-                "not an OperatorNode.  Literal bindings can only "
-                "target operator slots."
-            )
-        spec = OPERATOR_REGISTRY[target_node.operator_name]
-        if binding.target_input_slot not in spec.input_slots:
-            raise WorkflowValidationError(
-                f"Workflow {workflow.workflow_id!r}: literal binding "
-                f"targets unknown input slot "
-                f"{binding.target_input_slot!r} on operator "
-                f"{target_node.operator_name!r}.  Known slots: "
-                f"{sorted(spec.input_slots.keys())}."
-            )
-        # Per-slot ``accepts_scalar`` flag on the SlotDescriptor
-        # replaces the prior per-operator ``accepts_scalar_input``
-        # tuple (PART D migration).
-        if not spec.input_slots[binding.target_input_slot].accepts_scalar:
-            raise WorkflowValidationError(
-                f"Workflow {workflow.workflow_id!r}: literal binding "
-                f"targets slot {binding.target_input_slot!r} on "
-                f"operator {target_node.operator_name!r}, but that "
-                "slot does not accept scalar literals.  Use a "
-                "WorkflowEdge from an upstream artifact-producing "
-                "node instead, or pick an operator whose slot is "
-                "declared with ``accepts_scalar=True`` on its "
-                "``SlotDescriptor``."
-            )
-
-    # ------------------------------------------------------------------
-    # 3. Slot completeness — every operator's required input slots
-    #    are filled by at least one edge OR (for scalar slots) one
-    #    LiteralBinding.  Operators with conditional arity (e.g.
-    #    series_arithmetic, whose ``right`` requiredness depends
-    #    on ``op``) declare an ``arity_validator`` hook on their
-    #    OperatorSpec; the substrate-default branch handles the
-    #    simple "always required unless scalar-accepting" case.
-    # ------------------------------------------------------------------
+    # Indexes used across multiple checks; built once.
     edges_by_target: Dict[str, Dict[str, List[WorkflowEdge]]] = {}
     for edge in workflow.edges:
         edges_by_target.setdefault(edge.target_node_id, {}).setdefault(
@@ -208,98 +178,264 @@ def validate_workflow(
             binding.target_input_slot, []
         ).append(binding)
 
+    # ------------------------------------------------------------------
+    # CHECK 1 (E_UNKNOWN_OPERATOR) — every OperatorNode names a known
+    # operator.
+    # ------------------------------------------------------------------
+    for node in workflow.nodes:
+        if isinstance(node, OperatorNode):
+            if node.operator_name not in OPERATOR_REGISTRY:
+                errors.append(
+                    ValidationError(
+                        code=ErrorCode.E_UNKNOWN_OPERATOR,
+                        owner_layer=OwnerLayer.L3_WIRING,
+                        message=(
+                            f"Workflow {wf_id!r}: node "
+                            f"{node.node_id!r} references unknown operator "
+                            f"{node.operator_name!r}.  Known operators: "
+                            f"{known_operators()}.  To add a new operator, "
+                            "extend ``OPERATOR_REGISTRY`` and ensure the "
+                            "operator passes its admission checklist in "
+                            "``operator_architecture.md``."
+                        ),
+                        node_id=node.node_id,
+                        operator_name=node.operator_name,
+                    )
+                )
+
+    # ------------------------------------------------------------------
+    # CHECK 2 (E_UNKNOWN_SLOT, E_EDGE_TARGETS_PRIMITIVE) — every edge's
+    # target_input_slot is a real slot on the target operator; edges may
+    # not target a PrimitiveNode.
+    # ------------------------------------------------------------------
+    for edge in workflow.edges:
+        target_node = workflow.node_by_id(edge.target_node_id)
+        if isinstance(target_node, OperatorNode):
+            spec = OPERATOR_REGISTRY.get(target_node.operator_name)
+            if spec is None:
+                # E_UNKNOWN_OPERATOR already collected for this node;
+                # we can't validate the slot without the spec, so skip.
+                continue
+            if edge.target_input_slot not in spec.input_slots:
+                errors.append(
+                    ValidationError(
+                        code=ErrorCode.E_UNKNOWN_SLOT,
+                        owner_layer=OwnerLayer.L3_WIRING,
+                        message=(
+                            f"Workflow {wf_id!r}: edge "
+                            f"{edge.source_node_id!r} → {edge.target_node_id!r} "
+                            f"targets unknown input slot "
+                            f"{edge.target_input_slot!r} on operator "
+                            f"{target_node.operator_name!r}.  Known slots: "
+                            f"{sorted(spec.input_slots.keys())}."
+                        ),
+                        node_id=target_node.node_id,
+                        edge=(edge.source_node_id, edge.target_node_id),
+                        target_input_slot=edge.target_input_slot,
+                        operator_name=target_node.operator_name,
+                    )
+                )
+        elif isinstance(target_node, PrimitiveNode):
+            errors.append(
+                ValidationError(
+                    code=ErrorCode.E_EDGE_TARGETS_PRIMITIVE,
+                    owner_layer=OwnerLayer.L3_WIRING,
+                    message=(
+                        f"Workflow {wf_id!r}: edge "
+                        f"{edge.source_node_id!r} → {edge.target_node_id!r} "
+                        f"targets a PrimitiveNode.  Primitives do not consume "
+                        "node-output edges in v1 (they fetch from DB "
+                        "themselves).  Composite primitives are deferred to "
+                        "Phase 2 (see ``PrimitiveStep.input_hashes`` slot in "
+                        "``shared.artifacts.lineage``)."
+                    ),
+                    node_id=target_node.node_id,
+                    edge=(edge.source_node_id, edge.target_node_id),
+                    tool_name=target_node.tool_name,
+                )
+            )
+
+    # ------------------------------------------------------------------
+    # CHECK 3 (E_LITERAL_TARGETS_NON_OPERATOR, E_LITERAL_UNKNOWN_SLOT,
+    # E_LITERAL_SLOT_NO_SCALAR) — literal binding validity.
+    # ------------------------------------------------------------------
+    for binding in workflow.literal_bindings:
+        target_node = workflow.node_by_id(binding.target_node_id)
+        if not isinstance(target_node, OperatorNode):
+            errors.append(
+                ValidationError(
+                    code=ErrorCode.E_LITERAL_TARGETS_NON_OPERATOR,
+                    owner_layer=OwnerLayer.L3_WIRING,
+                    message=(
+                        f"Workflow {wf_id!r}: literal binding "
+                        f"targets node {binding.target_node_id!r} which is "
+                        "not an OperatorNode.  Literal bindings can only "
+                        "target operator slots."
+                    ),
+                    node_id=binding.target_node_id,
+                    target_input_slot=binding.target_input_slot,
+                )
+            )
+            continue
+        spec = OPERATOR_REGISTRY.get(target_node.operator_name)
+        if spec is None:
+            # E_UNKNOWN_OPERATOR already collected for this node.
+            continue
+        if binding.target_input_slot not in spec.input_slots:
+            errors.append(
+                ValidationError(
+                    code=ErrorCode.E_LITERAL_UNKNOWN_SLOT,
+                    owner_layer=OwnerLayer.L3_WIRING,
+                    message=(
+                        f"Workflow {wf_id!r}: literal binding "
+                        f"targets unknown input slot "
+                        f"{binding.target_input_slot!r} on operator "
+                        f"{target_node.operator_name!r}.  Known slots: "
+                        f"{sorted(spec.input_slots.keys())}."
+                    ),
+                    node_id=target_node.node_id,
+                    target_input_slot=binding.target_input_slot,
+                    operator_name=target_node.operator_name,
+                )
+            )
+            continue
+        if not spec.input_slots[binding.target_input_slot].accepts_scalar:
+            errors.append(
+                ValidationError(
+                    code=ErrorCode.E_LITERAL_SLOT_NO_SCALAR,
+                    owner_layer=OwnerLayer.L3_WIRING,
+                    message=(
+                        f"Workflow {wf_id!r}: literal binding "
+                        f"targets slot {binding.target_input_slot!r} on "
+                        f"operator {target_node.operator_name!r}, but that "
+                        "slot does not accept scalar literals.  Use a "
+                        "WorkflowEdge from an upstream artifact-producing "
+                        "node instead, or pick an operator whose slot is "
+                        "declared with ``accepts_scalar=True`` on its "
+                        "``SlotDescriptor``."
+                    ),
+                    node_id=target_node.node_id,
+                    target_input_slot=binding.target_input_slot,
+                    operator_name=target_node.operator_name,
+                )
+            )
+
+    # ------------------------------------------------------------------
+    # CHECK 4 (E_ARITY_VIOLATION, E_UNBOUND_REQUIRED_SLOT) — every
+    # operator's required input slots are bound.  Operators with
+    # conditional arity declare an ``arity_validator`` hook on their
+    # OperatorSpec; the substrate-default branch handles the simple
+    # "always required unless scalar-accepting" case.
+    # ------------------------------------------------------------------
     for node in workflow.nodes:
         if not isinstance(node, OperatorNode):
             continue
-        spec = OPERATOR_REGISTRY[node.operator_name]
+        spec = OPERATOR_REGISTRY.get(node.operator_name)
+        if spec is None:
+            # E_UNKNOWN_OPERATOR already collected.
+            continue
         bound_edge_slots = set(edges_by_target.get(node.node_id, {}).keys())
         bound_literal_slots = set(
             literals_by_target.get(node.node_id, {}).keys()
         )
 
-        # Per-operator arity hook supersedes the substrate default
-        # for operators that declare one.  Codex P2 follow-up
-        # (PR #78): the prior blanket-skip on
-        # ``accepts_scalar_input`` allowed binary
-        # series_arithmetic ops to validate without a ``right``
-        # operand; the hook fixes that.
+        # Per-operator arity hook supersedes the substrate default for
+        # operators that declare one.
         if spec.arity_validator is not None:
             err = spec.arity_validator(
                 node.params, bound_edge_slots, bound_literal_slots,
             )
             if err is not None:
-                raise WorkflowValidationError(
-                    f"Workflow {workflow.workflow_id!r}: operator "
-                    f"node {node.node_id!r} ({node.operator_name!r}) "
-                    f"failed arity check: {err}"
+                errors.append(
+                    ValidationError(
+                        code=ErrorCode.E_ARITY_VIOLATION,
+                        owner_layer=OwnerLayer.L3_WIRING,
+                        message=(
+                            f"Workflow {wf_id!r}: operator "
+                            f"node {node.node_id!r} ({node.operator_name!r}) "
+                            f"failed arity check: {err}"
+                        ),
+                        node_id=node.node_id,
+                        operator_name=node.operator_name,
+                        detail={"arity_validator_message": err},
+                    )
                 )
-            continue  # the hook is authoritative for this operator
+            # The hook is authoritative for this operator — skip the
+            # substrate-default unbound-required-slot check.
+            continue
 
-        # Substrate-default: every slot must be bound (via edge or,
-        # for scalar-accepting slots, via literal), unless its
-        # ``SlotDescriptor.accepts_scalar`` is True AND no arity hook
-        # is declared (in which case the operator's own runtime check
-        # is the authoritative arity gate).  PART D migration: drives
-        # off the per-slot descriptor flag instead of the per-operator
-        # ``accepts_scalar_input`` tuple.
+        # Substrate-default: every slot must be bound (via edge or, for
+        # scalar-accepting slots, via literal), unless its
+        # ``SlotDescriptor.accepts_scalar`` is True AND no arity hook is
+        # declared (in which case the operator's own runtime check is
+        # the authoritative arity gate).
         for slot_name, descriptor in spec.input_slots.items():
             if (
                 descriptor.accepts_scalar
                 and slot_name not in bound_edge_slots
                 and slot_name not in bound_literal_slots
             ):
-                # Scalar-accepting slot, no binding either way —
-                # the operator's signature default applies.  Legal
-                # for operators without an arity hook.
+                # Scalar-accepting slot with no binding either way: the
+                # operator's signature default applies.  Legal for
+                # operators without an arity hook.
                 continue
             if (
                 slot_name not in bound_edge_slots
                 and slot_name not in bound_literal_slots
             ):
-                raise WorkflowValidationError(
-                    f"Workflow {workflow.workflow_id!r}: operator "
-                    f"node {node.node_id!r} ({node.operator_name!r}) "
-                    f"has unbound required input slot "
-                    f"{slot_name!r} (type "
-                    f"{descriptor.artifact_type.value!r}).  Add a "
-                    "``WorkflowEdge`` whose target_input_slot binds "
-                    "this slot, or (if the slot accepts scalars) a "
-                    "``LiteralBinding`` with a literal value."
+                errors.append(
+                    ValidationError(
+                        code=ErrorCode.E_UNBOUND_REQUIRED_SLOT,
+                        owner_layer=OwnerLayer.L3_WIRING,
+                        message=(
+                            f"Workflow {wf_id!r}: operator "
+                            f"node {node.node_id!r} ({node.operator_name!r}) "
+                            f"has unbound required input slot "
+                            f"{slot_name!r} (type "
+                            f"{descriptor.artifact_type.value!r}).  Add a "
+                            "``WorkflowEdge`` whose target_input_slot binds "
+                            "this slot, or (if the slot accepts scalars) a "
+                            "``LiteralBinding`` with a literal value."
+                        ),
+                        node_id=node.node_id,
+                        target_input_slot=slot_name,
+                        operator_name=node.operator_name,
+                        detail={
+                            "expected_artifact_type": descriptor.artifact_type.value,
+                        },
+                    )
                 )
 
     # ------------------------------------------------------------------
-    # 4. Type compatibility — source node's output type matches the
-    #    target slot's expected type.
+    # CHECK 5 (E_TYPE_MISMATCH) — source node's output type matches the
+    # target slot's expected element type.  owner_layer is L3_WIRING
+    # when the upstream is an operator (composer wired wrong) and
+    # L2_BINDING when the upstream is a primitive (selector bound a
+    # primitive whose output type doesn't fit the operator's slot).
     # ------------------------------------------------------------------
     for edge in workflow.edges:
         target_node = workflow.node_by_id(edge.target_node_id)
         source_node = workflow.node_by_id(edge.source_node_id)
 
-        # Target type from operator spec.
         if not isinstance(target_node, OperatorNode):
-            # Already raised above — defensive skip.
+            # Already collected as E_EDGE_TARGETS_PRIMITIVE.
             continue
-        target_spec = OPERATOR_REGISTRY[target_node.operator_name]
+        target_spec = OPERATOR_REGISTRY.get(target_node.operator_name)
+        if target_spec is None:
+            continue
         descriptor = target_spec.input_slots.get(edge.target_input_slot)
         if descriptor is None:
-            continue  # already raised above
-        # PART D migration: the element type is the descriptor's
-        # ``artifact_type`` (a str-valued enum member).  List-shaped
-        # slots are flagged by ``descriptor.is_list`` rather than the
-        # prior ``"List[X]"`` string-prefix encoding; the element
-        # type itself is the same enum value either way.
+            continue  # already E_UNKNOWN_SLOT
         expected_element = descriptor.artifact_type.value
 
-        # Source type — primitives produce whichever artifact type the
-        # PrimitiveSpec's ``output_artifact_type`` declares (``Series``
-        # is the historical default; PR 20 adds ``Panel`` for
-        # Panel-emitting primitives like ``build_sovereign_yield_panel_tool``
-        # and ``compute_financing_rate_tool``).  When the resolver is
-        # unavailable, fall back to ``Series`` (pre-PR-20 behaviour) so
-        # validation without a resolver stays permissive.
-        # Operators produce whatever ``OperatorSpec.output.artifact_type``
-        # declares (PART D migration — was ``output_type``).
-        if isinstance(source_node, PrimitiveNode):
+        # Source type: primitives produce whichever artifact type the
+        # PrimitiveSpec's ``output_artifact_type`` declares (Series by
+        # default; PR 20 added Panel).  When the resolver is unavailable,
+        # fall back to Series so validation without a resolver stays
+        # permissive.  Operators produce whatever their OperatorSpec's
+        # ``output.artifact_type`` declares.
+        upstream_is_primitive = isinstance(source_node, PrimitiveNode)
+        if upstream_is_primitive:
             source_type = "Series"
             if primitive_resolver is not None:
                 try:
@@ -308,52 +444,136 @@ def validate_workflow(
                         source_spec, "output_artifact_type", "Series",
                     )
                 except Exception:
-                    # Resolver miss already raised in the explicit
-                    # primitive-resolution pass at the end of validate;
-                    # fall back to the conservative default here so
-                    # type-compat doesn't double-report.
+                    # Resolver miss will be collected as
+                    # E_PRIMITIVE_RESOLVE_FAIL in the dedicated pass
+                    # below; fall back to Series here so we don't
+                    # double-report.
                     pass
         elif isinstance(source_node, OperatorNode):
-            source_spec = OPERATOR_REGISTRY[source_node.operator_name]
+            source_spec = OPERATOR_REGISTRY.get(source_node.operator_name)
+            if source_spec is None:
+                continue  # E_UNKNOWN_OPERATOR already collected
             source_type = source_spec.output.artifact_type.value
         else:
             continue  # unreachable
 
         if source_type != expected_element:
-            raise WorkflowValidationError(
-                f"Workflow {workflow.workflow_id!r}: edge "
-                f"{edge.source_node_id!r} ({source_type}) → "
-                f"{edge.target_node_id!r}.{edge.target_input_slot} "
-                f"expects {expected_element}.  Type-mismatched edge "
-                "would propagate as a runtime error mid-execution; "
-                "fix the source/target pairing or insert an adapter "
-                "node."
+            errors.append(
+                ValidationError(
+                    code=ErrorCode.E_TYPE_MISMATCH,
+                    # Plan §PR-1: L3_WIRING when upstream is operator
+                    # (composer's shape is the wrong shape); L2_BINDING
+                    # when upstream is primitive (selector bound a
+                    # primitive whose output type doesn't fit).
+                    owner_layer=(
+                        OwnerLayer.L2_BINDING
+                        if upstream_is_primitive
+                        else OwnerLayer.L3_WIRING
+                    ),
+                    message=(
+                        f"Workflow {wf_id!r}: edge "
+                        f"{edge.source_node_id!r} ({source_type}) → "
+                        f"{edge.target_node_id!r}.{edge.target_input_slot} "
+                        f"expects {expected_element}.  Type-mismatched edge "
+                        "would propagate as a runtime error mid-execution; "
+                        "fix the source/target pairing or insert an adapter "
+                        "node."
+                    ),
+                    node_id=target_node.node_id,
+                    edge=(edge.source_node_id, edge.target_node_id),
+                    target_input_slot=edge.target_input_slot,
+                    operator_name=target_node.operator_name,
+                    detail={
+                        "expected_artifact_type": expected_element,
+                        "source_artifact_type": source_type,
+                        "upstream_is_primitive": upstream_is_primitive,
+                    },
+                )
             )
 
     # ------------------------------------------------------------------
-    # 4b. Unit compatibility (best-effort).  Codex P2 follow-up
-    #    (PR #78): the prior validator's type-compat check only
-    #    compared artifact wrapper class names.  This pass adds
-    #    operator-declared cross-slot unit-algebra checks where
-    #    the upstream sources have declared output units (via
-    #    ``PrimitiveSpec.output_field_units`` for primitives or
-    #    via the unit-algebra propagation logic below for
-    #    operator chains).
-    #
-    #    Discipline: best-effort.  When source units are unknown
-    #    (e.g. a primitive whose resolver doesn't declare
-    #    output_field_units, or an operator chain we can't trace),
-    #    the validator skips the check.  Operator runtime
-    #    refusals stay as the authoritative gate — the substrate
-    #    catches what it can declare; operators catch what
-    #    template authors couldn't see at validate time.
+    # CHECK 6 (E_UNKNOWN_OUTPUT_FIELD) — when the primitive resolver
+    # declares ``output_field_units`` for a primitive, the node's
+    # ``output_field`` must be one of the declared keys.  Hoisted out
+    # of the unit-propagation loop so it runs even when the DAG has a
+    # cycle.
     # ------------------------------------------------------------------
     if primitive_resolver is not None:
-        # Build a per-node "produced unit" map walking the DAG
-        # in topological order.  Primitives: lookup
-        # PrimitiveSpec.output_field_units.  Operators: today
-        # we trace the operator's output unit conservatively
-        # (preserves_left for unary diff, otherwise unknown).
+        for node in workflow.nodes:
+            if not isinstance(node, PrimitiveNode):
+                continue
+            try:
+                spec = primitive_resolver(node.tool_name)
+            except Exception:
+                # Resolver miss collected as E_PRIMITIVE_RESOLVE_FAIL
+                # below; skip the field check.
+                continue
+            if (
+                spec.output_field_units
+                and node.output_field not in spec.output_field_units
+            ):
+                errors.append(
+                    ValidationError(
+                        code=ErrorCode.E_UNKNOWN_OUTPUT_FIELD,
+                        owner_layer=OwnerLayer.L2_BINDING,
+                        message=(
+                            f"Workflow {wf_id!r}: primitive "
+                            f"node {node.node_id!r} (tool "
+                            f"{node.tool_name!r}) declares "
+                            f"output_field={node.output_field!r}, but the "
+                            f"resolver only knows: "
+                            f"{sorted(spec.output_field_units.keys())}.  "
+                            "Pick one of the declared fields; this would "
+                            "otherwise fail at execute-time inside the "
+                            "primitive→artifact bridge."
+                        ),
+                        node_id=node.node_id,
+                        tool_name=node.tool_name,
+                        detail={
+                            "declared_output_field": node.output_field,
+                            "known_output_fields": sorted(
+                                spec.output_field_units.keys()
+                            ),
+                        },
+                    )
+                )
+
+    # ------------------------------------------------------------------
+    # CHECK 7 (E_DAG_CYCLE) — DAG must be acyclic.  Hoisted ABOVE unit
+    # propagation in the collect-all flow so unit propagation's
+    # topological walk doesn't blow up on a cyclic graph.  When a
+    # cycle is collected, the unit-propagation block below is skipped.
+    # ------------------------------------------------------------------
+    has_cycle = False
+    sorter: TopologicalSorter = TopologicalSorter()
+    node_ids = {n.node_id for n in workflow.nodes}
+    for nid in node_ids:
+        sorter.add(nid)
+    for edge in workflow.edges:
+        sorter.add(edge.target_node_id, edge.source_node_id)
+    try:
+        sorter.prepare()
+    except CycleError as exc:
+        has_cycle = True
+        errors.append(
+            ValidationError(
+                code=ErrorCode.E_DAG_CYCLE,
+                owner_layer=OwnerLayer.L3_WIRING,
+                message=(
+                    f"Workflow {wf_id!r}: DAG contains a "
+                    f"cycle.  graphlib.TopologicalSorter says: {exc.args}.  "
+                    "Workflows must be acyclic."
+                ),
+                detail={"cycle_args": list(exc.args)},
+            )
+        )
+
+    # ------------------------------------------------------------------
+    # CHECK 8 (E_UNIT_MISMATCH) — best-effort unit-algebra checks where
+    # the substrate can trace upstream units in topological order.
+    # Skipped when the DAG has a cycle (no meaningful topological walk).
+    # ------------------------------------------------------------------
+    if primitive_resolver is not None and not has_cycle:
         produced_units: Dict[str, Optional[str]] = {}
         for nid in _topological_node_ids(workflow):
             node = workflow.node_by_id(nid)
@@ -363,32 +583,6 @@ def validate_workflow(
                 except Exception:
                     produced_units[nid] = None
                     continue
-                # Strict output_field check: when the resolver has
-                # declared a non-empty ``output_field_units`` map, the
-                # node's output_field MUST be one of the declared keys.
-                # Catching this at validate-time turns a runtime
-                # bridge-lift ValueError ("output_field='X' is not
-                # declared on <SchemaClass>") into a clean validation
-                # refusal — the router's normaliser can then demote
-                # the bind to CLARIFY rather than crash mid-execute.
-                # Resolvers that explicitly declare ``output_field_units={}``
-                # (e.g. snapshot-only primitives) are exempt: empty
-                # means "unknown set, defer to runtime".
-                if (
-                    spec.output_field_units
-                    and node.output_field not in spec.output_field_units
-                ):
-                    raise WorkflowValidationError(
-                        f"Workflow {workflow.workflow_id!r}: primitive "
-                        f"node {node.node_id!r} (tool "
-                        f"{node.tool_name!r}) declares "
-                        f"output_field={node.output_field!r}, but the "
-                        f"resolver only knows: "
-                        f"{sorted(spec.output_field_units.keys())}.  "
-                        "Pick one of the declared fields; this would "
-                        "otherwise fail at execute-time inside the "
-                        "primitive→artifact bridge."
-                    )
                 produced_units[nid] = spec.output_field_units.get(
                     node.output_field
                 )
@@ -396,17 +590,14 @@ def validate_workflow(
                 # Conservative propagation: only ``series_arithmetic``
                 # with unary preserves_left algebra has a known
                 # propagation rule we encode here.  Other operators
-                # (align_series, threshold_events, event_windows,
-                # conditional_aggregate) emit artifacts whose unit
-                # depends on operator-internal logic we don't
-                # trace at validate time — leave as unknown.
+                # emit artifacts whose unit depends on operator-internal
+                # logic we don't trace at validate time.
                 if node.operator_name == "series_arithmetic":
                     op = node.params.get("op")
                     if op in ("diff",):
-                        # Unary diff preserves left's units.
-                        left_edges = edges_by_target.get(
-                            nid, {}
-                        ).get("left", [])
+                        left_edges = edges_by_target.get(nid, {}).get(
+                            "left", []
+                        )
                         if left_edges:
                             produced_units[nid] = produced_units.get(
                                 left_edges[0].source_node_id,
@@ -417,55 +608,45 @@ def validate_workflow(
                         continue
                 produced_units[nid] = None
 
-        # Now invoke each operator's unit_validator with the
-        # source units it can see.
+        # Invoke each operator's unit_validator with the source units
+        # it can see.
         for node in workflow.nodes:
             if not isinstance(node, OperatorNode):
                 continue
-            spec = OPERATOR_REGISTRY[node.operator_name]
-            if spec.unit_validator is None:
+            spec = OPERATOR_REGISTRY.get(node.operator_name)
+            if spec is None or spec.unit_validator is None:
                 continue
             source_units: Dict[str, Optional[str]] = {}
             for slot_name in spec.input_slots:
-                edges = edges_by_target.get(node.node_id, {}).get(slot_name, [])
-                if not edges:
+                slot_edges = edges_by_target.get(node.node_id, {}).get(
+                    slot_name, []
+                )
+                if not slot_edges:
                     source_units[slot_name] = None
                     continue
-                # First-edge wins for unit lookup; multiple edges
-                # to the same scalar slot is already a
-                # workflow-shape error caught by the executor.
                 source_units[slot_name] = produced_units.get(
-                    edges[0].source_node_id,
+                    slot_edges[0].source_node_id,
                 )
             err = spec.unit_validator(node.params, source_units)
             if err is not None:
-                raise WorkflowValidationError(
-                    f"Workflow {workflow.workflow_id!r}: operator "
-                    f"node {node.node_id!r} ({node.operator_name!r}) "
-                    f"failed unit-compatibility check: {err}"
+                errors.append(
+                    ValidationError(
+                        code=ErrorCode.E_UNIT_MISMATCH,
+                        owner_layer=OwnerLayer.L3_WIRING,
+                        message=(
+                            f"Workflow {wf_id!r}: operator "
+                            f"node {node.node_id!r} ({node.operator_name!r}) "
+                            f"failed unit-compatibility check: {err}"
+                        ),
+                        node_id=node.node_id,
+                        operator_name=node.operator_name,
+                        detail={"unit_validator_message": err},
+                    )
                 )
 
     # ------------------------------------------------------------------
-    # 5. Cycle detection.  ``TopologicalSorter`` raises
-    #    ``CycleError`` on cycles.  Surface with workflow context.
-    # ------------------------------------------------------------------
-    sorter: TopologicalSorter = TopologicalSorter()
-    node_ids = {n.node_id for n in workflow.nodes}
-    for nid in node_ids:
-        sorter.add(nid)
-    for edge in workflow.edges:
-        sorter.add(edge.target_node_id, edge.source_node_id)
-    try:
-        sorter.prepare()
-    except CycleError as exc:
-        raise WorkflowValidationError(
-            f"Workflow {workflow.workflow_id!r}: DAG contains a "
-            f"cycle.  graphlib.TopologicalSorter says: {exc.args}.  "
-            "Workflows must be acyclic."
-        ) from exc
-
-    # ------------------------------------------------------------------
-    # 6. Primitive resolvability (when a resolver is supplied).
+    # CHECK 9 (E_PRIMITIVE_RESOLVE_FAIL) — when a resolver is supplied,
+    # every PrimitiveNode.tool_name must resolve.
     # ------------------------------------------------------------------
     if primitive_resolver is not None:
         for node in workflow.nodes:
@@ -473,33 +654,93 @@ def validate_workflow(
                 try:
                     primitive_resolver(node.tool_name)
                 except Exception as exc:
-                    raise WorkflowValidationError(
-                        f"Workflow {workflow.workflow_id!r}: primitive "
-                        f"node {node.node_id!r} references tool_name="
-                        f"{node.tool_name!r} that the supplied "
-                        f"resolver cannot resolve: {exc}"
-                    ) from exc
+                    errors.append(
+                        ValidationError(
+                            code=ErrorCode.E_PRIMITIVE_RESOLVE_FAIL,
+                            owner_layer=OwnerLayer.L2_BINDING,
+                            message=(
+                                f"Workflow {wf_id!r}: primitive "
+                                f"node {node.node_id!r} references tool_name="
+                                f"{node.tool_name!r} that the supplied "
+                                f"resolver cannot resolve: {exc}"
+                            ),
+                            node_id=node.node_id,
+                            tool_name=node.tool_name,
+                            detail={
+                                "resolver_exception_type": type(exc).__name__,
+                                "resolver_exception_message": str(exc),
+                            },
+                        )
+                    )
+
+    return ValidationResult(workflow_id=wf_id, errors=tuple(errors))
+
+
+# ============================================================================
+# STRICT WRAPPER (legacy back-compat)
+# ============================================================================
+
+
+def validate_workflow(
+    workflow: Workflow,
+    *,
+    primitive_resolver: Optional[PrimitiveResolver] = None,
+) -> None:
+    """Strict-mode validator: runs ``validate_workflow_collect`` and
+    raises ``WorkflowValidationError`` with the first error's message
+    if any errors were collected.
+
+    Preserved verbatim for back-compat with the executor
+    (``shared.workflow.executor.execute_workflow``) and the existing
+    test suite (which asserts on error messages via
+    ``pytest.raises(WorkflowValidationError, match="…")``).  The
+    raised message text is byte-identical to what the pre-refactor
+    validator produced on the same error condition.
+
+    Parameters
+    ----------
+    workflow :
+        The Workflow to validate.
+    primitive_resolver :
+        Optional ``PrimitiveResolver``.  When supplied, primitive-name
+        resolution AND output-field / unit checks run; when omitted,
+        those checks are skipped (templates can validate offline).
+
+    Raises
+    ------
+    WorkflowValidationError
+        If at least one structural problem was found.  The raised
+        message is the first collected error's message string.
+    """
+    result = validate_workflow_collect(
+        workflow, primitive_resolver=primitive_resolver,
+    )
+    if not result.is_clean:
+        first = result.first()
+        assert first is not None  # is_clean is False so first is not None
+        raise WorkflowValidationError(first.message)
+
+
+# ============================================================================
+# TOPOLOGICAL ORDER (public helper)
+# ============================================================================
 
 
 def topological_order(workflow: Workflow) -> List[str]:
     """Return the node IDs in topological execution order.
 
-    Convenience for the executor; also useful for human inspection
-    of a workflow's planned execution sequence.  Calls
+    Convenience for the executor; also useful for human inspection of a
+    workflow's planned execution sequence.  Calls the strict wrapper
     ``validate_workflow`` first so cycles surface as
     ``WorkflowValidationError`` rather than ``CycleError``.
     """
     validate_workflow(workflow)
-    sorter: TopologicalSorter = TopologicalSorter()
-    for n in workflow.nodes:
-        sorter.add(n.node_id)
-    for edge in workflow.edges:
-        sorter.add(edge.target_node_id, edge.source_node_id)
-    return list(sorter.static_order())
+    return _topological_node_ids(workflow)
 
 
 __all__ = [
     "WorkflowValidationError",
     "validate_workflow",
+    "validate_workflow_collect",
     "topological_order",
 ]

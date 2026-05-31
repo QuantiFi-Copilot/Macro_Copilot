@@ -114,6 +114,13 @@ from shared.workflow.validate import (
     WorkflowValidationError,
     topological_order,
     validate_workflow,
+    validate_workflow_collect,
+)
+from shared.workflow.validation_result import (
+    ErrorCode,
+    OwnerLayer,
+    ValidationError,
+    ValidationResult,
 )
 
 
@@ -134,8 +141,13 @@ __all__ = [
     "WorkflowExecutionError",
     # Validation
     "validate_workflow",
+    "validate_workflow_collect",
     "topological_order",
     "WorkflowValidationError",
+    "ValidationResult",
+    "ValidationError",
+    "ErrorCode",
+    "OwnerLayer",
     # Registry / dispatch
     "OPERATOR_REGISTRY",
     "OperatorSpec",
