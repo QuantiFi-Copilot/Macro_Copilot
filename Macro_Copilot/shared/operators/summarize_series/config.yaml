@@ -92,8 +92,8 @@ card:
     statistic: "mean (default) | median (robust) | std | sum | count."
     dispersion: "std (default — recorded in lineage) | mad (robust) | none (suppress)."
   example_shapes:
-    - description: "Per-regime mean BTP-Bund spread, with cross-regime delta."
-      shape: "[Series(btp_bund), EventSet(regime_A)] -> apply_mask -> summarize_series -> Series_A ; [Series(btp_bund), EventSet(regime_B)] -> apply_mask -> summarize_series -> Series_B ; [Series_A, Series_B] -> align_series (sentinel-aligned) -> select_from_series_set ×2 -> series_arithmetic(op='subtract') -> Series (delta)"
+    - description: "Per-regime mean of a target Series, with cross-regime delta."
+      shape: "[Series(target), EventSet(regime_A)] -> apply_mask -> summarize_series -> Series_A ; [Series(target), EventSet(regime_B)] -> apply_mask -> summarize_series -> Series_B ; [Series_A, Series_B] -> align_series (sentinel-aligned) -> select_from_series_set ×2 -> series_arithmetic(op='subtract') -> Series (delta)"
   sibling_operators:
     - conditional_aggregate: "Per-offset (panel-flattening) sibling — use when input is WindowedPanel, not Series."
     - apply_mask: "Common upstream to produce the regime-conditioned sample."

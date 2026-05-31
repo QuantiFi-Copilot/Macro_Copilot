@@ -76,25 +76,25 @@ card:
     Rolling z-score: standardises a Series via its own trailing rolling
     mean and std.  Output always in Z_SCORE units.
   when_to_use:
-    - "User asks how a series compares to its own recent history in σ-units (e.g. \"z-score of SOFR 5Y vs 1y history\", \"how unusual is today's move\")."
-    - "User wants a standardised signal to feed threshold_events (e.g. \"flag dates > 2σ from history\")."
-    - "User wants the standardised form of a series for comparison across markets with different scales."
+    - "User asks how a Series compares to its own recent history in σ-units."
+    - "User wants a standardised signal to feed threshold_events for detecting unusual observations."
+    - "User wants the standardised form of a Series for comparison across inputs with different scales."
   when_not_to_use:
     - "If the user wants percentile RANK (where in the historical distribution), use percentile_rank instead."
     - "If the user wants the rolling mean / std SEPARATELY (not standardised), use rolling_statistic."
-    - "If the user wants cross-sectional z-score (across markets at one date), this is the wrong operator (planned cross_sectional_zscore)."
+    - "If the user wants cross-sectional z-score (across multiple series at one date), this is the wrong operator (planned cross_sectional_zscore)."
   upstream_requirements:
     - "One Series.  No alignment needed (single input)."
   downstream_pattern:
-    - "Output is a Series in Z_SCORE units, same index/length as input.  Common downstream: threshold_events (event detection on z), L6 directly (chart)."
+    - "Output is a Series in Z_SCORE units, same index/length as input.  Common downstream: threshold_events (event detection on z) or the terminal answer."
   knobs_quick_ref:
-    window: "60 by default (≈ 3 months daily); 20 for tactical, 252 for strategic."
+    window: "60 by default; shorter for tactical, longer for strategic horizons."
     min_periods: "Defaults to window (strict)."
     ddof: "1 (default, sample) | 0 (population)."
     look_ahead_safe: "true (default — stats use only data up to t-1; event-study hygiene)."
   example_shapes:
-    - description: "Z-score of SOFR 5Y rate vs its own 1y history."
-      shape: "Series(sofr_5y) -> rolling_zscore(window=252) -> Series(Z_SCORE)"
+    - description: "Trailing 1-year rolling z-score of a Series."
+      shape: "Series -> rolling_zscore(window=252) -> Series(Z_SCORE)"
     - description: "Event detection on z."
       shape: "Series -> rolling_zscore -> threshold_events(rule='abs_above', threshold=2.0) -> EventSet"
   sibling_operators:

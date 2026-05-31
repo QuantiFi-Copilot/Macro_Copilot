@@ -72,7 +72,7 @@ card:
     Reduce a WindowedPanel to a per-offset Series of an aggregator value
     (mean / median / std / count).  Final operator of the event-study skeleton.
   when_to_use:
-    - "Always pair downstream of event_windows when the user wants a single per-offset summary (e.g. \"average UST 10Y move 5d after each NFP surprise\")."
+    - "Always pair downstream of event_windows when the user wants a single per-offset summary across events."
     - "User wants the central-tendency event-response curve."
     - "User wants the count of valid observations per offset (aggregator='count', dispersion='none')."
   when_not_to_use:
@@ -81,14 +81,14 @@ card:
   upstream_requirements:
     - "Input must be a WindowedPanel produced by event_windows."
   downstream_pattern:
-    - "Output is a Series indexed by event-relative offset (encoded on a synthetic DatetimeIndex anchor 1970-01-01 + offset days).  Feeds L6 answer or further analysis."
+    - "Output is a Series indexed by event-relative offset (encoded on a synthetic DatetimeIndex anchor 1970-01-01 + offset days).  Feeds the terminal answer or further analysis."
   knobs_quick_ref:
-    aggregator: "mean (default) | median (robust) | std (spread) | count (sample size; requires dispersion='none')."
+    aggregator: "mean (default) | median (robust) | std (dispersion) | count (sample size; requires dispersion='none')."
     dispersion: "std (default — sample std reported per offset in lineage) | none (skip dispersion)."
     min_n: "5 by default — per-offset effective-N floor for the low_n flag (does NOT suppress the value; just flags it)."
   example_shapes:
-    - description: "Average UST 10Y path around NFP surprise events."
-      shape: "[Series nfp_surprise, Series ust_10y] -> threshold_events + event_windows -> WindowedPanel -> conditional_aggregate(aggregator='mean') -> Series"
+    - description: "Per-offset mean of target Series around event dates."
+      shape: "[Series triggers, Series target] -> threshold_events + event_windows -> WindowedPanel -> conditional_aggregate(aggregator='mean') -> Series"
   sibling_operators:
     - event_windows: "Required upstream — produces the WindowedPanel."
     - summarize_series: "Single-Series version (collapses a 1D Series to a single 1-row summary)."

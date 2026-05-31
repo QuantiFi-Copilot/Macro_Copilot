@@ -7,7 +7,7 @@ middle of a multi-node run.
 
 Two entry points
 ----------------
-``validate_workflow_collect(workflow, primitive_resolver=None) -> ValidationResult``
+``validate_workflow_result(workflow, primitive_resolver=None) -> ValidationResult``
     Walks the whole DAG and returns EVERY structural problem in one pass
     as a frozen ``ValidationResult``.  Each error carries a stable
     ``ErrorCode`` (closed family per P8) and an ``OwnerLayer`` tag for
@@ -52,7 +52,7 @@ Error-code taxonomy
 -------------------
 Each of the 13 checks above maps to exactly one ``ErrorCode`` value in
 ``shared.workflow.validation_result``.  The mapping is documented in
-the order-of-checks comments inside ``validate_workflow_collect``.
+the order-of-checks comments inside ``validate_workflow_result``.
 Adding a new code requires an ADR (P8 closed-family discipline).
 
 Back-compat
@@ -129,7 +129,7 @@ def _topological_node_ids(workflow: Workflow) -> List[str]:
 # ============================================================================
 
 
-def validate_workflow_collect(
+def validate_workflow_result(
     workflow: Workflow,
     *,
     primitive_resolver: Optional[PrimitiveResolver] = None,
@@ -686,7 +686,7 @@ def validate_workflow(
     *,
     primitive_resolver: Optional[PrimitiveResolver] = None,
 ) -> None:
-    """Strict-mode validator: runs ``validate_workflow_collect`` and
+    """Strict-mode validator: runs ``validate_workflow_result`` and
     raises ``WorkflowValidationError`` with the first error's message
     if any errors were collected.
 
@@ -712,7 +712,7 @@ def validate_workflow(
         If at least one structural problem was found.  The raised
         message is the first collected error's message string.
     """
-    result = validate_workflow_collect(
+    result = validate_workflow_result(
         workflow, primitive_resolver=primitive_resolver,
     )
     if not result.is_clean:
@@ -738,9 +738,25 @@ def topological_order(workflow: Workflow) -> List[str]:
     return _topological_node_ids(workflow)
 
 
+# ============================================================================
+# DEPRECATED ALIAS
+# ============================================================================
+#
+# An earlier draft of PR-1 shipped under the name
+# ``validate_workflow_collect``.  The plan (``tmp/orchestration.md``
+# §PR-1) named the public entry ``validate_workflow_result``, and the
+# rename to match the plan happened before any caller existed in-tree.
+# The alias is kept as a soft landing for any out-of-tree consumer that
+# already imported the earlier name; a follow-on PR can remove it once
+# we are certain nothing reads it.
+
+validate_workflow_collect = validate_workflow_result
+
+
 __all__ = [
     "WorkflowValidationError",
     "validate_workflow",
-    "validate_workflow_collect",
+    "validate_workflow_result",
+    "validate_workflow_collect",  # deprecated alias for validate_workflow_result
     "topological_order",
 ]

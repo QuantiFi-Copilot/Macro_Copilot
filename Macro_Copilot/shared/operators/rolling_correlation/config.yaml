@@ -75,25 +75,25 @@ card:
     Time-varying (windowed) correlation between two index-aligned numeric
     Series — emits a Series of rolling coefficients.
   when_to_use:
-    - "User asks how the correlation has EVOLVED through time (e.g. \"rolling 1y correlation between SOFR 2s10s and UST 2s10s\")."
+    - "User asks how the correlation has EVOLVED through time."
     - "User asks whether two series have decoupled or recoupled recently."
-    - "User wants a chart of correlation over time, not a single number."
+    - "User wants a series of correlation over time, not a single number."
   when_not_to_use:
     - "User asks for ONE full-sample correlation number — use correlation (emits ScalarMetric, not Series)."
-    - "User asks if a spread between the two is stationary — use cointegration."
-    - "User asks for time-varying hedge ratio — use rolling_regression."
+    - "User asks whether a linear combination of the two is stationary — use cointegration."
+    - "User asks for time-varying slope (beta) of one on the other — use rolling_regression."
   upstream_requirements:
     - "Both Series must share an identical DatetimeIndex.  Canonical upstream: align_series → select_from_series_set ×2."
   downstream_pattern:
-    - "Output is a Series in RATIO units; commonly feeds threshold_events (e.g. \"flag dates where |corr| > 0.8\") or directly to L6 as a chart."
+    - "Output is a Series in RATIO units; commonly feeds threshold_events for flagging extreme correlation values, or directly to the terminal answer."
   knobs_quick_ref:
     method: "pearson (default) | spearman | kendall (declared, refuses)."
-    window: "60 by default (≈ 3 months daily); 20 for tactical, 252 for strategic."
+    window: "60 by default; shorter for tactical, longer for strategic."
     min_periods: "Defaults to window (strict — no partial-window correlations)."
   example_shapes:
-    - description: "Rolling 60d correlation between two daily series."
+    - description: "Rolling windowed correlation between two index-aligned numeric Series."
       shape: "[Series A, Series B] -> align_series -> select_from_series_set ×2 -> rolling_correlation -> Series"
   sibling_operators:
     - correlation: "Full-sample correlation — one ScalarMetric instead of a Series.  Pick when the user wants a single summary number."
-    - cointegration: "Is the spread stationary?  Different question; pair-trading research lens."
-    - rolling_regression: "Rolling beta / hedge ratio.  Use when the question is 'how many units of X per unit of Y', not 'how correlated'."
+    - cointegration: "Is a linear combination of the two stationary?  Different question, same input shape."
+    - rolling_regression: "Rolling slope (beta).  Use when the question is 'how much per unit', not 'how correlated'."

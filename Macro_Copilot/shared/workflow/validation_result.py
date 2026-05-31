@@ -56,12 +56,25 @@ from pydantic import BaseModel, ConfigDict, Field
 class ErrorCode(str, Enum):
     """Closed family of validation error codes (P8).
 
-    Each code corresponds to exactly one structural check inside
-    ``shared.workflow.validate.validate_workflow_collect``.  The mapping
-    is stable across the lifetime of the substrate; extensions require
-    an ADR.  Order of definition matches the order of checks inside the
-    validator so a reviewer can grep the validator for the code and see
-    the raising condition immediately.
+    The first 13 codes (E_UNKNOWN_OPERATOR ... E_PRIMITIVE_RESOLVE_FAIL)
+    each correspond to exactly one structural check inside
+    ``shared.workflow.validate.validate_workflow_result``.  Order of
+    definition matches the order of checks inside the validator so a
+    reviewer can grep the validator for the code and see the raising
+    condition immediately.
+
+    ``E_FREQUENCY_MISMATCH`` is declared here but NOT raised by
+    ``validate_workflow_result`` itself in PR-1 — the PR-1 raise sites
+    are exactly the legacy 13.  PR-3 / PR-4 introduce the leaf-contract
+    role-discriminant check (``LeafRequest.expected_frequency`` vs
+    ``BoundLeaf.declared_frequency``) and that's where the new code's
+    raise site lands.  Declaring it up-front honours P8 closed-family
+    discipline: the substrate ships the full taxonomy as ONE coherent
+    enum and the test that asserts "no silent enum drift" works across
+    PR boundaries.
+
+    The mapping is stable across the lifetime of the substrate;
+    extensions require an ADR.
     """
 
     E_UNKNOWN_OPERATOR = "E_UNKNOWN_OPERATOR"
@@ -77,6 +90,8 @@ class ErrorCode(str, Enum):
     E_UNIT_MISMATCH = "E_UNIT_MISMATCH"
     E_DAG_CYCLE = "E_DAG_CYCLE"
     E_PRIMITIVE_RESOLVE_FAIL = "E_PRIMITIVE_RESOLVE_FAIL"
+    # Declared in PR-1, raised in PR-3 / PR-4 — see class docstring.
+    E_FREQUENCY_MISMATCH = "E_FREQUENCY_MISMATCH"
 
 
 class OwnerLayer(str, Enum):

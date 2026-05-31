@@ -101,12 +101,12 @@ card:
     Rolling-OLS regression of LHS Series on a single RHS Series.  Emits a
     SeriesSet keyed by {beta, alpha, r_squared}.
   when_to_use:
-    - "User asks for a hedge ratio / beta of one series to another (e.g. \"rolling 1y beta of BTP-Bund to Bund 10Y\")."
-    - "User asks how much LHS moves per unit move of RHS — explicitly a ratio of slopes, not a correlation."
-    - "User asks for time-varying R² / explanatory power of one series for another."
+    - "User asks for a slope (beta) of one series on another — the ratio of moves, not their correlation."
+    - "User asks for the time-varying explanatory power (R²) of one series for another."
+    - "User asks for the intercept (alpha) of a one-regressor linear fit."
   when_not_to_use:
     - "User asks for correlation strength only — use rolling_correlation (or correlation for full-sample)."
-    - "User asks if the SPREAD is stationary (pairs trading) — use cointegration."
+    - "User asks whether a linear combination of the two series is stationary — use cointegration."
     - "User asks for multi-regressor regression — V1 supports single RHS only."
   upstream_requirements:
     - "LHS and RHS are inner-joined internally; aligning upstream with align_series → select_from_series_set ×2 is the convention for explicit auditability."
@@ -114,14 +114,14 @@ card:
     - "Output is SeriesSet with three named keys: beta, alpha, r_squared.  Use select_from_series_set to pick one for downstream display or further analysis."
   knobs_quick_ref:
     window: "Rolling window length (passed to shared.analytics.rolling_ols)."
-    min_periods: "30 by default (matches the sovereign_bonds rolling_regression primitive)."
+    min_periods: "30 by default."
     add_constant: "true (default) | false.  When false, alpha = 0."
-    lhs_basis: "level_change (default; diff the series, with PERCENT→BPS unit transition) | raw_value (regress on levels — cointegration-style)."
+    lhs_basis: "level_change (default; diff the series, with PERCENT→BPS unit transition) | raw_value (regress on levels)."
     rhs_basis: "must match lhs_basis in V1."
   example_shapes:
-    - description: "Rolling beta of LHS Series on RHS Series, common case for hedge-ratio research."
+    - description: "Rolling slope (beta) of LHS Series on RHS Series, extracted as a Series."
       shape: "[Series LHS, Series RHS] -> align_series -> select_from_series_set ×2 -> rolling_regression -> SeriesSet{beta, alpha, r_squared} -> select_from_series_set(key=beta) -> Series"
   sibling_operators:
     - correlation: "Full-sample correlation.  How correlated, not how steep."
-    - rolling_correlation: "Time-varying correlation.  Strength only; no hedge ratio."
-    - cointegration: "Is the spread stationary?  Pair-trading research lens."
+    - rolling_correlation: "Time-varying correlation.  Strength only; no slope."
+    - cointegration: "Is a linear combination of the two series stationary?"

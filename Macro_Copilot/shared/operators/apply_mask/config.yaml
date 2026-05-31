@@ -119,24 +119,24 @@ card:
     Subsample a Series by a boolean EventSet mask.  Output is the input
     Series restricted to True dates.
   when_to_use:
-    - "User wants the VALUES of a target series on the dates flagged by an event detector (e.g. \"UST 10Y yield on dates with NFP surprise > 50K\")."
-    - "User wants a regime-conditioned subsample of a series (e.g. \"BTP-Bund only during steepener regime\")."
-    - "Pair downstream of threshold_events when the user wants values, not windows."
+    - "User wants the VALUES of a target Series on the dates flagged by an event detector."
+    - "User wants a regime-conditioned subsample of a Series."
+    - "Pair downstream of threshold_events when the user wants values at the qualifying dates, not windows."
   when_not_to_use:
-    - "If the user wants WINDOWS (return paths) around each event, use event_windows."
+    - "If the user wants WINDOWS (per-event sequences) around each event, use event_windows."
     - "If the user wants to combine two Series elementwise on a mask, this is the wrong shape — wire apply_mask first then arithmetic."
   upstream_requirements:
     - "TWO inputs: a Series on 'series' slot, and an EventSet on 'mask' slot."
     - "The Series and EventSet must declare the same frequency tag (strict by default)."
   downstream_pattern:
-    - "Output is a Series (sparse by default — only the True dates).  Common downstream: summarize_series (per-regime mean/std), or any further single-series transform."
+    - "Output is a Series (sparse by default — only the True dates).  Common downstream: summarize_series (per-regime central tendency), or any further single-series transform."
   knobs_quick_ref:
     index_policy: "intersect (default — works across slightly different calendars) | strict_match (requires identical index)."
     preserve_full_index: "false (default — sparse output) | true (keep full index with NaN at False cells; for downstream alignment)."
     require_matching_frequency: "true (default — strict on frequency tag)."
   example_shapes:
-    - description: "Subsample UST 10Y on NFP-surprise event dates."
-      shape: "Series(ust_10y) + EventSet(threshold_events on nfp_surprise) -> apply_mask -> Series"
+    - description: "Subsample a target Series on event dates produced by threshold_events."
+      shape: "Series(target) + EventSet(threshold_events on Series(trigger)) -> apply_mask -> Series"
     - description: "Regime-conditioned per-regime summary."
       shape: "Series(target) + EventSet(regime_mask) -> apply_mask -> Series -> summarize_series -> Series(1-row)"
   sibling_operators:

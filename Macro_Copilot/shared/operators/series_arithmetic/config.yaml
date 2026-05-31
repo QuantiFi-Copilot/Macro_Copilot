@@ -76,8 +76,8 @@ card:
     Elementwise arithmetic on typed Series (add / subtract / multiply /
     divide / diff / pct_change) with strict unit-algebra.
   when_to_use:
-    - "User asks for a BASIS or difference between two series (e.g. \"basis between linker breakeven and inflation swap\")."
-    - "User asks for a scaled series (multiply / divide by scalar)."
+    - "User asks for the difference (subtract) between two Series."
+    - "User asks for a scaled Series (multiply / divide by scalar)."
     - "User asks for level changes (diff) or percent changes (pct_change) of one Series."
     - "User asks for a ratio of two same-unit Series → RATIO output."
   when_not_to_use:

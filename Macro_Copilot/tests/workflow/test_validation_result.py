@@ -5,7 +5,11 @@ refactor of ``shared.workflow.validate``.
 
 The plan (``tmp/orchestration.md`` §PR-1) specifies:
 
-  1. One test per error code in the 13-entry ``ErrorCode`` taxonomy.
+  1. One test per error code in the 14-entry ``ErrorCode`` taxonomy
+     (13 raised by ``validate_workflow_result`` in PR-1, plus
+     ``E_FREQUENCY_MISMATCH`` which is declared up-front per the plan
+     and raised by PR-3 / PR-4 — exercised by an enum-membership
+     assertion, not a raise-site test, since no raise site exists yet).
   2. A multi-error workflow that triggers ≥3 codes in one pass.
   3. The legacy strict wrapper ``validate_workflow`` raises
      ``WorkflowValidationError`` on the first error (back-compat with
@@ -35,7 +39,7 @@ from shared.workflow import (
     WorkflowEdge,
     WorkflowValidationError,
     validate_workflow,
-    validate_workflow_collect,
+    validate_workflow_result,
 )
 from shared.workflow.types import LiteralBinding
 from shared.workflow.validation_result import (
@@ -618,7 +622,7 @@ def _wf_primitive_resolve_fail() -> Workflow:
 
 class TestCleanWorkflow:
     def test_clean_workflow_is_clean(self) -> None:
-        result = validate_workflow_collect(
+        result = validate_workflow_result(
             _wf_clean_pipeline(), primitive_resolver=_synthetic_resolver,
         )
         assert result.is_clean, (
@@ -658,7 +662,7 @@ class TestEachErrorCode:
         use_resolver: bool = False,
     ) -> ValidationResult:
         resolver = _synthetic_resolver if use_resolver else None
-        result = validate_workflow_collect(wf, primitive_resolver=resolver)
+        result = validate_workflow_result(wf, primitive_resolver=resolver)
         assert not result.is_clean, (
             f"expected at least one error for code={code.value}"
         )
@@ -820,7 +824,7 @@ class TestEachErrorCode:
 
 class TestMultiErrorWorkflow:
     """One workflow that triggers ≥3 distinct codes in a single
-    ``validate_workflow_collect`` pass."""
+    ``validate_workflow_result`` pass."""
 
     def _wf_three_errors(self) -> Workflow:
         # Triggers:
@@ -859,7 +863,7 @@ class TestMultiErrorWorkflow:
         )
 
     def test_collects_all_three_codes(self) -> None:
-        result = validate_workflow_collect(self._wf_three_errors())
+        result = validate_workflow_result(self._wf_three_errors())
         codes_present = {e.code for e in result.errors}
         assert ErrorCode.E_UNKNOWN_OPERATOR in codes_present
         assert ErrorCode.E_EDGE_TARGETS_PRIMITIVE in codes_present
@@ -897,14 +901,14 @@ class TestOwnerLayerDispatch:
         assert isinstance(owner_layer, OwnerLayer)
 
     def test_by_owner_layer_helper(self) -> None:
-        result = validate_workflow_collect(_wf_unknown_operator())
+        result = validate_workflow_result(_wf_unknown_operator())
         l3 = result.by_owner_layer(OwnerLayer.L3_WIRING)
         l2 = result.by_owner_layer(OwnerLayer.L2_BINDING)
         assert l3, "expected at least one L3_WIRING error"
         assert not l2
 
     def test_by_code_helper(self) -> None:
-        result = validate_workflow_collect(_wf_unknown_operator())
+        result = validate_workflow_result(_wf_unknown_operator())
         matched = result.by_code(ErrorCode.E_UNKNOWN_OPERATOR)
         assert len(matched) == 1
 
@@ -916,23 +920,76 @@ class TestOwnerLayerDispatch:
 
 class TestValidationResultShape:
     def test_errors_is_tuple_not_list(self) -> None:
-        result = validate_workflow_collect(_wf_unknown_operator())
+        result = validate_workflow_result(_wf_unknown_operator())
         assert isinstance(result.errors, tuple), (
             "ValidationResult.errors must be a tuple (frozen Pydantic)"
         )
 
     def test_validation_result_is_frozen(self) -> None:
-        result = validate_workflow_collect(_wf_clean_pipeline())
+        result = validate_workflow_result(_wf_clean_pipeline())
         with pytest.raises(Exception):
             # Pydantic v2 raises pydantic_core.ValidationError on
             # frozen-model mutation; ValueError is its parent class.
             result.workflow_id = "mutated"  # type: ignore[misc]
 
     def test_validation_error_is_frozen(self) -> None:
-        result = validate_workflow_collect(_wf_unknown_operator())
+        result = validate_workflow_result(_wf_unknown_operator())
         err = result.errors[0]
         with pytest.raises(Exception):
             err.message = "mutated"  # type: ignore[misc]
+
+
+# ============================================================================
+# DEFERRED-RAISE CODES (declared in PR-1, raise site lands in PR-3/PR-4)
+# ============================================================================
+
+
+class TestDeferredRaiseCodes:
+    """``E_FREQUENCY_MISMATCH`` is declared in the closed family in PR-1
+    but has no raise site inside ``validate_workflow_result`` yet — the
+    leaf-contract role-discriminant check (PR-3 hole/fill contracts +
+    PR-4 assembler) is what surfaces it.  The plan
+    (``tmp/orchestration.md``:237) declares the code in PR-1's taxonomy
+    so the closed family is coherent across PR boundaries; this test
+    pins the contract for PR-3 to extend rather than reinvent.
+    """
+
+    def test_frequency_mismatch_is_declared(self) -> None:
+        assert ErrorCode.E_FREQUENCY_MISMATCH.value == "E_FREQUENCY_MISMATCH"
+
+    def test_frequency_mismatch_not_raised_by_pr1_validator(self) -> None:
+        """No fixture in this module's workflow builders triggers
+        E_FREQUENCY_MISMATCH; running the full suite asserts the
+        invariant that PR-1's ``validate_workflow_result`` body has zero
+        raise sites for this code.  When PR-3 adds the raise site, this
+        test should be deleted in the same PR that ships the new
+        check."""
+        for builder in (
+            _wf_clean_pipeline,
+            _wf_unknown_operator,
+            _wf_unknown_slot,
+            _wf_edge_targets_primitive,
+            _wf_literal_targets_non_operator,
+            _wf_literal_unknown_slot,
+            _wf_literal_slot_no_scalar,
+            _wf_arity_violation,
+            _wf_unbound_required_slot,
+            _wf_type_mismatch_upstream_operator,
+            _wf_type_mismatch_upstream_primitive,
+            _wf_unknown_output_field,
+            _wf_unit_mismatch,
+            _wf_dag_cycle,
+            _wf_primitive_resolve_fail,
+        ):
+            result = validate_workflow_result(
+                builder(), primitive_resolver=_synthetic_resolver,
+            )
+            freq_errs = result.by_code(ErrorCode.E_FREQUENCY_MISMATCH)
+            assert not freq_errs, (
+                f"{builder.__name__}: PR-1 validator unexpectedly raised "
+                "E_FREQUENCY_MISMATCH; raise site should land in PR-3 / "
+                "PR-4 (leaf-contract role-discriminant)."
+            )
 
 
 # ============================================================================
@@ -947,7 +1004,16 @@ class TestClosedFamilies:
     def test_error_code_taxonomy_size(self) -> None:
         # Adding a new code requires (a) an ADR and (b) updating this
         # number.  This guards against silent enum drift.
-        assert len(ErrorCode) == 13, (
+        #
+        # Taxonomy size = 14 after PR-1 corrective:
+        #   - 13 codes for the existing structural raise sites inside
+        #     validate_workflow_result (CHECKS 1-9 in the validator),
+        #   - 1 code (E_FREQUENCY_MISMATCH) declared up-front per the
+        #     plan's PR-1 table (tmp/orchestration.md:237) so the
+        #     closed family is coherent across PR boundaries; its
+        #     raise site lands in PR-3 / PR-4 with the leaf-contract
+        #     role-discriminant check.
+        assert len(ErrorCode) == 14, (
             f"ErrorCode taxonomy size changed to {len(ErrorCode)}.  "
             "Per P8, extending requires an ADR + this assertion bump."
         )
@@ -959,9 +1025,13 @@ class TestClosedFamilies:
         )
 
     def test_every_code_has_owner_layer_mapping(self) -> None:
-        # Excluding E_TYPE_MISMATCH which is dual-owner by design.
+        # Excluding E_TYPE_MISMATCH (dual-owner by design) and
+        # E_FREQUENCY_MISMATCH (declared in PR-1 but raised by PR-3 / PR-4;
+        # its owner_layer dispatch table is owned by PR-3's hole/fill
+        # contract design, not by PR-1's structural validator).
+        skip = {ErrorCode.E_TYPE_MISMATCH, ErrorCode.E_FREQUENCY_MISMATCH}
         for code in ErrorCode:
-            if code == ErrorCode.E_TYPE_MISMATCH:
+            if code in skip:
                 continue
             assert code in _EXPECTED_OWNER_LAYER, (
                 f"{code.value} missing from _EXPECTED_OWNER_LAYER — "

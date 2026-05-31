@@ -97,17 +97,17 @@ card:
   upstream_requirements:
     - "One Series.  No alignment needed (single input)."
   downstream_pattern:
-    - "Output is a Series in INPUT units (a rolling mean of BPS is in BPS).  Feeds L6 directly, threshold_events for level-based triggers, or series_arithmetic to compute spreads to the raw level."
+    - "Output is a Series in INPUT units.  Feeds the terminal answer directly, threshold_events for level-based triggers, or series_arithmetic to compute deviations from the raw level."
   knobs_quick_ref:
     statistic: "mean (default) | std | min | max | sum."
-    window: "20 by default (≈ 1 trading month).  Override for tactical (5) or strategic (252) horizons."
+    window: "20 by default.  Override for tactical (shorter) or strategic (longer) horizons."
     min_periods: "Defaults to window (strict)."
     ddof: "Only used for statistic='std'; 1 (sample) default, 0 (population) supported."
     look_ahead_safe: "false (default — at t, stat reflects window ending at t inclusive).  Set true when combining with same-day raw value."
   example_shapes:
-    - description: "20-day rolling volatility of a yield series."
-      shape: "Series(yield) -> rolling_statistic(statistic='std', window=20) -> Series"
-    - description: "Trailing 252-day rolling mean."
+    - description: "Trailing rolling standard deviation of a Series."
+      shape: "Series -> rolling_statistic(statistic='std', window=20) -> Series"
+    - description: "Trailing rolling mean of a Series."
       shape: "Series -> rolling_statistic(statistic='mean', window=252) -> Series"
   sibling_operators:
     - rolling_zscore: "If the user wants the value standardised by the rolling mean and std together."

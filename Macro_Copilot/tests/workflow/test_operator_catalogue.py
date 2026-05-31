@@ -331,6 +331,121 @@ class TestP10NoContentDuplication:
 
 
 # ============================================================================
+# P9 / R11 — operator CARDS are finance-blind
+# ============================================================================
+#
+# Added in the PR-A corrective patch (after Codex audit).  P9 / R11
+# bans finance-domain vocabulary inside `shared/operators/` because
+# operators are structural transforms over typed artifacts — they
+# describe SHAPE, not instruments.  Trader-language examples belong in:
+#
+#   - L1 router prompts (domain decomposition is its job),
+#   - L3 Composer golden few-shots (PR-7 grounds wiring patterns),
+#   - eval fixtures (PR-10).
+#
+# This lint enforces the rule on the `card:` block content only — the
+# pre-existing operator `description` / `methodology` / `defaults`
+# blocks are unchanged by PR-2 and out of scope for this check.
+
+
+# Banned vocabulary inside a `card:` block.  Case-insensitive,
+# word-boundary match (so "Series" doesn't match "yield series" but
+# the substring "UST" inside "OUSTED" wouldn't false-positive either).
+# Extending this list is a substrate-policy change (P8-style discipline
+# for the lint itself) — add new terms when a new banned vocabulary is
+# discovered, never remove a term silently.
+_BANNED_CARD_VOCABULARY: tuple[str, ...] = (
+    # Sovereign / curve identifiers
+    "UST", "BTP", "Bund", "JGB", "TIPS", "OAT", "OATi", "OATei",
+    "RRB", "Bono", "Gilt",
+    # Currency / overnight-index aliases
+    "SOFR", "SONIA", "ESTR", "TONA", "AONIA", "CORRA", "OIS",
+    # Inflation-swap aliases
+    "ZCIS", "USSWIT", "EUSWI", "BPSWIT",
+    # Bond / policy futures tickers
+    "TY1", "UXY", "US1", "WN1", "TU1", "FV1", "RX", "RX1", "JB1",
+    "SFR", "SFR1", "ER1", "SFI1",
+    # Curve shorthand
+    "2s10s", "5s30s", "5s10s", "2s5s", "5y5y", "1y1y", "2y1y",
+    # Economic-indicator names
+    "NFP", "CPI", "FOMC", "ECB", "BoE", "BoJ", "RBA", "BoC",
+    # Trading lingo
+    "reds", "greens", "whites",
+    # Domain-package names (operators must not name their callers)
+    "sovereign_bonds", "inflation_indexed_bonds", "policy_futures",
+    "bond_futures", "inflation_swaps",
+    # Instrument-context nouns used in cards (NOT operator concepts)
+    "breakeven", "linker",
+    # Specific identifier strings that leaked through in PR-2 drafts
+    "btp_bund", "ust_10y", "sofr_5y", "nfp_surprise",
+)
+
+
+class TestCardsAreFinanceBlind:
+    """Each operator's `card:` block must not contain finance-domain
+    vocabulary.  Per R11 (operators stay finance-blind) — see
+    `shared/operators/` rules and `tmp/orchestration.md` §1."""
+
+    @pytest.mark.parametrize("operator_name", sorted(OPERATOR_REGISTRY.keys()))
+    def test_card_block_has_no_banned_vocabulary(
+        self, operator_name: str,
+    ) -> None:
+        import re
+
+        config_path = OPERATOR_REGISTRY[operator_name].config_path
+        text = config_path.read_text(encoding="utf-8")
+
+        # Extract the `card:` block only.  Reads from the line that
+        # begins with `card:` (zero indent) until the next zero-indent
+        # top-level key or EOF.  This is the same scoping the renderer
+        # uses (it inspects `doc["card"]`).
+        in_card = False
+        card_lines: list[str] = []
+        for line in text.splitlines():
+            if line.startswith("card:"):
+                in_card = True
+                card_lines.append(line)
+                continue
+            if in_card:
+                # Next top-level key (or end of file) ends the block.
+                if line and not line.startswith(" ") and not line.startswith("\t") and not line.startswith("#"):
+                    break
+                card_lines.append(line)
+        if not card_lines:
+            pytest.fail(
+                f"{operator_name}: no `card:` block found in "
+                f"{config_path} (expected by PR-2)."
+            )
+
+        card_text = "\n".join(card_lines)
+
+        violations: list[tuple[str, str]] = []
+        for term in _BANNED_CARD_VOCABULARY:
+            # Word-boundary match, case-insensitive.  ``\b`` matches at
+            # transitions between word and non-word characters.
+            pattern = re.compile(
+                rf"\b{re.escape(term)}\b", flags=re.IGNORECASE,
+            )
+            for line in card_lines:
+                if pattern.search(line):
+                    violations.append((term, line.strip()))
+
+        if violations:
+            details = "\n".join(
+                f"  - banned term {t!r} in line: {ln}"
+                for t, ln in violations
+            )
+            pytest.fail(
+                f"{operator_name}: card: block contains banned finance "
+                "vocabulary.  Per R11 (operators stay finance-blind), "
+                "examples must use generic identifiers (Series A, Series "
+                "B, etc.).  Trader-language examples belong in L1 "
+                "prompts, L3 few-shots, or eval fixtures — never in "
+                "shared/operators/.  Violations:\n" + details
+            )
+
+
+# ============================================================================
 # P11 / P9 — module is finance-blind
 # ============================================================================
 

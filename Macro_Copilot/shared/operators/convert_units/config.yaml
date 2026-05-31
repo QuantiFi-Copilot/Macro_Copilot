@@ -49,7 +49,7 @@ card:
   knobs_quick_ref:
     target_units: "REQUIRED — one of TimeSeriesUnits enum values.  Currently supported pairs: PERCENT<->BPS (plus identity)."
   example_shapes:
-    - description: "Convert a PERCENT yield series to BPS so it can be added to another BPS series."
+    - description: "Convert a PERCENT Series to BPS so it can be combined with another BPS Series."
       shape: "Series(PERCENT) -> convert_units(target_units='bps') -> Series(BPS)"
     - description: "Repair pattern: the L4 assembler inserts this on one arm before series_arithmetic.add when units mismatch."
       shape: "Series(PERCENT) -> convert_units(target_units='bps') -> series_arithmetic(op='add', other=Series(BPS)) -> Series(BPS)"

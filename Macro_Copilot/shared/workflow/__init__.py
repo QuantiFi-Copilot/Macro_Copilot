@@ -114,7 +114,8 @@ from shared.workflow.validate import (
     WorkflowValidationError,
     topological_order,
     validate_workflow,
-    validate_workflow_collect,
+    validate_workflow_result,
+    validate_workflow_collect,  # deprecated alias kept for one PR cycle
 )
 from shared.workflow.validation_result import (
     ErrorCode,
@@ -141,7 +142,8 @@ __all__ = [
     "WorkflowExecutionError",
     # Validation
     "validate_workflow",
-    "validate_workflow_collect",
+    "validate_workflow_result",
+    "validate_workflow_collect",  # deprecated alias kept for one PR cycle
     "topological_order",
     "WorkflowValidationError",
     "ValidationResult",

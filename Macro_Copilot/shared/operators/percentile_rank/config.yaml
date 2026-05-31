@@ -85,29 +85,29 @@ methodology:
 card:
   one_line: >-
     Trailing- or expanding-window percentile rank (0–100) of a Series
-    vs its own history.  The canonical "rich/cheap vs history" primitive.
+    vs its own history.
   when_to_use:
-    - "User asks where a series sits vs its own history in percentile terms (e.g. \"is UST 10Y rich vs its 1y range\", \"how rich is BTP-Bund vs 3-year history\")."
-    - "User asks for percentile (NOT σ-units)."
-    - "User uses words like \"rich\", \"cheap\", \"high\", \"low\", \"extreme\" framed against a historical window."
+    - "User asks where a Series sits vs its own history in percentile terms."
+    - "User asks for percentile rank (NOT σ-units)."
+    - "User asks how high or low the current value is relative to a historical window."
   when_not_to_use:
     - "If the user wants σ-units (z-score), use rolling_zscore."
-    - "If the user wants cross-sectional rank (across markets at one date), this is the wrong operator (planned cross_sectional_rank)."
+    - "If the user wants cross-sectional rank (across multiple series at one date), this is the wrong operator (planned cross_sectional_rank)."
     - "If the user wants the raw rolling stat (mean, std, etc.), use rolling_statistic."
   upstream_requirements:
     - "One Series.  No alignment needed (single input)."
   downstream_pattern:
-    - "Output is a Series in PCT_RANK units (0–100).  Feeds L6 directly (chart / value) or threshold_events for extreme-detection (e.g. top decile)."
+    - "Output is a Series in PCT_RANK units (0–100).  Feeds the terminal answer directly or threshold_events for extreme-detection (e.g. top decile)."
   knobs_quick_ref:
-    window: "252 by default (≈ 1y daily).  null for expanding window (vs ALL history)."
+    window: "252 by default.  null for expanding window (vs ALL history)."
     min_periods: "20 by default — floor below which a percentile rank is too coarse."
     method: "mean (default, midrank) | weak (<=) | strict (<) | rank.  See scipy.stats.percentileofscore."
     look_ahead_safe: "true (default — history strictly [t-window, t-1]; event-study hygiene)."
   example_shapes:
-    - description: "How rich is BTP-Bund vs 3-year history?"
-      shape: "Series(btp_bund_spread) -> percentile_rank(window=756) -> Series(PCT_RANK)"
-    - description: "Extract today's value for L6."
-      shape: "Series(yield_level) -> percentile_rank(window=252) -> Series → L6 reads last value"
+    - description: "Percentile rank of a Series vs its trailing window."
+      shape: "Series -> percentile_rank(window=756) -> Series(PCT_RANK)"
+    - description: "Trailing 1-year percentile rank, terminal value consumed by the answer layer."
+      shape: "Series -> percentile_rank(window=252) -> Series"
   sibling_operators:
     - rolling_zscore: "Pick when the user wants σ-units instead of percentile rank."
     - rolling_statistic: "Pick when the user wants the raw rolling stat (mean / std / min / max / sum)."

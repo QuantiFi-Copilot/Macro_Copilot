@@ -72,9 +72,9 @@ card:
     Extract a WindowedPanel of fixed-shape windows around each event date
     from a target Series.  Core event-study primitive.
   when_to_use:
-    - "User asks what a series does in the days AROUND each event (e.g. \"UST 10Y path ±5d around NFP surprises > 50K\")."
+    - "User asks what a Series does in the periods AROUND each event."
     - "User asks for an event-study panel ([n_events × n_offsets])."
-    - "User asks for cumulative or per-day moves around regime triggers."
+    - "User asks for cumulative or per-offset moves around regime triggers."
   when_not_to_use:
     - "User wants VALUES on event dates (not windows) — use apply_mask."
     - "User wants per-event AGGREGATE (not the panel) — wire conditional_aggregate downstream."
@@ -84,8 +84,8 @@ card:
   downstream_pattern:
     - "Output is WindowedPanel.  Most common downstream: conditional_aggregate to collapse to a per-offset Series."
   knobs_quick_ref:
-    pre_window: "Pre-event business days (e.g. 5)."
-    post_window: "Post-event business days (e.g. 5)."
+    pre_window: "Pre-event periods (integer)."
+    post_window: "Post-event periods (integer)."
     units_basis: "raw (default) | level_change (subtract event-day value; PERCENT→BPS)."
     incomplete_window_policy: "drop (default) | pad_nan."
   example_shapes:
