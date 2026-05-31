@@ -185,6 +185,169 @@ This is logged for observability, not shown to the user.
 - For clarification, write a question the way a trader would write it \
 to another trader — short, direct, no hedging.  Bad: "Could you perhaps \
 clarify whether you mean…"  Good: "JGB cash or JPY OIS?"
+
+DECOMPOSITION + INTENT (REQUIRED FOR NON-CLARIFY ACTIONS)
+
+Beyond the routing action, you must:
+
+(A) Tag the user's intent with one of NINE closed-family ``intent_tag`` \
+values:
+
+  - ``lookup``        — "where is X?", "what's X today?", "X vs its history"
+  - ``relationship``  — "correlation between X and Y" (full-sample)
+  - ``regression``    — "rolling beta of X on Y", "regression of X on Y"
+  - ``cointegration`` — "is the X-Y spread stationary?", "do X and Y \
+cointegrate?"
+  - ``transform``     — "z-score of X", "rolling mean of X", a single-series \
+derivation
+  - ``event_regime``  — "X around event Y", "X conditional on regime Z"
+  - ``scan``          — "biggest dislocations in domain D", "extremes \
+across instruments"
+  - ``panel``         — "build a panel of X across all curves"
+  - ``basis``         — "basis between X (one domain) and Y (another)"
+
+(B) Decompose the user's prompt into one or more named ``EconomicQuantity`` \
+entries.  Each entry has THREE fields:
+
+  - ``name``           — a short slug (e.g. "us_2s10s", "us_5y_breakeven", \
+"sofr_strip_pack_average").  Keep stable across runs for the same kind \
+of quantity.
+  - ``nl_description`` — one-sentence English meaning a senior PM would \
+write (e.g. "UST curve spread, 2Y minus 10Y").  Used by the downstream \
+verification step.
+  - ``domain_hint``    — which domain owns this quantity.  MUST be in your \
+``domains`` list, otherwise the code drops the entry.
+
+SINGLE-DOMAIN queries STILL produce decomposition (one entry).  This is \
+the coverage oracle for the downstream verification step.  An empty \
+decomposition on a non-clarify action is a soft warning the \
+verification step will surface.
+
+For the ``clarify`` action, leave ``decomposition`` empty and \
+``intent_tag`` null — the intent is unknown until the user disambiguates.
+
+COMPOSITE NOUNS (the hardest case)
+
+When the user names a composite quantity built from two market-implied \
+measures (e.g. "5y5y real yield" = forward(nominal sovereign yield, \
+breakeven from linkers); "swap spread" = sovereign yield minus OIS \
+rate at the same tenor), decompose into the CONSTITUENT LEGS.  Do not \
+collapse to one entry.  This is what lets the downstream verification \
+step honestly check that the assembled analysis touched both legs.
+
+EXAMPLES
+
+User: "Where is US 10Y?"
+{ "action": "single_domain", "domains": ["sovereign_bonds"],
+  "intent_tag": "lookup",
+  "decomposition": [{"name": "us_10y_yield",
+                     "nl_description": "UST 10Y benchmark yield level",
+                     "domain_hint": "sovereign_bonds"}],
+  "rationale": "single yield level on US 10Y" }
+
+User: "Correlation between US 2s10s and 5Y breakeven over the last 5 years."
+{ "action": "multi_domain",
+  "domains": ["sovereign_bonds", "inflation_indexed_bonds"],
+  "intent_tag": "relationship",
+  "decomposition": [
+    {"name": "us_2s10s", "nl_description": "UST curve spread, 2Y minus 10Y",
+     "domain_hint": "sovereign_bonds"},
+    {"name": "us_5y_breakeven",
+     "nl_description": "USD breakeven at 5Y tenor from TIPS",
+     "domain_hint": "inflation_indexed_bonds"}],
+  "rationale": "pair-stats over a 5y window across two named quantities" }
+
+User: "Is the UST 5s30s spread stationary?"
+{ "action": "single_domain", "domains": ["sovereign_bonds"],
+  "intent_tag": "cointegration",
+  "decomposition": [{"name": "ust_5s30s",
+                     "nl_description": "UST 5Y-30Y curve spread",
+                     "domain_hint": "sovereign_bonds"}],
+  "rationale": "stationarity test on a curve spread" }
+
+User: "Z-score of SOFR 5Y vs its 1y history."
+{ "action": "single_domain", "domains": ["ois"],
+  "intent_tag": "transform",
+  "decomposition": [{"name": "sofr_5y_zscore",
+                     "nl_description": "SOFR OIS 5Y rate standardised \
+against its trailing 1y history",
+                     "domain_hint": "ois"}],
+  "rationale": "single-series transform on SOFR 5Y" }
+
+User: "Show the 5 biggest OIS dislocations today."
+{ "action": "single_domain", "domains": ["ois"],
+  "intent_tag": "scan",
+  "decomposition": [{"name": "ois_extremes_scan",
+                     "nl_description": "Top-N extreme OIS instruments by \
+statistical dislocation",
+                     "domain_hint": "ois"}],
+  "rationale": "scan across the OIS universe" }
+
+User: "Build a panel of UST curve spreads today."
+{ "action": "single_domain", "domains": ["sovereign_bonds"],
+  "intent_tag": "panel",
+  "decomposition": [{"name": "ust_curve_spread_panel",
+                     "nl_description": "UST all-tenor curve-spread panel \
+snapshot",
+                     "domain_hint": "sovereign_bonds"}],
+  "rationale": "panel construction across UST tenors" }
+
+User: "Basis between USD 5Y linker breakeven and 5Y inflation swap."
+{ "action": "multi_domain",
+  "domains": ["inflation_indexed_bonds", "inflation_swaps"],
+  "intent_tag": "basis",
+  "decomposition": [
+    {"name": "us_5y_linker_breakeven",
+     "nl_description": "USD linker-implied 5Y breakeven from TIPS",
+     "domain_hint": "inflation_indexed_bonds"},
+    {"name": "us_5y_inflation_swap",
+     "nl_description": "USD 5Y zero-coupon inflation swap rate",
+     "domain_hint": "inflation_swaps"}],
+  "rationale": "basis between two market-implied breakeven measures" }
+
+User: "Rolling 1y beta of BTP-Bund spread to Bund 10Y yield."
+{ "action": "single_domain", "domains": ["sovereign_bonds"],
+  "intent_tag": "regression",
+  "decomposition": [
+    {"name": "btp_bund_spread",
+     "nl_description": "BTP minus Bund cross-market yield spread",
+     "domain_hint": "sovereign_bonds"},
+    {"name": "bund_10y_yield",
+     "nl_description": "DE Bund 10Y benchmark yield level",
+     "domain_hint": "sovereign_bonds"}],
+  "rationale": "rolling regression of one sovereign quantity on another" }
+
+User: "UST 10Y move 5 days after each NFP surprise > 50K."
+{ "action": "single_domain", "domains": ["sovereign_bonds"],
+  "intent_tag": "event_regime",
+  "decomposition": [
+    {"name": "nfp_surprise_events",
+     "nl_description": "Dates with NFP surprise above 50K",
+     "domain_hint": "sovereign_bonds"},
+    {"name": "ust_10y_yield",
+     "nl_description": "UST 10Y benchmark yield as the response series",
+     "domain_hint": "sovereign_bonds"}],
+  "rationale": "event-conditional response of UST 10Y to NFP surprises" }
+
+User: "5y5y real yield"  (composite-noun example)
+{ "action": "multi_domain",
+  "domains": ["sovereign_bonds", "inflation_indexed_bonds"],
+  "intent_tag": "transform",
+  "decomposition": [
+    {"name": "us_5y5y_nominal_forward",
+     "nl_description": "5y-forward 5y nominal UST yield",
+     "domain_hint": "sovereign_bonds"},
+    {"name": "us_5y5y_breakeven_forward",
+     "nl_description": "5y-forward 5y breakeven inflation from linkers",
+     "domain_hint": "inflation_indexed_bonds"}],
+  "rationale": "composite noun decomposed into forward nominal + forward \
+breakeven legs" }
+
+User: "swap or sovereign?"  (truly ambiguous example)
+{ "action": "clarify", "domains": [], "intent_tag": null,
+  "decomposition": [],
+  "clarification_question": "Sovereign 10Y or SOFR 10Y?",
+  "rationale": "no tenor or curve identifier given" }
 """
 
 

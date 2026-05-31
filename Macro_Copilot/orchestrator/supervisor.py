@@ -336,12 +336,80 @@ def _normalise_route_decision(decision: RouteDecision) -> RouteDecision:
         adjustments.append(note)
         domains = []
 
+    # ------------------------------------------------------------------
+    # Step 3 (PR-5): normalise the L1 decomposition fields.
+    # ------------------------------------------------------------------
+    # decomposition's domain_hints MUST appear in the final domains
+    # list; otherwise drop with an adjustment.  On CLARIFY, clear
+    # decomposition entirely (no oracle for an unanswered question).
+    # On non-CLARIFY, note when decomposition is empty so the
+    # downstream coverage gate (PR-8) knows it has no supplementary
+    # evidence to lean on.
+    intent_tag = decision.intent_tag
+    decomposition = list(decision.decomposition)
+
+    if action == RouteAction.CLARIFY:
+        if decomposition:
+            note = (
+                f"clarify with decomposition "
+                f"{[q.name for q in decomposition]}; clearing"
+            )
+            logger.warning("Supervisor: %s", note)
+            adjustments.append(note)
+            decomposition = []
+        if intent_tag is not None:
+            note = (
+                f"clarify with intent_tag={intent_tag.value!r}; "
+                "clearing — intent is unknown until the user "
+                "disambiguates"
+            )
+            logger.warning("Supervisor: %s", note)
+            adjustments.append(note)
+            intent_tag = None
+    else:
+        # Non-clarify: drop decomposition entries whose domain_hint
+        # leaked outside the active domains list.  Keeps the
+        # coverage-oracle honest for Boundary B.
+        domain_set = set(domains)
+        kept: list = []
+        dropped: list = []
+        for q in decomposition:
+            if q.domain_hint in domain_set:
+                kept.append(q)
+            else:
+                dropped.append(q)
+        if dropped:
+            note = (
+                f"dropped decomposition entries with domain_hint "
+                f"outside active domains "
+                f"{sorted(d.value for d in domain_set)}: "
+                f"{[(q.name, q.domain_hint.value) for q in dropped]}"
+            )
+            logger.warning("Supervisor: %s", note)
+            adjustments.append(note)
+        decomposition = kept
+
+        if not decomposition:
+            # Non-clarify action with empty decomposition: surface
+            # as a soft signal so Boundary B can lean toward CLARIFY
+            # if the gate finds the DAG doesn't match the prompt.
+            note = (
+                "non-clarify action with empty decomposition; "
+                "Boundary B will have no supplementary evidence — "
+                "tune the supervisor prompt to elicit at least one "
+                "EconomicQuantity per domain"
+            )
+            logger.warning("Supervisor: %s", note)
+            adjustments.append(note)
+
     return RouteDecision(
         action=action,
         domains=domains,
         rationale=decision.rationale,
         clarification_question=decision.clarification_question,
         adjustments=adjustments,
+        intent_tag=intent_tag,
+        decomposition=decomposition,
     )
 
 

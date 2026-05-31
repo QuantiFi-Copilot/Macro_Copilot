@@ -61,6 +61,84 @@ class RouteAction(str, Enum):
     CLARIFY = "clarify"
 
 
+# ============================================================================
+# INTENT TAG (PR-5: L1 router decomposition)
+# ============================================================================
+
+
+class IntentTag(str, Enum):
+    """Closed family of intent tags the L1 router emits per query.
+
+    Per ``tmp/orchestration.md`` §PR-5: the L1 router must label the
+    user's intent with one of these nine tags so the L3 Composer (PR-7)
+    can choose the right operator family and the Boundary B coverage
+    gate (PR-8) can sanity-check the assembled DAG against the
+    documented intent.  Extension is an ADR change.
+    """
+
+    LOOKUP = "lookup"
+    RELATIONSHIP = "relationship"
+    REGRESSION = "regression"
+    COINTEGRATION = "cointegration"
+    TRANSFORM = "transform"
+    EVENT_REGIME = "event_regime"
+    SCAN = "scan"
+    PANEL = "panel"
+    BASIS = "basis"
+
+
+# ============================================================================
+# ECONOMIC QUANTITY (PR-5: L1 router decomposition)
+# ============================================================================
+
+
+class EconomicQuantity(BaseModel):
+    """One named economic quantity the L1 router identified in the query.
+
+    Frozen Pydantic.  Carries a slug (``name``), a one-sentence English
+    description, and the routing ``domain_hint`` that owns the
+    quantity.  The downstream L3 Composer (PR-7) consumes these to
+    decide which L2 Selectors to dispatch leaf-requests to, and
+    Boundary B (PR-8) consumes them as supplementary evidence when
+    sanity-checking the assembled DAG against the original prompt.
+
+    Per the plan's acceptance criterion: single-domain queries STILL
+    produce decomposition (with one entry).  Decomposition is the
+    coverage oracle for the downstream verification step.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Short slug identifier for the quantity (e.g. 'us_2s10s', "
+            "'us_5y_breakeven').  Used in lineage + debugging surfaces; "
+            "the LLM should keep this stable across runs for the same "
+            "kind of quantity."
+        ),
+    )
+    nl_description: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "One-sentence English meaning a senior PM would write to "
+            "describe the quantity (e.g. 'UST curve spread, 2Y minus "
+            "10Y').  Boundary B reads this when echoing the DAG back "
+            "to the prompt."
+        ),
+    )
+    domain_hint: Domain = Field(
+        ...,
+        description=(
+            "Which domain owns this quantity.  MUST appear in the "
+            "parent RouteDecision.domains list — the normaliser drops "
+            "entries that don't, with an adjustment note."
+        ),
+    )
+
+
 class RouteDecision(BaseModel):
     """The supervisor's routing decision for a user query.
 
@@ -108,6 +186,29 @@ class RouteDecision(BaseModel):
             "Surfaced in the ``route_decision`` streaming event so an eval "
             "harness or debug panel can detect drift in the supervisor's JSON "
             "without scraping logs."
+        ),
+    )
+    # ---- PR-5 additions (backward-compatible defaults) ----
+    intent_tag: Optional[IntentTag] = Field(
+        default=None,
+        description=(
+            "One of the nine IntentTag closed-family values describing "
+            "the user's intent (lookup / relationship / regression / "
+            "cointegration / transform / event_regime / scan / panel / "
+            "basis).  Populated for non-clarify actions; null for "
+            "clarify (the intent is unknown until the user disambiguates)."
+        ),
+    )
+    decomposition: List[EconomicQuantity] = Field(
+        default_factory=list,
+        description=(
+            "Named economic quantities identified in the user's query, "
+            "each tagged with its owning domain.  Exactly one entry "
+            "for single_domain, two or more for multi_domain, empty "
+            "list for clarify.  Even single-domain queries produce "
+            "decomposition so the downstream coverage gate has an "
+            "oracle.  Composite-noun queries (e.g. '5y5y real yield') "
+            "decompose into their constituent legs (nominal + breakeven)."
         ),
     )
 
