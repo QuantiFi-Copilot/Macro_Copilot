@@ -92,6 +92,12 @@ class ErrorCode(str, Enum):
     E_PRIMITIVE_RESOLVE_FAIL = "E_PRIMITIVE_RESOLVE_FAIL"
     # Declared in PR-1, raised in PR-3 / PR-4 — see class docstring.
     E_FREQUENCY_MISMATCH = "E_FREQUENCY_MISMATCH"
+    # Added in PR-4 for the free-form Boundary A check.  Always emitted
+    # with severity=WARNING (not ERROR) per the plan's role-discriminant
+    # policy (R5: no curated role enum, mismatches are SOFT signals).
+    # detail['field'] indicates which free-form subfield mismatched
+    # ('semantic_role' or 'requested_output_meaning').
+    E_ROLE_DISCRIMINANT_MISMATCH = "E_ROLE_DISCRIMINANT_MISMATCH"
 
 
 class OwnerLayer(str, Enum):
@@ -106,6 +112,25 @@ class OwnerLayer(str, Enum):
     L3_WIRING = "L3_WIRING"
     L2_BINDING = "L2_BINDING"
     ASSEMBLER = "ASSEMBLER"
+
+
+class Severity(str, Enum):
+    """Severity of a validation entry.
+
+    Added in PR-4 (open-DAG PoC).  The hard-substrate validator from
+    PR-1 emits everything at ``ERROR`` (the legacy behaviour); PR-4's
+    Boundary A contract check emits ``WARNING`` for the free-form
+    role-discriminant mismatches (semantic_role / requested_output_meaning)
+    that fail normalised-string equality but are NOT structural
+    failures.  Hard errors block execution; warnings flow through to
+    Boundary B (PR-8) as supplementary evidence.
+
+    Default on ``ValidationError`` is ``ERROR`` so every PR-1 raise
+    site keeps producing hard errors without a code change.
+    """
+
+    ERROR = "ERROR"
+    WARNING = "WARNING"
 
 
 # ============================================================================
@@ -138,6 +163,16 @@ class ValidationError(BaseModel):
     code: ErrorCode
     owner_layer: OwnerLayer
     message: str = Field(..., min_length=1)
+    severity: Severity = Field(
+        default=Severity.ERROR,
+        description=(
+            "ERROR (default) blocks execution; WARNING flows to "
+            "Boundary B as supplementary evidence without failing "
+            "Boundary A.  All PR-1 raise sites produce ERROR.  PR-4's "
+            "free-form contract checks (semantic_role / "
+            "requested_output_meaning) produce WARNING."
+        ),
+    )
     node_id: Optional[str] = None
     edge: Optional[Tuple[str, str]] = Field(
         default=None,
@@ -146,6 +181,15 @@ class ValidationError(BaseModel):
     target_input_slot: Optional[str] = None
     operator_name: Optional[str] = None
     tool_name: Optional[str] = None
+    leaf_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Set when the error pertains to a specific LeafHole / "
+            "BoundLeaf in a PR-4 assembly (matches the leaf's "
+            "node_id).  Lets the repair controller dispatch L2_BINDING "
+            "errors to the right per-leaf rebinder."
+        ),
+    )
     detail: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -179,30 +223,68 @@ class ValidationResult(BaseModel):
 
     @property
     def is_clean(self) -> bool:
-        """True iff no validation errors were collected."""
-        return not self.errors
+        """True iff no validation entries with severity=ERROR were
+        collected.  Warnings do NOT block — they flow through to
+        Boundary B (PR-8) as supplementary evidence.
+
+        Per PR-4: ``is_clean`` means "Boundary A passed" — the
+        assembled workflow can move to execution (or to Boundary B's
+        coverage check, whichever the orchestrator gates next)."""
+        return not self.hard_errors
+
+    @property
+    def hard_errors(self) -> Tuple[ValidationError, ...]:
+        """Entries with ``severity == ERROR``.  PR-1's structural
+        validator emits exclusively at this severity (back-compat
+        guaranteed by the default-ERROR field on ValidationError)."""
+        return tuple(e for e in self.errors if e.severity == Severity.ERROR)
+
+    @property
+    def warnings(self) -> Tuple[ValidationError, ...]:
+        """Entries with ``severity == WARNING``.  Populated by PR-4's
+        Boundary A contract check for free-form mismatches
+        (semantic_role / requested_output_meaning).  Boundary B (PR-8)
+        consumes these as supplementary evidence."""
+        return tuple(e for e in self.errors if e.severity == Severity.WARNING)
 
     def by_owner_layer(self, layer: OwnerLayer) -> Tuple[ValidationError, ...]:
-        """Errors whose ``owner_layer`` matches ``layer``.  Used by the
-        PR-4 repair controller to dispatch fixes to the right caller."""
+        """Entries whose ``owner_layer`` matches ``layer``.  Used by
+        the PR-4 repair controller to dispatch fixes to the right
+        caller.  Includes BOTH errors and warnings — the controller
+        filters by severity as needed."""
         return tuple(e for e in self.errors if e.owner_layer == layer)
 
     def by_code(self, code: ErrorCode) -> Tuple[ValidationError, ...]:
-        """Errors with the given ``code``.  Useful for tests and
+        """Entries with the given ``code``.  Useful for tests and
         diagnostic surfaces."""
         return tuple(e for e in self.errors if e.code == code)
 
+    def by_leaf(self, leaf_id: str) -> Tuple[ValidationError, ...]:
+        """Entries pointing at a specific leaf (matches
+        ``ValidationError.leaf_id``).  Used by PR-4 to gather all
+        errors targeting one BoundLeaf before calling the rebinder."""
+        return tuple(e for e in self.errors if e.leaf_id == leaf_id)
+
     def first(self) -> Optional[ValidationError]:
         """Convenience for the legacy strict wrapper.  Returns the
-        first error in collection order (matches the order the
+        first hard error in collection order (matches the order the
         pre-refactor first-error-raise validator would have surfaced),
-        or ``None`` when the result is clean."""
-        return self.errors[0] if self.errors else None
+        or ``None`` when no hard errors exist.
+
+        Warnings are NEVER returned by this — the strict wrapper from
+        PR-1 must surface only blocking failures, otherwise existing
+        callers (executor) would crash on what PR-4 considers a
+        SOFT signal."""
+        for e in self.errors:
+            if e.severity == Severity.ERROR:
+                return e
+        return None
 
 
 __all__ = [
     "ErrorCode",
     "OwnerLayer",
+    "Severity",
     "ValidationError",
     "ValidationResult",
 ]

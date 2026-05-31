@@ -52,6 +52,18 @@ from shared.workflow.executor import (
     WorkflowExecutionError,
     execute_workflow,
 )
+from shared.workflow.assembler import (
+    Assembler,
+    AssemblyResult,
+    AssemblyStatus,
+    InsertAdapterNode,
+    LeafRebinder,
+    RepairKind,
+    RepairStep,
+    RewireEdge,
+    ShapePatch,
+    ShapePatchProvider,
+)
 from shared.workflow.holes import (
     BoundLeaf,
     LeafHole,
@@ -133,6 +145,7 @@ from shared.workflow.validate import (
 from shared.workflow.validation_result import (
     ErrorCode,
     OwnerLayer,
+    Severity,
     ValidationError,
     ValidationResult,
 )
@@ -163,6 +176,7 @@ __all__ = [
     "ValidationError",
     "ErrorCode",
     "OwnerLayer",
+    "Severity",
     # Registry / dispatch
     "OPERATOR_REGISTRY",
     "OperatorSpec",
@@ -184,6 +198,17 @@ __all__ = [
     "KNOWN_DOMAINS",
     "UnknownDomainError",
     "domain_to_resolver_key",
+    # Assembler (PR-4)
+    "Assembler",
+    "AssemblyResult",
+    "AssemblyStatus",
+    "RepairKind",
+    "RepairStep",
+    "InsertAdapterNode",
+    "RewireEdge",
+    "ShapePatch",
+    "ShapePatchProvider",
+    "LeafRebinder",
     # Template layer
     "WorkflowTemplate",
     "WorkflowArchetype",

@@ -946,12 +946,16 @@ class TestValidationResultShape:
 
 class TestDeferredRaiseCodes:
     """``E_FREQUENCY_MISMATCH`` is declared in the closed family in PR-1
-    but has no raise site inside ``validate_workflow_result`` yet — the
-    leaf-contract role-discriminant check (PR-3 hole/fill contracts +
-    PR-4 assembler) is what surfaces it.  The plan
-    (``tmp/orchestration.md``:237) declares the code in PR-1's taxonomy
-    so the closed family is coherent across PR boundaries; this test
-    pins the contract for PR-3 to extend rather than reinvent.
+    but has no raise site inside ``validate_workflow_result`` itself —
+    PR-4's contract-level Boundary A check (LeafRequest vs BoundLeaf
+    on the assembler boundary) is where the raise site lives.  The
+    plan (``tmp/orchestration.md``:237) declares the code in PR-1's
+    taxonomy so the closed family is coherent across PR boundaries.
+
+    This test still passes after PR-4 lands because PR-4 adds the
+    raise site INSIDE the Assembler, not inside
+    ``validate_workflow_result`` — the latter (PR-1's structural
+    validator) remains free of frequency-mismatch logic.
     """
 
     def test_frequency_mismatch_is_declared(self) -> None:
@@ -960,10 +964,9 @@ class TestDeferredRaiseCodes:
     def test_frequency_mismatch_not_raised_by_pr1_validator(self) -> None:
         """No fixture in this module's workflow builders triggers
         E_FREQUENCY_MISMATCH; running the full suite asserts the
-        invariant that PR-1's ``validate_workflow_result`` body has zero
-        raise sites for this code.  When PR-3 adds the raise site, this
-        test should be deleted in the same PR that ships the new
-        check."""
+        invariant that PR-1's ``validate_workflow_result`` body has
+        zero raise sites for this code.  PR-4 raises it in the
+        Assembler's contract-level boundary, not here."""
         for builder in (
             _wf_clean_pipeline,
             _wf_unknown_operator,
@@ -1005,15 +1008,17 @@ class TestClosedFamilies:
         # Adding a new code requires (a) an ADR and (b) updating this
         # number.  This guards against silent enum drift.
         #
-        # Taxonomy size = 14 after PR-1 corrective:
+        # Taxonomy size = 15 after PR-4:
         #   - 13 codes for the existing structural raise sites inside
         #     validate_workflow_result (CHECKS 1-9 in the validator),
-        #   - 1 code (E_FREQUENCY_MISMATCH) declared up-front per the
-        #     plan's PR-1 table (tmp/orchestration.md:237) so the
-        #     closed family is coherent across PR boundaries; its
-        #     raise site lands in PR-3 / PR-4 with the leaf-contract
-        #     role-discriminant check.
-        assert len(ErrorCode) == 14, (
+        #   - 1 code (E_FREQUENCY_MISMATCH) declared in PR-A2 per the
+        #     plan's PR-1 table (tmp/orchestration.md:237).  Raise
+        #     site lands in PR-4's contract-level Boundary A.
+        #   - 1 code (E_ROLE_DISCRIMINANT_MISMATCH) added in PR-4 for
+        #     SOFT free-form mismatches (semantic_role /
+        #     requested_output_meaning).  Always emitted with
+        #     severity=WARNING.
+        assert len(ErrorCode) == 15, (
             f"ErrorCode taxonomy size changed to {len(ErrorCode)}.  "
             "Per P8, extending requires an ADR + this assertion bump."
         )
@@ -1025,11 +1030,18 @@ class TestClosedFamilies:
         )
 
     def test_every_code_has_owner_layer_mapping(self) -> None:
-        # Excluding E_TYPE_MISMATCH (dual-owner by design) and
-        # E_FREQUENCY_MISMATCH (declared in PR-1 but raised by PR-3 / PR-4;
-        # its owner_layer dispatch table is owned by PR-3's hole/fill
-        # contract design, not by PR-1's structural validator).
-        skip = {ErrorCode.E_TYPE_MISMATCH, ErrorCode.E_FREQUENCY_MISMATCH}
+        # Excluding three codes whose owner_layer is context-dependent:
+        #   - E_TYPE_MISMATCH: dual-owner (L3_WIRING when upstream is
+        #     operator, L2_BINDING when upstream is primitive).
+        #   - E_FREQUENCY_MISMATCH: raised by PR-4's contract check
+        #     on the LeafRequest/BoundLeaf boundary (L2_BINDING).
+        #   - E_ROLE_DISCRIMINANT_MISMATCH: raised by PR-4 as
+        #     severity=WARNING for the free-form Boundary A check.
+        skip = {
+            ErrorCode.E_TYPE_MISMATCH,
+            ErrorCode.E_FREQUENCY_MISMATCH,
+            ErrorCode.E_ROLE_DISCRIMINANT_MISMATCH,
+        }
         for code in ErrorCode:
             if code in skip:
                 continue
