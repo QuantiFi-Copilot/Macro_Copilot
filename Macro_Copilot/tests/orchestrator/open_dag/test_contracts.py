@@ -36,18 +36,17 @@ from pydantic import ValidationError
 
 from shared.artifacts.registry import ArtifactTypeName
 from shared.schemas.time_series import TimeSeriesUnits
-from shared.workflow import (
+from shared.workflow import OperatorNode, WorkflowEdge
+from shared.workflow.types import LiteralBinding
+from orchestrator.open_dag import (
     BoundLeaf,
+    Frequency,
     LeafHole,
     LeafRequest,
-    OperatorNode,
     ShapeSpec,
-    WorkflowEdge,
-    declare_primitive_output_type,
     domain_to_resolver_key,
 )
-from shared.workflow.resolver_keys import UnknownDomainError
-from shared.workflow.types import LiteralBinding
+from orchestrator.open_dag.resolver_keys import UnknownDomainError
 
 
 # ============================================================================
@@ -523,137 +522,45 @@ class TestShapeSpecConstruction:
 
 
 # ============================================================================
-# DECLARE_PRIMITIVE_OUTPUT_TYPE (helper for L2 Selectors)
+# DOMAIN-AWARE OPEN-DAG MODULES MUST NOT IMPORT FROM rates_agent
 # ============================================================================
+#
+# After the PR-A3 corrective patch, contracts + resolver_keys live in
+# orchestrator/open_dag/ (one layer above the finance-blind substrate).
+# They are allowed to know about the closed KNOWN_DOMAINS set — that's
+# domain-routing, not instrument-aware code.  They MUST NOT import
+# from rates_agent (that would make adding a new instrument type
+# require editing open-DAG core).
 
 
-class TestDeclarePrimitiveOutputType:
-    """The helper reads ``PrimitiveSpec.output_artifact_type`` via the
-    supplied resolver — NO callable is invoked, NO DB engine is touched.
-    Tests use the live rates resolver (whose specs are pure metadata)
-    to confirm both behaviour and finance-blindness of the helper."""
-
-    def test_returns_series_for_curve_spread(self) -> None:
-        from rates_agent.workflows import rates_primitive_resolver
-
-        out = declare_primitive_output_type(
-            rates_primitive_resolver, "calculate_curve_spread_tool",
-        )
-        assert out == "Series"
-
-    def test_returns_panel_for_panel_primitive(self) -> None:
-        from rates_agent.workflows import rates_primitive_resolver
-
-        out = declare_primitive_output_type(
-            rates_primitive_resolver, "build_sovereign_yield_panel_tool",
-        )
-        assert out == "Panel"
-
-    def test_does_not_invoke_primitive_callable(self) -> None:
-        """Smoke-test the no-execution contract.  We pass a synthetic
-        resolver whose primitive's `callable` would raise on call —
-        the helper must NOT invoke it."""
-        from shared.workflow import PrimitiveSpec
-        from pydantic import BaseModel
-        from pathlib import Path
-
-        def _explodes(*args, **kwargs):
-            raise AssertionError(
-                "declare_primitive_output_type invoked the primitive's "
-                "callable — violates the no-execution contract."
-            )
-
-        class _Input(BaseModel):
-            pass
-
-        class _Output(BaseModel):
-            pass
-
-        spec = PrimitiveSpec(
-            tool_name="exploding_tool",
-            callable=_explodes,
-            input_class=_Input,
-            output_class=_Output,
-            config_path=Path("/dev/null"),
-            output_artifact_type="SeriesSet",
-        )
-
-        def _resolver(tool_name: str) -> PrimitiveSpec:
-            assert tool_name == "exploding_tool"
-            return spec
-
-        # Must NOT raise — the helper does not invoke `_explodes`.
-        out = declare_primitive_output_type(_resolver, "exploding_tool")
-        assert out == "SeriesSet"
-
-    def test_params_argument_is_currently_ignored(self) -> None:
-        """``params`` is a forward-compat seam (V1 primitives all have
-        constant declared output types).  Passing any params dict must
-        return the same value as omitting it."""
-        from rates_agent.workflows import rates_primitive_resolver
-
-        a = declare_primitive_output_type(
-            rates_primitive_resolver, "calculate_curve_spread_tool",
-        )
-        b = declare_primitive_output_type(
-            rates_primitive_resolver,
-            "calculate_curve_spread_tool",
-            params={"curve_family": "UST", "short_tenor": "2Y"},
-        )
-        assert a == b
-
-    def test_unknown_tool_propagates_resolver_keyerror(self) -> None:
-        from rates_agent.workflows import rates_primitive_resolver
-
-        with pytest.raises(KeyError):
-            declare_primitive_output_type(
-                rates_primitive_resolver,
-                "definitely_not_a_registered_primitive",
-            )
-
-
-# ============================================================================
-# P11 / P9 — substrate is finance-blind
-# ============================================================================
-
-
-class TestModuleFinanceBlind:
-    """``shared.workflow.holes`` and ``shared.workflow.resolver_keys``
-    must NOT import from any domain-specific path (``rates_agent/``)
-    or from the orchestrator (``orchestrator/``).  Static AST check."""
+class TestModulesNotDomainSpecific:
 
     @pytest.mark.parametrize(
         "module_path",
         [
-            "shared/workflow/holes.py",
-            "shared/workflow/resolver_keys.py",
+            "orchestrator/open_dag/contracts.py",
+            "orchestrator/open_dag/resolver_keys.py",
+            "orchestrator/open_dag/primitive_declarations.py",
+            "orchestrator/open_dag/composability_audit.py",
+            "orchestrator/open_dag/assembler.py",
         ],
     )
-    def test_no_rates_agent_or_orchestrator_imports(
-        self, module_path: str,
-    ) -> None:
-        path = Path(__file__).resolve().parents[2] / module_path
+    def test_no_rates_agent_imports(self, module_path: str) -> None:
+        path = Path(__file__).resolve().parents[3] / module_path
         src = path.read_text(encoding="utf-8")
         tree = ast.parse(src)
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     assert not alias.name.startswith("rates_agent"), (
-                        f"{module_path} imports {alias.name} — must "
-                        "stay finance-blind (P11/P9)."
-                    )
-                    assert not alias.name.startswith("orchestrator"), (
-                        f"{module_path} imports {alias.name} — "
-                        "substrate must not depend on the orchestrator "
-                        "layer above it."
+                        f"{module_path} imports {alias.name} — open-DAG "
+                        "core must not depend on a specific domain "
+                        "package (P11)."
                     )
             elif isinstance(node, ast.ImportFrom):
                 if node.module:
                     assert not node.module.startswith("rates_agent"), (
                         f"{module_path} imports from {node.module} — "
-                        "must stay finance-blind (P11/P9)."
-                    )
-                    assert not node.module.startswith("orchestrator"), (
-                        f"{module_path} imports from {node.module} — "
-                        "substrate must not depend on the orchestrator."
+                        "open-DAG core must not depend on rates_agent "
+                        "(P11)."
                     )

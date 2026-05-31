@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import pytest
 
-from shared.workflow.resolver_keys import (
+from orchestrator.open_dag.resolver_keys import (
     KNOWN_DOMAINS,
     UnknownDomainError,
     domain_to_resolver_key,

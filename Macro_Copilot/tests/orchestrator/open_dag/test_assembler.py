@@ -43,19 +43,9 @@ from pydantic import BaseModel, ValidationError as PydanticValidationError
 from shared.artifacts.registry import ArtifactTypeName
 from shared.schemas.time_series import TimeSeriesUnits
 from shared.workflow import (
-    Assembler,
-    AssemblyResult,
-    AssemblyStatus,
-    BoundLeaf,
-    InsertAdapterNode,
-    LeafHole,
-    LeafRequest,
     OperatorNode,
     PrimitiveSpec,
-    RepairKind,
-    RewireEdge,
     Severity,
-    ShapeSpec,
     Workflow,
     WorkflowEdge,
 )
@@ -65,6 +55,19 @@ from shared.workflow.validation_result import (
     OwnerLayer,
     ValidationError,
     ValidationResult,
+)
+from orchestrator.open_dag import (
+    Assembler,
+    AssemblyResult,
+    AssemblyStatus,
+    BoundLeaf,
+    Frequency,
+    InsertAdapterNode,
+    LeafHole,
+    LeafRequest,
+    RepairKind,
+    RewireEdge,
+    ShapeSpec,
 )
 
 
@@ -112,6 +115,22 @@ _SPECS: Dict[str, PrimitiveSpec] = {
     "synth_panel_tool": _make_spec(
         "synth_panel_tool", TimeSeriesUnits.BPS, "Panel",
     ),
+    # Multi-field primitive used to exercise the no-swap rebinder path:
+    # the rebinder can change `output_field` (and the matching
+    # declared_units) WITHIN the same primitive without violating the
+    # no-primitive-swap discipline.
+    "synth_multi_field": PrimitiveSpec(
+        tool_name="synth_multi_field",
+        callable=_noop_callable,
+        input_class=_SyntheticInput,
+        output_class=_SyntheticOutput,
+        config_path=Path("/dev/null"),
+        output_field_units={
+            "time_series_bps": TimeSeriesUnits.BPS.value,
+            "time_series_pct": TimeSeriesUnits.PERCENT.value,
+        },
+        output_artifact_type="Series",
+    ),
 }
 
 
@@ -130,7 +149,7 @@ def _request(
     *,
     artifact_type: ArtifactTypeName = ArtifactTypeName.SERIES,
     expected_units: TimeSeriesUnits | None = None,
-    expected_frequency: str | None = None,
+    expected_frequency: Frequency | None = None,
     semantic_role: str = "any_role",
     output_meaning: str = "any meaning",
     nl_intent: str = "fetch the series",
@@ -154,14 +173,14 @@ def _binding(
     mcp_tool_name: str = "synth_series_bps_a",
     artifact_type: ArtifactTypeName = ArtifactTypeName.SERIES,
     declared_units: TimeSeriesUnits | None = TimeSeriesUnits.BPS,
-    declared_frequency: str | None = None,
+    declared_frequency: Frequency | None = None,
     semantic_role: str = "any_role",
     output_meaning: str = "any meaning",
     fit_confidence: float = 0.9,
     params: Dict[str, Any] | None = None,
     output_field: str = "time_series",
 ) -> BoundLeaf:
-    from shared.workflow.resolver_keys import domain_to_resolver_key
+    from orchestrator.open_dag.resolver_keys import domain_to_resolver_key
     return BoundLeaf(
         leaf_id=leaf_id,
         domain=domain,
@@ -431,7 +450,7 @@ class TestContractCheckHardErrors:
             nodes=[
                 LeafHole(
                     node_id="h_a",
-                    leaf_request=_request(expected_frequency="daily"),
+                    leaf_request=_request(expected_frequency=Frequency.DAILY),
                 ),
                 OperatorNode(node_id="z", operator_name="rolling_zscore"),
             ],
@@ -446,7 +465,7 @@ class TestContractCheckHardErrors:
         leaves = [
             _binding(
                 leaf_id="h_a", mcp_tool_name="synth_series_bps_a",
-                declared_frequency="weekly",
+                declared_frequency=Frequency.WEEKLY,
             ),
         ]
         asm = Assembler(primitive_resolver=_resolver)
@@ -462,13 +481,16 @@ class TestContractCheckHardErrors:
             for e in freq_errs
         )
 
-    def test_frequency_case_insensitive_match(self) -> None:
+    def test_frequency_equal_enums_dont_fire(self) -> None:
+        # PR-A3 corrective: Frequency is now a closed enum.  Comparison
+        # is exact enum equality (no case-insensitive normalisation),
+        # so identical enum values produce no E_FREQUENCY_MISMATCH.
         shape = ShapeSpec(
-            workflow_id="freq_ci",
+            workflow_id="freq_eq",
             nodes=[
                 LeafHole(
                     node_id="h_a",
-                    leaf_request=_request(expected_frequency="Daily"),
+                    leaf_request=_request(expected_frequency=Frequency.DAILY),
                 ),
                 OperatorNode(node_id="z", operator_name="rolling_zscore"),
             ],
@@ -483,17 +505,26 @@ class TestContractCheckHardErrors:
         leaves = [
             _binding(
                 leaf_id="h_a", mcp_tool_name="synth_series_bps_a",
-                declared_frequency="  daily  ",
+                declared_frequency=Frequency.DAILY,
             ),
         ]
         asm = Assembler(primitive_resolver=_resolver)
         result = asm.assemble(shape, leaves)
-        # Case + whitespace normalised → match, so CLEAN (no
-        # frequency error).
         freq_errs = result.validation_result.by_code(
             ErrorCode.E_FREQUENCY_MISMATCH,
         )
         assert freq_errs == ()
+
+    def test_frequency_strict_closed_enum_rejects_unknown_string(self) -> None:
+        # Plan §PR-3 line 425: "frequency is a small closed set".
+        # Pydantic refuses any non-enum-value string at LeafRequest
+        # construction; the substrate does not silently coerce
+        # arbitrary frequency aliases.
+        from pydantic import ValidationError as PydanticValidationError
+        with pytest.raises(PydanticValidationError):
+            _request(expected_frequency="quarterly")  # type: ignore[arg-type]
+        with pytest.raises(PydanticValidationError):
+            _request(expected_frequency="Daily")  # type: ignore[arg-type]
 
 
 # ============================================================================
@@ -606,20 +637,30 @@ class TestRebinderRepair:
             terminal_node_id="z",
         )
 
-    def test_rebinder_fixes_unit_mismatch(self) -> None:
-        # Initial binding: BPS but request expects PERCENT → E_UNIT_MISMATCH.
+    def test_rebinder_fixes_unit_mismatch_via_output_field(self) -> None:
+        # PR-A3 corrective: with the no-primitive-swap discipline, the
+        # rebinder can ONLY change params / output_field / declared_*
+        # on the same primitive — never pick a different primitive.
+        # This test exercises the legitimate path: a multi-field
+        # primitive whose Selector initially chose the wrong
+        # `output_field` (which therefore had the wrong declared
+        # units).  Rebinder switches the output_field WITHIN the same
+        # primitive.
         initial = [
             _binding(
-                leaf_id="h_a", mcp_tool_name="synth_series_bps_a",
+                leaf_id="h_a", mcp_tool_name="synth_multi_field",
+                output_field="time_series_bps",
                 declared_units=TimeSeriesUnits.BPS,
             ),
         ]
 
         def rebinder(leaf_request, current_bound, errors):
-            # Switch to a percent-declaring synthetic primitive.
+            # Same primitive; switch to the percent field on the same
+            # primitive's multi-field output.
             return _binding(
                 leaf_id="h_a",
-                mcp_tool_name="synth_series_pct_a",
+                mcp_tool_name=current_bound.mcp_tool_name,
+                output_field="time_series_pct",
                 declared_units=TimeSeriesUnits.PERCENT,
             )
 
@@ -628,12 +669,43 @@ class TestRebinderRepair:
         assert result.status == AssemblyStatus.CLEAN, (
             f"errors={result.validation_result.errors!r}"
         )
-        # Trace records one REBIND_LEAF + two SUBSTITUTE_LEAF (one per
-        # substitution pass).
         rebinds = [s for s in result.repair_trace
                    if s.kind == RepairKind.REBIND_LEAF]
         assert len(rebinds) == 1
         assert rebinds[0].leaf_id == "h_a"
+        # Trace details show the legitimate intra-primitive change.
+        detail = rebinds[0].detail
+        assert detail["previous_output_field"] == "time_series_bps"
+        assert detail["new_output_field"] == "time_series_pct"
+
+    def test_rebinder_attempting_primitive_swap_refused(self) -> None:
+        # Plan §PR-4: 'Re-pick a different primitive for the same
+        # hole' is BANNED — oscillation hazard.  The Assembler must
+        # refuse when the rebinder returns a BoundLeaf whose
+        # mcp_tool_name / domain / resolver_tool_key differs from
+        # the current binding.
+        initial = [
+            _binding(
+                leaf_id="h_a", mcp_tool_name="synth_series_bps_a",
+                declared_units=TimeSeriesUnits.BPS,
+            ),
+        ]
+
+        def rebinder(leaf_request, current_bound, errors):
+            # Attempt a swap to a different primitive.
+            return _binding(
+                leaf_id="h_a",
+                mcp_tool_name="synth_series_pct_a",  # DIFFERENT primitive
+                declared_units=TimeSeriesUnits.PERCENT,
+            )
+
+        asm = Assembler(primitive_resolver=_resolver, leaf_rebinder=rebinder)
+        result = asm.assemble(self._single_leaf_shape(), initial)
+        assert result.status == AssemblyStatus.REFUSED
+        assert any(
+            "attempted a primitive swap" in r
+            for r in result.refusal_reasons
+        ), f"refusal_reasons={result.refusal_reasons!r}"
 
     def test_rebinder_refusal_propagates(self) -> None:
         initial = [
@@ -693,10 +765,12 @@ class TestRebinderRepair:
         ]
 
         def rebinder(leaf_request, current_bound, errors):
-            # Wrong leaf_id — contract violation.
+            # Wrong leaf_id — contract violation.  Keep the same
+            # primitive identity so the no-swap discipline doesn't
+            # mask the leaf_id violation.
             return _binding(
                 leaf_id="some_other_leaf",
-                mcp_tool_name="synth_series_pct_a",
+                mcp_tool_name=current_bound.mcp_tool_name,
                 declared_units=TimeSeriesUnits.PERCENT,
             )
 
@@ -709,8 +783,10 @@ class TestRebinderRepair:
         )
 
     def test_one_round_only_no_recursion(self) -> None:
-        # First rebind returns ANOTHER bps primitive (still wrong);
-        # the assembler must NOT call the rebinder a second time.
+        # First rebind keeps the same primitive but produces a
+        # still-mismatched declaration; the assembler must NOT call
+        # the rebinder a second time.  (Primitive identity preserved
+        # so the no-swap discipline doesn't short-circuit the test.)
         call_count = {"n": 0}
         initial = [
             _binding(
@@ -723,7 +799,7 @@ class TestRebinderRepair:
             call_count["n"] += 1
             return _binding(
                 leaf_id="h_a",
-                mcp_tool_name="synth_series_bps_b",
+                mcp_tool_name=current_bound.mcp_tool_name,
                 declared_units=TimeSeriesUnits.BPS,  # still wrong
             )
 
@@ -884,7 +960,10 @@ class TestPatchProviderRepair:
             for r in result.refusal_reasons
         )
 
-    def test_insert_adapter_on_nonexistent_edge_raises(self) -> None:
+    def test_insert_adapter_on_nonexistent_edge_refuses(self) -> None:
+        # PR-A3 corrective: assemble() returns REFUSED rather than
+        # raising on an inconsistent patch.  Plan §PR-4 acceptance
+        # criterion 1 specifies the contract is CLEAN|REFUSED.
         def patch_provider(workflow, errors):
             return [
                 InsertAdapterNode(
@@ -901,11 +980,16 @@ class TestPatchProviderRepair:
             primitive_resolver=_resolver,
             shape_patch_provider=patch_provider,
         )
-        with pytest.raises(ValueError, match="does not exist in the workflow"):
-            asm.assemble(
-                self._unit_mismatch_arithmetic_shape(),
-                self._unit_mismatch_leaves(),
-            )
+        result = asm.assemble(
+            self._unit_mismatch_arithmetic_shape(),
+            self._unit_mismatch_leaves(),
+        )
+        assert result.status == AssemblyStatus.REFUSED
+        assert any(
+            "Composer patch failed to apply" in r
+            and "does not exist in the workflow" in r
+            for r in result.refusal_reasons
+        )
 
 
 # ============================================================================
@@ -965,7 +1049,9 @@ class TestRewireEdgePatch:
                    if s.kind == RepairKind.REWIRE_EDGE]
         assert len(rewires) == 1
 
-    def test_rewire_nonexistent_edge_raises(self) -> None:
+    def test_rewire_nonexistent_edge_refuses(self) -> None:
+        # PR-A3 corrective: assemble() returns REFUSED rather than
+        # raising on an inconsistent rewire patch.
         def patch_provider(workflow, errors):
             return [
                 RewireEdge(
@@ -984,8 +1070,13 @@ class TestRewireEdgePatch:
             _binding(leaf_id="h_a", mcp_tool_name="synth_series_bps_a"),
             _binding(leaf_id="h_b", mcp_tool_name="synth_series_bps_b"),
         ]
-        with pytest.raises(ValueError, match="does not exist in the workflow"):
-            asm.assemble(self._two_left_shape(), leaves)
+        result = asm.assemble(self._two_left_shape(), leaves)
+        assert result.status == AssemblyStatus.REFUSED
+        assert any(
+            "Composer patch failed to apply" in r
+            and "does not exist in the workflow" in r
+            for r in result.refusal_reasons
+        )
 
 
 # ============================================================================
@@ -1207,18 +1298,69 @@ class TestClosedFamilies:
 
 
 # ============================================================================
+# ADAPTER WHITELIST (PR-A3 corrective Fix #6)
+# ============================================================================
+
+
+class TestAdapterWhitelist:
+    """Plan §PR-4 names ``convert_units`` and ``align_series`` as the
+    adapter operators.  InsertAdapterNode.adapter_operator_name MUST
+    refuse any other operator at construction time so the Composer
+    cannot smuggle non-adapter operators into the assembled Workflow
+    as 'adapters'."""
+
+    def test_convert_units_accepted(self) -> None:
+        patch = InsertAdapterNode(
+            on_edge_source="a", on_edge_target="b", on_edge_slot="s",
+            adapter_node_id="n", adapter_operator_name="convert_units",
+            adapter_input_slot="series",
+        )
+        assert patch.adapter_operator_name == "convert_units"
+
+    def test_align_series_accepted(self) -> None:
+        patch = InsertAdapterNode(
+            on_edge_source="a", on_edge_target="b", on_edge_slot="s",
+            adapter_node_id="n", adapter_operator_name="align_series",
+            adapter_input_slot="series_list",
+        )
+        assert patch.adapter_operator_name == "align_series"
+
+    def test_correlation_rejected(self) -> None:
+        with pytest.raises(PydanticValidationError):
+            InsertAdapterNode(
+                on_edge_source="a", on_edge_target="b", on_edge_slot="s",
+                adapter_node_id="n", adapter_operator_name="correlation",
+                adapter_input_slot="left",
+            )
+
+    def test_arbitrary_string_rejected(self) -> None:
+        with pytest.raises(PydanticValidationError):
+            InsertAdapterNode(
+                on_edge_source="a", on_edge_target="b", on_edge_slot="s",
+                adapter_node_id="n", adapter_operator_name="my_custom_op",
+                adapter_input_slot="series",
+            )
+
+
+# ============================================================================
 # P11 / P9 — module is finance-blind
 # ============================================================================
 
 
-class TestModuleFinanceBlind:
-    def test_assembler_module_has_no_finance_imports(self) -> None:
+class TestModuleNotDomainSpecific:
+    """After the PR-A3 corrective patch, the Assembler lives in
+    ``orchestrator/open_dag/``.  It may import from other open_dag
+    modules and from ``shared/workflow/`` (the substrate), but it
+    must NOT import from any ``rates_agent/`` package — that would
+    couple the assembler to a specific instrument domain."""
+
+    def test_assembler_module_has_no_rates_agent_imports(self) -> None:
         import ast
         from pathlib import Path
 
         path = (
-            Path(__file__).resolve().parents[2]
-            / "shared" / "workflow" / "assembler.py"
+            Path(__file__).resolve().parents[3]
+            / "orchestrator" / "open_dag" / "assembler.py"
         )
         src = path.read_text(encoding="utf-8")
         tree = ast.parse(src)
@@ -1226,14 +1368,9 @@ class TestModuleFinanceBlind:
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     assert not alias.name.startswith("rates_agent"), (
-                        f"assembler.py imports {alias.name} — must "
-                        "stay finance-blind."
-                    )
-                    assert not alias.name.startswith("orchestrator"), (
-                        f"assembler.py imports {alias.name} — "
-                        "substrate must not depend on the orchestrator."
+                        f"assembler.py imports {alias.name} — open-DAG "
+                        "core must not depend on rates_agent."
                     )
             elif isinstance(node, ast.ImportFrom):
                 if node.module:
                     assert not node.module.startswith("rates_agent")
-                    assert not node.module.startswith("orchestrator")

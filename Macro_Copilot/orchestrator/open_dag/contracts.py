@@ -64,18 +64,43 @@ the string, the substrate validates it against ``KNOWN_DOMAINS``.
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from shared.artifacts.registry import ArtifactTypeName
 from shared.schemas.time_series import TimeSeriesUnits
-from shared.workflow.resolver_keys import (
+from orchestrator.open_dag.resolver_keys import (
     KNOWN_DOMAINS,
     UnknownDomainError,
     domain_to_resolver_key,
 )
 from shared.workflow.types import LiteralBinding, OperatorNode, WorkflowEdge
+
+
+# ============================================================================
+# CLOSED-FAMILY FREQUENCY VOCABULARY
+# ============================================================================
+
+
+class Frequency(str, Enum):
+    """Closed family of leaf-contract frequencies.
+
+    Per ``tmp/orchestration.md`` §PR-3 (line 425 in the build): "the
+    substrate gets hard structured checks only on the things that are
+    GENUINELY closed (artifact_type is already an enum; units is
+    TimeSeriesUnits; frequency is a small closed set)."
+
+    The audit-pass (PR-3 corrective) made the frequency field a free
+    string — this enum restores the plan's contract: every
+    ``LeafRequest.expected_frequency`` and ``BoundLeaf.declared_frequency``
+    is one of these values (or None).  Extension is an ADR change.
+    """
+
+    DAILY = "daily"
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"
 
 
 # ============================================================================
@@ -117,15 +142,14 @@ class LeafRequest(BaseModel):
             "from the Composer's perspective)."
         ),
     )
-    expected_frequency: Optional[str] = Field(
+    expected_frequency: Optional[Frequency] = Field(
         default=None,
         description=(
-            "Optional frequency expectation (e.g. 'daily', 'weekly').  "
-            "Free string — the substrate does not curate a frequency "
-            "vocabulary.  When set, the BoundLeaf's declared_frequency "
-            "MUST equal it (case-insensitive after .lower().strip()); "
-            "E_FREQUENCY_MISMATCH otherwise.  When None, any frequency "
-            "is accepted."
+            "Optional frequency expectation.  Closed family — one of "
+            "Frequency (DAILY, WEEKLY, MONTHLY) or None.  When set, the "
+            "BoundLeaf's declared_frequency MUST equal it "
+            "(E_FREQUENCY_MISMATCH otherwise).  When None, any "
+            "frequency is accepted."
         ),
     )
     domain_hint: str = Field(
@@ -296,13 +320,13 @@ class BoundLeaf(BaseModel):
             "(E_UNIT_MISMATCH else)."
         ),
     )
-    declared_frequency: Optional[str] = Field(
+    declared_frequency: Optional[Frequency] = Field(
         default=None,
         description=(
-            "The cadence the Selector asserts this primitive emits "
-            "(e.g. 'daily').  PR-4 Boundary A asserts case-insensitive "
-            "equality with LeafRequest.expected_frequency when the "
-            "latter is set (E_FREQUENCY_MISMATCH else)."
+            "The cadence the Selector asserts this primitive emits.  "
+            "Closed family — one of Frequency or None.  PR-4 Boundary "
+            "A asserts equality with LeafRequest.expected_frequency "
+            "when the latter is set (E_FREQUENCY_MISMATCH else)."
         ),
     )
 
@@ -560,6 +584,7 @@ class ShapeSpec(BaseModel):
 
 
 __all__ = [
+    "Frequency",
     "LeafRequest",
     "BoundLeaf",
     "LeafHole",

@@ -91,7 +91,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from shared.artifacts.registry import ArtifactTypeName
 from shared.schemas.time_series import TimeSeriesUnits
-from shared.workflow.holes import BoundLeaf, LeafHole, LeafRequest, ShapeSpec
+from orchestrator.open_dag.contracts import (
+    BoundLeaf, LeafHole, LeafRequest, ShapeSpec,
+)
 from shared.workflow.registry import PrimitiveResolver
 from shared.workflow.types import (
     LiteralBinding,
@@ -187,6 +189,13 @@ class InsertAdapterNode(BaseModel):
     set inline.
 
     Frozen; round-trips through JSON for the trace.
+
+    The ``adapter_operator_name`` is restricted to a closed whitelist
+    (currently ``convert_units`` and ``align_series``) so the Composer
+    cannot smuggle an arbitrary operator under the "adapter" label —
+    that would be DAG-reshaping by another name, which the plan
+    (``tmp/orchestration.md`` §PR-4) explicitly bans.  Adding a new
+    adapter operator is an ADR-recorded extension.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -196,7 +205,15 @@ class InsertAdapterNode(BaseModel):
     on_edge_target: str = Field(..., min_length=1)
     on_edge_slot: str = Field(..., min_length=1)
     adapter_node_id: str = Field(..., min_length=1)
-    adapter_operator_name: str = Field(..., min_length=1)
+    adapter_operator_name: Literal["convert_units", "align_series"] = Field(
+        ...,
+        description=(
+            "Closed whitelist of allowed adapter operators per "
+            "tmp/orchestration.md §PR-4.  Adding another adapter "
+            "requires an ADR — arbitrary operators would let the "
+            "Composer reshape the DAG under the 'adapter' label."
+        ),
+    )
     adapter_input_slot: str = Field(
         ...,
         min_length=1,
@@ -436,7 +453,26 @@ class Assembler:
         trace.extend(sub_trace_v2)
 
         for patch in patches:
-            workflow_v2, patch_step = self._apply_patch(workflow_v2, patch)
+            try:
+                workflow_v2, patch_step = self._apply_patch(
+                    workflow_v2, patch,
+                )
+            except ValueError as exc:
+                # An inconsistent patch (e.g. referencing a non-existent
+                # edge) is the Composer's bug, not a substrate crash.
+                # Refusal is the contract per
+                # tmp/orchestration.md §PR-4 ('Assembler.assemble(...)
+                # returns AssemblyResult(status=CLEAN|REFUSED)').  No
+                # exception escapes assemble().
+                return AssemblyResult(
+                    status=AssemblyStatus.REFUSED,
+                    workflow=None,
+                    validation_result=result_v1,
+                    repair_trace=tuple(trace),
+                    refusal_reasons=(
+                        f"Composer patch failed to apply: {exc}",
+                    ),
+                )
             trace.append(patch_step)
 
         result_v2 = self._full_validate(
@@ -714,31 +750,36 @@ class Assembler:
                 ))
 
             # 3. Frequency — HARD (only when LeafRequest pinned a freq).
-            if req.expected_frequency is not None:
-                expected_freq = req.expected_frequency.strip().lower()
-                declared_freq = (bound.declared_frequency or "").strip().lower()
-                if expected_freq != declared_freq:
-                    out.append(ValidationError(
-                        code=ErrorCode.E_FREQUENCY_MISMATCH,
-                        owner_layer=OwnerLayer.L2_BINDING,
-                        severity=Severity.ERROR,
-                        message=(
-                            f"Assembler contract check: leaf "
-                            f"{hole.node_id!r} LeafRequest expected "
-                            f"frequency {req.expected_frequency!r}, "
-                            f"but the bound primitive "
-                            f"{bound.mcp_tool_name!r} declares "
-                            f"{bound.declared_frequency!r}."
+            # Frequency is a closed Frequency enum (PR-A3 corrective);
+            # comparison is direct enum equality, no normalisation needed.
+            if (
+                req.expected_frequency is not None
+                and bound.declared_frequency != req.expected_frequency
+            ):
+                out.append(ValidationError(
+                    code=ErrorCode.E_FREQUENCY_MISMATCH,
+                    owner_layer=OwnerLayer.L2_BINDING,
+                    severity=Severity.ERROR,
+                    message=(
+                        f"Assembler contract check: leaf "
+                        f"{hole.node_id!r} LeafRequest expected "
+                        f"frequency {req.expected_frequency.value!r}, "
+                        f"but the bound primitive "
+                        f"{bound.mcp_tool_name!r} declares "
+                        f"{bound.declared_frequency.value if bound.declared_frequency else None!r}."
+                    ),
+                    leaf_id=hole.node_id,
+                    node_id=hole.node_id,
+                    tool_name=bound.mcp_tool_name,
+                    detail={
+                        "field": "frequency",
+                        "expected": req.expected_frequency.value,
+                        "declared": (
+                            bound.declared_frequency.value
+                            if bound.declared_frequency else None
                         ),
-                        leaf_id=hole.node_id,
-                        node_id=hole.node_id,
-                        tool_name=bound.mcp_tool_name,
-                        detail={
-                            "field": "frequency",
-                            "expected": req.expected_frequency,
-                            "declared": bound.declared_frequency,
-                        },
-                    ))
+                    },
+                ))
 
             # 4. Free-form fields — SOFT warnings.
             if _normalise(req.semantic_role) != _normalise(
@@ -937,19 +978,54 @@ class Assembler:
                     )
                     return new_leaves_by_id, patches, repair_trace, refusals
 
+                # No-primitive-swap discipline.  Per plan
+                # tmp/orchestration.md §PR-4: the rebinder may change
+                # params (and output_field) but MUST NOT pick a
+                # different primitive for the same hole — that's
+                # "re-bind, then re-shape, then re-bind" → oscillation.
+                # Enforce by asserting identity on the three
+                # primitive-identity fields.
+                if (
+                    rebound.domain != current.domain
+                    or rebound.mcp_tool_name != current.mcp_tool_name
+                    or rebound.resolver_tool_key != current.resolver_tool_key
+                ):
+                    refusals.append(
+                        f"LeafRebinder attempted a primitive swap on "
+                        f"leaf {leaf_id!r}: "
+                        f"(domain, mcp_tool_name, resolver_tool_key) "
+                        f"went from ({current.domain!r}, "
+                        f"{current.mcp_tool_name!r}, "
+                        f"{current.resolver_tool_key!r}) to "
+                        f"({rebound.domain!r}, "
+                        f"{rebound.mcp_tool_name!r}, "
+                        f"{rebound.resolver_tool_key!r}).  Repair may "
+                        "change params/output_field/declared_* but "
+                        "NOT the primitive itself; re-picking is a "
+                        "shape concern that requires a new Composer "
+                        "round, not a Selector retry."
+                    )
+                    return new_leaves_by_id, patches, repair_trace, refusals
+
                 new_leaves_by_id[leaf_id] = rebound
                 repair_trace.append(RepairStep(
                     kind=RepairKind.REBIND_LEAF,
                     rationale=(
                         f"Rebound leaf {leaf_id!r} after L2_BINDING "
-                        f"errors {[e.code.value for e in errs]}."
+                        f"errors {[e.code.value for e in errs]}.  "
+                        "Primitive identity preserved (no-swap "
+                        "discipline); params / declared_* updated by "
+                        "the Selector."
                     ),
                     leaf_id=leaf_id,
                     node_id=leaf_id,
                     detail={
                         "error_codes": [e.code.value for e in errs],
-                        "previous_resolver_tool_key": current.resolver_tool_key,
-                        "new_resolver_tool_key": rebound.resolver_tool_key,
+                        "resolver_tool_key": current.resolver_tool_key,
+                        "previous_params": dict(current.params),
+                        "new_params": dict(rebound.params),
+                        "previous_output_field": current.output_field,
+                        "new_output_field": rebound.output_field,
                     },
                 ))
 
