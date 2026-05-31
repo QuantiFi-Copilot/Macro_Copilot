@@ -79,3 +79,33 @@ methodology:
     - "bfill and ffill_then_bfill policies"
     - "target_frequency resampling (e.g., resample to weekly)"
     - "explicit named-calendar parameter for trading-day alignment"
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Align N typed Series onto a common DatetimeIndex.  Required upstream
+    of any pair-stats operator.
+  when_to_use:
+    - "Pair-stats (correlation, rolling_correlation, cointegration, rolling_regression) require identical DatetimeIndex — wire align_series upstream."
+    - "Whenever two or more Series from different calendars are combined."
+    - "Required before series_arithmetic with two Series operands."
+  when_not_to_use:
+    - "Single-Series operators (rolling_zscore, percentile_rank, rolling_statistic, threshold_events) don't need alignment."
+    - "If inputs already share a DatetimeIndex by construction (no-op but safe)."
+  upstream_requirements:
+    - "≥ 2 Series leaves fan-in on slot 'series_list'."
+  downstream_pattern:
+    - "Outputs SeriesSet — NOT two loose Series.  Follow with select_from_series_set ×2 to extract each by key for downstream pair-stats."
+  knobs_quick_ref:
+    join_policy: "inner (default — only common dates) | outer (union with NaNs)."
+    fill_policy: "raw (default) | ffill (holiday gaps)."
+    fill_limit: "max consecutive NaNs when ffill; null = unlimited."
+    require_matching_frequency: "true (default)."
+  example_shapes:
+    - description: "Canonical pair-stats wiring."
+      shape: "[Series A, Series B] -> align_series -> SeriesSet -> select_from_series_set(key=A) + select_from_series_set(key=B) -> pair-stats operator"
+  sibling_operators:
+    - select_from_series_set: "Natural downstream extractor — pulls one named Series out by key."
+    - convert_units: "Insert on one branch BEFORE align_series when inputs have different-but-convertible units."

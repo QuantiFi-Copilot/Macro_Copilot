@@ -150,6 +150,18 @@ class OperatorConfig(BaseModel):
     operator: OperatorMeta
     defaults: Dict[str, OperatorDefault]
     methodology: OperatorMethodologyMeta
+    # PR-2 of the open-DAG PoC: each operator's `config.yaml` carries a
+    # `card:` block with the LLM-grade description content the L3
+    # Composer's prompt embeds (when-to-use, when-NOT-to-use, sibling
+    # cross-references, example shapes, etc.).  OperatorConfig itself
+    # treats the block opaquely — its schema is owned and validated by
+    # ``shared.workflow.operator_catalogue`` (the catalogue renderer
+    # reads the YAML directly).  Declaring the field here just lifts
+    # the `extra="forbid"` rejection so the operator's own runtime
+    # config-identity check (_check_config_identity) keeps working
+    # alongside the new card content.  Optional so legacy fixtures
+    # without a card block still load.
+    card: Optional[Dict[str, Any]] = None
 
     def default_value(self, key: str) -> Any:
         """Return the scalar default for a variant key, or raise."""

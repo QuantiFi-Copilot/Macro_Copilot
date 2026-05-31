@@ -96,3 +96,36 @@ methodology:
   planned_extensions:
     - "method='johansen' (Johansen multivariate cointegration): admitted as a SEPARATE operator (different input shape — N series, not 2) when a workflow needs it.  Listed here for reference only; not switched on this operator's ``method`` flag."
     - "method='phillips_ouliaris' (Phillips–Ouliaris non-parametric residual test): admitted as a SEPARATE operator only if AEG is found inadequate for some recipe; not yet built."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Engle–Granger two-step cointegration test on a bivariate (left, right)
+    Series pair — emits a ScalarMetric (the ADF test statistic).
+  when_to_use:
+    - "User asks whether two series share a stationary linear combination — i.e. whether the SPREAD between them is mean-reverting (pairs trading research)."
+    - "User asks \"is the X-Y spread stationary?\" or \"does X and Y cointegrate?\""
+    - "User asks for ADF / unit-root evidence on a pair (the residuals of left ~ right)."
+  when_not_to_use:
+    - "User asks how strongly the two MOVE TOGETHER — use correlation or rolling_correlation."
+    - "User asks for the hedge ratio (beta) of one on the other — use rolling_regression."
+    - "User asks about > 2 series jointly — Johansen test is a separate, not-yet-built operator."
+  upstream_requirements:
+    - "Both Series must share an identical DatetimeIndex.  Canonical upstream: align_series → select_from_series_set ×2."
+    - "Series should be I(1) (level series, not differences) for the test to be meaningful."
+  downstream_pattern:
+    - "Output is a ScalarMetric (the ADF stat — more negative = stronger evidence of cointegration).  The p-value is in lineage params.  Feeds L6 directly."
+  knobs_quick_ref:
+    method: "engle_granger (only implementation)."
+    trend: "c (default) | ct (linear drift) | ctt (quadratic) | n (no constant).  Changes the critical-value table."
+    autolag: "aic (default) | bic | t-stat | null (use max_lag directly)."
+    min_periods: "30 by default (small-sample reliability floor)."
+  example_shapes:
+    - description: "Engle-Granger cointegration test on a same-curve spread pair (e.g. UST 2Y and UST 10Y, 5y of daily history)."
+      shape: "[Series A, Series B] -> align_series -> select_from_series_set ×2 -> cointegration -> ScalarMetric"
+  sibling_operators:
+    - correlation: "How correlated, not whether stationary.  Same input shape, different question."
+    - rolling_correlation: "Time-varying correlation.  Use to see when the relationship strengthened/weakened."
+    - rolling_regression: "Hedge ratio (beta) of LHS on RHS.  Useful as a companion to cointegration for pair-trading sizing."

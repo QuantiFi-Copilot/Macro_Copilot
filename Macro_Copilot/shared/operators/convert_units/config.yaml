@@ -26,3 +26,32 @@ methodology:
     propagate unchanged.
   planned_extensions:
     - "additional unit pairs as the TimeSeriesUnits enum grows (dimensionless units like Z_SCORE / RATIO have no dimensional conversion target)."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Dimensional unit conversion between TimeSeriesUnits members.  The
+    single sanctioned unit-conversion site in the substrate.
+  when_to_use:
+    - "Two Series with different but convertible units (PERCENT vs BPS) need to be combined by series_arithmetic add/subtract/divide — convert one upstream."
+    - "Bound primitive returns its output in PERCENT but the downstream operator's slot expects BPS (or vice-versa)."
+    - "User explicitly asks to express a series in different units."
+  when_not_to_use:
+    - "Dimensionless units (Z_SCORE, RATIO, PCT_RANK) cannot be dimensionally converted — this operator refuses honestly."
+    - "Not for unit composition (e.g. RATIO × PERCENT) — that's a planned series_arithmetic extension."
+  upstream_requirements:
+    - "Input is one Series with a known source unit (declared on the primitive's PrimitiveSpec.output_field_units)."
+  downstream_pattern:
+    - "Output is one Series, re-tagged to target_units; payload values multiplied by the exact dimensional factor."
+    - "Most often inserted by the L4 repair loop as an additive adapter when Boundary A surfaces a unit mismatch."
+  knobs_quick_ref:
+    target_units: "REQUIRED — one of TimeSeriesUnits enum values.  Currently supported pairs: PERCENT<->BPS (plus identity)."
+  example_shapes:
+    - description: "Convert a PERCENT yield series to BPS so it can be added to another BPS series."
+      shape: "Series(PERCENT) -> convert_units(target_units='bps') -> Series(BPS)"
+    - description: "Repair pattern: the L4 assembler inserts this on one arm before series_arithmetic.add when units mismatch."
+      shape: "Series(PERCENT) -> convert_units(target_units='bps') -> series_arithmetic(op='add', other=Series(BPS)) -> Series(BPS)"
+  sibling_operators:
+    - series_arithmetic: "The most common downstream — convert_units lets binary same-unit ops succeed."

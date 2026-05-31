@@ -39,51 +39,79 @@ from shared.artifacts.registry import (
     ArtifactTypeName,
 )
 from shared.workflow.slots import OutputDescriptor, SlotDescriptor
-from shared.operators.align_series import align_series, AlignSeriesParams
-from shared.operators.apply_mask import apply_mask, ApplyMaskParams
+from shared.operators.align_series import (
+    align_series, AlignSeriesParams,
+    CONFIG_PATH as _ALIGN_SERIES_CONFIG_PATH,
+)
+from shared.operators.apply_mask import (
+    apply_mask, ApplyMaskParams,
+    CONFIG_PATH as _APPLY_MASK_CONFIG_PATH,
+)
 from shared.operators.conditional_aggregate import (
     conditional_aggregate,
     ConditionalAggregateParams,
+    CONFIG_PATH as _CONDITIONAL_AGGREGATE_CONFIG_PATH,
 )
-from shared.operators.cointegration import cointegration, CointegrationParams
-from shared.operators.correlation import correlation, CorrelationParams
-from shared.operators.convert_units import convert_units, ConvertUnitsParams
-from shared.operators.event_windows import event_windows, EventWindowsParams
+from shared.operators.cointegration import (
+    cointegration, CointegrationParams,
+    CONFIG_PATH as _COINTEGRATION_CONFIG_PATH,
+)
+from shared.operators.correlation import (
+    correlation, CorrelationParams,
+    CONFIG_PATH as _CORRELATION_CONFIG_PATH,
+)
+from shared.operators.convert_units import (
+    convert_units, ConvertUnitsParams,
+    CONFIG_PATH as _CONVERT_UNITS_CONFIG_PATH,
+)
+from shared.operators.event_windows import (
+    event_windows, EventWindowsParams,
+    CONFIG_PATH as _EVENT_WINDOWS_CONFIG_PATH,
+)
 from shared.operators.rolling_regression import (
     rolling_regression,
     RollingRegressionParams,
+    CONFIG_PATH as _ROLLING_REGRESSION_CONFIG_PATH,
 )
 from shared.operators.percentile_rank import (
     percentile_rank,
     PercentileRankParams,
+    CONFIG_PATH as _PERCENTILE_RANK_CONFIG_PATH,
 )
 from shared.operators.rolling_correlation import (
     rolling_correlation,
     RollingCorrelationParams,
+    CONFIG_PATH as _ROLLING_CORRELATION_CONFIG_PATH,
 )
 from shared.operators.rolling_statistic import (
     rolling_statistic,
     RollingStatisticParams,
+    CONFIG_PATH as _ROLLING_STATISTIC_CONFIG_PATH,
 )
 from shared.operators.rolling_zscore import (
     rolling_zscore,
     RollingZscoreParams,
+    CONFIG_PATH as _ROLLING_ZSCORE_CONFIG_PATH,
 )
 from shared.operators.select_from_series_set import (
     select_from_series_set,
     SelectFromSeriesSetParams,
+    CONFIG_PATH as _SELECT_FROM_SERIES_SET_CONFIG_PATH,
 )
 from shared.operators.series_arithmetic import (
     series_arithmetic,
     SeriesArithmeticParams,
+    CONFIG_PATH as _SERIES_ARITHMETIC_CONFIG_PATH,
 )
 from shared.operators.summarize_series import (
     summarize_series,
     SummarizeSeriesParams,
+    CONFIG_PATH as _SUMMARIZE_SERIES_CONFIG_PATH,
 )
 from shared.operators.threshold_events import (
     threshold_events,
     ThresholdEventsParams,
+    CONFIG_PATH as _THRESHOLD_EVENTS_CONFIG_PATH,
 )
 
 
@@ -211,6 +239,13 @@ class OperatorSpec(BaseModel):
     params_class: Optional[Type[BaseModel]]
     input_slots: Dict[str, SlotDescriptor]
     output: OutputDescriptor
+    # PR-2 of the open-DAG PoC: pointer to the operator's bundled
+    # ``config.yaml`` (mirrors ``PrimitiveSpec.config_path``).  Read by
+    # ``shared.workflow.operator_catalogue`` to render the per-operator
+    # LLM card that the L3 Composer sees in its prompt.  P10: the
+    # description content lives ONLY inside the YAML — this field is a
+    # path, not duplicated content.
+    config_path: Path
     # OPR15: a discriminator / positional arg (e.g. series_arithmetic's
     # ``op``) is DECLARED here, not injected by name in the executor.
     # The executor stays generic; the operator resolves the value from
@@ -326,6 +361,7 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         operator_name="align_series",
         callable=align_series,
         params_class=AlignSeriesParams,
+        config_path=_ALIGN_SERIES_CONFIG_PATH,
         # ``series_list`` is list-shaped: multiple inbound edges fan
         # in as a Python ``List[Series]`` (replaces the prior
         # ``"List[Series]"`` string-encoded prefix).
@@ -344,6 +380,7 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         operator_name="select_from_series_set",
         callable=select_from_series_set,
         params_class=SelectFromSeriesSetParams,
+        config_path=_SELECT_FROM_SERIES_SET_CONFIG_PATH,
         input_slots={
             "series_set": SlotDescriptor.of(
                 "SeriesSet",
@@ -359,6 +396,7 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         operator_name="series_arithmetic",
         callable=series_arithmetic,
         params_class=SeriesArithmeticParams,
+        config_path=_SERIES_ARITHMETIC_CONFIG_PATH,
         # ``right`` accepts a Series OR a Python scalar (int/float)
         # for binary scalar arithmetic, or is absent for unary ops.
         # ``accepts_scalar=True`` replaces the prior
@@ -398,6 +436,7 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         operator_name="correlation",
         callable=correlation,
         params_class=CorrelationParams,
+        config_path=_CORRELATION_CONFIG_PATH,
         input_slots={
             "left": SlotDescriptor.of(
                 "Series",
@@ -420,6 +459,7 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         operator_name="convert_units",
         callable=convert_units,
         params_class=ConvertUnitsParams,
+        config_path=_CONVERT_UNITS_CONFIG_PATH,
         input_slots={
             "series": SlotDescriptor.of(
                 "Series",
@@ -435,6 +475,7 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         operator_name="threshold_events",
         callable=threshold_events,
         params_class=ThresholdEventsParams,
+        config_path=_THRESHOLD_EVENTS_CONFIG_PATH,
         input_slots={
             "series": SlotDescriptor.of(
                 "Series",
@@ -450,6 +491,7 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         operator_name="event_windows",
         callable=event_windows,
         params_class=EventWindowsParams,
+        config_path=_EVENT_WINDOWS_CONFIG_PATH,
         input_slots={
             "events": SlotDescriptor.of(
                 "EventSet",
@@ -469,6 +511,7 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         operator_name="conditional_aggregate",
         callable=conditional_aggregate,
         params_class=ConditionalAggregateParams,
+        config_path=_CONDITIONAL_AGGREGATE_CONFIG_PATH,
         input_slots={
             "panel": SlotDescriptor.of(
                 "WindowedPanel",
@@ -484,6 +527,7 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         operator_name="apply_mask",
         callable=apply_mask,
         params_class=ApplyMaskParams,
+        config_path=_APPLY_MASK_CONFIG_PATH,
         input_slots={
             "series": SlotDescriptor.of(
                 "Series",
@@ -503,6 +547,7 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         operator_name="rolling_regression",
         callable=rolling_regression,
         params_class=RollingRegressionParams,
+        config_path=_ROLLING_REGRESSION_CONFIG_PATH,
         # lhs = dependent / target; rhs = single regressor in V1.
         # Output is a SeriesSet keyed by {beta, alpha, r_squared}.
         input_slots={
@@ -528,6 +573,7 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         operator_name="rolling_zscore",
         callable=rolling_zscore,
         params_class=RollingZscoreParams,
+        config_path=_ROLLING_ZSCORE_CONFIG_PATH,
         input_slots={
             "series": SlotDescriptor.of(
                 "Series",
@@ -547,6 +593,7 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         operator_name="rolling_statistic",
         callable=rolling_statistic,
         params_class=RollingStatisticParams,
+        config_path=_ROLLING_STATISTIC_CONFIG_PATH,
         input_slots={
             "series": SlotDescriptor.of(
                 "Series",
@@ -567,6 +614,7 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         operator_name="percentile_rank",
         callable=percentile_rank,
         params_class=PercentileRankParams,
+        config_path=_PERCENTILE_RANK_CONFIG_PATH,
         input_slots={
             "series": SlotDescriptor.of(
                 "Series",
@@ -587,6 +635,7 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         operator_name="rolling_correlation",
         callable=rolling_correlation,
         params_class=RollingCorrelationParams,
+        config_path=_ROLLING_CORRELATION_CONFIG_PATH,
         input_slots={
             "left": SlotDescriptor.of(
                 "Series",
@@ -611,6 +660,7 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         operator_name="cointegration",
         callable=cointegration,
         params_class=CointegrationParams,
+        config_path=_COINTEGRATION_CONFIG_PATH,
         input_slots={
             "left": SlotDescriptor.of(
                 "Series",
@@ -630,6 +680,7 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         operator_name="summarize_series",
         callable=summarize_series,
         params_class=SummarizeSeriesParams,
+        config_path=_SUMMARIZE_SERIES_CONFIG_PATH,
         # Single-Series input → single-row summary Series at a fixed
         # sentinel date.  Lets two per-regime summaries feed into
         # series_arithmetic.subtract for the canonical "compare across

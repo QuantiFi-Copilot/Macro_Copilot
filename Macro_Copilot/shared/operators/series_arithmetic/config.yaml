@@ -67,3 +67,38 @@ methodology:
     - "configurable overflow_policy (error vs inf on div-by-zero)"
     - "convert_units sibling operator (explicit unit conversion)"
     - "Series * Series multiplication with unit-composition rules"
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Elementwise arithmetic on typed Series (add / subtract / multiply /
+    divide / diff / pct_change) with strict unit-algebra.
+  when_to_use:
+    - "User asks for a BASIS or difference between two series (e.g. \"basis between linker breakeven and inflation swap\")."
+    - "User asks for a scaled series (multiply / divide by scalar)."
+    - "User asks for level changes (diff) or percent changes (pct_change) of one Series."
+    - "User asks for a ratio of two same-unit Series → RATIO output."
+  when_not_to_use:
+    - "Two-Series ops with DIFFERENT-but-convertible units (PERCENT vs BPS): convert_units one side first."
+    - "Transforms outside {add,sub,mul,div,diff,pct_change} — operator refuses."
+  upstream_requirements:
+    - "Two-Series binary ops: both operands MUST share a DatetimeIndex (align_series → select_from_series_set ×2 upstream)."
+    - "Same-unit ops (add, subtract, divide(Series,Series)): operand units must match (validator enforces)."
+    - "Unary ops (diff, pct_change): leave 'right' unbound."
+  downstream_pattern:
+    - "Output is a Series.  Units: same as input for add/sub/diff; RATIO for pct_change and Series/Series divide; preserves left for scalar multiply/divide."
+  knobs_quick_ref:
+    op: "add | subtract | multiply | divide | diff | pct_change.  REQUIRED."
+    period: "Lag for diff / pct_change (default 1)."
+    require_matching_frequency: "true (default)."
+  example_shapes:
+    - description: "Basis between two aligned series."
+      shape: "[Series A, Series B] -> align_series -> select_from_series_set ×2 -> series_arithmetic(op='subtract') -> Series"
+    - description: "Series scaled by a scalar via LiteralBinding on 'right'."
+      shape: "Series + LiteralBinding(slot='right', value=100.0) -> series_arithmetic(op='multiply') -> Series"
+  sibling_operators:
+    - convert_units: "Use BEFORE this operator when binary operands have different-but-convertible units."
+    - align_series: "Required upstream when both operands are Series."
+    - summarize_series: "If you want a single-row summary instead of elementwise arithmetic."

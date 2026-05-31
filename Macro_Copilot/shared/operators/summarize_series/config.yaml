@@ -69,3 +69,32 @@ methodology:
     - "ScalarMetric artifact (build plan v5 / R5 — proper scalar type, no sentinel)"
     - "weighted aggregations (weighted mean / weighted median)"
     - "trimmed-mean and winsorized statistics for tail-robust summaries"
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Collapse a Series to a 1-row summary Series at a sentinel date so
+    two per-regime summaries can feed series_arithmetic.subtract.
+  when_to_use:
+    - "User wants a single per-regime central-tendency (mean / median / std / sum / count) summary of a Series subsampled to that regime."
+    - "User wants to compare across regimes: two summarize_series outputs at the sentinel date → series_arithmetic.subtract = the cross-regime delta."
+    - "User wants n_observations / n_dropped diagnostics for a sample."
+  when_not_to_use:
+    - "If the user wants the per-offset summary of an event-window panel, use conditional_aggregate (Panel → Series-by-offset)."
+    - "If the user wants the full time series of a rolling stat, use rolling_statistic."
+  upstream_requirements:
+    - "One Series (typically masked by apply_mask to a regime / event sample)."
+  downstream_pattern:
+    - "Output is a 1-row Series at sentinel date 1900-01-01.  Two such outputs can be wired to series_arithmetic(op='subtract') to compute the cross-regime delta."
+  knobs_quick_ref:
+    statistic: "mean (default) | median (robust) | std | sum | count."
+    dispersion: "std (default — recorded in lineage) | mad (robust) | none (suppress)."
+  example_shapes:
+    - description: "Per-regime mean BTP-Bund spread, with cross-regime delta."
+      shape: "[Series(btp_bund), EventSet(regime_A)] -> apply_mask -> summarize_series -> Series_A ; [Series(btp_bund), EventSet(regime_B)] -> apply_mask -> summarize_series -> Series_B ; [Series_A, Series_B] -> align_series (sentinel-aligned) -> select_from_series_set ×2 -> series_arithmetic(op='subtract') -> Series (delta)"
+  sibling_operators:
+    - conditional_aggregate: "Per-offset (panel-flattening) sibling — use when input is WindowedPanel, not Series."
+    - apply_mask: "Common upstream to produce the regime-conditioned sample."
+    - series_arithmetic: "Natural downstream for cross-regime delta (subtract)."

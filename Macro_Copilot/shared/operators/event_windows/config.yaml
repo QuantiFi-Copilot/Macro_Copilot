@@ -63,3 +63,35 @@ methodology:
     - "log_return / pct_change units_basis variants"
     - "keep_partial incomplete_window_policy"
     - "asymmetric per-event window sizes"
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Extract a WindowedPanel of fixed-shape windows around each event date
+    from a target Series.  Core event-study primitive.
+  when_to_use:
+    - "User asks what a series does in the days AROUND each event (e.g. \"UST 10Y path ±5d around NFP surprises > 50K\")."
+    - "User asks for an event-study panel ([n_events × n_offsets])."
+    - "User asks for cumulative or per-day moves around regime triggers."
+  when_not_to_use:
+    - "User wants VALUES on event dates (not windows) — use apply_mask."
+    - "User wants per-event AGGREGATE (not the panel) — wire conditional_aggregate downstream."
+  upstream_requirements:
+    - "TWO inputs: EventSet on 'events' (typically from threshold_events) and Series on 'target'."
+    - "events.mask and target MUST share the same DatetimeIndex."
+  downstream_pattern:
+    - "Output is WindowedPanel.  Most common downstream: conditional_aggregate to collapse to a per-offset Series."
+  knobs_quick_ref:
+    pre_window: "Pre-event business days (e.g. 5)."
+    post_window: "Post-event business days (e.g. 5)."
+    units_basis: "raw (default) | level_change (subtract event-day value; PERCENT→BPS)."
+    incomplete_window_policy: "drop (default) | pad_nan."
+  example_shapes:
+    - description: "Full event-study with per-offset aggregation."
+      shape: "[Series triggers, Series target] -> threshold_events + event_windows -> WindowedPanel -> conditional_aggregate -> Series"
+  sibling_operators:
+    - threshold_events: "Required upstream — produces the EventSet."
+    - conditional_aggregate: "Required downstream to reduce WindowedPanel to a per-offset Series."
+    - apply_mask: "Alternative when the user wants values, not windows."

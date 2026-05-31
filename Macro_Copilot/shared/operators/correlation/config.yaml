@@ -46,3 +46,36 @@ methodology:
   planned_extensions:
     - "method='kendall' (Kendall's tau): declared in valid_values but not yet implemented; raises NotImplementedError (OPR8 honest refusal)."
     - "rolling_correlation: a separate operator emitting a Series (constant output type per OPR2) — NOT a window parameter on this full-sample operator."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# Description content lives ONLY here; slot / output structure lives ONLY in
+# shared.workflow.OPERATOR_REGISTRY.  The renderer at
+# shared.workflow.operator_catalogue fuses both at L3-prompt-build time.
+# Token-budget cap: ≤600 tokens per rendered card (tests/workflow enforce).
+# ============================================================================
+card:
+  one_line: >-
+    Full-sample correlation coefficient between two index-aligned numeric Series.
+  when_to_use:
+    - "User asks how strongly two series move together over the full sample (e.g. \"correlation between US 2s10s and 5Y breakeven\")."
+    - "User asks for a single summary number of pair association — not time-varying."
+    - "Relationship is expected to be roughly linear (pearson) or monotonic (spearman)."
+  when_not_to_use:
+    - "User asks for time-varying / rolling correlation — use rolling_correlation."
+    - "User asks if a spread between the two series is stationary (pairs trading) — use cointegration."
+    - "User asks for hedge ratios / betas (how much Y moves per unit of X) — use rolling_regression."
+  upstream_requirements:
+    - "Both Series must share an identical DatetimeIndex.  Canonical upstream: align_series → select_from_series_set ×2."
+  downstream_pattern:
+    - "Output is a ScalarMetric (RATIO units, in [-1, 1]); feeds L6 answer directly — no further wiring required."
+  knobs_quick_ref:
+    method: "pearson (default) | spearman (rank, monotonic) | kendall (declared, refuses with NotImplementedError)."
+    min_periods: "2 by default (mathematical floor); raise for noisier domains."
+  example_shapes:
+    - description: "Full-sample correlation between two daily series, e.g. US 2s10s × 5Y breakeven over 5y."
+      shape: "[Series A, Series B] -> align_series -> select_from_series_set ×2 -> correlation -> ScalarMetric"
+  sibling_operators:
+    - rolling_correlation: "Time-varying (windowed) correlation — emits a Series of coefficients, not a single ScalarMetric."
+    - cointegration: "Is the spread between the two series stationary?  Engle-Granger ADF on residuals.  Same input shape, different question."
+    - rolling_regression: "Hedge ratio / beta of LHS on RHS.  Emits {beta, alpha, r_squared} SeriesSet.  Use when the question is 'how much per unit of X', not 'how correlated'."

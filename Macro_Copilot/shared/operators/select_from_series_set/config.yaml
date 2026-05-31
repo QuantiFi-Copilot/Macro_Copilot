@@ -30,3 +30,33 @@ methodology:
     - "by-prefix selection (return SeriesSet sub-selection)"
     - "wildcard glob selection"
     - "ordinal selection (e.g. 'first non-empty series')"
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Extract one named Series from a SeriesSet by key.  The natural
+    downstream of align_series for any pair-stats workflow.
+  when_to_use:
+    - "Wire DOWNSTREAM of align_series whenever the next operator expects a single Series (correlation, rolling_correlation, cointegration, rolling_regression, threshold_events, etc.)."
+    - "Wire DOWNSTREAM of rolling_regression to pick beta / alpha / r_squared individually for display or further analysis."
+    - "Use ONE select per Series the downstream operator needs (typically two: one per arm of a pair)."
+  when_not_to_use:
+    - "Do NOT use to construct a new SeriesSet — this only extracts.  Construction is align_series's job."
+    - "Do NOT use as a passthrough on raw primitive outputs (which are already Series)."
+  upstream_requirements:
+    - "Input must be a SeriesSet (produced by align_series, or by rolling_regression's {beta, alpha, r_squared} output)."
+    - "The composer must know the key — typically the originating Series's identifier from align_series, or one of {beta, alpha, r_squared} for rolling_regression."
+  downstream_pattern:
+    - "Output is a single Series with full upstream lineage preserved."
+    - "Feeds any Series-consuming operator: pair-stats (with a sibling select on the other arm), single-series transforms (rolling_zscore, percentile_rank, rolling_statistic), event detectors (threshold_events), arithmetic (series_arithmetic), summarisers (summarize_series)."
+  knobs_quick_ref:
+    series_key: "The key in the upstream SeriesSet's series_by_key map.  For align_series outputs, this is the originating Series's series_key."
+  example_shapes:
+    - description: "Extracting both arms of an aligned pair for a pair-stats operator."
+      shape: "align_series -> SeriesSet -> select_from_series_set(key=A) + select_from_series_set(key=B) -> correlation"
+    - description: "Picking beta out of a rolling regression output."
+      shape: "rolling_regression -> SeriesSet -> select_from_series_set(key='beta') -> Series"
+  sibling_operators:
+    - align_series: "The natural upstream — produces the SeriesSet you extract from."

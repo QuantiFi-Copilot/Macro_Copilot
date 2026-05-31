@@ -67,3 +67,37 @@ methodology:
   planned_extensions:
     - "ewma_zscore: a SEPARATE operator emitting a Series (not a basis switch here) per OPR2 constant-output discipline."
     - "cross_sectional_zscore: a SEPARATE operator in the cross_sectional family — standardises across series at each date, not within a series across time."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Rolling z-score: standardises a Series via its own trailing rolling
+    mean and std.  Output always in Z_SCORE units.
+  when_to_use:
+    - "User asks how a series compares to its own recent history in σ-units (e.g. \"z-score of SOFR 5Y vs 1y history\", \"how unusual is today's move\")."
+    - "User wants a standardised signal to feed threshold_events (e.g. \"flag dates > 2σ from history\")."
+    - "User wants the standardised form of a series for comparison across markets with different scales."
+  when_not_to_use:
+    - "If the user wants percentile RANK (where in the historical distribution), use percentile_rank instead."
+    - "If the user wants the rolling mean / std SEPARATELY (not standardised), use rolling_statistic."
+    - "If the user wants cross-sectional z-score (across markets at one date), this is the wrong operator (planned cross_sectional_zscore)."
+  upstream_requirements:
+    - "One Series.  No alignment needed (single input)."
+  downstream_pattern:
+    - "Output is a Series in Z_SCORE units, same index/length as input.  Common downstream: threshold_events (event detection on z), L6 directly (chart)."
+  knobs_quick_ref:
+    window: "60 by default (≈ 3 months daily); 20 for tactical, 252 for strategic."
+    min_periods: "Defaults to window (strict)."
+    ddof: "1 (default, sample) | 0 (population)."
+    look_ahead_safe: "true (default — stats use only data up to t-1; event-study hygiene)."
+  example_shapes:
+    - description: "Z-score of SOFR 5Y rate vs its own 1y history."
+      shape: "Series(sofr_5y) -> rolling_zscore(window=252) -> Series(Z_SCORE)"
+    - description: "Event detection on z."
+      shape: "Series -> rolling_zscore -> threshold_events(rule='abs_above', threshold=2.0) -> EventSet"
+  sibling_operators:
+    - percentile_rank: "Pick when the user wants percentile rank (0–100) instead of σ-units."
+    - rolling_statistic: "Pick when the user wants raw rolling mean / std / min / max / sum, not standardisation."
+    - threshold_events: "Common downstream for event detection on the standardised signal."

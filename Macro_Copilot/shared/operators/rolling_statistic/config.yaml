@@ -77,3 +77,39 @@ methodology:
   planned_extensions:
     - "rolling_median / rolling_quantile: separate statistic variants admitted as extensions once a workflow needs them — they extend the implemented set in lock-step with the valid_values list above."
     - "ewma: a SEPARATE operator (exponential weighting is mechanically distinct from a rectangular window) per OPR2 constant-output discipline."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Generic windowed reducer over a Series — rolling mean / std / min /
+    max / sum.  Output preserves input units.
+  when_to_use:
+    - "User asks for rolling mean / moving average (statistic='mean')."
+    - "User asks for rolling volatility (statistic='std')."
+    - "User asks for rolling min / max / range building blocks (statistic='min' or 'max')."
+    - "User asks for rolling sum / aggregate (statistic='sum')."
+  when_not_to_use:
+    - "If the user wants the value STANDARDISED vs that rolling stat, use rolling_zscore (combines mean/std into a z)."
+    - "If the user wants the percentile RANK of the latest value, use percentile_rank."
+    - "If the user wants a per-event panel summary, use event_windows + conditional_aggregate."
+  upstream_requirements:
+    - "One Series.  No alignment needed (single input)."
+  downstream_pattern:
+    - "Output is a Series in INPUT units (a rolling mean of BPS is in BPS).  Feeds L6 directly, threshold_events for level-based triggers, or series_arithmetic to compute spreads to the raw level."
+  knobs_quick_ref:
+    statistic: "mean (default) | std | min | max | sum."
+    window: "20 by default (≈ 1 trading month).  Override for tactical (5) or strategic (252) horizons."
+    min_periods: "Defaults to window (strict)."
+    ddof: "Only used for statistic='std'; 1 (sample) default, 0 (population) supported."
+    look_ahead_safe: "false (default — at t, stat reflects window ending at t inclusive).  Set true when combining with same-day raw value."
+  example_shapes:
+    - description: "20-day rolling volatility of a yield series."
+      shape: "Series(yield) -> rolling_statistic(statistic='std', window=20) -> Series"
+    - description: "Trailing 252-day rolling mean."
+      shape: "Series -> rolling_statistic(statistic='mean', window=252) -> Series"
+  sibling_operators:
+    - rolling_zscore: "If the user wants the value standardised by the rolling mean and std together."
+    - percentile_rank: "If the user wants the rank against history."
+    - series_arithmetic: "Often paired downstream to compute (value − rolling_mean) deviation."

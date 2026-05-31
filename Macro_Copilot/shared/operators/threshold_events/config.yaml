@@ -47,3 +47,37 @@ methodology:
     - "expanding_zscore / rolling_quantile bases"
     - "event_dedup policies (consecutive_collapse, min_gap_days)"
     - "ddof knob for rolling std (currently fixed at 1 — sample std)"
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Convert a Series into a boolean EventSet by applying a threshold rule
+    (on raw value or rolling z-score) — the standard "find events" gate.
+  when_to_use:
+    - "User asks for dates when a series crossed a threshold (e.g. \"days when NFP surprise > 50K\", \"weeks when curve steepened by > 10bp\")."
+    - "User asks for the SET of regime / trigger dates that downstream operators (event_windows, apply_mask) will condition on."
+    - "User asks for \"flag\" or \"event\" or \"trigger\" dates without specifying further processing."
+  when_not_to_use:
+    - "If the user wants the VALUES at the qualifying dates (not just the dates), use apply_mask downstream of this operator."
+    - "If the user wants per-event windows (return path of another series around each event), pass the EventSet to event_windows."
+    - "If the user wants the threshold expressed as a percentile rather than a value, run percentile_rank first and threshold on the result."
+  upstream_requirements:
+    - "One Series.  For threshold_basis='rolling_zscore', the operator internally computes its own rolling stats (no upstream rolling_zscore needed)."
+  downstream_pattern:
+    - "Output is an EventSet (boolean mask aligned to the input Series's DatetimeIndex)."
+    - "Common downstream: event_windows (for windowed event studies), apply_mask (to subsample another Series by the event dates)."
+  knobs_quick_ref:
+    rule: "above | below | abs_above (and planned: between, outside, abs_below)."
+    threshold: "Numeric threshold compared against threshold_basis."
+    threshold_basis: "raw_value (default — threshold on series values) | rolling_zscore (threshold on standardised z)."
+    look_ahead_safe: "true (default; rolling stats use only data up to t-1 — event-study hygiene)."
+  example_shapes:
+    - description: "Find NFP surprise > 50K events."
+      shape: "Series(nfp_surprise) -> threshold_events(rule='above', threshold=50000) -> EventSet"
+    - description: "Find dates when a series was > 2σ from its own 60d history."
+      shape: "Series -> threshold_events(rule='above', threshold=2.0, threshold_basis='rolling_zscore') -> EventSet"
+  sibling_operators:
+    - apply_mask: "Pair downstream when the user wants the qualifying dates' VALUES from a target Series."
+    - event_windows: "Pair downstream when the user wants per-event return paths."
