@@ -1179,3 +1179,247 @@ class TestPR8A_F3_HardBlockEnforcementDeferredToPR10:
         # And PR-9 deferral for lineage observability.
         assert "PR-9" in GateVerdict.__doc__
         assert "lineage" in GateVerdict.__doc__.lower()
+
+
+# ============================================================================
+# PR-10E — CODEX AUDIT GAP #6: WRONG-BINDING DETECTION (params + rationale)
+# ============================================================================
+
+
+_CANONICAL_PAIR_ROLES_BY_LEAF_ID = {
+    "leaf_a": (
+        "input_series_a",
+        "first input series (one leg of the pair); the Selector binds the "
+        "concrete primitive",
+    ),
+    "leaf_b": (
+        "input_series_b",
+        "second input series (other leg of the pair); the Selector binds the "
+        "concrete primitive",
+    ),
+}
+
+
+def _mk_bound_leaf_with_params(
+    leaf_id: str,
+    *,
+    domain: str = "sovereign_bonds",
+    role: Optional[str] = None,
+    meaning: Optional[str] = None,
+    params: Optional[dict] = None,
+    rationale: str = "",
+    mcp_tool_name: Optional[str] = None,
+) -> BoundLeaf:
+    """Wrong-binding test helper.  Like _mk_bound_leaf but lets the test
+    author the params dict + rationale string the selector would have
+    emitted.  Used by TestPR10E_F6_WrongBindingDetection to simulate a
+    selector that bound the wrong-but-type-legal curve family while
+    authoring plausible English."""
+    tool = mcp_tool_name or f"calculate_curve_spread_{leaf_id}_tool"
+    canonical = _CANONICAL_PAIR_ROLES_BY_LEAF_ID.get(
+        leaf_id, ("input_series", "a series"),
+    )
+    effective_role = role if role is not None else canonical[0]
+    effective_meaning = meaning if meaning is not None else canonical[1]
+    return BoundLeaf(
+        leaf_id=leaf_id,
+        domain=domain,
+        mcp_tool_name=tool,
+        resolver_tool_key=tool,
+        params=params if params is not None else {},
+        output_field="time_series",
+        declared_output_artifact_type=ArtifactTypeName.SERIES,
+        declared_units=None,
+        declared_frequency=Frequency.DAILY,
+        declared_semantic_role=effective_role,
+        declared_output_meaning=effective_meaning,
+        fit_confidence=0.9,
+        rationale=rationale,
+    )
+
+
+class TestPR10E_F6_WrongBindingDetection:
+    """PR-10E Codex audit gap #6 — Boundary B must be able to catch a
+    wrong-primitive bind whose declared English is plausible but whose
+    params dict shows the selector bound a wrong-but-type-legal
+    curve family / tenor / window.
+
+    The fix exposes BoundLeaf.params (redacted) + BoundLeaf.rationale
+    in the echo so the gate's LLM can cross-check slot-fills against
+    the user's intent.  Primitive-blindness is preserved by
+    _redact_params_for_echo.
+    """
+
+    def test_leaf_echo_carries_params_and_rationale(self):
+        leaves = [
+            _mk_bound_leaf_with_params(
+                "leaf_a",
+                role="input_series_a",
+                meaning=(
+                    "first input series (one leg of the pair); the Selector "
+                    "binds the concrete primitive"
+                ),
+                params={
+                    "curve_family": "BRL_GOV",
+                    "short_tenor": "2Y",
+                    "long_tenor": "10Y",
+                    "lookback_days": 1825,
+                },
+                rationale="Bound the Brazilian sovereign curve spread at 2Y-10Y.",
+            ),
+            _mk_bound_leaf_with_params(
+                "leaf_b",
+                role="input_series_b",
+                meaning=(
+                    "second input series (other leg of the pair); the Selector "
+                    "binds the concrete primitive"
+                ),
+                params={
+                    "curve_family": "UK_GILT",
+                    "short_tenor": "2Y",
+                    "long_tenor": "10Y",
+                    "lookback_days": 1825,
+                },
+            ),
+        ]
+        asm = Assembler(primitive_resolver=_stub_resolver)
+        result = asm.assemble(GOLDEN_RELATIONSHIP_CORRELATION, leaves)
+        assert result.status == AssemblyStatus.CLEAN
+
+        echo = build_dag_echo(result.workflow, leaves)
+        leaf_a_echo = next(l for l in echo.leaves if l.leaf_id == "leaf_a")
+        assert leaf_a_echo.params == {
+            "curve_family": "BRL_GOV",
+            "short_tenor": "2Y",
+            "long_tenor": "10Y",
+            "lookback_days": 1825,
+        }
+        assert "Brazilian" in leaf_a_echo.rationale
+
+    def test_rendered_echo_includes_param_slot_fills(self):
+        leaves = [
+            _mk_bound_leaf_with_params(
+                "leaf_a",
+                params={"curve_family": "BRL_GOV", "short_tenor": "2Y"},
+                rationale="Brazilian sovereign 2s10s",
+            ),
+            _mk_bound_leaf_with_params(
+                "leaf_b",
+                params={"curve_family": "UK_GILT", "short_tenor": "2Y"},
+            ),
+        ]
+        asm = Assembler(primitive_resolver=_stub_resolver)
+        result = asm.assemble(GOLDEN_RELATIONSHIP_CORRELATION, leaves)
+        text = render_dag_echo(build_dag_echo(result.workflow, leaves))
+        assert "BRL_GOV" in text
+        assert "UK_GILT" in text
+        assert "curve_family" in text
+        assert "Brazilian" in text
+
+    def test_redaction_strips_actual_mcp_tool_name_when_leaked(self):
+        leaves = [
+            _mk_bound_leaf_with_params(
+                "leaf_a",
+                params={
+                    "curve_family": "UST",
+                    "reference_path": "sentinel_leaf_a_tool/time_series",
+                },
+                mcp_tool_name="sentinel_leaf_a_tool",
+            ),
+            _mk_bound_leaf_with_params(
+                "leaf_b",
+                params={"curve_family": "DE_BUND"},
+                mcp_tool_name="sentinel_leaf_b_tool",
+            ),
+        ]
+        asm = Assembler(primitive_resolver=_stub_resolver)
+        result = asm.assemble(GOLDEN_RELATIONSHIP_CORRELATION, leaves)
+        text = render_dag_echo(build_dag_echo(result.workflow, leaves))
+        assert "sentinel_leaf_a_tool" not in text
+        assert "sentinel_leaf_b_tool" not in text
+        assert "'UST'" in text
+        assert "'DE_BUND'" in text
+
+    @pytest.mark.asyncio
+    async def test_gate_user_message_contains_wrong_bind_params(self):
+        leaves = [
+            _mk_bound_leaf_with_params(
+                "leaf_a",
+                role="input_series_a",
+                meaning=(
+                    "first input series (one leg of the pair); the Selector "
+                    "binds the concrete primitive"
+                ),
+                params={
+                    "curve_family": "BRL_GOV",
+                    "short_tenor": "2Y",
+                    "long_tenor": "10Y",
+                },
+                rationale="Bound Brazilian sovereign 2s10s",
+            ),
+            _mk_bound_leaf_with_params(
+                "leaf_b",
+                role="input_series_b",
+                meaning=(
+                    "second input series (other leg of the pair); the Selector "
+                    "binds the concrete primitive"
+                ),
+                params={
+                    "curve_family": "UK_GILT",
+                    "short_tenor": "2Y",
+                    "long_tenor": "10Y",
+                },
+            ),
+        ]
+        asm = Assembler(primitive_resolver=_stub_resolver)
+        result = asm.assemble(GOLDEN_RELATIONSHIP_CORRELATION, leaves)
+
+        captured: list = []
+
+        class _Capture:
+            async def ainvoke(self, messages):
+                captured.append(messages)
+                return {
+                    "raw": SimpleNamespace(usage_metadata=None),
+                    "parsed": _GateLLMOutput(
+                        status="REFUSE",
+                        reason=(
+                            "leaf_a's params bind curve_family='BRL_GOV' "
+                            "but the user asked for US 2s10s."
+                        ),
+                    ),
+                    "parsing_error": None,
+                }
+
+        gate = _make_gate_with_state(gate_model=_Capture())
+        verdict = await gate.check(
+            user_prompt=(
+                "How correlated has the US 2s10s curve spread been with "
+                "the UK 2s10s over the last five years?"
+            ),
+            assembly_result=result,
+            route_decision=_basic_route_decision(),
+            leaves=leaves,
+        )
+        assert len(captured) == 1
+        human = captured[0][1].content
+        assert "BRL_GOV" in human
+        assert "curve_family" in human
+        assert "Brazilian" in human
+        assert verdict.status == "REFUSE"
+        assert verdict.is_hard_block
+        assert "BRL_GOV" in verdict.reason
+
+    def test_existing_correlation_fixture_still_renders_with_empty_params(self):
+        result, leaves = _assemble_correlation_clean()
+        text = render_dag_echo(build_dag_echo(result.workflow, leaves))
+        assert "params=(none declared)" in text
+        assert "rationale=(selector did not author one)" in text
+
+    def test_system_prompt_teaches_wrong_binding_check(self):
+        from orchestrator.prompts import COVERAGE_GATE_SYSTEM_PROMPT
+        text = COVERAGE_GATE_SYSTEM_PROMPT.lower()
+        assert "wrong-binding" in text or "wrong binding" in text
+        assert "params" in text
+        assert COVERAGE_GATE_SYSTEM_PROMPT.count("EXAMPLE") >= 5
+        assert "BRL_GOV" in COVERAGE_GATE_SYSTEM_PROMPT

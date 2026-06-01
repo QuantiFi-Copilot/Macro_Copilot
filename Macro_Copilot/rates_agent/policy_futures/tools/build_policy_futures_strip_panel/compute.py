@@ -594,6 +594,14 @@ def build_policy_futures_strip_panel(
         "row_count": int(len(cleaned_panel)),
     }
     as_of_date_iso = cleaned_panel.index[-1].strftime("%Y-%m-%d")
+    # PR-10E Codex audit gap #1: fold data content + vintage into the
+    # lineage hash via PrimitiveStep.build's optional identity bits.
+    from shared.artifacts.adapters.from_time_series import (
+        _compute_panel_payload_fingerprint,
+    )
+    data_content_fingerprint = _compute_panel_payload_fingerprint(
+        cleaned_panel, units_by_column,
+    )
     step = PrimitiveStep.build(
         name=_TOOL_NAME,
         version=_TOOL_VERSION,
@@ -602,6 +610,8 @@ def build_policy_futures_strip_panel(
         output_field="panel",
         as_of_date=as_of_date_iso,
         tool_config_path=str(CONFIG_PATH),
+        data_content_fingerprint=data_content_fingerprint,
+        data_vintage=as_of_date_iso,
     )
     lineage = Lineage.from_steps([step])
 

@@ -368,12 +368,46 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         input_slots={
             "series_list": SlotDescriptor.list_of(
                 "Series",
-                "N Series to align onto a common DatetimeIndex.",
+                (
+                    "List-shaped fan-in slot for N >= 2 typed Series that "
+                    "must end up on a single shared DatetimeIndex.  Every "
+                    "inbound edge targeting this slot contributes one "
+                    "Series; the operator reindexes them all under "
+                    "params.join_policy (inner = only common dates, outer "
+                    "= union with NaNs).  USE this slot whenever "
+                    "downstream operators require index identity across "
+                    "the Series (correlation, rolling_correlation, "
+                    "cointegration, rolling_regression, two-Series "
+                    "series_arithmetic) or when upstream primitives draw "
+                    "from different calendars.  DO NOT use for a single "
+                    "Series (no alignment needed; pass it directly to the "
+                    "downstream operator), and DO NOT use for "
+                    "SeriesSets / EventSets / Panels.  Different-but-"
+                    "convertible units (PERCENT vs BPS) must be reconciled "
+                    "by inserting convert_units on the offending branch "
+                    "FIRST — this operator does not convert units, only "
+                    "indexes.  Acceptable inputs: any primitive Series "
+                    "output, any operator Series output, or a "
+                    "select_from_series_set extraction.  Use "
+                    "params.output_keys to rename the SeriesSet's per-key "
+                    "dict entries so downstream selects can be template-"
+                    "controlled instead of tied to each primitive's wire-"
+                    "naming convention."
+                ),
             ),
         },
         output=OutputDescriptor.of(
             "SeriesSet",
-            "Aligned bundle keyed by each input Series's identifier.",
+            (
+                "A typed SeriesSet whose series_by_key maps each input "
+                "Series's identifier (or the matching params.output_keys "
+                "entry when supplied) to that Series reindexed onto the "
+                "chosen common DatetimeIndex.  Per-key units / frequency "
+                "/ missingness mirror the corresponding input 1:1.  "
+                "Almost always followed by select_from_series_set x N to "
+                "extract each Series back out by key for downstream "
+                "single-Series or pair-stats operators."
+            ),
         ),
     ),
     "select_from_series_set": OperatorSpec(
@@ -384,12 +418,37 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         input_slots={
             "series_set": SlotDescriptor.of(
                 "SeriesSet",
-                "Source bundle to pick one named Series from.",
+                (
+                    "Single-artifact slot expecting a typed SeriesSet "
+                    "whose series_by_key mapping contains the key named "
+                    "by params.series_key.  Canonical upstream sources: "
+                    "align_series (SeriesSet keyed by each input Series's "
+                    "identifier or params.output_keys when supplied) and "
+                    "rolling_regression (SeriesSet keyed by {'beta', "
+                    "'alpha', 'r_squared'}).  USE this slot whenever the "
+                    "next operator expects a single Series — pair-stats "
+                    "operators (correlation, rolling_correlation, "
+                    "cointegration, rolling_regression, two-Series "
+                    "series_arithmetic) need TWO sibling select nodes; "
+                    "single-Series transforms (rolling_zscore, "
+                    "percentile_rank, rolling_statistic, threshold_events, "
+                    "summarize_series) need ONE.  DO NOT use this slot to "
+                    "construct a new SeriesSet (construction is "
+                    "align_series's job) and DO NOT wire it on raw Series "
+                    "(the slot rejects Series inputs at type-check)."
+                ),
             ),
         },
         output=OutputDescriptor.of(
             "Series",
-            "The single Series extracted by ``params.key``.",
+            (
+                "The single typed Series stored under params.series_key "
+                "in the input SeriesSet, with its units / frequency / "
+                "missingness_policy preserved 1:1 and its lineage "
+                "carrying the full upstream chain plus this select step "
+                "appended.  Drop-in input for any Series-consuming "
+                "downstream operator."
+            ),
         ),
     ),
     "series_arithmetic": OperatorSpec(
@@ -406,21 +465,58 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         input_slots={
             "left": SlotDescriptor.of(
                 "Series",
-                "Left operand (unary input or binary LHS).",
+                (
+                    "The single typed Series that is the input to a unary "
+                    "op (diff, pct_change) OR the LHS of a binary op "
+                    "(add, subtract, multiply, divide).  Always artifact-"
+                    "only — no scalar literal here; the operator's frame "
+                    "of reference is anchored on this Series, and its "
+                    "units / frequency / missingness flow through to the "
+                    "output for add / subtract / diff / scalar-multiply / "
+                    "scalar-divide.  USE this slot for every "
+                    "series_arithmetic call regardless of op.  For binary "
+                    "Series-Series ops, this slot AND 'right' MUST share "
+                    "an identical DatetimeIndex — wire align_series -> "
+                    "select_from_series_set upstream on both arms.  DO "
+                    "NOT use for SeriesSet / EventSet / Panel inputs "
+                    "(extract a Series first with select_from_series_set)."
+                ),
             ),
             "right": SlotDescriptor.of(
                 "Series",
                 (
-                    "Right operand for binary ops; may be a Series "
-                    "(via edge) or a scalar literal (via LiteralBinding); "
-                    "must be unbound for unary ops."
+                    "RHS for binary ops (add, subtract, multiply, divide).  "
+                    "The ONLY operator slot in the registry that accepts "
+                    "BOTH an artifact edge AND a scalar literal via "
+                    "LiteralBinding (accepts_scalar=True): pass a Series "
+                    "edge for element-wise A op B, or pass a scalar "
+                    "(int/float) via LiteralBinding(slot='right', "
+                    "value=...) for A op scalar (the only multiply / "
+                    "divide-by-scalar path).  MUST be UNBOUND for unary "
+                    "ops (diff, pct_change); the per-op arity_validator "
+                    "refuses a bound 'right' under unary and an unbound "
+                    "'right' under binary.  When wired as a Series, the "
+                    "unit_validator enforces matching units across 'left' "
+                    "+ 'right' for add / subtract / Series-Series divide; "
+                    "insert convert_units on the offending arm to "
+                    "reconcile PERCENT vs BPS mismatches before this "
+                    "slot.  DO NOT pass both an edge AND a "
+                    "LiteralBinding for the same call (the substrate "
+                    "refuses double-binding)."
                 ),
                 accepts_scalar=True,
             ),
         },
         output=OutputDescriptor.of(
             "Series",
-            "Resulting Series after applying ``params.op``.",
+            (
+                "The Series produced by applying params.op element-wise.  "
+                "Unit algebra: add / subtract / diff preserve left units; "
+                "pct_change and Series-Series divide emit RATIO; scalar "
+                "multiply / divide preserve left units.  Index matches "
+                "the (necessarily identical) input index for binary "
+                "Series-Series ops and the left index for everything else."
+            ),
         ),
         # ``op`` is a declared discriminator (OPR15) — the operator
         # resolves it from params; the executor injects nothing by name.
@@ -440,16 +536,57 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         input_slots={
             "left": SlotDescriptor.of(
                 "Series",
-                "Left Series in the correlation pair.",
+                (
+                    "One arm of the correlation pair.  Single-artifact "
+                    "slot (no scalar literal) expecting a typed Series "
+                    "that shares an IDENTICAL DatetimeIndex with 'right' "
+                    "— this operator does NOT align internally; canonical "
+                    "upstream is align_series -> select_from_series_set "
+                    "on both arms.  USE this slot whenever the user asks "
+                    "for a single full-sample correlation number between "
+                    "two series.  The operator is COMMUTATIVE — "
+                    "corr(left, right) == corr(right, left) — so the "
+                    "choice of which Series to wire here vs 'right' is "
+                    "cosmetic, though BOTH inputs' units are recorded in "
+                    "lineage.  DO NOT use this slot if the user wants a "
+                    "TIME-VARYING correlation (use rolling_correlation); "
+                    "DO NOT use it if the user wants the slope / beta of "
+                    "one series on another (use rolling_regression); DO "
+                    "NOT use it for stationarity of a linear combination "
+                    "(use cointegration).  The slot is unit-INVARIANT — "
+                    "correlation is dimensionless — so PERCENT, BPS, "
+                    "RATIO, Z_SCORE inputs are all accepted; no "
+                    "convert_units coercion is required."
+                ),
             ),
             "right": SlotDescriptor.of(
                 "Series",
-                "Right Series in the correlation pair.",
+                (
+                    "The other arm of the correlation pair.  Symmetric "
+                    "counterpart to 'left' — same artifact type, same "
+                    "DatetimeIndex requirement (align upstream), same "
+                    "unit-invariance, same strict-by-default discipline.  "
+                    "USE for the second Series in the pair.  DO NOT bind "
+                    "both 'left' and 'right' to the same upstream Series "
+                    "(degenerate — correlation of a series with itself "
+                    "is identically 1) and DO NOT pass a scalar literal "
+                    "here (artifact-only slot)."
+                ),
             ),
         },
         output=OutputDescriptor.of(
             "ScalarMetric",
-            "Full-sample correlation coefficient between left and right.",
+            (
+                "The full-sample correlation coefficient (a single "
+                "dimensionless number in [-1, 1]) wrapped as a typed "
+                "ScalarMetric in RATIO units.  Lineage records the chosen "
+                "method (pearson / spearman / kendall), the overlap "
+                "n_observations, and both inputs' units.  Feeds the "
+                "terminal answer directly.  Raises CorrelationError when "
+                "the overlap is below params.min_periods or either input "
+                "has zero variance over the overlap (undefined coefficient "
+                "is a typed refusal, never a non-finite value)."
+            ),
         ),
     ),
     # v2.0 — the single sanctioned unit-conversion operator (ADR 0016
@@ -463,12 +600,39 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         input_slots={
             "series": SlotDescriptor.of(
                 "Series",
-                "Source Series to convert to ``params.target_units``.",
+                (
+                    "Single-artifact slot expecting a typed Series with a "
+                    "known source unit (typically declared on the upstream "
+                    "PrimitiveSpec.output_field_units, or carried by an "
+                    "operator's documented output unit algebra).  USE "
+                    "when two Series with different-but-convertible units "
+                    "(v1: PERCENT <-> BPS, plus identity) need to be "
+                    "combined by series_arithmetic add / subtract / "
+                    "divide (which the unit_validator otherwise refuses), "
+                    "OR when a bound primitive's output unit disagrees "
+                    "with the downstream operator's expected unit.  This "
+                    "is the SINGLE sanctioned unit-conversion site in "
+                    "the substrate (ADR 0016 Decision 4) — "
+                    "series_arithmetic refuses to silently coerce.  The "
+                    "L4 repair loop most commonly inserts this operator "
+                    "as an additive adapter when Boundary A surfaces a "
+                    "unit mismatch.  DO NOT use for dimensionless units "
+                    "(Z_SCORE, RATIO, PCT_RANK, COUNT) — those cannot be "
+                    "dimensionally converted and the operator refuses "
+                    "with NotImplementedError (OPR8)."
+                ),
             ),
         },
         output=OutputDescriptor.of(
             "Series",
-            "Series re-expressed in the requested target units.",
+            (
+                "The input Series with its payload multiplied by the "
+                "exact dimensional factor for (source_units -> "
+                "params.target_units) and re-tagged.  Identity "
+                "conversion (source == target) is a no-op re-tag.  "
+                "Lineage, frequency, missingness propagate unchanged.  "
+                "Raises ConvertUnitsError when a conversion overflows."
+            ),
         ),
     ),
     "threshold_events": OperatorSpec(
@@ -479,12 +643,33 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         input_slots={
             "series": SlotDescriptor.of(
                 "Series",
-                "Source Series whose values are compared against ``params``.",
+                (
+                    "Source Series whose per-date values are compared "
+                    "against a closed-family rule in params (mode in "
+                    "{above, below, between, outside, crosses_above, "
+                    "crosses_below, percentile_above, percentile_below}) "
+                    "to produce a boolean date-index mask.  USE when you "
+                    "need to mark dates where a quantity satisfies an "
+                    "economic condition (e.g. days when realized vol > "
+                    "20%, or when a z-score crossed 2σ from below) so a "
+                    "downstream operator can subset another series by "
+                    "those dates (apply_mask) or aggregate around them "
+                    "(event_windows + conditional_aggregate).  DO NOT use "
+                    "for arithmetic transforms (use series_arithmetic) or "
+                    "for ranking (use percentile_rank — it emits a "
+                    "continuous Series, not a boolean EventSet)."
+                ),
             ),
         },
         output=OutputDescriptor.of(
             "EventSet",
-            "Boolean EventSet marking dates that satisfy the threshold rule.",
+            (
+                "Boolean EventSet aligned to the input Series's index, "
+                "True on dates that satisfy the threshold rule and False "
+                "elsewhere.  Drop-in input for apply_mask (subset another "
+                "Series by True dates), event_windows (anchor windows on "
+                "True dates), or as a leg of an event-study DAG."
+            ),
         ),
     ),
     "event_windows": OperatorSpec(
@@ -495,16 +680,47 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         input_slots={
             "events": SlotDescriptor.of(
                 "EventSet",
-                "Event timestamps that anchor each window.",
+                (
+                    "Boolean EventSet whose True dates anchor each "
+                    "window.  Upstream is most often threshold_events "
+                    "(e.g. dates a z-score crossed 2σ) or a primitive "
+                    "EventSet output (NFP surprises, FOMC meetings).  "
+                    "USE when the user asks 'how does X behave around Y' "
+                    "— each True date in `events` becomes the t=0 anchor "
+                    "of one row of the output panel.  DO NOT use for "
+                    "continuous-window operations (use rolling_statistic) "
+                    "or for masking (use apply_mask); event_windows is "
+                    "specifically for sampling a target Series at "
+                    "discrete event anchors."
+                ),
             ),
             "target": SlotDescriptor.of(
                 "Series",
-                "Series to sample around each event timestamp.",
+                (
+                    "The Series to be sampled at params.offsets around "
+                    "each event anchor.  Must share the input EventSet's "
+                    "calendar (insert align_series upstream if not).  "
+                    "USE the underlying quantity whose response to the "
+                    "events the user wants to study (yields, spreads, "
+                    "vol — any Series).  DO NOT use a SeriesSet here "
+                    "(extract with select_from_series_set first); DO NOT "
+                    "wire the same Series to both 'events' and 'target' "
+                    "(that's a degenerate self-windowing — use "
+                    "rolling_statistic instead)."
+                ),
             ),
         },
         output=OutputDescriptor.of(
             "WindowedPanel",
-            "Per-event panel with one row per event and one column per offset.",
+            (
+                "Per-event panel with one row per True date in `events` "
+                "and one column per offset in params.offsets.  Cell [e, "
+                "k] is the target Series value at (event_date_e + "
+                "offset_k) trading days.  Drop-in input for "
+                "conditional_aggregate (column-wise reduce into a Series "
+                "of per-offset summaries) — the canonical 'event study' "
+                "two-step."
+            ),
         ),
     ),
     "conditional_aggregate": OperatorSpec(
@@ -515,12 +731,31 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         input_slots={
             "panel": SlotDescriptor.of(
                 "WindowedPanel",
-                "Per-event panel to reduce column-wise via ``params.aggregator``.",
+                (
+                    "Per-event WindowedPanel (one row per event anchor, "
+                    "one column per offset).  Canonical upstream is "
+                    "event_windows.  USE for the second step of an "
+                    "event-study DAG: collapse the per-event rows into a "
+                    "single per-offset Series via params.aggregator (mean, "
+                    "median, p25, p75, etc.) — the resulting Series is "
+                    "the average / median / quantile response trajectory "
+                    "around the events.  DO NOT use this slot for a "
+                    "regular Series or SeriesSet (the panel's two-dim "
+                    "shape is load-bearing) and DO NOT use it for "
+                    "per-event reduction (the operator reduces ACROSS "
+                    "events for each offset — not within an event)."
+                ),
             ),
         },
         output=OutputDescriptor.of(
             "Series",
-            "Per-offset reduction of the panel into a Series indexed by offset.",
+            (
+                "Per-offset Series indexed by the panel's offset axis "
+                "(values from t-K to t+K), where each value is the "
+                "cross-event aggregator (mean / median / quantile) of "
+                "that column.  Units inherit from the original target "
+                "Series.  The canonical 'average response curve' output."
+            ),
         ),
     ),
     "apply_mask": OperatorSpec(
@@ -531,16 +766,44 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         input_slots={
             "series": SlotDescriptor.of(
                 "Series",
-                "Series payload to subsample by the boolean mask.",
+                (
+                    "Source Series to subsample.  USE when the user "
+                    "wants to look at a quantity ONLY during a specific "
+                    "regime (e.g. 'yields when fed funds was hiking', "
+                    "'spreads when vol > 20%').  Wire the mask Series's "
+                    "boolean condition into the 'mask' slot and the "
+                    "Series-of-interest here.  Index must match the "
+                    "mask's index — insert align_series upstream if not.  "
+                    "DO NOT use for arithmetic transforms (use "
+                    "series_arithmetic) and DO NOT use for windowed "
+                    "operations (use rolling_statistic) — apply_mask is "
+                    "specifically for regime / event-conditioned "
+                    "subsetting."
+                ),
             ),
             "mask": SlotDescriptor.of(
                 "EventSet",
-                "Boolean mask whose True dates select Series values to keep.",
+                (
+                    "Boolean EventSet (typically from threshold_events) "
+                    "aligned to the input Series's index.  True dates "
+                    "are KEPT; False dates are dropped from the output.  "
+                    "USE the same EventSet you'd anchor event_windows "
+                    "on, OR a regime-mask EventSet from threshold_events "
+                    "(e.g. 'days where fed_funds_rate is rising').  DO "
+                    "NOT pass a continuous Series here (the operator "
+                    "refuses non-boolean inputs)."
+                ),
             ),
         },
         output=OutputDescriptor.of(
             "Series",
-            "Series restricted to the dates where the mask is True.",
+            (
+                "Series restricted to the True-dates of `mask`, "
+                "preserving units / frequency.  Index is a strict subset "
+                "of the input Series's index.  Drop-in input for "
+                "summarize_series, percentile_rank, or further "
+                "subsetting."
+            ),
         ),
     ),
     "rolling_regression": OperatorSpec(
@@ -553,16 +816,47 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         input_slots={
             "lhs": SlotDescriptor.of(
                 "Series",
-                "Dependent (target) Series for the rolling OLS fit.",
+                (
+                    "Dependent / target Series — the y in y = α + βx + ε.  "
+                    "Single-artifact slot, NOT commutative with `rhs` "
+                    "(swapping them flips the regression).  Must share "
+                    "an identical DatetimeIndex with `rhs` (insert "
+                    "align_series + select_from_series_set upstream on "
+                    "both arms).  USE when the user asks for the "
+                    "TIME-VARYING beta of one series on another ('how "
+                    "has US 10Y's beta to German Bund evolved'), the "
+                    "rolling-window slope, alpha, or R^2.  DO NOT use "
+                    "for static / full-sample relationships (use "
+                    "correlation for the single coefficient, or "
+                    "cointegration for stationarity testing).  Unit-"
+                    "invariant — regression coefficients are "
+                    "dimensionless or in (lhs_units / rhs_units), all "
+                    "supported by the operator."
+                ),
             ),
             "rhs": SlotDescriptor.of(
                 "Series",
-                "Single regressor Series (V1: one explanatory variable).",
+                (
+                    "Single regressor Series (V1: one explanatory "
+                    "variable) — the x in y = α + βx + ε.  Same "
+                    "DatetimeIndex requirement as `lhs` (align upstream). "
+                    " USE the explanatory / driver Series the user wants "
+                    "the LHS measured against.  DO NOT pass multiple "
+                    "regressors here (V1 is single-RHS; multi-regressor "
+                    "extension is a planned operator)."
+                ),
             ),
         },
         output=OutputDescriptor.of(
             "SeriesSet",
-            "SeriesSet keyed by {beta, alpha, r_squared} over the rolling window.",
+            (
+                "Typed SeriesSet keyed by 'beta', 'alpha', 'r_squared' — "
+                "three rolling-window time-series, one each.  Common "
+                "wiring: select_from_series_set(series_key='beta') for "
+                "the rolling beta the user usually asks for; or all "
+                "three for full diagnostic.  Beta is in (lhs_units / "
+                "rhs_units); alpha in lhs_units; r_squared in RATIO."
+            ),
         ),
     ),
     # v2.0 (ADR 0016) — single_series_transform: trailing-window
@@ -577,12 +871,33 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         input_slots={
             "series": SlotDescriptor.of(
                 "Series",
-                "Source Series to standardise over a trailing window.",
+                (
+                    "Single typed Series whose values will be "
+                    "standardised against their own trailing-window "
+                    "history.  USE when the user asks 'how unusual is "
+                    "today vs recent history' / 'how many sigmas from "
+                    "fair value' / 'is this 2σ rich or cheap' — the "
+                    "z-score is the canonical macro 'right-now vs "
+                    "recent context' transform.  Window length and "
+                    "minimum-periods are knobs (params.window_days, "
+                    "params.min_periods).  DO NOT use for absolute "
+                    "ranking against full history (use percentile_rank "
+                    "instead — z-score is reference-window-relative) or "
+                    "for cross-series standardisation (z-score only "
+                    "standardises against its own past)."
+                ),
             ),
         },
         output=OutputDescriptor.of(
             "Series",
-            "Trailing-window z-score (Z_SCORE units).",
+            (
+                "Trailing-window z-score in Z_SCORE units (dimensionless): "
+                "(value_t - μ_window_t) / σ_window_t.  Warmup period "
+                "(first window_days - 1 dates) is NaN.  Drop-in input "
+                "for threshold_events (e.g. trip-wires at ±2σ), "
+                "correlation against another z-score, or direct surface "
+                "to the user."
+            ),
         ),
     ),
     # v2.0 (ADR 0016) — single_series_transform: generic windowed
@@ -597,12 +912,30 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         input_slots={
             "series": SlotDescriptor.of(
                 "Series",
-                "Source Series to reduce over a trailing window.",
+                (
+                    "Single typed Series to be reduced over a trailing "
+                    "window via params.statistic in {mean, std, min, "
+                    "max, sum}.  USE for moving averages (statistic="
+                    "mean), realised vol (statistic=std), rolling "
+                    "ranges (min / max), rolling cumulative quantities "
+                    "(sum) — every 'over the last N days' summary that "
+                    "preserves the Series's units.  Window length is "
+                    "params.window_days.  DO NOT use for z-scores (use "
+                    "rolling_zscore — it emits Z_SCORE units), and DO "
+                    "NOT use for cross-series rolling stats like rolling "
+                    "correlation or rolling beta (use rolling_correlation "
+                    "/ rolling_regression respectively)."
+                ),
             ),
         },
         output=OutputDescriptor.of(
             "Series",
-            "Windowed reduction (mean / std / min / max / sum) preserving input units.",
+            (
+                "Windowed reduction (mean / std / min / max / sum) "
+                "preserving input units.  Warmup period is NaN.  Drop-in "
+                "input for series_arithmetic, threshold_events, or "
+                "direct surface."
+            ),
         ),
     ),
     # v2.0 (ADR 0016) — single_series_transform: trailing- or
@@ -618,12 +951,33 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         input_slots={
             "series": SlotDescriptor.of(
                 "Series",
-                "Source Series to rank against its own trailing/expanding history.",
+                (
+                    "Single typed Series to rank against its OWN "
+                    "history.  USE this slot for the canonical macro "
+                    "'rich / cheap vs history' question — 'is the curve "
+                    "in the 90th percentile of where it's been?', "
+                    "'where does this spread sit in its own 5-year "
+                    "history?'.  Window mode is configured by "
+                    "params.mode (trailing window of length N, or "
+                    "expanding from inception); output is always in "
+                    "PCT_RANK units (0-100).  DO NOT use this slot for "
+                    "z-score-style normalisation (use rolling_zscore — "
+                    "z-score is sigma units, percentile_rank is rank "
+                    "units) or for cross-series ranking (only ranks "
+                    "against own history)."
+                ),
             ),
         },
         output=OutputDescriptor.of(
             "Series",
-            "Percentile rank vs history (PCT_RANK units, 0–100).",
+            (
+                "Percentile rank vs history (PCT_RANK units, 0-100).  "
+                "Higher = richer / wider / higher / more extreme vs the "
+                "Series's own past, depending on the underlying "
+                "quantity.  Warmup period is NaN.  Drop-in input for "
+                "threshold_events (e.g. 'top decile' alerts), or direct "
+                "surface."
+            ),
         ),
     ),
     # v2.0 (ADR 0016) — statistical_relationship: windowed correlation
@@ -639,16 +993,44 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         input_slots={
             "left": SlotDescriptor.of(
                 "Series",
-                "Left Series in the rolling correlation pair.",
+                (
+                    "One arm of the rolling correlation pair.  Single-"
+                    "artifact slot (no scalar literal) expecting a typed "
+                    "Series that shares an IDENTICAL DatetimeIndex with "
+                    "'right' — this operator does NOT align internally; "
+                    "wire align_series -> select_from_series_set on both "
+                    "arms upstream.  USE when the user asks for a "
+                    "TIME-VARYING correlation ('how has the correlation "
+                    "between US 2s10s and 5Y breakeven evolved').  "
+                    "Window length is params.window_days.  The operator "
+                    "is COMMUTATIVE — corr(left, right) == corr(right, "
+                    "left) — so the choice of arm is cosmetic.  DO NOT "
+                    "use for a full-sample correlation NUMBER (use "
+                    "correlation — emits ScalarMetric instead of Series).  "
+                    "Unit-invariant (correlation is dimensionless)."
+                ),
             ),
             "right": SlotDescriptor.of(
                 "Series",
-                "Right Series in the rolling correlation pair.",
+                (
+                    "Symmetric counterpart to 'left' for the rolling "
+                    "correlation pair.  Same artifact type, same "
+                    "DatetimeIndex requirement (align upstream), same "
+                    "unit-invariance.  DO NOT bind both arms to the "
+                    "same upstream Series (degenerate)."
+                ),
             ),
         },
         output=OutputDescriptor.of(
             "Series",
-            "Rolling correlation coefficient over each window (RATIO units).",
+            (
+                "Per-date rolling correlation coefficient (RATIO units, "
+                "values in [-1, 1]) computed over each trailing window "
+                "of size params.window_days.  Warmup is NaN.  Drop-in "
+                "input for threshold_events (e.g. flag dates when "
+                "rolling corr fell below 0.3), rolling_zscore (corr-of-"
+                "corr surprise), or direct surface."
+            ),
         ),
     ),
     # v2.0 (ADR 0016) — statistical_relationship: Engle–Granger
@@ -664,16 +1046,45 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         input_slots={
             "left": SlotDescriptor.of(
                 "Series",
-                "Left Series in the Engle–Granger cointegration pair.",
+                (
+                    "One leg of the cointegration pair.  Engle-Granger "
+                    "is NOT symmetric — the test regresses left on "
+                    "right and ADF-tests the residuals — so swapping "
+                    "the arms yields a (slightly) different test "
+                    "statistic.  USE when the user asks 'are these two "
+                    "series cointegrated' / 'is this spread stationary' "
+                    "/ 'is this a tradeable pair'.  Single-artifact "
+                    "slot expecting a typed Series that shares an "
+                    "IDENTICAL DatetimeIndex with 'right' (align "
+                    "upstream).  DO NOT use this slot for full-sample "
+                    "linear correlation (use correlation) or rolling "
+                    "correlation (use rolling_correlation) — "
+                    "cointegration is a stationarity test on the "
+                    "regression residuals, a different statistical "
+                    "object."
+                ),
             ),
             "right": SlotDescriptor.of(
                 "Series",
-                "Right Series in the Engle–Granger cointegration pair.",
+                (
+                    "The other leg of the cointegration pair.  Same "
+                    "DatetimeIndex requirement as 'left'.  The arms "
+                    "are NOT commutative (the test direction matters)."
+                ),
             ),
         },
         output=OutputDescriptor.of(
             "ScalarMetric",
-            "Engle–Granger ADF test statistic (dimensionless, RATIO units).",
+            (
+                "The Engle-Granger ADF test statistic (dimensionless, "
+                "RATIO units).  More-negative values reject the unit-"
+                "root null more strongly (i.e. evidence the residual is "
+                "stationary, hence the pair is cointegrated).  Lineage "
+                "records the direction (left ~ right) and overlap "
+                "n_observations.  The substrate does NOT auto-translate "
+                "this to a yes/no judgement — the answer layer "
+                "interprets against critical-value tables."
+            ),
         ),
     ),
     "summarize_series": OperatorSpec(
@@ -688,12 +1099,34 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         input_slots={
             "series": SlotDescriptor.of(
                 "Series",
-                "Source Series to collapse to a 1-row summary at the sentinel date.",
+                (
+                    "Single typed Series to collapse to one scalar "
+                    "summary via params.statistic (mean, median, std, "
+                    "min, max, last, first, count, sum).  USE this slot "
+                    "when the user wants a per-regime number that will "
+                    "be COMPARED against another regime's number — "
+                    "e.g. 'mean spread in tightening vs cutting' is "
+                    "two apply_mask -> summarize_series -> "
+                    "series_arithmetic(subtract) chains.  The 1-row "
+                    "Series output (at a fixed sentinel date) preserves "
+                    "the Series-only type discipline so it can feed "
+                    "back into Series-consuming operators.  DO NOT use "
+                    "for full Series histories (use the Series itself); "
+                    "DO NOT use for cross-series summaries (this is "
+                    "single-Series only)."
+                ),
             ),
         },
         output=OutputDescriptor.of(
             "Series",
-            "1-row summary Series at the operator's fixed sentinel timestamp.",
+            (
+                "1-row Series at a fixed sentinel timestamp carrying the "
+                "scalar reduction of the input via params.statistic.  "
+                "Unit preserved from the input.  Specifically designed "
+                "as a series_arithmetic operand so two summaries can be "
+                "subtracted to produce the canonical 'difference across "
+                "regimes' answer."
+            ),
         ),
     ),
 }

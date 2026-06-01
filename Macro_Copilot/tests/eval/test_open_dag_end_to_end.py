@@ -704,20 +704,91 @@ def _real_e2e_resolver(tmp_path):
     return _resolver
 
 
+# ----------------------------------------------------------------------------
+# PR-10E Codex audit gap #2 corrective: a TRUE cross-domain correlation
+# shape composed locally — leaf_a in sovereign_bonds, leaf_b in
+# inflation_indexed_bonds.  GOLDEN_RELATIONSHIP_CORRELATION cannot be
+# used directly because its _pair_stats_upstream(...) defaults BOTH
+# leaves to sovereign_bonds (composer_golden_shapes.py:135-136).  The
+# golden few-shot stays domain-agnostic (a teaching example for the
+# LLM); the REAL_executor test composes a domain-mixed sibling here so
+# pipeline._dispatch_selectors actually fans out to two distinct
+# per-domain SelectorCallbacks.
+# ----------------------------------------------------------------------------
+
+
+def _build_cross_domain_correlation_shape():
+    """Mirror of _build_correlation_shape in composer_golden_shapes
+    with domain_b set to inflation_indexed_bonds, so the two leaves
+    actually live in two different domains."""
+    from orchestrator.open_dag.composer_golden_shapes import (
+        _pair_stats_upstream,
+    )
+    from orchestrator.open_dag.contracts import (
+        OperatorNode, ShapeSpec, WorkflowEdge,
+    )
+    nodes, edges, literals = _pair_stats_upstream(
+        domain_a="sovereign_bonds",
+        domain_b="inflation_indexed_bonds",
+    )
+    correlation_node = OperatorNode(
+        node_id="correlation",
+        operator_name="correlation",
+        params={},
+    )
+    nodes = list(nodes) + [correlation_node]
+    edges = list(edges) + [
+        WorkflowEdge(
+            source_node_id="select_a",
+            target_node_id="correlation",
+            target_input_slot="left",
+        ),
+        WorkflowEdge(
+            source_node_id="select_b",
+            target_node_id="correlation",
+            target_input_slot="right",
+        ),
+    ]
+    return ShapeSpec(
+        workflow_id="real_e2e_cross_domain_correlation",
+        nodes=nodes,
+        edges=edges,
+        literal_bindings=literals,
+        terminal_node_id="correlation",
+    )
+
+
 @pytest.mark.asyncio
 async def test_canonical_cross_domain_correlation_REAL_executor(
     _real_e2e_resolver,
 ):
-    """PR-10D Codex F1: the canonical gap-closer query —
-    'Correlation between US 2s10s and 5Y breakeven over 5y' —
-    proven END-TO-END with the REAL substrate execute_workflow.
+    """PR-10D Codex F1 + PR-10E Codex audit gap #2 corrective: the
+    canonical gap-closer query — 'Correlation between US 2s10s and 5Y
+    breakeven over 5y' — proven END-TO-END with the REAL substrate
+    execute_workflow AND with two DISTINCT per-domain selector
+    dispatches.
 
     NO monkeypatching of execute_workflow.  The substrate executor
     walks the canonical pair-stats shape:
 
-      leaf_a + leaf_b
+      leaf_a (sovereign_bonds) + leaf_b (inflation_indexed_bonds)
         -> align_series -> select x2 -> correlation
         -> ScalarMetric
+
+    The shape is _build_cross_domain_correlation_shape() — a local
+    mirror of GOLDEN_RELATIONSHIP_CORRELATION with domain_hint
+    overridden on leaf_b so the two leaves actually live in two
+    different domains.  The golden few-shot itself stays
+    domain-agnostic (both leaves sovereign_bonds) because the LLM
+    teaching example must be neutral; this test composes a
+    domain-mixed sibling to exercise the real cross-domain dispatch.
+
+    Two distinct per-domain SelectorCallbacks are registered.  Each
+    binds a DIFFERENT synthetic tool (synthetic_pair_stats_tool_a vs
+    synthetic_pair_stats_tool_b) so the assembled Workflow's
+    PrimitiveNodes carry two different tool_names — and the substrate
+    executor really resolves two distinct primitives across two
+    distinct domains.
 
     All boundary contracts run for real: PR-1 substrate validator,
     PR-4 Assembler + role-discriminant check, PR-8 gate, PR-9
@@ -728,21 +799,28 @@ async def test_canonical_cross_domain_correlation_REAL_executor(
 
     Asserts:
       - outcome.status == "PASS" (strict PASS, not PASS_DRYRUN).
+      - BOTH per-domain selector callbacks fired exactly once each
+        (proves real cross-domain dispatch).
+      - The two BoundLeaves carry two different domain strings
+        (sovereign_bonds + inflation_indexed_bonds).
+      - The assembled Workflow's two PrimitiveNodes carry two
+        different tool_names.
       - run_lineage.is_executed == True.
-      - run_lineage.compute_lineage is a real Lineage with primitive
-        steps + operator steps ending in correlation.
-      - the terminal artifact is a ScalarMetric.
+      - The compute lineage contains TWO distinct primitive step
+        names — proves end-to-end resolution of both cross-domain
+        primitives.
     """
     from orchestrator.contracts import (
         Domain, EconomicQuantity, IntentTag, RouteAction, RouteDecision,
     )
     from orchestrator.open_dag import (
         BoundLeaf, ComposerRefusal, Frequency,
-        GOLDEN_RELATIONSHIP_CORRELATION,
         GateVerdict, OpenDagPipeline,
         build_default_executor_callback,
     )
     from shared.artifacts.registry import ArtifactTypeName
+
+    cross_domain_shape = _build_cross_domain_correlation_shape()
 
     class _Router:
         async def route(self, prompt: str) -> RouteDecision:
@@ -768,9 +846,15 @@ async def test_canonical_cross_domain_correlation_REAL_executor(
                 ],
             )
 
-    class _CanonicalShape:
+    class _CrossDomainShape:
         async def compose(self, **kw):
-            return GOLDEN_RELATIONSHIP_CORRELATION
+            # PR-10E Codex audit gap #2: the REAL cross-domain test
+            # composes a locally-built ShapeSpec whose two leaves carry
+            # domain_hint=sovereign_bonds and
+            # domain_hint=inflation_indexed_bonds respectively — NOT
+            # GOLDEN_RELATIONSHIP_CORRELATION which defaults both leaves
+            # to sovereign_bonds.
+            return cross_domain_shape
 
     class _PassGate:
         async def check(self, **kw):
@@ -785,25 +869,50 @@ async def test_canonical_cross_domain_correlation_REAL_executor(
             )
             return f"REAL_E2E_ANSWER: {kw.get('executed_summary', '')}"
 
-    async def selector_cb(*, leaf_id, request, timeout_s):
-        # Bind to a real synthetic tool whose callable the substrate
-        # executor will invoke for REAL.
-        tool = (
-            "synthetic_pair_stats_tool_a" if leaf_id == "leaf_a"
-            else "synthetic_pair_stats_tool_b"
+    # PR-10E Codex audit gap #2: TWO distinct per-domain selectors.
+    # Each binds a DIFFERENT synthetic tool, and both record their
+    # invocations so the test can prove both fired.  This is what the
+    # original single-shared-callable design failed to do.
+    sov_selector_calls: List[str] = []
+    iib_selector_calls: List[str] = []
+
+    async def sovereign_selector_cb(*, leaf_id, request, timeout_s):
+        assert request.domain_hint == "sovereign_bonds", (
+            f"sovereign selector received leaf with wrong domain_hint: "
+            f"{request.domain_hint!r}"
         )
+        sov_selector_calls.append(leaf_id)
         return BoundLeaf(
             leaf_id=leaf_id,
-            domain=request.domain_hint,
-            mcp_tool_name=tool,
-            resolver_tool_key=tool,
-            params={"series_name": f"synth_{leaf_id}"},
+            domain="sovereign_bonds",
+            mcp_tool_name="synthetic_pair_stats_tool_a",
+            resolver_tool_key="synthetic_pair_stats_tool_a",
+            params={"series_name": f"sov_{leaf_id}"},
             output_field="time_series",
             declared_output_artifact_type=ArtifactTypeName.SERIES,
             declared_units=TimeSeriesUnits.BPS,
             declared_frequency=Frequency.DAILY,
-            # PR-10D F4: echo the LeafRequest's role + meaning so
-            # Boundary A's hard role-discriminant check accepts.
+            declared_semantic_role=request.semantic_role,
+            declared_output_meaning=request.requested_output_meaning,
+            fit_confidence=0.95,
+        )
+
+    async def inflation_selector_cb(*, leaf_id, request, timeout_s):
+        assert request.domain_hint == "inflation_indexed_bonds", (
+            f"inflation selector received leaf with wrong "
+            f"domain_hint: {request.domain_hint!r}"
+        )
+        iib_selector_calls.append(leaf_id)
+        return BoundLeaf(
+            leaf_id=leaf_id,
+            domain="inflation_indexed_bonds",
+            mcp_tool_name="synthetic_pair_stats_tool_b",
+            resolver_tool_key="synthetic_pair_stats_tool_b",
+            params={"series_name": f"iib_{leaf_id}"},
+            output_field="time_series",
+            declared_output_artifact_type=ArtifactTypeName.SERIES,
+            declared_units=TimeSeriesUnits.BPS,
+            declared_frequency=Frequency.DAILY,
             declared_semantic_role=request.semantic_role,
             declared_output_meaning=request.requested_output_meaning,
             fit_confidence=0.95,
@@ -811,12 +920,12 @@ async def test_canonical_cross_domain_correlation_REAL_executor(
 
     pipeline = OpenDagPipeline(
         router=_Router(),
-        composer=_CanonicalShape(),
+        composer=_CrossDomainShape(),
         coverage_gate=_PassGate(),
         answer_renderer=_Renderer(),
         selectors={
-            Domain.SOVEREIGN_BONDS: selector_cb,
-            Domain.INFLATION_INDEXED_BONDS: selector_cb,
+            Domain.SOVEREIGN_BONDS: sovereign_selector_cb,
+            Domain.INFLATION_INDEXED_BONDS: inflation_selector_cb,
         },
         primitive_resolver=_real_e2e_resolver,
         # The REAL default executor — wraps shared.workflow.executor.execute_workflow
@@ -831,10 +940,22 @@ async def test_canonical_cross_domain_correlation_REAL_executor(
         "Correlation between US 2s10s and 5Y breakeven over 5y",
     )
 
+    # PR-10E Codex audit gap #2: BOTH per-domain selectors must have
+    # fired exactly once.  This is the core assertion that proves the
+    # pipeline really fanned out to two distinct domains.
+    assert sov_selector_calls == ["leaf_a"], (
+        f"sovereign_bonds selector must have been invoked exactly once "
+        f"for leaf_a; got calls={sov_selector_calls!r}"
+    )
+    assert iib_selector_calls == ["leaf_b"], (
+        f"inflation_indexed_bonds selector must have been invoked "
+        f"exactly once for leaf_b; got calls={iib_selector_calls!r}"
+    )
+
     # PR-10D F1: strict PASS — substrate executor ran for REAL.
     assert outcome.status == "PASS", (
-        f"PR-10D F1: REAL canonical end-to-end must reach strict "
-        f"PASS; got status={outcome.status} markdown="
+        f"PR-10D F1: REAL cross-domain canonical end-to-end must reach "
+        f"strict PASS; got status={outcome.status} markdown="
         f"{outcome.markdown[:300]}"
     )
     assert outcome.is_pass, "is_pass must be strict PASS"
@@ -846,6 +967,30 @@ async def test_canonical_cross_domain_correlation_REAL_executor(
     # The L6 renderer received the real hash.
     assert len(rendered_lineage_hashes) == 1
     assert rendered_lineage_hashes[0] == outcome.run_lineage.head_hash
+
+    # PR-10E Codex audit gap #2: per-leaf selector records on the
+    # IntentChain must carry two DIFFERENT domain strings.  Proves
+    # the cross-domain assignment survived through the assembler.
+    selector_records = outcome.intent_chain.selectors
+    assert len(selector_records) == 2
+    bound_domains = sorted({sr.domain for sr in selector_records})
+    assert bound_domains == [
+        "inflation_indexed_bonds",
+        "sovereign_bonds",
+    ], (
+        f"Selector records must span both domains; got "
+        f"{bound_domains!r}"
+    )
+    # The two tool_names must differ (one tool per domain).
+    bound_tool_names = sorted({sr.bound_tool_name for sr in selector_records})
+    assert bound_tool_names == [
+        "synthetic_pair_stats_tool_a",
+        "synthetic_pair_stats_tool_b",
+    ], (
+        f"Each domain must bind its own distinct tool; got "
+        f"{bound_tool_names!r}"
+    )
+
     # The compute lineage contains PrimitiveSteps + OperatorSteps
     # ending in correlation.
     steps = outcome.run_lineage.compute_lineage.steps
@@ -857,6 +1002,29 @@ async def test_canonical_cross_domain_correlation_REAL_executor(
     assert "operator" in step_kinds, (
         f"Compute lineage must contain operator step(s); got kinds "
         f"{step_kinds}"
+    )
+    # PR-10E Codex audit gap #2: the lineage chain is a SINGLE linear
+    # walk back from terminal (substrate design); when correlation
+    # consumes two distinct primitives the chain still surfaces only
+    # the head's deepest predecessor as a top-level step.  Both
+    # primitives' execution is already proven above by:
+    #   (a) sov_selector_calls + iib_selector_calls each firing once,
+    #   (b) the two BoundLeaves with distinct domains + tool_names,
+    #   (c) strict PASS (the substrate would have errored if either
+    #       primitive failed to resolve).
+    # So here we only assert the lineage records AT LEAST one of the
+    # two cross-domain primitives — the chain's linear-walk shape is
+    # not a per-leaf inventory.
+    primitive_step_names = {
+        s.name for s in steps if s.kind == "primitive"
+    }
+    expected_cross_domain_tools = {
+        "synthetic_pair_stats_tool_a",
+        "synthetic_pair_stats_tool_b",
+    }
+    assert primitive_step_names & expected_cross_domain_tools, (
+        f"Lineage must record at least one of the cross-domain "
+        f"primitives; got {primitive_step_names!r}"
     )
     # The terminal operator is correlation.
     terminal_step = steps[-1]

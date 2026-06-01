@@ -72,6 +72,24 @@ Adding any of the three not-live archetypes back is a closed-family-aware change
 
 Each domain agent is a sibling package (`rates_agent/`, future `fx_agent/`, etc.) with its own MCP server subprocess. The orchestrator's `DomainAgentSession` connects to *only* the subprocess of the domain the supervisor routed to.
 
+### Scaling-claim boundary: config surface vs code surface (PR-10E gap #5)
+
+The PoC's *registration-only growth* invariant (see [`../../tmp/orchestration.md`](../../tmp/orchestration.md) §0) applies to **primitives** and **operators** only — not to **domains**. The boundary is precise:
+
+| Surface | What lives here | Cost to add the Nth member |
+|---|---|---|
+| Code surface (invariant) | composer, validator, executor, coverage gate, Boundary A / B, synthesis | Zero changes — proven byte-for-byte by [`tests/eval/test_scaling_proofs.py`](../../tests/eval/test_scaling_proofs.py) |
+| Primitive / operator config surface | `PrimitiveResolver` registry; `OPERATOR_REGISTRY` | One registration entry — proven by the same harness |
+| Domain config surface (ADR-gated) | `Domain` enum, `DOMAIN_MCP_SERVERS`, per-domain system prompt + SUPERVISOR card, `_DOMAIN_PROMPTS`, `KNOWN_DOMAINS` | ~5 files in lock-step (one ADR) |
+
+The ~5-file domain-growth cost is intentional. Two design forces drive it:
+
+1. **Typed routing safety.** `Domain` is a Pydantic `str, Enum` used as a typed `Field` on `RouteDecision.domains`, `EconomicQuantity.domain_hint`, `ChildResponse.domain`, and `BoundLeaf.domain`. LangChain's `with_structured_output(RouteDecision)` binds the tool schema at supervisor-construction time and Anthropic caches the system prefix. A runtime registry would either invalidate that cache per session or force a downgrade to `Field: str` and lose the typed coverage gate.
+2. **Routing accuracy comes from per-domain vocabulary cards.** Each new domain ships a hand-tuned ~30-line block of PM-recognised signals (`'SFR'`, `'TY1'`, `'SOFR'`, `'TIPS'`, `'ZCIS'`, …) inside `SUPERVISOR_SYSTEM_PROMPT`'s `AVAILABLE DOMAINS` and `DOMAIN SIGNALS` sections. Auto-discovering this from a folder convention would relocate the content — not eliminate it — and the supervisor LLM would still need the same signal density to route well.
+
+The PoC's actual scaling guarantee is therefore: **the orchestrator code surface is invariant under primitive / operator / domain growth, and the orchestrator config surface for primitives + operators is true registration-only.** Domain growth is an ADR-gated config-surface event by design, not an oversight. A future ADR may revisit the boundary if the domain count grows past ~12.
+
+
 ```mermaid
 flowchart LR
     subgraph SUP["Orchestrator (single process)"]

@@ -189,6 +189,17 @@ def build_sovereign_yield_panel(
         "columns": list(cleaned_panel.columns),
     }
     as_of_date_iso = cleaned_panel.index[-1].strftime("%Y-%m-%d")
+    # PR-10E Codex audit gap #1: fold data content + vintage into the
+    # lineage hash via PrimitiveStep.build's optional identity bits.
+    # Same recipe the high-level Panel bridge uses, imported as a shared
+    # helper so the hash is byte-identical regardless of whether the
+    # artifact is constructed here (in the primitive) or by the bridge.
+    from shared.artifacts.adapters.from_time_series import (
+        _compute_panel_payload_fingerprint,
+    )
+    data_content_fingerprint = _compute_panel_payload_fingerprint(
+        cleaned_panel, units_by_column,
+    )
     step = PrimitiveStep.build(
         name=_TOOL_NAME,
         version=_TOOL_VERSION,
@@ -197,6 +208,8 @@ def build_sovereign_yield_panel(
         output_field="panel",
         as_of_date=as_of_date_iso,
         tool_config_path=str(CONFIG_PATH),
+        data_content_fingerprint=data_content_fingerprint,
+        data_vintage=as_of_date_iso,
     )
     lineage = Lineage.from_steps([step])
 

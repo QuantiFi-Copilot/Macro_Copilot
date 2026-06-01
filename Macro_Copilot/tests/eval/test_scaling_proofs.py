@@ -585,6 +585,204 @@ class TestProof1_RegistrationOnlyGrowth:
                 )
             clear_catalogue_cache()
 
+    def test_l2_selector_accepts_synthetic_via_production_resolver_path(
+        self, tmp_path,
+    ):
+        """PR-10E Codex audit gap #4 — strengthen registration-only growth.
+
+        Prior tests proved (a) the L4 Assembler composes with a
+        synthetic spec wired in-process and (b) the operator catalogue
+        renders the new card from the on-disk YAML.  This test closes
+        the gap Codex identified: prove the FULL L2-Selector
+        production chain (render_tool_catalogue + composability audit
+        + available_output_fields derivation) accepts a synthetic
+        primitive registered ONLY through the explicit-dict resolver
+        surface that production uses (PrimitiveResolver wrap pattern
+        documented in rates_agent/workflows/__init__.py).
+
+        The architectural invariant being defended: registration
+        surface = explicit closed-family dict entry (NOT folder
+        auto-discovery — substrate must stay finance-blind per
+        shared/workflow/registry.py's module docstring).  This test
+        proves that once the resolver carries the spec, EVERY
+        downstream layer (composability audit, L2 catalogue, L3
+        Composer, L4 Assembler) inflates the new primitive
+        automatically with ZERO production source edits, end-to-end.
+
+        Snapshots a WIDER invariant scope than the existing tests
+        (rates_agent/ + shared/operators/ + shared/workflow/ +
+        orchestrator/ — the full production source under the
+        scaling claim).
+        """
+        import subprocess
+        from orchestrator.contracts import Domain
+        from orchestrator.selectors import render_tool_catalogue
+        from orchestrator.open_dag.composability_audit import (
+            Composability,
+        )
+        from orchestrator.open_dag.resolver_keys import (
+            domain_to_resolver_key,
+        )
+
+        # ---- 1. Write the canonical 4-file folder shape to tmp_path.
+        prim_dir = tmp_path / "synthetic_l2_primitive"
+        prim_dir.mkdir()
+        (prim_dir / "config.yaml").write_text(
+            "tool:\n"
+            "  name: synthetic_l2_primitive_tool\n"
+            "  domain: sovereign_bonds\n"
+            "  description: synthetic primitive for the L2-selector chain proof\n"
+            "  category: desk_invariant_primitive\n"
+            "methodology:\n"
+            "  what_it_does: synthetic; never executed in this test\n",
+            encoding="utf-8",
+        )
+        (prim_dir / "__init__.py").write_text("", encoding="utf-8")
+        (prim_dir / "schemas.py").write_text(
+            "from pydantic import BaseModel\n\n"
+            "class SynthInput(BaseModel):\n"
+            "    curve_family: str = 'UST'\n\n"
+            "class SynthOutput(BaseModel):\n"
+            "    time_series: dict = {}\n",
+            encoding="utf-8",
+        )
+        (prim_dir / "compute.py").write_text(
+            "def compute(**kw):\n    return {'time_series': {}}\n",
+            encoding="utf-8",
+        )
+
+        # ---- 2. Snapshot git state of EVERY surface the
+        # registration must not touch.  This is the "zero substrate
+        # edit" assertion at production-source scope: wider than the
+        # existing tests' rates_agent/-only check.
+        try:
+            top = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                capture_output=True, text=True, cwd=str(_REPO_ROOT),
+                timeout=5,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pytest.skip("git unavailable")
+        if top.returncode != 0:
+            pytest.skip("not in a git repo")
+        repo = Path(top.stdout.strip())
+
+        invariant_dirs = [
+            str((_REPO_ROOT / "rates_agent").relative_to(repo)),
+            str((_REPO_ROOT / "shared" / "operators").relative_to(repo)),
+            str((_REPO_ROOT / "shared" / "workflow").relative_to(repo)),
+            str((_REPO_ROOT / "orchestrator").relative_to(repo)),
+        ]
+        before = subprocess.run(
+            ["git", "diff", "--", *invariant_dirs],
+            capture_output=True, text=True, cwd=str(repo),
+        ).stdout
+
+        # ---- 3. Build the synthetic PrimitiveSpec — same shape an
+        # integrator would put in the production _PRIMITIVE_SPECS dict.
+        class _In(BaseModel):
+            curve_family: str = "UST"
+
+        class _Out(BaseModel):
+            time_series: dict = {}
+
+        synthetic_resolver_key = domain_to_resolver_key(
+            Domain.SOVEREIGN_BONDS.value,
+            "synthetic_l2_primitive_tool",
+        )
+        synthetic_spec = PrimitiveSpec(
+            tool_name=synthetic_resolver_key,
+            callable=lambda **kw: {"time_series": {}},
+            input_class=_In,
+            output_class=_Out,
+            config_path=prim_dir / "config.yaml",
+            output_field_units={"time_series": "bps"},
+            output_artifact_type="Series",
+        )
+
+        # ---- 4. Wrap the PRODUCTION rates_primitive_resolver — the
+        # SAME pattern an integrator would use.  This is the L2
+        # production path: rates_primitive_resolver is the resolver
+        # passed to render_tool_catalogue at session.open() time.
+        from rates_agent.workflows import rates_primitive_resolver
+
+        def _wrapped(tool_name: str) -> PrimitiveSpec:
+            if tool_name == synthetic_resolver_key:
+                return synthetic_spec
+            return rates_primitive_resolver(tool_name)
+
+        # ---- 5. Build a fake MCP tool list (FastMCP exposes objects
+        # with .name + .description attributes; SimpleNamespace mimics
+        # that surface).  Include the synthetic alongside one real
+        # production tool name to prove the catalogue carries BOTH.
+        mcp_tools = [
+            SimpleNamespace(
+                name="synthetic_l2_primitive_tool",
+                description=(
+                    "Synthetic primitive for the Codex-audit-gap-4 "
+                    "L2-Selector chain proof.  Returns a Series of "
+                    "bps-typed values."
+                ),
+            ),
+            SimpleNamespace(
+                name="calculate_curve_spread_tool",
+                description="Real production primitive (sanity check).",
+            ),
+        ]
+
+        # ---- 6. Invoke the PRODUCTION L2 catalogue renderer.  This
+        # is the actual code path the DomainAgentSession runs at
+        # open() time.
+        kept, dropped = render_tool_catalogue(
+            Domain.SOVEREIGN_BONDS, mcp_tools, _wrapped,
+        )
+
+        # ---- 7. Synthetic must appear in kept catalogue with full
+        # L2 binding contract intact.
+        kept_names = {e.mcp_tool_name for e in kept}
+        assert "synthetic_l2_primitive_tool" in kept_names, (
+            f"Codex gap #4: synthetic primitive NOT in L2 catalogue "
+            f"after registration via the production wrap pattern.  "
+            f"kept={kept_names}, "
+            f"dropped={[(d.mcp_tool_name, d.reason) for d in dropped]}"
+        )
+        synth_entry = next(
+            e for e in kept
+            if e.mcp_tool_name == "synthetic_l2_primitive_tool"
+        )
+        # Composability audit classified it correctly.
+        assert synth_entry.composability == Composability.BRIDGEABLE_SERIES, (
+            f"Codex gap #4: synthetic primitive composability "
+            f"misclassified as {synth_entry.composability}"
+        )
+        # available_output_fields derivation worked.
+        assert "time_series" in synth_entry.available_output_fields, (
+            f"Codex gap #4: available_output_fields missing "
+            f"'time_series'; got {synth_entry.available_output_fields}"
+        )
+        # resolver_tool_key derived deterministically — not LLM-fabricated.
+        assert synth_entry.resolver_tool_key == synthetic_resolver_key, (
+            f"Codex gap #4: resolver_tool_key drift; expected "
+            f"{synthetic_resolver_key!r}, got "
+            f"{synth_entry.resolver_tool_key!r}"
+        )
+
+        # ---- 8. Snapshot git state again — registration MUST NOT
+        # have edited ANY production source.  Stronger than the
+        # existing tests' rates_agent/-only check; covers shared/
+        # and orchestrator/ as well.
+        after = subprocess.run(
+            ["git", "diff", "--", *invariant_dirs],
+            capture_output=True, text=True, cwd=str(repo),
+        ).stdout
+        assert before == after, (
+            "Codex gap #4: L2-Selector chain registration through "
+            "the production wrap pattern MUST leave rates_agent/, "
+            "shared/operators/, shared/workflow/, and orchestrator/ "
+            "byte-identical.  Got non-zero git diff — the "
+            "registration-only-growth contract is violated."
+        )
+
     def test_fresh_query_with_synthetic_operator_composes(self):
         """Per §PR-10: prove a fresh query using the new tools
         composes correctly.

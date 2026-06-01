@@ -52,8 +52,19 @@ from shared.workflow.operator_catalogue import (
 
 # Per the plan's acceptance criterion (§PR-2 "Acceptance criteria" #4):
 #   "Each card ≤ 600 tokens; total catalogue ≤ 10K tokens."
-_PER_CARD_TOKEN_CAP = 600
-_TOTAL_CATALOGUE_TOKEN_CAP = 10_000
+#
+# PR-10E Codex audit gap #7 bumped the caps:
+#   The original 600 / 10000 budgets were sized for one-liner
+#   SlotDescriptor.description fields.  Gap #7 raised every slot +
+#   output description to primitive-docstring quality (when-to-use /
+#   when-NOT-to-use / params / cross-references — matching the bar set
+#   by calculate_curve_spread_tool).  The richer content is the
+#   primary mitigation against L3 mis-binding; the budgets are raised
+#   to accommodate it while still keeping the full L3 prompt comfortably
+#   under typical context-window limits (16k cards leave > 184k tokens
+#   for the rest of the L3 prompt + tool messages).
+_PER_CARD_TOKEN_CAP = 1_000
+_TOTAL_CATALOGUE_TOKEN_CAP = 16_000
 
 
 # Per the plan's "Decisions enforced" #3:

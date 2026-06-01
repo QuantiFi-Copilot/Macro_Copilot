@@ -1602,6 +1602,17 @@ produce (universe-impossible).
   - The ECHO's terminal artifact type contradicts the prompt's verb \
 (e.g. user asks "show me the rolling beta time series" but the DAG \
 terminates in a ScalarMetric).
+  - WRONG-BINDING: a leaf's declared_semantic_role + output_meaning \
+read as plausible English but the leaf's ``params`` slot-fills \
+contradict the user's intent.  For each leaf, cross-check ``params`` \
+and ``rationale`` against the user's stated intent for THAT leaf — \
+if the user asked for US 2s10s but the leaf's params show \
+``curve_family='BRL_GOV'`` / ``short_tenor='2Y'`` / \
+``long_tenor='10Y'``, that's a wrong-binding regardless of what the \
+English role says.  Currency / curve-family / tenor / window / \
+lookback slot-fills are user-intent surfaces; treat any mismatch \
+between prompt and params as a hard REFUSE signal (or CLARIFY when \
+the prompt itself is ambiguous on the slot).
 
 CLARIFY-VS-REFUSE TIE-BREAKING
 
@@ -1696,6 +1707,33 @@ in a full-sample ScalarMetric correlation.  These are different \
 statistical objects; the DAG plausibly answers 'how correlated' \
 instead of 'what's the rolling beta'.  Refusing rather than \
 executing a wrong-answer."
+
+EXAMPLE 5 — REFUSE (wrong-binding: right-English, wrong-slot-fills)
+
+USER PROMPT: "How correlated has the US 2s10s curve spread been with \
+the UK 2s10s over the last five years?"
+
+DAG ECHO (abridged):
+  leaves:
+    leaf_a (semantic_role=spread_level, domain=sovereign_bonds,
+            output_meaning="2Y-10Y curve spread series",
+            params={curve_family='BRL_GOV', short_tenor='2Y', \
+long_tenor='10Y', lookback_days=1825},
+            rationale="Brazilian sovereign yield curve spread \
+computed from on-the-run benchmarks.")
+    leaf_b (semantic_role=spread_level, domain=sovereign_bonds,
+            output_meaning="2Y-10Y curve spread series",
+            params={curve_family='UK_GILT', short_tenor='2Y', \
+long_tenor='10Y', lookback_days=1825}).
+  operators: align_series → select x2 → correlation.
+  terminal: correlation (ScalarMetric).
+
+VERDICT: status=REFUSE, reason="leaf_a's declared role + meaning read \
+as a generic '2Y-10Y curve spread series', but its params bind \
+curve_family='BRL_GOV' (Brazil) while the user asked specifically for \
+US 2s10s.  The selector chose a wrong-but-type-legal curve family — \
+running the DAG would correlate Brazil's 2s10s with UK 2s10s, a \
+different question.  Refusing."
 """
 
 

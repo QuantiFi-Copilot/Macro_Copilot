@@ -89,13 +89,14 @@ conversion concern across two namespaces.
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any, Dict, List, Literal, Optional, Type
 
 import numpy as np
 import pandas as pd
 from pydantic import BaseModel
 
-from shared.artifacts.lineage import Lineage, PrimitiveStep
+from shared.artifacts.lineage import Lineage, PrimitiveStep, _canonical_json
 from shared.artifacts.missingness import (
     CleanSingleSeriesV1,
     MissingnessPolicy,
@@ -108,6 +109,99 @@ from shared.schemas import TimeSeries, TimeSeriesRow
 
 _BRIDGE_NAME = "time_series_to_artifact_series"
 _PANEL_BRIDGE_NAME = "tool_output_to_artifact_panel"
+
+
+# ============================================================================
+# CONTENT FINGERPRINTING — PR-10E Codex audit gap #1
+# ============================================================================
+# Lineage hash must change when vendor data content changes, even when
+# (params, tool_config_hash, as_of_date) are byte-identical (e.g. a vendor
+# revises the previous day's value overnight without bumping the snapshot
+# date).  PrimitiveStep.build folds an optional data_content_fingerprint
+# into the hashed_params dict; the bridge is the production code path that
+# must COMPUTE and SUPPLY that fingerprint.  These helpers are the
+# canonical computation, re-used from the five primitives in rates_agent/*
+# that construct PrimitiveStep before wrapping their payload in a Panel.
+#
+# Determinism contract:
+#   - SHA-256 over canonical-JSON (via lineage._canonical_json, the SAME
+#     canonicaliser the lineage hash recipe itself uses — guarantees
+#     byte-identical serialisation across NumPy / Pandas / Python versions).
+#   - The encoded payload includes series identity bits (series_name +
+#     units) so two structurally-different series with coincidentally
+#     identical rows still differ.
+#   - None / NaN cells serialise to JSON null — preserves the
+#     missingness-as-gap contract from the module docstring.
+#   - Empty payloads are well-defined (never raises).
+# ============================================================================
+
+
+def _compute_time_series_fingerprint(ts: TimeSeries) -> str:
+    """Deterministic SHA-256 over a canonical TimeSeries payload."""
+    sorted_rows = sorted(
+        ts.rows,
+        key=lambda r: r.date,
+    ) if ts.rows else []
+    payload: Dict[str, Any] = {
+        "series_name": ts.series_name,
+        "units": ts.units.value,
+        "rows": [[r.date, r.value] for r in sorted_rows],
+    }
+    encoded = _canonical_json(payload)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _compute_panel_payload_fingerprint(
+    payload: "pd.DataFrame",
+    units_by_column: Dict[str, Any],
+) -> str:
+    """Deterministic SHA-256 over a Panel payload DataFrame + units mapping.
+
+    The inner helper.  Used by both the high-level Panel bridge and the
+    five primitive compute.py sites in rates_agent/* that construct a
+    PrimitiveStep BEFORE wrapping their payload in a Panel artifact (they
+    don't have a Panel instance yet).  Encoding is byte-identical to the
+    Panel-instance wrapper below.
+    """
+    sorted_cols = sorted(payload.columns)
+    units_block: Dict[str, str] = {
+        str(col): units_by_column[col].value for col in sorted_cols
+    }
+    data_block: Dict[str, List[List[Any]]] = {}
+    for col in sorted_cols:
+        col_series = payload[col]
+        rows: List[List[Any]] = []
+        for idx in col_series.index:
+            iso_date = (
+                idx.strftime("%Y-%m-%d") if hasattr(idx, "strftime") else str(idx)
+            )
+            raw = col_series.loc[idx]
+            cell: Optional[float]
+            if pd.isna(raw):
+                cell = None
+            else:
+                cell = float(raw)
+            rows.append([iso_date, cell])
+        rows.sort(key=lambda r: r[0])
+        data_block[str(col)] = rows
+    encoded_payload: Dict[str, Any] = {
+        "columns": [str(c) for c in sorted_cols],
+        "units_by_column": units_block,
+        "data": data_block,
+    }
+    encoded = _canonical_json(encoded_payload)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _compute_panel_fingerprint(panel: Panel) -> str:
+    """Deterministic SHA-256 over a Panel artifact's payload + units.
+
+    Thin wrapper around _compute_panel_payload_fingerprint that accepts a
+    built Panel instance.  Used by the high-level Panel bridge.
+    """
+    return _compute_panel_payload_fingerprint(
+        panel.payload, panel.units_by_column,
+    )
 
 
 # ============================================================================
@@ -451,8 +545,17 @@ def tool_output_to_artifact_series(
     as_of_date = _extract_as_of_date(validated)
 
     # ------------------------------------------------------------------
-    # 5. Build the PrimitiveStep with all four identity bits.
+    # 5. Build the PrimitiveStep with all six identity bits.
+    #    PR-10E Codex audit gap #1: data_content_fingerprint +
+    #    data_vintage close the original L5 contract — "Lineage hash
+    #    includes input data content / vendor data-vintage stamp."
+    #    When the vendor revises a previously-published value (same
+    #    as_of_date, same params, same YAML), the fingerprint changes
+    #    and the lineage hash changes with it.  data_vintage echoes
+    #    the snapshot's as_of_date as a named first-class field so
+    #    downstream consumers don't have to infer the vintage.
     # ------------------------------------------------------------------
+    data_content_fingerprint = _compute_time_series_fingerprint(ts_obj)
     primitive_step = PrimitiveStep.build(
         name=tool_name,
         version=primitive_version,
@@ -461,6 +564,8 @@ def tool_output_to_artifact_series(
         output_field=output_field,
         as_of_date=as_of_date,
         tool_config_path=tool_config_path,
+        data_content_fingerprint=data_content_fingerprint,
+        data_vintage=as_of_date,
     )
 
     # ------------------------------------------------------------------
@@ -646,8 +751,12 @@ def tool_output_to_artifact_panel(
         as_of_date = panel_obj.payload.index[-1].strftime("%Y-%m-%d")
 
     # ------------------------------------------------------------------
-    # 5. Build the PrimitiveStep with all four identity bits.
+    # 5. Build the PrimitiveStep with all six identity bits.
+    #    PR-10E Codex audit gap #1: data_content_fingerprint +
+    #    data_vintage close the original L5 contract — see the
+    #    matching comment in tool_output_to_artifact_series above.
     # ------------------------------------------------------------------
+    data_content_fingerprint = _compute_panel_fingerprint(panel_obj)
     primitive_step = PrimitiveStep.build(
         name=tool_name,
         version=primitive_version,
@@ -656,6 +765,8 @@ def tool_output_to_artifact_panel(
         output_field=output_field,
         as_of_date=as_of_date,
         tool_config_path=tool_config_path,
+        data_content_fingerprint=data_content_fingerprint,
+        data_vintage=as_of_date,
     )
 
     # ------------------------------------------------------------------
@@ -932,4 +1043,7 @@ __all__ = [
     "tool_output_to_artifact_series",
     "tool_output_to_artifact_panel",
     "artifact_series_to_time_series",
+    "_compute_time_series_fingerprint",
+    "_compute_panel_fingerprint",
+    "_compute_panel_payload_fingerprint",
 ]

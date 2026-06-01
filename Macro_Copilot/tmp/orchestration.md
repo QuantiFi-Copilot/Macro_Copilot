@@ -13,7 +13,7 @@ Macro Copilot is being built as a *digital macro analyst brain* — the bridge b
 
 This document is the PR plan for the architecture that lets the LLM construct a typed DAG to answer any prompt within today's *registered typed workflow universe* (58 MCP primitives across 6 domains, 16 registered operators, 6 closed-family artifact types, subject to the primitive-output audit in §2.5), while satisfying three scaling invariants:
 
-1. **Registration-only growth.** Adding the Nth primitive / operator / domain requires only a registration entry — zero change to composer, validator, executor, or any LLM-facing static prompt.
+1. **Registration-only growth (bounded scope).** Adding the Nth primitive or the Nth operator requires only a registration entry — zero change to composer, validator, executor, or any LLM-facing static prompt. *Domain growth is intentionally NOT in this invariant:* adding the Nth domain is an ADR-gated config-surface change that updates `orchestrator/contracts.py` (Domain enum), `orchestrator/config.py` (DOMAIN_MCP_SERVERS), `orchestrator/prompts.py` (a new per-domain system prompt + extension to SUPERVISOR_SYSTEM_PROMPT's `AVAILABLE DOMAINS` / `DOMAIN SIGNALS` cards), `orchestrator/session.py` (`_DOMAIN_PROMPTS` + `_build_domain_boundaries` labels), and `orchestrator/open_dag/resolver_keys.py` (`KNOWN_DOMAINS`). The orchestrator code surface (composer / validator / executor / coverage gate / Boundary A and B) stays unchanged. See §7 for the precise scope boundary.
 2. **Per-decision context is bounded by local fan-out.** No LLM ever sees the full universe at once.
 3. **Two trust boundaries.** Determinism lives *outside* the reasoning path — in validation and lineage — not by constraining the LLM's reasoning.
 
@@ -414,9 +414,9 @@ These contracts live in `orchestrator/open_dag/`, not `shared/workflow/`, becaus
 | Field family | Comparison rule | If mismatch |
 |---|---|---|
 | Closed-substrate (`required_artifact_type`, `expected_units`, `expected_frequency`) | Hard structured equality against the corresponding `declared_*` on `BoundLeaf` | `E_TYPE_MISMATCH` / `E_UNIT_MISMATCH` / `E_FREQUENCY_MISMATCH` raised by Boundary A; L4 dispatches repair to `owner_layer=L2_BINDING` |
-| Free-form (`semantic_role`, `requested_output_meaning`) | Normalised string compare (lowercase, trim, collapse whitespace) → if equal, pass; if unequal, attach as a SOFT signal to the `ValidationResult` (new severity: `WARNING`); Boundary A does NOT fail on warnings | If warnings exist when Boundary A passes, Boundary B receives them as supplementary evidence and is more likely to refuse if the DAG/prompt echo doesn't match |
+| Free-form (`semantic_role`, `requested_output_meaning`) | Normalised string compare (lowercase, trim, collapse whitespace) → if equal, pass; **if unequal, raise `E_ROLE_DISCRIMINANT_MISMATCH` at `Severity.ERROR` so Boundary A HARD-REFUSES (PR-10D F4)** | DAG never reaches execution. The earlier WARNING-only design was promoted to a hard error after the audit showed warnings were being swallowed downstream — the gate could not realistically recover them. Hard-block at Boundary A is the only place where a semantic-wrong-but-type-legal selector binding can be killed before L5. |
 
-This split is the explicit answer to R5 (no curated role enum): the substrate gets hard structured checks only on the things that are GENUINELY closed (artifact_type is already an enum; units is `TimeSeriesUnits`; frequency is a small closed set). For everything else the LLMs author free-form English and the substrate does normalised-equality contradiction detection — strict enough to catch obvious contradictions, loose enough to not curate a vocabulary.
+This split is the explicit answer to R5 (no curated role enum): the substrate gets hard structured checks only on the things that are GENUINELY closed (artifact_type is already an enum; units is `TimeSeriesUnits`; frequency is a small closed set). For everything else the LLMs author free-form English and the substrate does normalised-equality contradiction detection — strict enough to catch obvious contradictions, loose enough to not curate a vocabulary. PR-10D F4 made the free-form mismatch a hard Boundary A REFUSE rather than a forward-passed warning; the LLM that authored the contradiction will retry under the L4 repair loop (one bounded round) rather than the contradiction sneaking into the executor.
 
 **Resolver-key adapter:**
 
@@ -681,16 +681,19 @@ class GateVerdict(BaseModel):
     reason: str                             # always populated, audit trail
     clarification_question: Optional[str]   # populated iff status == CLARIFY
 
-    # SOFT inputs from Boundary A (PR-3): if any role-mismatch WARNINGs were
-    # collected during validation, they're surfaced here so the gate can weigh
-    # them against the prompt match.
+    # Soft warnings from Boundary A on NON-role-discriminant channels
+    # (e.g. additive-repair notes, soft type-coercion records).  PR-10D
+    # F4: role-discriminant mismatch is no longer a soft warning — it
+    # HARD-REFUSES at Boundary A and the DAG never reaches the gate.
+    # Anything that reaches `soft_warnings` here is a non-fatal signal
+    # the gate can weigh against the prompt match.
     soft_warnings: list[str] = []
 ```
 
 **Decisions enforced (per Codex's correction point 4).**
 - The SOURCE OF TRUTH for the coverage check is the **original prompt**, not L1 decomposition.
 - L1 decomposition is supplementary evidence — useful to the gate's reasoning, but if it contradicts the prompt, the prompt wins.
-- Soft warnings from Boundary A (role/intent free-form mismatches) bias the gate toward refuse-or-clarify but do not force it.
+- Boundary A is the structural type-check; it hard-REFUSES (Severity.ERROR → AssemblyStatus.REFUSED) on role-discriminant mismatch — when a BoundLeaf's `declared_semantic_role` or `declared_output_meaning` does not match the LeafHole's `requested_*` (PR-10D F4 corrective). Soft warnings from Boundary A on OTHER channels (e.g. additive-repair notes) bias the gate toward refuse-or-clarify but do not force it.
 - Clarification is preferred to outright refusal IFF the gap is fixable by user input (e.g. ambiguous tenor). Outright refusal is reserved for impossible-given-universe cases.
 
 **Tests.**
@@ -803,7 +806,7 @@ The gating metric per the handoff is **shape and intent correctness on this matr
 |---|---|
 | Registration-only growth | Add a synthetic 59th primitive (`tests/eval/synthetic_primitive_59.py`) to one domain + a synthetic 17th operator (`tests/eval/synthetic_operator_17.py`) to the registry. Assert via `git diff` that `orchestrator/open_dag/composer.py`, `orchestrator/open_dag/coverage_gate.py`, `shared/workflow/validate.py`, `shared/workflow/executor.py`, `orchestrator/prompts.py:SUPERVISOR_SYSTEM_PROMPT`, and every OTHER domain's MCP server file are byte-for-byte unchanged. Then prove a fresh query using the new tools composes correctly. |
 | Context-bound | Per query in the eval matrix, instrument the pipeline to record (a) each L2 selector's MCP-visible tool count = only own-domain tools; (b) the composer's prompt does NOT mention any primitive name (grep); (c) the composer's prompt token count is unchanged when the 59th primitive is registered (delta == 0 ± token-counter noise). |
-| Two-boundary | The three adversarial entries in the eval matrix above. Plus: a contradictory free-form `semantic_role` between LeafRequest and BoundLeaf → Boundary A surfaces as WARNING → gate returns CLARIFY. |
+| Two-boundary | The three adversarial entries in the eval matrix above. Plus: a contradictory free-form `semantic_role` between LeafRequest and BoundLeaf → Boundary A HARD-REFUSES (`E_ROLE_DISCRIMINANT_MISMATCH` at `Severity.ERROR` → `AssemblyStatus.REFUSED`); the DAG never reaches the gate (PR-10D F4). |
 
 **CI lints.**
 - `scripts/ci_lint_domain_tool_count.py`: parse each domain MCP server, count `@mcp.tool()` decorators, fail if any domain exceeds `MAX_TOOLS_PER_DOMAIN` (TBD; suggest 25 for the PoC — forces a sub-domain split before fan-out gets unmanageable).
@@ -853,7 +856,7 @@ See PR-10 §4.2. Tabular form repeated here for top-of-file reference. The eval 
 | Coverage gate disposition | Hard-block (per R8). Refuse OR one precise clarification — gate picks based on whether the gap is fixable by user input. | Hard-block is settled; the refuse-vs-clarify choice is a UX detail the gate is competent to make. |
 | Repair budget | One round, additive-only mutations (insert adapter, fix params, fix slot wiring). No primitive swap. No DAG reshape. Refuse on exhaustion. | Prevents oscillation. Codex's "you can't keep retrying" intuition formalised. |
 | Resolver collision handling | `BoundLeaf` carries `domain` + `mcp_tool_name` + `resolver_tool_key`. The assembler derives `resolver_tool_key` via `domain_to_resolver_key()` (centralised adapter at `orchestrator/open_dag/resolver_keys.py`). | Respects the current ad-hoc convention (verified in [rates_agent/workflows/__init__.py](../rates_agent/workflows/__init__.py)) without locking it in. A future cleanup to uniform `<domain>::<tool>` is a one-file change. |
-| Role-discriminant strictness | Closed-substrate fields hard-checked; free-form fields normalised-string compared and escalated as soft warnings, NOT hard rejects. | Avoids the "curated role enum" trap (R5) while keeping mechanical contradiction detection. |
+| Role-discriminant strictness (PR-10D F4) | Closed-substrate fields hard-checked. Free-form `declared_semantic_role` and `declared_output_meaning` are normalised-string compared against the LeafHole's `requested_*`; any mismatch is a HARD Boundary A REFUSE (`Severity.ERROR` → `AssemblyStatus.REFUSED`), not a soft warning. The DAG never reaches execution when the selector's declared English contradicts the composer's stated intent for that hole. | The hard-block is the only way to prevent a semantic-wrong-but-type-legal DAG from being executed. PR-10D F4 promoted this from a soft warning after the audit showed the warning channel was being swallowed downstream. |
 | Boundary B source of truth | The ORIGINAL user prompt. L1 decomposition is supplementary evidence only. | Per Codex's correction point 4: if L1 dropped a domain, the decomposition is corrupted — checking against it would miss the very failure mode the gate exists to catch. |
 | Trade operators registration | Out of PoC scope. Will be a follow-on PR that reuses the registration-only growth harness — proving the architecture, not just the registration-only claim. | Per Codex's correction point 5: be honest about what the PoC proves vs what scales onto it. |
 | Templates path | Untouched. Both lanes co-exist via a thin pre-router in `CopilotSession`. | R6: templates out of scope here. |
@@ -870,8 +873,9 @@ See PR-10 §4.2. Tabular form repeated here for top-of-file reference. The eval 
 | Terminal-only snapshot/scanner composition | Some scanner/snapshot primitives return ranked facts rather than `Series`/`Panel` artifacts. PR-3 must classify them honestly. The first open-DAG executor path must not pretend these are typed artifacts; bridging them requires either mapping them into an existing artifact honestly or an ADR for a new artifact type. |
 | Auto-scanner (Goal 2 from the founding vision) | The PoC is Goal 1 only (user-prompted DAG construction). Auto-scanner is the next horizon and depends on Goal 1 working. |
 | Sub-domain split inside any one MCP server | The CI lint will FAIL if a domain crosses the per-domain primitive cap, forcing a split — but the actual split work is its own follow-on PR (not in this plan). |
-| Multi-asset (FX, equities) domains | The substrate is portable; the PoC only proves the 6 rates domains currently registered. Adding FX is a sibling MCP server + a domain card — registration-only growth proves this WILL work. |
+| Multi-asset (FX, equities) domains | The substrate is portable; the PoC proves the 6 rates domains currently registered. Adding the Nth domain (e.g. FX, credit) is *not* registration-only — it is an ADR-gated config-surface change touching five files: `orchestrator/contracts.py` (Domain enum), `orchestrator/config.py` (DOMAIN_MCP_SERVERS), `orchestrator/prompts.py` (new domain prompt constant + extension to SUPERVISOR's AVAILABLE DOMAINS / DOMAIN SIGNALS cards), `orchestrator/session.py` (`_DOMAIN_PROMPTS` + `_build_domain_boundaries` labels), and `orchestrator/open_dag/resolver_keys.py` (`KNOWN_DOMAINS`). The *orchestrator code surface* (composer / validator / executor / coverage gate / Boundary A and B / synthesis) stays unchanged — that is the PoC's actual scaling guarantee. Domain growth costs ~5 file edits because each new domain ships a hand-tuned PM-vocabulary routing card (~30 lines) that the supervisor LLM reasons over for L1 routing accuracy; auto-discovering this from a folder convention would relocate the content without removing it. See `tests/eval/test_scaling_proofs.py` for the precise list of files the registration-only proof asserts unchanged. |
 | New artifact types | The 6 closed-family artifact types are the floor for the PoC. Adding a 7th is an ADR and a registry change — not in scope here. |
+| Runtime Domain registry (folder-discovery domain growth) | The Domain enum is used as a typed Pydantic `Field` on `RouteDecision.domains`, `EconomicQuantity.domain_hint`, `ChildResponse.domain`, and `BoundLeaf.domain`, AND as `dict[Domain, ...]` keys in `DOMAIN_MCP_SERVERS` / `_DOMAIN_PROMPTS`. LangChain's `with_structured_output(RouteDecision)` binds the enum at supervisor-construction time and caches the resulting tool schema; switching Domain to a runtime registry would either invalidate that cache per session or force a downgrade to `Field: str` and lose the typed coverage gate. The PoC accepts the 5-file ADR-gated config-surface change as the price of typed safety; a future ADR may revisit if the domain count grows past ~12. |
 
 ---
 
@@ -899,7 +903,7 @@ Audited against Codex's two rounds of pushback (kept here for reviewer convenien
 | Build order: `ValidationResult` first, operator cards second | Codex round 1 | `ValidationResult` is the spine; operator cards feed only L3. Unblocks more downstream substrate. |
 | Canonical shape includes `select_from_series_set ×2` | Codex round 1 | The previous shape was type-invalid against `align_series` outputting `SeriesSet`. Verified in [registry.py:338](../shared/workflow/registry.py:338). |
 | `BoundLeaf` carries `domain` + `mcp_tool_name` + `resolver_tool_key` | Codex round 1 + verified in [rates_agent/workflows/__init__.py:1079,1147](../rates_agent/workflows/__init__.py:1079) | Real resolver collision already exists; the current ad-hoc convention (bond_futures bare, policy_futures prefixed) is respected via a centralised adapter. |
-| Role-discriminant: closed-substrate fields hard-checked; free-form fields normalised-string compared and escalated as SOFT warnings | Codex round 2 | Pure string equality on LLM free-form is brittle; pure structured enums violate R5 (no curated role vocab). The split solves both. |
+| Role-discriminant: closed-substrate fields hard-checked; free-form `declared_semantic_role` and `declared_output_meaning` normalised-string compared and HARD-REFUSED on mismatch (PR-10D F4 promoted this from a soft warning to `Severity.ERROR` → `AssemblyStatus.REFUSED`) | Codex round 2 + PR-10D F4 corrective | Pure string equality on LLM free-form is brittle; pure structured enums violate R5. The split solves both. The hard-block at Boundary A is the only way to prevent a semantic-wrong-but-type-legal DAG from being executed downstream. |
 | Resolver-key adapter (`orchestrator/open_dag/resolver_keys.py`) | Codex round 2 + code verification | Don't put `<domain>::<tool>` directly into `PrimitiveNode.tool_name` — that would require a substrate migration. Adapter respects current convention; future migration is a one-file change, and shared workflow remains domain-blind. |
 | Eval matrix expanded across all 9 intent families + 3 messy-lingo + 3 adversarial | Codex round 2 | Previous matrix was relationship-heavy; risk of proving only one operator family. |
 | Boundary B compares against ORIGINAL PROMPT, not L1 decomposition | Codex round 2 | If L1 dropped a domain, decomposition is corrupted; checking against it would miss the very failure the gate exists to catch. |

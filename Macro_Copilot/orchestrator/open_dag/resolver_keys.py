@@ -57,6 +57,26 @@ Closed-family discipline (P8)
 The substrate ships the FULL set up-front so a typo at L1 or L2 surfaces
 deterministically here, not as a confusing resolver miss inside the
 executor.
+
+Scaling-claim boundary (PR-10E Codex audit gap #5)
+--------------------------------------------------
+This file is part of the orchestrator's CONFIG SURFACE, not its
+CODE SURFACE.  The PoC's 'registration-only growth' invariant
+(``tmp/orchestration.md`` §0) covers primitive + operator growth
+only.  Adding the Nth domain is an ADR-gated source change that
+updates this file in lock-step with ``orchestrator/contracts.py``
+(Domain enum), ``orchestrator/config.py`` (DOMAIN_MCP_SERVERS),
+``orchestrator/prompts.py`` (new ``<DOMAIN>_SYSTEM_PROMPT`` constant
++ extension to SUPERVISOR_SYSTEM_PROMPT's AVAILABLE DOMAINS /
+DOMAIN SIGNALS cards), and ``orchestrator/session.py``
+(``_DOMAIN_PROMPTS`` + ``_build_domain_boundaries`` labels).
+
+The orchestrator's CODE SURFACE — composer, validator, executor,
+coverage gate, Boundary A / B, synthesis — stays byte-for-byte
+unchanged on domain growth.  This file is DELIBERATELY excluded
+from ``tests/eval/test_scaling_proofs.py``'s registration-only
+proof's invariant-files list because it (correctly) needs to grow
+when a domain is added.
 """
 
 from __future__ import annotations

@@ -63,7 +63,7 @@ closed-family substrates.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -149,6 +149,29 @@ class _LeafEcho(BaseModel):
             "represent in the user's prompt?'."
         ),
     )
+    # PR-10E Codex audit gap #6 — wrong-binding detection.
+    params: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "BoundLeaf.params — the selector's authored input dict, "
+            "REDACTED of any keys/values that look primitive-name-shaped "
+            "(see ``_redact_params_for_echo``).  Surfaces slot fills "
+            "like curve_family / short_tenor / lookback_days that mirror "
+            "the user's stated intent so Boundary B can catch a wrong-"
+            "binding (right-English, wrong-slot-fills).  Iterated by "
+            "sorted keys for byte-stable echo.  INTENT-revealing, not "
+            "primitive-identity-revealing."
+        ),
+    )
+    rationale: str = Field(
+        default="",
+        description=(
+            "BoundLeaf.rationale — selector LLM's free-form English "
+            "explaining WHY this binding.  Empty when the selector did "
+            "not author one.  P11-safe per BoundLeaf.rationale's own "
+            "docstring: 'free-form English about WHY, not what tool'."
+        ),
+    )
 
 
 class _OperatorEcho(BaseModel):
@@ -170,6 +193,78 @@ class _EdgeEcho(BaseModel):
     source_node_id: str = Field(..., min_length=1)
     target_node_id: str = Field(..., min_length=1)
     target_input_slot: str = Field(..., min_length=1)
+
+
+# ============================================================================
+# PARAMS REDACTION — strip primitive-identity strings from the echo
+# (PR-10E Codex audit gap #6)
+# ============================================================================
+
+
+_PRIMITIVE_NAME_SUBSTRINGS = ("_tool",)
+
+
+def _looks_primitive_name_shaped(s: str) -> bool:
+    """Return True iff ``s`` looks like an MCP primitive identifier.
+
+    Heuristic — MCP tool names in this codebase always end in ``_tool``
+    (calculate_curve_spread_tool, get_yield_levels_tool, etc.).  Any
+    param key or stringified value carrying that substring is dropped
+    from the gate-side echo defensively, even though the selector
+    shouldn't be authoring tool-name-shaped params.
+    """
+    if not isinstance(s, str):
+        return False
+    lowered = s.lower()
+    return any(sub in lowered for sub in _PRIMITIVE_NAME_SUBSTRINGS)
+
+
+def _redact_params_for_echo(
+    params: Dict[str, Any],
+    bound: BoundLeaf,
+) -> Dict[str, Any]:
+    """Return a copy of ``params`` with primitive-identity strings stripped.
+
+    Three sources of primitive-identity are scrubbed:
+      - the bound primitive's ``mcp_tool_name``;
+      - the bound primitive's ``resolver_tool_key``;
+      - the bound primitive's ``output_field``.
+
+    Plus a defensive heuristic — any param key or stringified value
+    matching ``_looks_primitive_name_shaped`` is also dropped.
+
+    Selector-authored slot fills like ``curve_family='UST'``,
+    ``short_tenor='2Y'``, ``lookback_days=1825`` pass through verbatim
+    because none of those are primitive names — they are user-intent
+    slot fills the gate MUST see to catch a wrong-binding.
+
+    Returns a fresh dict (sorted keys for byte-stable echo).
+    """
+    sensitive: Tuple[str, ...] = tuple(
+        s for s in (
+            bound.mcp_tool_name,
+            bound.resolver_tool_key,
+            bound.output_field,
+        )
+        if s
+    )
+
+    def _contains_sensitive(value: Any) -> bool:
+        if not isinstance(value, str):
+            return False
+        return any(s and s in value for s in sensitive)
+
+    redacted: Dict[str, Any] = {}
+    for key in sorted(params.keys()):
+        if _contains_sensitive(key) or _looks_primitive_name_shaped(key):
+            continue
+        value = params[key]
+        if _contains_sensitive(value) or _looks_primitive_name_shaped(
+            value if isinstance(value, str) else ""
+        ):
+            continue
+        redacted[key] = value
+    return redacted
 
 
 class DagEcho(BaseModel):
@@ -320,6 +415,15 @@ def build_dag_echo(
             ),
             semantic_role=bound.declared_semantic_role,
             output_meaning=bound.declared_output_meaning,
+            # PR-10E Codex audit gap #6 — wrong-binding detection.
+            # Surface selector-authored intent slot-fills (curve_family,
+            # short_tenor, lookback_days, etc.) so Boundary B can spot
+            # a right-English / wrong-slot-fills bind.  P11-blindness
+            # preserved by _redact_params_for_echo (strips any param
+            # key/value containing the primitive's mcp_tool_name,
+            # resolver_tool_key, or output_field).
+            params=_redact_params_for_echo(bound.params, bound),
+            rationale=bound.rationale,
         ))
 
     # Operator echoes — by node_id sort order.
@@ -434,6 +538,21 @@ def render_dag_echo(echo: DagEcho) -> str:
             f"units={leaf.units if leaf.units else 'unspecified'}; "
             f"frequency={leaf.frequency if leaf.frequency else 'unspecified'}"
         )
+        # PR-10E Codex audit gap #6 — intent-revealing fields the gate
+        # uses to catch wrong-binding (right-English, wrong-slot-fills).
+        if leaf.params:
+            params_str = ", ".join(
+                f"{k}={leaf.params[k]!r}" for k in sorted(leaf.params)
+            )
+            lines.append(f"    params={{{params_str}}}")
+        else:
+            lines.append("    params=(none declared)")
+        rationale_text = (
+            leaf.rationale.strip()
+            if leaf.rationale and leaf.rationale.strip()
+            else "(selector did not author one)"
+        )
+        lines.append(f"    rationale={rationale_text}")
     lines.append("")
     lines.append(f"OPERATORS ({len(echo.operators)}):")
     for op in echo.operators:

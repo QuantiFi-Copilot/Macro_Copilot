@@ -39,8 +39,47 @@ from pydantic import BaseModel, ConfigDict, Field
 class Domain(str, Enum):
     """The set of domain specialists the supervisor can route to.
 
-    New domains are added here first, then wired into ``DOMAIN_MCP_SERVERS``
-    in ``config.py`` and given a system prompt in ``prompts.py``.
+    Scaling boundary (see ``tmp/orchestration.md`` §0 + §7 — PR-10E
+    Codex audit gap #5)
+    -------------------------------------------------------------------
+    This enum is part of the orchestrator's CONFIG SURFACE, not its
+    CODE SURFACE.  The PoC's 'registration-only growth' invariant
+    applies to primitives and operators only — adding the Nth domain
+    is an ADR-gated source change that updates EXACTLY five files in
+    lock-step:
+
+      1. this enum (add the new member)
+      2. ``orchestrator/config.py``      — DOMAIN_MCP_SERVERS entry
+      3. ``orchestrator/prompts.py``     — new ``<DOMAIN>_SYSTEM_PROMPT``
+         constant AND extend SUPERVISOR_SYSTEM_PROMPT's AVAILABLE
+         DOMAINS / DOMAIN SIGNALS / decomposition-examples blocks
+      4. ``orchestrator/session.py``     — ``_DOMAIN_PROMPTS`` map +
+         ``_build_domain_boundaries.domain_labels``
+      5. ``orchestrator/open_dag/resolver_keys.py`` — KNOWN_DOMAINS
+         (declare bare-name vs prefixed keying convention)
+
+    The orchestrator's CODE SURFACE — composer, validator, executor,
+    coverage gate, Boundary A / B, synthesis — stays byte-for-byte
+    unchanged when a new domain is added.  That is the PoC's actual
+    scaling claim; the test that proves it is
+    ``tests/eval/test_scaling_proofs.py`` (which deliberately tests
+    a new primitive + a new operator, NOT a new domain).
+
+    Why the five-file cost is intentional:
+      - Domain is a typed Pydantic Field on RouteDecision /
+        EconomicQuantity / ChildResponse / BoundLeaf; LangChain's
+        ``with_structured_output`` caches the tool schema at
+        supervisor construction.  A runtime registry would either
+        invalidate that cache per session or force a downgrade to
+        ``Field: str`` and lose the typed coverage gate.
+      - Each domain ships a hand-tuned ~30-line PM-vocabulary card
+        inside SUPERVISOR_SYSTEM_PROMPT (signal words like 'SFR',
+        'TY1', 'SOFR', 'TIPS') that the supervisor LLM reasons over
+        for L1 routing accuracy.  Auto-discovering this from a
+        folder convention would relocate the content without
+        eliminating it.
+
+    A future ADR may revisit if the domain count grows past ~12.
     """
 
     SOVEREIGN_BONDS = "sovereign_bonds"

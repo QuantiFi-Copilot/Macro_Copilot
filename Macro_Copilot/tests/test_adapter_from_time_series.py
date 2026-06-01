@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import math
 from datetime import date, timedelta
+from pathlib import Path
+from typing import Any, Dict
 from unittest.mock import patch
 
 import numpy as np
@@ -1580,6 +1582,200 @@ class TestLineageContinuity:
         ln2 = s.lineage.append(op)
         assert [step.kind for step in ln2.steps] == ["primitive", "operator"]
         assert ln2.head_hash == op.hash
+
+
+class TestDataContentFingerprint_PR10E:
+    """PR-10E Codex audit gap #1 — the live bridge must wire
+    data_content_fingerprint + data_vintage into PrimitiveStep so the
+    lineage hash actually changes when vendor data content changes.
+
+    Tested via the canonical OIS rate-level primitive's live wire
+    output dict (every OIS rate-level call shares this exact schema +
+    bridge call site).  Two payloads differ ONLY in a single revised
+    cell value with identical params, identical as_of_date, and
+    identical YAML — head_hash MUST differ."""
+
+    def _synthetic_output_class(self):
+        """Minimal Output schema that the bridge accepts (mirrors the
+        TestHighLevelWrapper_Synthetic helper above)."""
+        from pydantic import BaseModel as _BM
+        from pydantic import ConfigDict
+
+        class _CurrentMetrics(_BM):
+            model_config = ConfigDict(extra="forbid")
+            as_of_date: str
+            curve_family: str
+
+        class _Output(_BM):
+            model_config = ConfigDict(extra="forbid")
+            current_metrics: _CurrentMetrics
+            time_series: TimeSeries
+
+        return _Output
+
+    def _synthetic_input_class(self):
+        from pydantic import BaseModel as _BM
+        from pydantic import ConfigDict
+
+        class _Input(_BM):
+            model_config = ConfigDict(extra="forbid")
+            curve_family: str
+            tenor: str
+            lookback_days: int = 365
+
+        return _Input
+
+    def _synthetic_config(self) -> ToolConfig:
+        return ToolConfig(
+            tool=ToolMeta(name="pr10e", domain="d", description="x"),
+            methodology=MethodologyMeta(what_it_does="x"),
+            conventions={
+                "ffill_limit_days": Convention(
+                    value=5, source="test", rationale="test",
+                ),
+            },
+        )
+
+    def _output_dict(
+        self, value_for_first_row: float, as_of: str = "2026-04-30",
+    ) -> dict:
+        """Minimal output dict — only the first-row value varies
+        between the two payloads compared below."""
+        return {
+            "current_metrics": {
+                "as_of_date": as_of,
+                "curve_family": "USD_SOFR_OIS",
+            },
+            "time_series": {
+                "series_name": "pr10e_fingerprint_fixture",
+                "units": "percent",
+                "description": "PR-10E fingerprint sensitivity fixture.",
+                "rows": [
+                    {"date": "2026-04-28", "value": value_for_first_row},
+                    {"date": "2026-04-29", "value": 4.52},
+                    {"date": "2026-04-30", "value": 4.55},
+                ],
+            },
+        }
+
+    def _bridge(self, payload: Dict[str, Any]) -> Series:
+        """Run the live high-level Series bridge against a synthetic
+        Output schema.  EVERY production primitive flows through this
+        same `tool_output_to_artifact_series` call — exercising it with
+        a synthetic schema keeps the test decoupled from any single
+        primitive's wire shape changing yet still proves the bridge's
+        PR-10E fingerprint wiring."""
+        Output = self._synthetic_output_class()
+        Input = self._synthetic_input_class()
+        cfg = self._synthetic_config()
+        params = Input(curve_family="USD_SOFR_OIS", tenor="2Y")
+        return tool_output_to_artifact_series(
+            payload,
+            output_class=Output,
+            output_field="time_series",
+            tool_name="pr10e_fingerprint_tool",
+            tool_config=cfg,
+            params=params,
+        )
+
+    def test_bridge_emits_fingerprint_and_vintage(self):
+        """Both new fields must be populated on every live-bridge
+        artifact (back-compat path no longer the production default)."""
+        a = self._bridge(self._output_dict(4.50))
+        step = a.lineage.steps[0]
+        assert isinstance(step.data_content_fingerprint, str)
+        assert len(step.data_content_fingerprint) == 64  # SHA-256 hex
+        assert step.data_vintage == step.as_of_date
+        assert step.data_vintage == "2026-04-30"
+
+    def test_single_row_revision_changes_lineage_hash(self):
+        """The core sensitivity contract: SAME params + SAME as_of_date
+        + SAME YAML + DIFFERENT row value → DIFFERENT head_hash.
+        Without PR-10E's bridge wiring this assertion would FAIL — the
+        two artifacts would share a hash."""
+        a = self._bridge(self._output_dict(4.50))
+        b = self._bridge(self._output_dict(4.99))
+        assert a.lineage.head_hash != b.lineage.head_hash, (
+            "PR-10E Codex audit gap #1: vendor-revised payload "
+            "produced the same lineage hash — fingerprint not wired"
+        )
+
+    def test_identical_payload_reproduces_lineage_hash(self):
+        """Determinism guard: same payload → same hash, every time."""
+        d = self._output_dict(4.50)
+        a = self._bridge(d)
+        b = self._bridge(d)
+        assert a.lineage.head_hash == b.lineage.head_hash
+
+
+class TestPanelFingerprint_PR10E:
+    """PR-10E Codex audit gap #1 (Panel-path sibling) — the five
+    production Panel-emitting primitives + the high-level Panel bridge
+    must change their lineage hash when the panel payload changes,
+    even when params + as_of_date are identical."""
+
+    def test_panel_payload_fingerprint_is_deterministic(self):
+        """Same DataFrame → same fingerprint, both via the
+        payload-helper and via the Panel-instance wrapper."""
+        from shared.artifacts.adapters.from_time_series import (
+            _compute_panel_payload_fingerprint,
+        )
+        df = pd.DataFrame(
+            {"col_a": [1.0, 2.0, 3.0]},
+            index=pd.DatetimeIndex(
+                ["2025-09-12", "2025-09-13", "2025-09-15"]
+            ),
+        )
+        units = {"col_a": TimeSeriesUnits.PERCENT}
+        h1 = _compute_panel_payload_fingerprint(df, units)
+        h2 = _compute_panel_payload_fingerprint(df, units)
+        assert h1 == h2
+        assert len(h1) == 64
+
+    def test_single_cell_revision_changes_panel_fingerprint(self):
+        """One cell revised → fingerprint changes.  Proves cell-level
+        sensitivity, not just whole-payload sensitivity."""
+        from shared.artifacts.adapters.from_time_series import (
+            _compute_panel_payload_fingerprint,
+        )
+        df_a = pd.DataFrame(
+            {"col_a": [1.0, 2.0, 3.0]},
+            index=pd.DatetimeIndex(
+                ["2025-09-12", "2025-09-13", "2025-09-15"]
+            ),
+        )
+        df_b = pd.DataFrame(
+            {"col_a": [1.0, 2.0, 3.99]},
+            index=pd.DatetimeIndex(
+                ["2025-09-12", "2025-09-13", "2025-09-15"]
+            ),
+        )
+        units = {"col_a": TimeSeriesUnits.PERCENT}
+        h_a = _compute_panel_payload_fingerprint(df_a, units)
+        h_b = _compute_panel_payload_fingerprint(df_b, units)
+        assert h_a != h_b, (
+            "PR-10E Codex audit gap #1: single-cell Panel revision "
+            "produced the same fingerprint"
+        )
+
+    def test_different_units_change_panel_fingerprint(self):
+        """Same payload values, different units → different
+        fingerprint.  Units are part of payload identity, not free
+        metadata."""
+        from shared.artifacts.adapters.from_time_series import (
+            _compute_panel_payload_fingerprint,
+        )
+        df = pd.DataFrame(
+            {"col_a": [1.0, 2.0]},
+            index=pd.DatetimeIndex(["2025-09-12", "2025-09-15"]),
+        )
+        h_pct = _compute_panel_payload_fingerprint(
+            df, {"col_a": TimeSeriesUnits.PERCENT},
+        )
+        h_bps = _compute_panel_payload_fingerprint(
+            df, {"col_a": TimeSeriesUnits.BPS},
+        )
+        assert h_pct != h_bps
 
 
 # ===========================================================================

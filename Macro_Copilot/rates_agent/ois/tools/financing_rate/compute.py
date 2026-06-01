@@ -178,6 +178,19 @@ def compute_financing_rate(
         step_params["proxy_curve"] = params.proxy_curve
 
     as_of_date_iso = rate_series.index[-1].strftime("%Y-%m-%d")
+    # PR-10E Codex audit gap #1: build the Panel payload + units mapping
+    # upfront so we can fingerprint it BEFORE constructing the
+    # PrimitiveStep.  Same values reused below when wrapping as the
+    # typed Panel artifact; no behaviour change beyond the lineage-hash
+    # hardening.
+    panel_df = rate_series.astype(float).to_frame(name=series_key)
+    units_by_column = {series_key: TimeSeriesUnits.PERCENT}
+    from shared.artifacts.adapters.from_time_series import (
+        _compute_panel_payload_fingerprint,
+    )
+    data_content_fingerprint = _compute_panel_payload_fingerprint(
+        panel_df, units_by_column,
+    )
     step = PrimitiveStep.build(
         name=_TOOL_NAME,
         version=_TOOL_VERSION,
@@ -186,16 +199,17 @@ def compute_financing_rate(
         output_field="series",
         as_of_date=as_of_date_iso,
         tool_config_path=str(CONFIG_PATH),
+        data_content_fingerprint=data_content_fingerprint,
+        data_vintage=as_of_date_iso,
     )
     lineage = Lineage.from_steps([step])
 
     # Wrap as single-column Panel — the shape ``evaluate_trades``
     # consumes for financing.  Column name is the series_key so a
     # consumer can identify it.
-    panel_df = rate_series.astype(float).to_frame(name=series_key)
     panel_artifact = Panel(
         payload=panel_df,
-        units_by_column={series_key: TimeSeriesUnits.PERCENT},
+        units_by_column=units_by_column,
         missingness_policy=RawNoCleaning(),
         lineage=lineage,
     )
