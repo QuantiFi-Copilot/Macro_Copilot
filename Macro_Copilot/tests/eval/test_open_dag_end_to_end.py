@@ -1,31 +1,42 @@
-"""tests/eval/test_open_dag_end_to_end.py — PR-10A Codex F2.
+"""tests/eval/test_open_dag_end_to_end.py — open-DAG pipeline E2E tests.
 
-A TRUE end-to-end test that exercises the OpenDagPipeline through
-its full L1 → L3 → L2 → L4 → L4.5 → L5 → L6 stack — including the
-substrate's real ``execute_workflow`` (NOT the dry-run path).
+What lives here, honestly
+==========================
 
-What this proves
-================
+Three flavours of "end-to-end":
 
-  - The default executor adapter
-    (``orchestrator.open_dag.default_executor``) BRIDGES the open-
-    DAG pipeline's ``ExecutorCallback`` Protocol to the substrate's
-    sync ``execute_workflow``.
-  - A canonical 1-leaf transform (rolling_zscore on a synthetic
-    Series) PRODUCES a real ``Lineage`` (not None) and a non-empty
-    ``executed_summary``.
-  - The ``RunLineage`` joining intent + compute lineage is
-    correctly built and is_executed == True.
+  1. PIPELINE-WIRING tests (PR-10A / PR-10C lineage).  These
+     verify the full L1 → L6 plumbing — including the L5 default
+     executor adapter — by MONKEYPATCHING
+     ``shared.workflow.executor.execute_workflow`` to return a
+     synthesized WorkflowResult.  They prove the pipeline carries
+     the right shape end-to-end but DO NOT prove the substrate
+     bridge / executor format compat.  These tests are named with
+     "monkeypatched" in the function name so a future auditor
+     knows exactly what they cover.
+
+  2. REAL-EXECUTOR canonical test (PR-10D Codex F1 corrective).
+     ``test_canonical_cross_domain_correlation_REAL_executor`` runs
+     the actual canonical query — sov 2s10s + iib 5y breakeven →
+     align → select x2 → correlation — through the REAL substrate
+     ``execute_workflow`` with synthetic primitive callables built
+     to the bridge's required format (``TimeSeries`` field +
+     ``current_metrics.as_of_date`` + ``conventions.ffill_limit_days``).
+     NO monkeypatch.  Asserts strict PASS + real Lineage with
+     primitive + operator steps ending in correlation.
+
+  3. Live-LLM tests live in ``tests/eval/test_open_dag_live_llm.py``
+     and are gated by ``ANTHROPIC_API_KEY``.  They cover L1/L3/L4.5
+     LLM correctness on the canonical query and adversarial cases.
 
 Mocking discipline
 ==================
 
-The LLM-driven boundaries (Supervisor / Composer / CoverageGate /
-AnswerRenderer) are mocked because the eval gating per §PR-10 is
-"shape + intent correctness," not LLM correctness.  But the L5
-EXECUTOR is REAL — we use a synthetic resolver that returns a
-deterministic Series so ``execute_workflow`` actually walks the
-DAG.
+LLM-driven boundaries (Router / Composer / Gate / AnswerRenderer)
+are mocked because plan §PR-10 line 798 gates on shape+intent
+correctness given correct LLM output; live LLM testing is the
+gated-by-env-var harness.  The TEST NAMES say plainly what's
+mocked vs real so no audit confuses the two again.
 """
 
 from __future__ import annotations
@@ -60,6 +71,7 @@ from orchestrator.open_dag import (
 from orchestrator.open_dag.contracts import LeafHole, LeafRequest
 from shared.artifacts.lineage import FetchStep, Lineage, LineageHash
 from shared.artifacts.types import Series
+from shared.schemas import TimeSeries, TimeSeriesRow
 from shared.schemas.time_series import TimeSeriesUnits
 from shared.workflow.registry import PrimitiveSpec
 from shared.workflow.types import OperatorNode, Workflow, WorkflowEdge
@@ -234,7 +246,7 @@ class _MockRenderer:
 
 
 @pytest.mark.asyncio
-async def test_open_dag_end_to_end_with_real_executor_path(monkeypatch, _synthetic_resolver):
+async def test_pipeline_wiring_with_monkeypatched_executor(monkeypatch, _synthetic_resolver):
     """PR-10A Codex F2: prove the pipeline's executor_callback IS
     wired through to the substrate's execute_workflow.
 
@@ -268,16 +280,24 @@ async def test_open_dag_end_to_end_with_real_executor_path(monkeypatch, _synthet
     monkeypatch.setattr(
         de_mod, "execute_workflow", _patched_execute_workflow,
     )
-    """PR-10A Codex F2: a TRUE end-to-end run through the L1 → L6
-    stack with the substrate's real ``execute_workflow`` as the
-    L5 layer.
+    """PR-10A pipeline-wiring test, monkeypatched executor.
+
+    Mocks LLM boundaries AND monkeypatches
+    ``shared.workflow.executor.execute_workflow`` to a deterministic
+    stub.  Verifies the default_executor adapter constructs the
+    correct workflow shape and that the pipeline carries the
+    returned WorkflowResult into the L6 AnswerRenderer.
+
+    Does NOT exercise the real substrate ``execute_workflow``.  For
+    that, see test_canonical_cross_domain_correlation_REAL_executor
+    below (PR-10D Codex F1 corrective).
 
     Asserts:
       - Pipeline reaches PASS.
       - RunLineage is_executed == True (compute_lineage populated).
       - The lineage hash is non-empty (real substrate Lineage).
       - The L6 AnswerRenderer received the executed_summary +
-        lineage_head_hash from the real executor's output.
+        lineage_head_hash from the (monkeypatched) executor's output.
     """
     # Reset mock state.
     _MockRenderer.last_summary = None
@@ -378,7 +398,7 @@ async def test_default_executor_returns_none_on_executor_failure():
 
 
 @pytest.mark.asyncio
-async def test_canonical_cross_domain_correlation_end_to_end(monkeypatch):
+async def test_canonical_cross_domain_correlation_pipeline_wiring_monkeypatched(monkeypatch):
     """PR-10C Codex F1: the plan's CANONICAL gap-closer query —
     'Correlation between US 2s10s and 5Y breakeven over the last 5
     years' — must run END-TO-END through the open-DAG pipeline with
@@ -471,13 +491,10 @@ async def test_canonical_cross_domain_correlation_end_to_end(monkeypatch):
             declared_output_artifact_type=request.required_artifact_type,
             declared_units=TimeSeriesUnits.PERCENT,
             declared_frequency=Frequency.DAILY,
-            declared_semantic_role=(
-                "spread_level" if leaf_id == "leaf_a" else "breakeven_level"
-            ),
-            declared_output_meaning=(
-                "UST 2s10s" if leaf_id == "leaf_a"
-                else "USD 5Y breakeven"
-            ),
+            # PR-10D Codex F4: echo the request fields so
+            # Boundary A's hard role-discriminant check accepts.
+            declared_semantic_role=request.semantic_role,
+            declared_output_meaning=request.requested_output_meaning,
             fit_confidence=0.95,
         )
 
@@ -575,3 +592,276 @@ def test_executed_summary_from_result_format():
     summary = executed_summary_from_result(_FakeResult())
     assert summary.startswith("_Terminal:")
     assert "workflow x: leaf -> op" in summary
+
+
+# ============================================================================
+# PR-10D Codex F1 — REAL end-to-end (no monkeypatch on execute_workflow)
+# ============================================================================
+
+
+_REAL_E2E_CONFIG_YAML = """
+tool:
+  name: synthetic_pair_stats_tool
+  domain: synthetic
+  description: Synthetic primitive for the REAL canonical end-to-end test (PR-10D F1).
+  category: desk_invariant_primitive
+conventions:
+  ffill_limit_days:
+    value: 5
+    source: pr10d_f1_test_default
+    rationale: Required by tool_output_to_artifact_series.
+methodology:
+  what_it_does: >-
+    Returns a deterministic synthetic series.  Used only by the
+    PR-10D F1 canonical end-to-end test to exercise the REAL
+    substrate executor without monkeypatching.
+"""
+
+
+class _SyntheticPairInput(BaseModel):
+    """*Input schema for the synthetic pair-stats primitive."""
+    series_name: str = "synthetic_pair_series"
+    n_rows: int = 252
+    base: float = 4.0
+    drift: float = 0.005
+    units: str = "bps"
+
+
+class _SyntheticPairMetrics(BaseModel):
+    as_of_date: str
+
+
+class _SyntheticPairOutput(BaseModel):
+    """*Output schema with REAL TimeSeries field + current_metrics.
+    The substrate bridge (tool_output_to_artifact_series) validates
+    against this and extracts the time_series field."""
+    current_metrics: _SyntheticPairMetrics
+    time_series: TimeSeries
+
+
+def _make_real_synthetic_callable(seed_offset: float):
+    """Build a primitive callable returning the dict shape the
+    substrate bridge consumes."""
+    def _cb(*, engine, params, config):
+        dates = pd.bdate_range("2020-01-01", periods=params.n_rows)
+        values = [
+            params.base + seed_offset + i * params.drift
+            for i in range(params.n_rows)
+        ]
+        rows = [
+            TimeSeriesRow(date=d.strftime("%Y-%m-%d"), value=v)
+            for d, v in zip(dates, values)
+        ]
+        return {
+            "current_metrics": {"as_of_date": rows[-1].date},
+            "time_series": {
+                "series_name": params.series_name,
+                "units": params.units,
+                "description": "Synthetic pair-stats series",
+                "rows": [r.model_dump() for r in rows],
+            },
+        }
+    return _cb
+
+
+@pytest.fixture
+def _real_e2e_resolver(tmp_path):
+    """Real PrimitiveResolver wiring two synthetic primitives that
+    the substrate executor + bridge will REALLY invoke (no mocks)."""
+    cfg_dir = tmp_path / "synth_e2e"
+    cfg_dir.mkdir()
+    cfg = cfg_dir / "config.yaml"
+    cfg.write_text(_REAL_E2E_CONFIG_YAML)
+
+    leaf_a_spec = PrimitiveSpec(
+        tool_name="synthetic_pair_stats_tool_a",
+        callable=_make_real_synthetic_callable(seed_offset=0.0),
+        input_class=_SyntheticPairInput,
+        output_class=_SyntheticPairOutput,
+        config_path=cfg,
+        output_field_units={"time_series": "bps"},
+        output_artifact_type="Series",
+    )
+    leaf_b_spec = PrimitiveSpec(
+        tool_name="synthetic_pair_stats_tool_b",
+        callable=_make_real_synthetic_callable(seed_offset=0.15),
+        input_class=_SyntheticPairInput,
+        output_class=_SyntheticPairOutput,
+        config_path=cfg,
+        output_field_units={"time_series": "bps"},
+        output_artifact_type="Series",
+    )
+    registry = {
+        "synthetic_pair_stats_tool_a": leaf_a_spec,
+        "synthetic_pair_stats_tool_b": leaf_b_spec,
+    }
+
+    def _resolver(tool_name):
+        if tool_name in registry:
+            return registry[tool_name]
+        raise KeyError(tool_name)
+
+    return _resolver
+
+
+@pytest.mark.asyncio
+async def test_canonical_cross_domain_correlation_REAL_executor(
+    _real_e2e_resolver,
+):
+    """PR-10D Codex F1: the canonical gap-closer query —
+    'Correlation between US 2s10s and 5Y breakeven over 5y' —
+    proven END-TO-END with the REAL substrate execute_workflow.
+
+    NO monkeypatching of execute_workflow.  The substrate executor
+    walks the canonical pair-stats shape:
+
+      leaf_a + leaf_b
+        -> align_series -> select x2 -> correlation
+        -> ScalarMetric
+
+    All boundary contracts run for real: PR-1 substrate validator,
+    PR-4 Assembler + role-discriminant check, PR-8 gate, PR-9
+    AnswerRenderer.  Only the LLM-driven sub-components (Router /
+    Composer / Gate / AnswerRenderer) are mocked — the plan §PR-10
+    gating IS shape+intent correctness given correct LLM output, and
+    live LLM testing is covered in test_open_dag_live_llm.py.
+
+    Asserts:
+      - outcome.status == "PASS" (strict PASS, not PASS_DRYRUN).
+      - run_lineage.is_executed == True.
+      - run_lineage.compute_lineage is a real Lineage with primitive
+        steps + operator steps ending in correlation.
+      - the terminal artifact is a ScalarMetric.
+    """
+    from orchestrator.contracts import (
+        Domain, EconomicQuantity, IntentTag, RouteAction, RouteDecision,
+    )
+    from orchestrator.open_dag import (
+        BoundLeaf, ComposerRefusal, Frequency,
+        GOLDEN_RELATIONSHIP_CORRELATION,
+        GateVerdict, OpenDagPipeline,
+        build_default_executor_callback,
+    )
+    from shared.artifacts.registry import ArtifactTypeName
+
+    class _Router:
+        async def route(self, prompt: str) -> RouteDecision:
+            return RouteDecision(
+                action=RouteAction.MULTI_DOMAIN,
+                domains=[
+                    Domain.SOVEREIGN_BONDS,
+                    Domain.INFLATION_INDEXED_BONDS,
+                ],
+                rationale="canonical cross-domain",
+                intent_tag=IntentTag.RELATIONSHIP,
+                decomposition=[
+                    EconomicQuantity(
+                        name="us_2s10s",
+                        nl_description="UST 2s10s curve spread",
+                        domain_hint=Domain.SOVEREIGN_BONDS,
+                    ),
+                    EconomicQuantity(
+                        name="us_5y_breakeven",
+                        nl_description="USD 5Y breakeven",
+                        domain_hint=Domain.INFLATION_INDEXED_BONDS,
+                    ),
+                ],
+            )
+
+    class _CanonicalShape:
+        async def compose(self, **kw):
+            return GOLDEN_RELATIONSHIP_CORRELATION
+
+    class _PassGate:
+        async def check(self, **kw):
+            return GateVerdict(status="PASS", reason="canonical")
+
+    rendered_lineage_hashes: List[str] = []
+
+    class _Renderer:
+        async def render(self, **kw) -> str:
+            rendered_lineage_hashes.append(
+                kw.get("lineage_head_hash", ""),
+            )
+            return f"REAL_E2E_ANSWER: {kw.get('executed_summary', '')}"
+
+    async def selector_cb(*, leaf_id, request, timeout_s):
+        # Bind to a real synthetic tool whose callable the substrate
+        # executor will invoke for REAL.
+        tool = (
+            "synthetic_pair_stats_tool_a" if leaf_id == "leaf_a"
+            else "synthetic_pair_stats_tool_b"
+        )
+        return BoundLeaf(
+            leaf_id=leaf_id,
+            domain=request.domain_hint,
+            mcp_tool_name=tool,
+            resolver_tool_key=tool,
+            params={"series_name": f"synth_{leaf_id}"},
+            output_field="time_series",
+            declared_output_artifact_type=ArtifactTypeName.SERIES,
+            declared_units=TimeSeriesUnits.BPS,
+            declared_frequency=Frequency.DAILY,
+            # PR-10D F4: echo the LeafRequest's role + meaning so
+            # Boundary A's hard role-discriminant check accepts.
+            declared_semantic_role=request.semantic_role,
+            declared_output_meaning=request.requested_output_meaning,
+            fit_confidence=0.95,
+        )
+
+    pipeline = OpenDagPipeline(
+        router=_Router(),
+        composer=_CanonicalShape(),
+        coverage_gate=_PassGate(),
+        answer_renderer=_Renderer(),
+        selectors={
+            Domain.SOVEREIGN_BONDS: selector_cb,
+            Domain.INFLATION_INDEXED_BONDS: selector_cb,
+        },
+        primitive_resolver=_real_e2e_resolver,
+        # The REAL default executor — wraps shared.workflow.executor.execute_workflow
+        # in an async-friendly callable.  NO MONKEYPATCH.
+        executor_callback=build_default_executor_callback(
+            engine=None,
+            primitive_resolver=_real_e2e_resolver,
+        ),
+    )
+
+    outcome = await pipeline.run(
+        "Correlation between US 2s10s and 5Y breakeven over 5y",
+    )
+
+    # PR-10D F1: strict PASS — substrate executor ran for REAL.
+    assert outcome.status == "PASS", (
+        f"PR-10D F1: REAL canonical end-to-end must reach strict "
+        f"PASS; got status={outcome.status} markdown="
+        f"{outcome.markdown[:300]}"
+    )
+    assert outcome.is_pass, "is_pass must be strict PASS"
+    # RunLineage carries a REAL Lineage (not None).
+    assert outcome.run_lineage is not None
+    assert outcome.run_lineage.is_executed
+    assert outcome.run_lineage.compute_lineage is not None
+    assert outcome.run_lineage.head_hash is not None
+    # The L6 renderer received the real hash.
+    assert len(rendered_lineage_hashes) == 1
+    assert rendered_lineage_hashes[0] == outcome.run_lineage.head_hash
+    # The compute lineage contains PrimitiveSteps + OperatorSteps
+    # ending in correlation.
+    steps = outcome.run_lineage.compute_lineage.steps
+    step_kinds = [s.kind for s in steps]
+    assert "primitive" in step_kinds, (
+        f"Compute lineage must contain primitive step(s); got kinds "
+        f"{step_kinds}"
+    )
+    assert "operator" in step_kinds, (
+        f"Compute lineage must contain operator step(s); got kinds "
+        f"{step_kinds}"
+    )
+    # The terminal operator is correlation.
+    terminal_step = steps[-1]
+    assert terminal_step.kind == "operator"
+    assert terminal_step.name == "correlation", (
+        f"Terminal operator step must be correlation; got "
+        f"{terminal_step.name}"
+    )

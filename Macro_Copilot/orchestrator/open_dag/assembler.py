@@ -781,22 +781,47 @@ class Assembler:
                     },
                 ))
 
-            # 4. Free-form fields — SOFT warnings.
+            # 4. Free-form role-discriminant fields — HARD ERROR
+            #    (PR-10D Codex F4).
+            #
+            # The original contract (plan §5 + plan-decision #4 "Two
+            # trust boundaries") said semantic-wrong-but-type-legal
+            # candidates MUST be rejected by Boundary A via the role
+            # discriminant — NOT warned.  Pre-PR-10D this was a
+            # warning, which let role-mismatched DAGs reach Boundary
+            # B for soft consideration.  Hardening to ERROR makes
+            # the rejection mechanical:
+            #
+            #   - The repair loop's leaf_rebinder runs ONE round
+            #     (Selector may correct the binding's declared
+            #     fields).
+            #   - If still mismatched after rebind, AssemblyResult is
+            #     REFUSED.
+            #   - Boundary B never sees a role-mismatched DAG.
+            #
+            # P11 + the no-role-enum ruling (rulings #1, #5) are
+            # honoured: this is still a mechanical comparison of
+            # LLM-authored free-form English — no curated role
+            # vocabulary.  ``_normalise`` lowercases + whitespace-
+            # collapses so trivial casing differences don't trip
+            # the gate.
             if _normalise(req.semantic_role) != _normalise(
                 bound.declared_semantic_role,
             ):
                 out.append(ValidationError(
                     code=ErrorCode.E_ROLE_DISCRIMINANT_MISMATCH,
                     owner_layer=OwnerLayer.L2_BINDING,
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                     message=(
                         f"Assembler contract check: leaf "
                         f"{hole.node_id!r} semantic_role mismatch "
                         f"(LeafRequest: "
                         f"{req.semantic_role!r}; BoundLeaf: "
-                        f"{bound.declared_semantic_role!r}).  SOFT "
-                        "warning — Boundary B receives this as "
-                        "supplementary evidence."
+                        f"{bound.declared_semantic_role!r}).  HARD "
+                        "ERROR — Boundary A rejects to prevent a "
+                        "semantic-wrong-but-type-legal DAG from "
+                        "reaching execution.  Per the bounded "
+                        "repair loop the Selector may rebind once."
                     ),
                     leaf_id=hole.node_id,
                     node_id=hole.node_id,
@@ -813,12 +838,11 @@ class Assembler:
                 out.append(ValidationError(
                     code=ErrorCode.E_ROLE_DISCRIMINANT_MISMATCH,
                     owner_layer=OwnerLayer.L2_BINDING,
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                     message=(
                         f"Assembler contract check: leaf "
                         f"{hole.node_id!r} requested_output_meaning "
-                        "mismatch.  SOFT warning — Boundary B "
-                        "receives this as supplementary evidence."
+                        "mismatch.  HARD ERROR — Boundary A rejects."
                     ),
                     leaf_id=hole.node_id,
                     node_id=hole.node_id,

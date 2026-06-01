@@ -221,6 +221,15 @@ def _expected_step_hash(step: Any) -> LineageHash:
             "output_field": step.output_field,
             "as_of_date": step.as_of_date,
         }
+        # PR-10D Codex F5: mirror the optional new identity-bearing
+        # fields exactly as PrimitiveStep.build folds them in (only
+        # when populated, preserving back-compat).
+        dcf = getattr(step, "data_content_fingerprint", None)
+        if dcf is not None:
+            params["data_content_fingerprint"] = dcf
+        dv = getattr(step, "data_vintage", None)
+        if dv is not None:
+            params["data_vintage"] = dv
     else:
         params = step.params
     return _compute_step_hash(
@@ -429,6 +438,25 @@ class PrimitiveStep(BaseModel):
     output_field: str  # e.g., "time_series_spread"
     as_of_date: str  # ISO YYYY-MM-DD from the primitive snapshot
     input_hashes: Tuple[LineageHash, ...] = ()  # always () in v1
+    # PR-10D Codex F5: lineage hardening — explicit data content +
+    # vintage fields.
+    #
+    # ``data_content_fingerprint`` — stable SHA-256 over canonicalised
+    # TimeSeries content (series_name + units + dates + values).  When
+    # populated, IS in the hash.  Captures the "if the vendor revises
+    # the SAME date's value, the lineage hash MUST change" property
+    # the original contract demanded.  Optional + nullable for
+    # backwards compat: existing PrimitiveStep.build calls that don't
+    # supply it produce byte-identical hashes to before.
+    #
+    # ``data_vintage`` — explicit vendor data-vintage stamp.  V1
+    # implementation: same value as ``as_of_date`` (which IS the
+    # snapshot's vintage stamp from current_metrics).  Adds the
+    # vintage as a NAMED first-class field so downstream lineage
+    # consumers don't have to infer it from as_of_date.  Optional +
+    # nullable for back-compat.
+    data_content_fingerprint: Optional[str] = None
+    data_vintage: Optional[str] = None
     hash: LineageHash
 
     @classmethod
@@ -444,6 +472,8 @@ class PrimitiveStep(BaseModel):
         tool_config_path: Optional[str] = None,
         methodology_version_id: Optional[int] = None,
         input_hashes: Tuple[LineageHash, ...] = (),
+        data_content_fingerprint: Optional[str] = None,
+        data_vintage: Optional[str] = None,
     ) -> "PrimitiveStep":
         # Fold the primitive identity bits into a derived dict so
         # the existing _compute_step_hash recipe applies unchanged.
@@ -464,6 +494,21 @@ class PrimitiveStep(BaseModel):
             "output_field": output_field,
             "as_of_date": as_of_date,
         }
+        # PR-10D Codex F5: when the caller supplies the new
+        # identity-bearing fields, fold them into the hash.  When
+        # absent (the default, for backwards compat with every
+        # pre-PR-10D primitive call site), the hash is byte-
+        # identical to the V1 recipe — tests/state/test_hash_stability.py
+        # continues to pass unchanged.  Once a primitive
+        # adopter passes ``data_content_fingerprint=...``, the
+        # SAME-params + SAME-as_of_date but DIFFERENT-vendor-data
+        # case produces a different hash — closing the original
+        # contract's "vendor data revision MUST change the hash"
+        # gap.
+        if data_content_fingerprint is not None:
+            hashed_params["data_content_fingerprint"] = data_content_fingerprint
+        if data_vintage is not None:
+            hashed_params["data_vintage"] = data_vintage
         h = _compute_step_hash(
             kind="primitive",
             name=name,
@@ -481,6 +526,8 @@ class PrimitiveStep(BaseModel):
             output_field=output_field,
             as_of_date=as_of_date,
             input_hashes=input_hashes,
+            data_content_fingerprint=data_content_fingerprint,
+            data_vintage=data_vintage,
             hash=h,
         )
 

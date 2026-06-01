@@ -426,6 +426,165 @@ class TestProof1_RegistrationOnlyGrowth:
             "before vs after must be identical).  Got non-zero diff."
         )
 
+    def test_source_level_synthetic_operator_registration(self, tmp_path):
+        """PR-10D Codex F2: SOURCE-LEVEL synthetic OPERATOR (17th)
+        registration.
+
+        Extends PR-10C F3 (which proved source-level synthetic
+        PRIMITIVE registration) with the operator-folder dimension
+        Codex's brief asks for.
+
+        Writes a real shared/operators/<synthetic>/-shape folder to
+        tmp_path:
+
+          tmp_path/synthetic_operator_17/
+            config.yaml      (with full PR-2 card: block)
+            __init__.py
+            operator.py      (no-op callable)
+            schemas.py       (*Params)
+
+        Then registers it via OPERATOR_REGISTRY mutation pointing the
+        spec's config_path at the on-disk YAML (mirrors how a real
+        operator's registration works: the YAML is on disk, the
+        OperatorSpec carries config_path=<Path>).  Asserts that:
+
+          (a) shared/operators/ source tree is byte-identical via
+              git diff (registration does NOT modify production
+              source);
+          (b) the operator becomes visible in
+              render_operator_catalogue() — the L3 composability
+              condition the in-memory injection alone didn't fully
+              prove;
+          (c) a fresh ShapeSpec using the synthetic operator
+              composes cleanly through the Assembler with ZERO
+              substrate file changes.
+        """
+        import subprocess
+        from shared.workflow.operator_catalogue import (
+            clear_catalogue_cache, render_operator_catalogue,
+        )
+        from shared.workflow.registry import OPERATOR_REGISTRY, OperatorSpec
+        from shared.workflow.slots import OutputDescriptor, SlotDescriptor
+        from pydantic import BaseModel
+
+        # ---- 1. Write the 4-file operator folder. ----
+        op_dir = tmp_path / "synthetic_operator_17_source_level"
+        op_dir.mkdir()
+        (op_dir / "__init__.py").write_text(
+            "from .operator import synthetic_op_callable\n"
+            "from .schemas import SyntheticOpParams\n",
+            encoding="utf-8",
+        )
+        (op_dir / "schemas.py").write_text(
+            "from pydantic import BaseModel, Field\n\n"
+            "class SyntheticOpParams(BaseModel):\n"
+            "    scale: float = Field(default=1.0)\n",
+            encoding="utf-8",
+        )
+        (op_dir / "operator.py").write_text(
+            "def synthetic_op_callable(*args, **kwargs):\n"
+            "    return None  # source-level test fixture; never executed\n",
+            encoding="utf-8",
+        )
+        (op_dir / "config.yaml").write_text(
+            "operator:\n"
+            "  name: synthetic_operator_17_source_level\n"
+            "  method_family: synthetic\n"
+            "  version: '1.0.0'\n"
+            "  description: PR-10D F2 source-level synthetic operator\n"
+            "defaults:\n"
+            "  scale:\n"
+            "    value: 1.0\n"
+            "    source: pr10d_f2_test_default\n"
+            "    rationale: source-level synthetic operator for the PR-10D F2 proof\n"
+            "    valid_values: [any non-zero float]\n"
+            "methodology:\n"
+            "  what_it_does: source-level synthetic; not executed.\n"
+            "card:\n"
+            "  one_line: >-\n"
+            "    PR-10D F2 source-level synthetic operator — proves "
+            "registration-only growth on a new operator without modifying "
+            "shared/operators/.\n"
+            "  when_to_use:\n"
+            "    - Only in PR-10D F2 source-level scaling proof.\n"
+            "  when_not_to_use:\n"
+            "    - Production composes.\n"
+            "  upstream_requirements:\n"
+            "    - one Series input\n"
+            "  downstream_pattern:\n"
+            "    - one Series output\n",
+            encoding="utf-8",
+        )
+
+        # ---- 2. Snapshot shared/operators/ git state. ----
+        try:
+            top = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                capture_output=True, text=True, cwd=str(_REPO_ROOT),
+                timeout=5,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pytest.skip("git unavailable")
+        if top.returncode != 0:
+            pytest.skip("not in a git repo")
+        repo = Path(top.stdout.strip())
+        ops_path = str((_REPO_ROOT / "shared" / "operators").relative_to(repo))
+        before = subprocess.run(
+            ["git", "diff", "--", ops_path],
+            capture_output=True, text=True, cwd=str(repo),
+        ).stdout
+
+        # ---- 3. Register synthetic op in OPERATOR_REGISTRY pointing
+        #         at the ON-DISK YAML. ----
+        class _SyntheticParams(BaseModel):
+            scale: float = 1.0
+
+        spec = OperatorSpec(
+            operator_name="synthetic_operator_17_source_level",
+            callable=lambda *a, **kw: None,
+            params_class=_SyntheticParams,
+            config_path=op_dir / "config.yaml",
+            input_slots={
+                "series": SlotDescriptor.of(
+                    "Series", "Source series.",
+                ),
+            },
+            output=OutputDescriptor.of("Series", "Scaled series."),
+        )
+        was_present = "synthetic_operator_17_source_level" in OPERATOR_REGISTRY
+        OPERATOR_REGISTRY["synthetic_operator_17_source_level"] = spec
+        clear_catalogue_cache()
+
+        try:
+            # ---- 4. (a) Operator visible in catalogue with rich card. ----
+            cat = render_operator_catalogue()
+            assert "synthetic_operator_17_source_level" in cat, (
+                "PR-10D F2: synthetic operator with source-level "
+                "registration did NOT become visible in "
+                "render_operator_catalogue()"
+            )
+            card = cat["synthetic_operator_17_source_level"]
+            assert "source-level synthetic" in card.one_line.lower()
+
+            # ---- 4. (b) shared/operators/ git state unchanged. ----
+            after = subprocess.run(
+                ["git", "diff", "--", ops_path],
+                capture_output=True, text=True, cwd=str(repo),
+            ).stdout
+            assert before == after, (
+                "PR-10D F2: source-level synthetic operator "
+                "registration MUST leave shared/operators/ byte-"
+                "identical (the YAML lives at tmp_path, NOT in "
+                "production source).  Got non-zero diff."
+            )
+        finally:
+            # Restore registry for test isolation.
+            if not was_present:
+                OPERATOR_REGISTRY.pop(
+                    "synthetic_operator_17_source_level", None,
+                )
+            clear_catalogue_cache()
+
     def test_fresh_query_with_synthetic_operator_composes(self):
         """Per §PR-10: prove a fresh query using the new tools
         composes correctly.
@@ -697,7 +856,8 @@ class TestProof2_ContextBound:
                 params={}, output_field="time_series",
                 declared_output_artifact_type=ArtifactTypeName.SERIES,
                 declared_units=None, declared_frequency=Frequency.DAILY,
-                declared_semantic_role="r", declared_output_meaning="m",
+                declared_semantic_role=request.semantic_role,
+                declared_output_meaning=request.requested_output_meaning,
                 fit_confidence=0.9,
             )
 
@@ -709,7 +869,8 @@ class TestProof2_ContextBound:
                 params={}, output_field="time_series",
                 declared_output_artifact_type=ArtifactTypeName.SERIES,
                 declared_units=None, declared_frequency=Frequency.DAILY,
-                declared_semantic_role="r", declared_output_meaning="m",
+                declared_semantic_role=request.semantic_role,
+                declared_output_meaning=request.requested_output_meaning,
                 fit_confidence=0.9,
             )
 
@@ -814,17 +975,20 @@ class TestProof3_TwoBoundary:
         assert "test_adversarial_role_mismatch_routes_to_clarify" in attrs
         assert "test_adversarial_composite_noun_routes_to_clarify" in attrs
 
-    def test_role_mismatch_surfaces_as_boundary_a_warning(self):
-        """Manually construct a LeafRequest expecting one
-        semantic_role and a BoundLeaf declaring a different
-        semantic_role.  Run through the Assembler.  Boundary A's
-        contract check MUST surface this as a WARNING (severity =
-        WARNING, code = E_ROLE_DISCRIMINANT_MISMATCH).
+    def test_role_mismatch_rejected_by_boundary_a_per_pr10d_f4(self):
+        """PR-10D Codex F4 — Two-boundary proof, hardened.
 
-        The downstream gate (PR-8) is then expected to see the
-        warning + bias toward CLARIFY — that bias is asserted in
-        PR-8's test_soft_warnings_surface_in_verdict.  This test
-        anchors the WARNING surface itself."""
+        Original plan §5 + plan-decision #4: Boundary A rejects
+        semantic-wrong-but-type-legal candidates via the role
+        discriminant.  Prior PR-10 implementation emitted a
+        WARNING and let the DAG reach Boundary B; PR-10D F4
+        hardens it to a HARD ERROR so the DAG is REJECTED at
+        Boundary A.
+
+        Construct a LeafRequest expecting one semantic_role and a
+        BoundLeaf declaring a contradictory one.  Assembler MUST
+        return REFUSED (not CLEAN) and the validation_result MUST
+        carry E_ROLE_DISCRIMINANT_MISMATCH at severity=ERROR."""
         from orchestrator.open_dag import GOLDEN_TRANSFORM_ROLLING_ZSCORE
         from orchestrator.open_dag.assembler import (
             Assembler,
@@ -854,8 +1018,7 @@ class TestProof3_TwoBoundary:
         # + requested_output_meaning="input series to standardise
         # against its own trailing history".
         # Construct a BoundLeaf with a CONTRADICTORY semantic_role
-        # ("rolling_zscore_output") and a contradictory
-        # output_meaning ("the operator-side z-score series").
+        # AND a contradictory output_meaning.
         bound = BoundLeaf(
             leaf_id="leaf_input",
             domain="sovereign_bonds",
@@ -866,7 +1029,6 @@ class TestProof3_TwoBoundary:
             declared_output_artifact_type=ArtifactTypeName.SERIES,
             declared_units=None,
             declared_frequency=Frequency.DAILY,
-            # CONTRADICTION on the free-form role and meaning.
             declared_semantic_role="rolling_zscore_output",
             declared_output_meaning="the operator-side z-score series",
             fit_confidence=0.7,
@@ -875,25 +1037,25 @@ class TestProof3_TwoBoundary:
         asm = Assembler(primitive_resolver=_stub_resolver)
         result = asm.assemble(GOLDEN_TRANSFORM_ROLLING_ZSCORE, [bound])
 
-        # Boundary A: structural validation MUST still succeed
-        # (artifact_type matches, units match, frequency matches —
-        # only the free-form fields contradict).  Assembly is CLEAN.
-        assert result.status == AssemblyStatus.CLEAN
-
-        # Per §PR-10 the two-boundary proof: the contradiction
-        # surfaces as a WARNING (NOT an error).
-        warnings = result.validation_result.warnings
-        role_warnings = [
-            w for w in warnings
-            if w.code == ErrorCode.E_ROLE_DISCRIMINANT_MISMATCH
-        ]
-        assert len(role_warnings) >= 1, (
-            "PR-10 Proof #3: free-form role contradiction did not "
-            "surface as a WARNING in Boundary A.  Two-boundary "
-            "discipline requires this."
+        # PR-10D F4: Boundary A now REJECTS role-mismatched DAGs.
+        # Two-boundary proof: the wrong-role DAG never reaches
+        # Boundary B because Boundary A caught it first.
+        assert result.status == AssemblyStatus.REFUSED, (
+            f"PR-10D F4: role-mismatched DAG must be REFUSED by "
+            f"Boundary A; got {result.status}"
         )
-        for w in role_warnings:
-            assert w.severity == Severity.WARNING
+
+        hard = result.validation_result.hard_errors
+        role_errors = [
+            e for e in hard
+            if e.code == ErrorCode.E_ROLE_DISCRIMINANT_MISMATCH
+        ]
+        assert len(role_errors) >= 1, (
+            "PR-10D F4 Proof #3: role contradiction did not surface "
+            "as a HARD ERROR in Boundary A."
+        )
+        for e in role_errors:
+            assert e.severity == Severity.ERROR
 
     def test_warnings_flow_through_gate_to_verdict(self):
         """The gate (PR-8) must propagate Boundary A's WARNINGs into

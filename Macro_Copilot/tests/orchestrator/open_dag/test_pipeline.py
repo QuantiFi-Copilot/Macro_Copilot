@@ -169,12 +169,23 @@ class _MockAnswerRenderer:
 
 
 def _selector_returning(leaf_id_to_role: Dict[str, str]):
-    """Build a SelectorCallback that returns a bound leaf with
-    role taken from leaf_id_to_role (default 'spread_level')."""
+    """Build a SelectorCallback that returns a bound leaf.
+
+    PR-10D Codex F4: Boundary A now hard-rejects role/meaning
+    mismatches between LeafRequest and BoundLeaf.  The ``role``
+    arg is kept for back-compat with test fixtures that asserted
+    on role text, but the actual bound role + meaning ECHO the
+    request's fields so Boundary A's hard check accepts the
+    binding by construction.  A real Selector LLM either echoes
+    the request faithfully or refuses (no nearest-fit drift).
+    """
 
     async def cb(*, leaf_id, request, timeout_s):  # type: ignore[no-untyped-def]
-        role = leaf_id_to_role.get(leaf_id, "spread_level")
-        return _mk_bound_leaf(leaf_id, role=role)
+        return _mk_bound_leaf(
+            leaf_id,
+            role=request.semantic_role,
+            meaning=request.requested_output_meaning,
+        )
 
     return cb
 

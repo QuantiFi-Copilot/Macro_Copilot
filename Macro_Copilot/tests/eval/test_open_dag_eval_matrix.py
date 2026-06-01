@@ -187,13 +187,23 @@ def _selectors_from_specs(
 
     def _make_cb(entries):
         async def cb(*, leaf_id, request, timeout_s):
+            # PR-10D Codex F4: Boundary A now hard-rejects role +
+            # meaning mismatches.  The spec's `role` / `meaning`
+            # values were originally distinct strings for L6-echo
+            # readability, but a real Selector LLM faithfully ECHOES
+            # the LeafRequest's role + meaning when it accepts the
+            # binding (otherwise it should refuse).  Mirror that
+            # contract in tests: bind with request.semantic_role +
+            # request.requested_output_meaning so Boundary A's hard
+            # role-discriminant check accepts the binding.  The
+            # spec's `tool` is the only field that varies per leaf.
             for lid, role, meaning, tool in entries:
                 if lid == leaf_id:
                     return _mk_bound_leaf(
                         leaf_id=leaf_id,
                         domain=request.domain_hint,
-                        role=role,
-                        meaning=meaning,
+                        role=request.semantic_role,
+                        meaning=request.requested_output_meaning,
                         tool=tool,
                     )
             # Fallback — produce a plausible bound leaf.
@@ -888,8 +898,10 @@ class TestMessyLingoEval:
                 declared_output_artifact_type=ArtifactTypeName.SERIES,
                 declared_units=None,
                 declared_frequency=Frequency.DAILY,
-                declared_semantic_role="pack_basis",
-                declared_output_meaning="SOFR strip pack-average basis",
+                # PR-10D Codex F4: echo the request fields so
+                # Boundary A's hard role-discriminant check accepts.
+                declared_semantic_role=request.semantic_role,
+                declared_output_meaning=request.requested_output_meaning,
                 fit_confidence=0.85,
             )
 

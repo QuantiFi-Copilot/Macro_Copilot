@@ -533,6 +533,11 @@ class TestContractCheckHardErrors:
 
 
 class TestContractCheckSoftWarnings:
+    """PR-10D Codex F4: renamed conceptually — these tests now assert
+    HARD ERROR behaviour (the original-contract Boundary A
+    discipline).  Class name kept for backwards compat with eval
+    runners; class docstring tells the real story."""
+
     def _single_leaf_shape(self, req: LeafRequest) -> ShapeSpec:
         return ShapeSpec(
             workflow_id="soft_shape",
@@ -549,7 +554,10 @@ class TestContractCheckSoftWarnings:
             terminal_node_id="z",
         )
 
-    def test_semantic_role_mismatch_is_warning_not_error(self) -> None:
+    def test_semantic_role_mismatch_is_hard_error_per_pr10d_f4(self) -> None:
+        # PR-10D Codex F4: semantic_role mismatch MUST be a HARD
+        # error per the original contract — Boundary A rejects
+        # semantic-wrong-but-type-legal candidates.
         shape = self._single_leaf_shape(
             _request(semantic_role="spread_level"),
         )
@@ -561,19 +569,19 @@ class TestContractCheckSoftWarnings:
         ]
         asm = Assembler(primitive_resolver=_resolver)
         result = asm.assemble(shape, leaves)
-        # SOFT warning does NOT block — assembly is CLEAN.
-        assert result.status == AssemblyStatus.CLEAN
-        # But the warning IS present in the result for Boundary B.
-        warnings = result.validation_result.warnings
+        # HARD error → REFUSED (no rebinder callback registered).
+        assert result.status == AssemblyStatus.REFUSED
+        # The error IS in the hard errors set.
+        hard = result.validation_result.hard_errors
         assert any(
             e.code == ErrorCode.E_ROLE_DISCRIMINANT_MISMATCH
-            and e.severity == Severity.WARNING
+            and e.severity == Severity.ERROR
             and e.detail.get("field") == "semantic_role"
             and e.leaf_id == "h_a"
-            for e in warnings
+            for e in hard
         )
 
-    def test_output_meaning_mismatch_is_warning_not_error(self) -> None:
+    def test_output_meaning_mismatch_is_hard_error_per_pr10d_f4(self) -> None:
         shape = self._single_leaf_shape(
             _request(output_meaning="A curve spread series"),
         )
@@ -585,12 +593,13 @@ class TestContractCheckSoftWarnings:
         ]
         asm = Assembler(primitive_resolver=_resolver)
         result = asm.assemble(shape, leaves)
-        assert result.status == AssemblyStatus.CLEAN
-        warnings = result.validation_result.warnings
+        assert result.status == AssemblyStatus.REFUSED
+        hard = result.validation_result.hard_errors
         assert any(
             e.code == ErrorCode.E_ROLE_DISCRIMINANT_MISMATCH
+            and e.severity == Severity.ERROR
             and e.detail.get("field") == "requested_output_meaning"
-            for e in warnings
+            for e in hard
         )
 
     def test_normalised_compare_handles_case_and_whitespace(self) -> None:

@@ -132,9 +132,17 @@ class EconomicQuantity(BaseModel):
     domain_hint: Domain = Field(
         ...,
         description=(
-            "Which domain owns this quantity.  MUST appear in the "
-            "parent RouteDecision.domains list — the normaliser drops "
-            "entries that don't, with an adjustment note."
+            "Which domain owns this quantity.  PREFER a domain that "
+            "is already in the parent RouteDecision.domains list.  "
+            "However, when the prompt names a quantity from a domain "
+            "the router did NOT include in `domains`, INCLUDE the "
+            "entry anyway with the correct domain_hint — the "
+            "normaliser PRESERVES out-of-routing entries and attaches "
+            "a structured adjustment note so the downstream Boundary "
+            "B (L4.5 Coverage Gate) sees the under-scoping evidence "
+            "and can refuse / clarify.  Silently dropping mismatched "
+            "entries hides the very failure mode Boundary B exists "
+            "to catch."
         ),
     )
 

@@ -567,9 +567,11 @@ class OpenDagPipeline:
             if executed is None:
                 # Executor failure — still surface the intent chain +
                 # gate PASS, but mark execution incomplete.
+                # PR-10D F5: gate PASSED + no compute → DRY_RUN bucket.
                 run_lineage = RunLineage(
                     intent_chain=intent_chain,
                     compute_lineage=None,
+                    determinism_bucket="DRY_RUN_NO_COMPUTE",
                 )
                 return PipelineOutcome(
                     status="PIPELINE_ERROR",
@@ -585,9 +587,15 @@ class OpenDagPipeline:
                 )
             compute_lineage, executed_summary = executed
 
+        # PR-10D F5: derive the bucket from the pair (gate, compute).
+        if compute_lineage is None:
+            bucket = "DRY_RUN_NO_COMPUTE"
+        else:
+            bucket = "EXECUTED_CONTENT_ADDRESSED"
         run_lineage = RunLineage(
             intent_chain=intent_chain,
             compute_lineage=compute_lineage,
+            determinism_bucket=bucket,
         )
 
         # ---- L6 ANSWER RENDERER ----
@@ -777,6 +785,8 @@ class OpenDagPipeline:
             intent_chain=intent_chain,
             run_lineage=RunLineage(
                 intent_chain=intent_chain, compute_lineage=None,
+                # PR-10D F5: refuse paths → bucket=GATE_REFUSED.
+                determinism_bucket="GATE_REFUSED_NO_EXECUTION",
             ),
             route_decision=route_decision,
         )
@@ -810,6 +820,8 @@ class OpenDagPipeline:
             intent_chain=intent_chain,
             run_lineage=RunLineage(
                 intent_chain=intent_chain, compute_lineage=None,
+                # PR-10D F5: refuse paths → bucket=GATE_REFUSED.
+                determinism_bucket="GATE_REFUSED_NO_EXECUTION",
             ),
             route_decision=route_decision,
         )
@@ -846,6 +858,8 @@ class OpenDagPipeline:
             intent_chain=intent_chain,
             run_lineage=RunLineage(
                 intent_chain=intent_chain, compute_lineage=None,
+                # PR-10D F5: refuse paths → bucket=GATE_REFUSED.
+                determinism_bucket="GATE_REFUSED_NO_EXECUTION",
             ),
             route_decision=route_decision,
         )
@@ -882,6 +896,8 @@ class OpenDagPipeline:
             intent_chain=intent_chain,
             run_lineage=RunLineage(
                 intent_chain=intent_chain, compute_lineage=None,
+                # PR-10D F5: refuse paths → bucket=GATE_REFUSED.
+                determinism_bucket="GATE_REFUSED_NO_EXECUTION",
             ),
             route_decision=route_decision,
         )

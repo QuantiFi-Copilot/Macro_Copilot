@@ -69,7 +69,7 @@ legal (the substrate doesn't import this module back).
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -132,6 +132,60 @@ class RunLineage(BaseModel):
             "the steps[-1].hash matches head_hash."
         ),
     )
+    # PR-10D Codex F5: closed-family determinism bucket for the
+    # answer/run record.  Surfaces the "what kind of outcome is this"
+    # signal that L6 lineage and downstream observability consume.
+    # The original contract called for this so a wrong answer is
+    # diagnosable: a PR can distinguish "executed clean" from "gate
+    # blocked" from "dry-run" at one structured field, instead of
+    # re-deriving it from compute_lineage's presence.
+    #
+    # ``Optional`` + AUTO-DERIVED when None: callers don't need to
+    # pass it explicitly.  The mode='before' validator below derives
+    # it from (gate_status, compute_lineage) before Pydantic
+    # construction so existing call sites stay backwards-compatible.
+    # Explicit values pass through unchanged AND are double-checked
+    # by the mode='after' validator for consistency.
+    determinism_bucket: Optional[Literal[
+        "EXECUTED_CONTENT_ADDRESSED",  # gate PASS + executor ran + hash present
+        "GATE_REFUSED_NO_EXECUTION",   # gate REFUSE / CLARIFY → no execution
+        "DRY_RUN_NO_COMPUTE",          # gate PASS but no executor wired
+    ]] = Field(
+        default=None,
+        description=(
+            "PR-10D Codex F5: which determinism category does this "
+            "run record fall into?  Auto-derived from (gate_status, "
+            "compute_lineage is not None) when not supplied, so "
+            "callers don't need to pass it explicitly.  Explicit "
+            "values are double-checked by the model validator."
+        ),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _derive_determinism_bucket(cls, values: Any) -> Any:
+        """PR-10D Codex F5: auto-derive determinism_bucket from
+        (gate_status, compute_lineage) when the caller didn't
+        supply one."""
+        if not isinstance(values, dict):
+            return values
+        if values.get("determinism_bucket") is not None:
+            return values  # explicit value — pass through
+        intent_chain = values.get("intent_chain")
+        if intent_chain is None:
+            return values  # let the ctor's missing-field error fire
+        gate_status = getattr(
+            getattr(intent_chain, "gate", None), "status", None,
+        )
+        compute_lineage = values.get("compute_lineage")
+        if gate_status != "PASS":
+            derived = "GATE_REFUSED_NO_EXECUTION"
+        elif compute_lineage is None:
+            derived = "DRY_RUN_NO_COMPUTE"
+        else:
+            derived = "EXECUTED_CONTENT_ADDRESSED"
+        values["determinism_bucket"] = derived
+        return values
 
     @model_validator(mode="after")
     def _validate_consistency(self) -> "RunLineage":
@@ -142,6 +196,22 @@ class RunLineage(BaseModel):
                 "(REFUSE / CLARIFY) but compute_lineage was supplied. "
                 "When the gate refused / clarified, the executor "
                 "never ran — compute_lineage MUST be None."
+            )
+        # PR-10D Codex F5: double-check the determinism bucket value
+        # matches the derived expectation (catches a caller that
+        # passed a wrong explicit value).
+        if gate_status != "PASS":
+            expected = "GATE_REFUSED_NO_EXECUTION"
+        elif self.compute_lineage is None:
+            expected = "DRY_RUN_NO_COMPUTE"
+        else:
+            expected = "EXECUTED_CONTENT_ADDRESSED"
+        if self.determinism_bucket != expected:
+            raise ValueError(
+                f"RunLineage: determinism_bucket={self.determinism_bucket!r} "
+                f"is inconsistent with (gate_status={gate_status!r}, "
+                f"has_compute_lineage={self.compute_lineage is not None}).  "
+                f"Expected {expected!r}."
             )
         return self
 
