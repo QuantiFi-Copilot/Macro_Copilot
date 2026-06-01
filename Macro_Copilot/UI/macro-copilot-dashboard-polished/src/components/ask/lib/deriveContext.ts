@@ -65,7 +65,15 @@ export function deriveWorkingSet(
         typeLabel: artifactTypeLabel(a),
         units: a.units ?? undefined,
         fromMessageId: msg.id,
-        shortHash: stableShortHash(msg.id, a.series_key ?? a.type),
+        // PR-11D — ScalarMetric carries ``metric_key`` instead of
+        // ``series_key`` (no series identity for a single number).
+        // Prefer the most-specific identifier present so two
+        // ScalarMetric working-set items from one message hash
+        // distinctly.
+        shortHash: stableShortHash(
+          msg.id,
+          a.series_key ?? a.metric_key ?? a.type,
+        ),
       });
     }
 
@@ -92,6 +100,10 @@ function artifactDisplayName(
   templateId: string | null,
 ): string {
   if (a.series_key) return a.series_key;
+  // PR-11D: ScalarMetric carries ``metric_key`` as its load-bearing
+  // identifier (no series_key — it's a single number, not a series).
+  // Surface it as the working-set chip name when present.
+  if (a.type === 'ScalarMetric' && a.metric_key) return a.metric_key;
   // PR-11B: open-DAG turns carry ``template_id === null`` (no recipe).
   // Fall back to a generic "open dag" label so the working-set chip
   // still reads cleanly instead of "null · scalarmetric".
@@ -112,6 +124,13 @@ function artifactTypeLabel(a: WorkflowTerminalArtifact): string {
   }
   if (a.type === 'EventSet') {
     return `EventSet(${a.n_events ?? 0} events)`;
+  }
+  // PR-11D — ScalarMetric: surface the scalar's units inline so the
+  // type label reads "ScalarMetric<RATIO>" for a correlation, matching
+  // the Series<BPS> / Series<PERCENT> convention.
+  if (a.type === 'ScalarMetric') {
+    const u = a.units ? `<${a.units}>` : '';
+    return `ScalarMetric${u}`;
   }
   return a.type;
 }

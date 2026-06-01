@@ -60,6 +60,15 @@ function ArtifactRenderer({ artifact }: { artifact: WorkflowTerminalArtifact }) 
   }
   if (artifact.type === 'SeriesSet') return <SeriesSetPanel artifact={artifact} />;
   if (artifact.type === 'EventSet') return <EventSetPanel artifact={artifact} />;
+  // PR-11D — ScalarMetric branch.  The canonical open-DAG terminal
+  // (correlation / covariance / cointegration test statistic) is a
+  // single finite scalar.  Renders the big number + units chip +
+  // metric_key kicker so the chat bubble shows the actual value
+  // (e.g. -0.34) instead of falling through to UnknownArtifactPanel's
+  // type-only label.
+  if (artifact.type === 'ScalarMetric') {
+    return <ScalarMetricPanel artifact={artifact} />;
+  }
   return <UnknownArtifactPanel artifact={artifact} />;
 }
 
@@ -342,6 +351,41 @@ function UnknownArtifactPanel({
     <CanvasFrame title="Terminal artifact" meta={artifact.type}>
       <p className="mono text-[12px] text-fg-secondary">
         Type: {artifact.type}
+      </p>
+    </CanvasFrame>
+  );
+}
+
+/** PR-11D — ScalarMetric chat-bubble panel.
+ *
+ *  A single big-number + units + metric_key.  Compact (the chat bubble
+ *  is narrow) but honest — the L6 prose already mentions the value in
+ *  trader lingo; this is the structured echo. */
+function ScalarMetricPanel({
+  artifact,
+}: {
+  artifact: WorkflowTerminalArtifact;
+}) {
+  const metricKey = artifact.metric_key ?? 'scalar';
+  const units = artifact.units ?? '';
+  const value = artifact.value ?? null;
+  return (
+    <CanvasFrame
+      title={`Scalar · ${metricKey}`}
+      meta={units || undefined}
+    >
+      <div className="flex items-baseline gap-2">
+        <span className="font-serif-display text-[26px] font-light leading-none text-fg-primary">
+          {formatNumber(value)}
+        </span>
+        {units && (
+          <span className="mono text-[11px] text-fg-faint">{units}</span>
+        )}
+      </div>
+      <p className="mt-3 text-[11px] leading-[1.55] text-fg-muted">
+        Single finite statistic produced by the workflow&apos;s terminal
+        operator (e.g. correlation, covariance, cointegration test
+        statistic).  Open this turn in Build for the full lineage chain.
       </p>
     </CanvasFrame>
   );

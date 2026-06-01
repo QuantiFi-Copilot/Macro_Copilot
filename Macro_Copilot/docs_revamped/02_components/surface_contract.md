@@ -312,9 +312,19 @@ Both render each primitive node via `buildCompact`; the difference is in the sur
 
 Operators have NO frontend surface and ARE NOT listed in this registry by name. They exist only as nodes inside workflow DAGs.
 
-When an operator's output IS the terminal artifact of a workflow, it surfaces via the standard `ResultsView` widget grid (one of `SeriesWidget` / `SeriesSetWidget` / `EventSetWidget` / `PanelWidget` / `WindowedPanelWidget` / `TradeSetWidget`) — dispatched by artifact type. No per-operator code lives in the frontend.
+When an operator's output IS the terminal artifact of a workflow, it surfaces via the standard `ResultsView` widget grid (one of `SeriesWidget` / `SeriesSetWidget` / `EventSetWidget` / `PanelWidget` / `WindowedPanelWidget` / `ScalarMetricWidget` / `TradeSetWidget`) — dispatched by artifact type. No per-operator code lives in the frontend.
 
 **Intermediate-step surfacing (shipped):** every workflow's specialised `ResultsView` dashboard ships a "Show intermediate stages (N)" toggle.  When the toggle is on, every NON-terminal per-node artifact (primitives AND operator outputs alike — `align_series`, `threshold_events`, `event_windows`, `conditional_aggregate`, `rolling_regression`, `construct_trades`, `evaluate_trades`, `summarize_trades`, `select_from_series_set`, etc.) renders through the same per-artifact widget registry the terminal output uses (`NodeWidgetCard` → `resolveNodeRenderer`).  No per-operator UI code is required — adding a new operator is automatically covered by the registry the moment its artifact type is recognised.
+
+### 6.1 TradeSet status (post-v2.0) — DORMANT, not drift
+
+The backend artifact closed family no longer includes `TradeSet` (removed per [OPR6](../02_components/operator/README.md) / [ADR 0016](../05_decisions/0016-operator-and-artifact-standardization-v2.md) — the three trade operators `construct_trades` / `evaluate_trades` / `summarize_trades` relocated to a future backtest primitive set).  The canonical backend enum (`shared/artifacts/registry.py::ARTIFACT_TYPE_NAMES`) is closed at six types: `Series`, `SeriesSet`, `EventSet`, `Panel`, `WindowedPanel`, `ScalarMetric`.
+
+The frontend nevertheless retains active `TradeSet` types + widget under `src/types/artifacts.ts` + `src/components/build/widgets/TradeSetWidget.tsx`, and the paused-backtest fixtures + surface tests continue to import the type.  **This is intentional, NOT drift.**  Pruning these dormant references lands alongside the backtest re-admission as a primitive set (separate workstream — see `tool_lifecycle.md` §6 / [ADR 0016](../05_decisions/0016-operator-and-artifact-standardization-v2.md)).  PR-11 explicitly does NOT delete any dormant `TradeSet` reference.
+
+### 6.2 ScalarMetric admitted (v2.0 / PR-11B) — active
+
+The backend admitted `ScalarMetric` in v2.0 as the closed-family shape for statistical-operator outputs (correlation, covariance, cointegration test statistic — every operator whose terminal payload is a single finite scalar).  The frontend wired the active renderer in PR-11B: `src/types/artifacts.ts` carries `ScalarMetricPayloadEnvelope` + `isScalarMetricPayload`; `src/components/build/widgets/ScalarMetricWidget.tsx` is a real payload-shell renderer that self-registers via `registerArtifactRenderer('ScalarMetric', ...)`.  No per-operator UI code is required — the same artifact-widget registry that hosts Series / Panel / etc. handles every ScalarMetric terminal automatically.
 
 ---
 

@@ -108,11 +108,25 @@ export type ToolCardEnvelope =
 export type SeriesIndexKind = 'calendar' | 'event_relative_offset';
 
 export type WorkflowTerminalArtifact = {
-  type: string; // "Series" | "SeriesSet" | ...
+  type: string; // "Series" | "SeriesSet" | "ScalarMetric" | ...
   series_key?: string;
   units?: string | null;
   frequency?: string | null;
-  n_rows: number;
+  /** PR-11D: relaxed to optional.  ScalarMetric terminals have no
+   *  row dimension (a single finite scalar); the rates_agent runner's
+   *  ``_summarize_scalar_metric`` emits ``{type, metric_key, value,
+   *  units}`` with no ``n_rows`` field.  Pre-PR-11D Series / Panel /
+   *  SeriesSet / EventSet / WindowedPanel terminals continue to set
+   *  it. */
+  n_rows?: number;
+  // ScalarMetric-shaped (PR-11B / PR-11D — admitted v2.0 ART4/ART5):
+  /** Operator-supplied identifier (e.g. ``"correlation_coefficient"``).
+   *  Present iff ``type === "ScalarMetric"``. */
+  metric_key?: string;
+  /** The finite scalar value.  Present iff ``type === "ScalarMetric"``.
+   *  Backend ART11 invariant: never ±Inf / NaN — the operator raises
+   *  a typed error rather than emitting a non-finite value. */
+  value?: number | null;
   /** Calendar vs event-relative offset semantics — defaults to
    *  calendar when absent (older backends). */
   index_kind?: SeriesIndexKind;

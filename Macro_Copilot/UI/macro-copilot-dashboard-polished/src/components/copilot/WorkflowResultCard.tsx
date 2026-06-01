@@ -284,6 +284,40 @@ function TerminalArtifactBlock({
     );
   }
 
+  // PR-11D — ScalarMetric branch.  The canonical open-DAG terminal
+  // (correlation / covariance / cointegration test stat) is a single
+  // finite scalar.  Renders metric_key chip + big-number value + units
+  // so the chat bubble's workflow-result card shows the actual value
+  // (e.g. -0.34) instead of falling through to the bare type label.
+  if (artifact.type === 'ScalarMetric') {
+    const metricKey = artifact.metric_key ?? 'scalar';
+    const units = artifact.units ?? '';
+    return (
+      <div className="mt-2 space-y-2">
+        <div className="flex items-baseline gap-3 text-[11px]">
+          <span className="rounded-md border border-line-soft bg-white/[0.02] px-1.5 py-[1px] text-[10px] font-semibold uppercase tracking-[0.1em] text-ice-200">
+            ScalarMetric
+          </span>
+          <span className="mono text-fg-secondary">{metricKey}</span>
+          {units && (
+            <>
+              <span className="mono text-fg-faint">·</span>
+              <span className="mono text-fg-secondary">{units}</span>
+            </>
+          )}
+        </div>
+        <div className="flex items-baseline gap-2 rounded-md border border-line-subtle bg-white/[0.012] px-3 py-2 text-[11px]">
+          <span className="font-serif-display text-[18px] font-light leading-none text-fg-primary">
+            {formatNumber(artifact.value ?? null)}
+          </span>
+          {units && (
+            <span className="mono text-[10px] text-fg-faint">{units}</span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <p className="mt-2 mono text-[11px] text-fg-secondary">
       {artifact.type}
