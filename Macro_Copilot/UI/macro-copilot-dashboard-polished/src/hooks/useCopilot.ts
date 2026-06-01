@@ -344,10 +344,17 @@ export function useCopilot(): UseCopilotResult {
             },
           ]);
         }
-        if (event.action !== 'route' || !event.template_id) {
-          // CLARIFY / OUT_OF_SCOPE — clear any partial workflow
-          // state so the assistant message renders the existing
-          // clarification path.
+        // PR-11B — accept ``action === 'route'`` regardless of
+        // template_id nullability.  The template lane emits a real
+        // template_id string; the open-DAG lane emits ``null`` (no
+        // template_id by design — the DAG was composed at query
+        // time, not bound from a recipe).  The prior falsy check
+        // ``!event.template_id`` silently dropped open-DAG routes
+        // (Codex correction): TypeScript-type nullability alone is
+        // not enough — the runtime falsy check must EXPLICITLY admit
+        // null.  CLARIFY / OUT_OF_SCOPE still drop to the
+        // clarification path via the action check.
+        if (event.action !== 'route') {
           updateStreamingMessage((msg) => ({ ...msg, workflow: null }));
           break;
         }
@@ -356,7 +363,12 @@ export function useCopilot(): UseCopilotResult {
           phase: 'running_tools',
           workflow: {
             routeDecision: {
-              template_id: event.template_id!,
+              // Pass template_id through verbatim — null for open-DAG,
+              // string for template lane.  Downstream consumers
+              // (AssistantResearchCard, ActionRow) branch on null to
+              // render "Open DAG composition" framing + route the
+              // Build CTA to ``/workspace/:slug`` directly.
+              template_id: event.template_id,
               slot_values: event.slot_values,
               rationale: event.rationale,
             },

@@ -188,12 +188,19 @@ export type WorkflowStatusEvent = {
 export type WorkflowResultEvent = {
   type: 'workflow_result';
   ok: boolean;
-  template_id: string;
+  /** PR-11B: nullable to carry the open-DAG variant.  The template
+   *  lane emits a real template_id string; the open-DAG lane emits
+   *  ``null`` (no template).  Frontend useCopilot reducer accepts
+   *  null as the open-DAG route + builds the WorkflowTurnPayload
+   *  normally with template_id threaded through. */
+  template_id: string | null;
   terminal_artifact?: WorkflowTerminalArtifact;
   workflow_lineage_summary?: string;
   error?: string;
   route?: {
-    template_id: string;
+    /** PR-11B: nullable to mirror the open-DAG variant carried on
+     *  ``WorkflowResultEvent.template_id``. */
+    template_id: string | null;
     slot_values: Record<string, unknown>;
     rationale: string;
   };

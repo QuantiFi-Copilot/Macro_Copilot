@@ -230,16 +230,23 @@ export type ProposedOverride = {
 // PR 10 — workflow turn state.  Aggregates the events the WS streams
 // for one workflow execution into a single struct the chat bubble
 // renders.
+//
+// PR-11B: ``template_id`` is now nullable to carry the open-DAG variant.
+// The template lane sets a real template_id; the open-DAG lane emits
+// ``null`` (no template).  The useCopilot reducer admits null as the
+// open-DAG route + threads it through; the Ask card renders an
+// "Open DAG composition" header when null instead of blank template
+// text.
 export type WorkflowTurnPayload = {
   routeDecision: {
-    template_id: string;
+    template_id: string | null;
     slot_values: Record<string, unknown>;
     rationale: string;
   };
   status: 'running' | 'complete' | 'error';
   result?: {
     ok: boolean;
-    template_id: string;
+    template_id: string | null;
     terminal_artifact?: WorkflowTerminalArtifact;
     workflow_lineage_summary?: string;
     error?: string;

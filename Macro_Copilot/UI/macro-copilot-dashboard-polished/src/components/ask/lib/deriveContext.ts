@@ -89,10 +89,14 @@ export function deriveWorkingSet(
 
 function artifactDisplayName(
   a: WorkflowTerminalArtifact,
-  templateId: string,
+  templateId: string | null,
 ): string {
   if (a.series_key) return a.series_key;
-  return `${templateId} · ${a.type.toLowerCase()}`;
+  // PR-11B: open-DAG turns carry ``template_id === null`` (no recipe).
+  // Fall back to a generic "open dag" label so the working-set chip
+  // still reads cleanly instead of "null · scalarmetric".
+  const owner = templateId ?? 'open dag';
+  return `${owner} · ${a.type.toLowerCase()}`;
 }
 
 function artifactTypeLabel(a: WorkflowTerminalArtifact): string {

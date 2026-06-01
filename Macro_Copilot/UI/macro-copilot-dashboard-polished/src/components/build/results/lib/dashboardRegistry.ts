@@ -106,7 +106,24 @@ const TOPOLOGY_FINGERPRINTS: Array<{
 ];
 
 /** Resolve a workspace to a dashboard kind.  Pure; safe to call
- *  inside ``useMemo`` for re-render efficiency. */
+ *  inside ``useMemo`` for re-render efficiency.
+ *
+ *  PR-11C resolution order:
+ *    1. Real template_id matching the registry → specialised dashboard.
+ *    2. ``template_id === null`` → ALWAYS ``generic`` (open-DAG runs).
+ *       The topology fingerprint heuristic is bypassed: an LLM-composed
+ *       DAG might happen to use ``threshold_events`` + ``event_windows``
+ *       + ``conditional_aggregate`` without being an actual event_study
+ *       (the dashboards expect fixed template-bound node IDs like
+ *       ``signal`` / ``target`` / ``align`` that open-DAG nodes won't
+ *       carry).  Generic + the per-artifact-widget registry is the
+ *       correct surface for any open-DAG composition.
+ *    3. Legacy workspaces (template_id set but unknown to the
+ *       registry) keep the topology fingerprint fallback — these
+ *       predate the closed registry but still came from a real
+ *       template at run-time.
+ *    4. Everything else → generic.
+ */
 export function resolveWorkflowDashboard(
   workspace: Pick<WorkspaceDetail, 'template_id' | 'nodes'>,
 ): DashboardKind {
@@ -115,7 +132,16 @@ export function resolveWorkflowDashboard(
     return TEMPLATE_TO_DASHBOARD[workspace.template_id];
   }
 
-  // 2. Topology fingerprint fallback for legacy workspaces.
+  // 2. PR-11C: open-DAG (template_id explicitly null) ALWAYS routes
+  //    to generic.  Specialised dashboards rely on template-bound
+  //    node IDs that LLM-composed DAGs do not carry.
+  if (workspace.template_id === null) {
+    return 'generic';
+  }
+
+  // 3. Topology fingerprint fallback for legacy workspaces with a
+  //    non-null but unknown template_id (predates the closed
+  //    registry but was bound from a real template at run-time).
   const operatorNames = extractOperatorNames(workspace.nodes);
   for (const fp of TOPOLOGY_FINGERPRINTS) {
     if (isSupersetOf(operatorNames, fp.operators)) {
@@ -123,7 +149,7 @@ export function resolveWorkflowDashboard(
     }
   }
 
-  // 3. Truly unknown → generic.
+  // 4. Truly unknown → generic.
   return 'generic';
 }
 

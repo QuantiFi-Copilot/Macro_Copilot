@@ -100,6 +100,11 @@ from orchestrator.open_dag.default_executor import (
     build_default_executor_callback,
     execute_workflow_async,
     executed_summary_from_result,
+    terminal_summary_from_result,
+)
+from orchestrator.open_dag.executed_dag import (
+    ExecutedDag,
+    TerminalArtifactSummary,
 )
 from orchestrator.open_dag.pipeline import (
     ExecutorCallback,
@@ -241,8 +246,12 @@ __all__ = [
     "PipelineStatus",
     "ExecutorCallback",
     "SelectorCallback",
-    # Default executor (PR-10A F2)
+    # Default executor (PR-10A F2 / PR-11A)
     "build_default_executor_callback",
     "execute_workflow_async",
     "executed_summary_from_result",
+    "terminal_summary_from_result",
+    # Executed DAG carriers (PR-11A)
+    "ExecutedDag",
+    "TerminalArtifactSummary",
 ]

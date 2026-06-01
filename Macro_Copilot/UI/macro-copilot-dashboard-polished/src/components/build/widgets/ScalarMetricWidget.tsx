@@ -1,47 +1,102 @@
 // ============================================================================
-// ScalarMetricWidget — REGISTRATION DROPPED IN PR4.
+// ScalarMetricWidget — payload-backed renderer for ScalarMetric artifacts.
 // ----------------------------------------------------------------------------
-// Background
+// PR-11B / v2.0 (ART4 / ART5 / ADR 0016) — admits a real renderer for the
+// closed-family ScalarMetric shape.  Backend wire shape:
+//
+//   {
+//     artifact_type: "ScalarMetric",
+//     metadata: { metric_key: string, units: string, lineage: {...} },
+//     payload:  { value: number (finite — ART11 forbids ±Inf/NaN) }
+//   }
+//
+// Rendered as a labelled big-number metric:
+//
+//   ┌─────────────────────────────────┐
+//   │ METRIC_KEY · UNITS              │
+//   │  0.62                           │   (large number, formatted per units)
+//   │ scalar statistic                │   (small caption)
+//   └─────────────────────────────────┘
+//
+// Sizes gracefully across the NodeWidgetCard envelope: smaller display
+// than Series/Panel (no sparkline, no table) — sufficient for both the
+// terminal slot AND an intermediate-stage card in the GenericResultsDashboard
+// intermediate-stages toggle path.
+//
+// Formatting
 // ----------
-// The frontend used to register a ``ScalarMetricWidget`` against the
-// artifact_type string ``'ScalarMetric'``.  No backend artifact uses
-// that type: ``state.schemas.ArtifactTypeLiteral`` is closed at six
-// names today — ``Series | SeriesSet | EventSet | Panel | WindowedPanel
-// | TradeSet`` — and the substrate-canonical ``ScalarMetric`` artifact
-// is explicitly deferred per
-// ``shared/operators/summarize_trades/config.yaml``'s
-// ``planned_extensions``:
-//
-//   "ScalarMetric closed-family artifact for the metric values
-//    (vs the current Panel-with-one-row encoding)"
-//
-// Today scalar-shaped outputs ship as ``Panel`` with one row; the
-// PR4 ``PanelWidget`` renders them as a labelled metric strip and
-// that path is the canonical surface for scalar values.
-//
-// PR4 outcome
-// -----------
-// We KEEP this file (importing the symbol elsewhere shouldn't crash
-// the bundle), but we DROP the registry-renderer call so no artifact
-// type is routed here.  If a future backend ships a real scalar
-// artifact, the work is:
-//
-//   1. Add the new name to ``ArtifactTypeLiteral`` and the frontend
-//      ``ArtifactType`` union.
-//   2. Add a real metadata + payload shape to ``types/artifacts.ts``.
-//   3. Re-introduce the registry-renderer call here with an
-//      implementation that reads the payload (mirror what
-//      EventSetWidget / PanelWidget do).
-//
-// Until then, the ``FallbackWidget`` handles any hypothetical orphan
-// artifact whose type isn't in the closed family.
+// Uses ``formatNumberWithUnits`` from the shared formatter so the
+// per-unit display rule stays consistent with Series/Panel widgets:
+//   - RATIO (correlation, etc.)   → 3 significant digits, no suffix
+//   - BPS                          → 1 decimal, " bps" suffix
+//   - PERCENT                      → 2 decimals, "%" suffix
+//   - Z_SCORE                      → 2 decimals, no suffix
+//   - other                        → defaults from formatNumber
 // ============================================================================
 
 import type { NodeRenderer } from '@/components/build/lib/nodeRendererRegistry';
+import { registerArtifactRenderer } from '@/components/build/lib/nodeRendererRegistry';
+import { PayloadShell } from './shared/PayloadShell';
+import {
+  formatNumberWithUnits,
+  MISSING_VALUE_DASH,
+  type ScalarMetricPayloadEnvelope,
+} from './shared/artifactFormat';
 
-const ScalarMetricWidget: NodeRenderer = () => null;
+const ScalarMetricWidget: NodeRenderer = ({ node, artifact }) => {
+  return (
+    <PayloadShell<ScalarMetricPayloadEnvelope>
+      artifactHash={node.artifact_hash ?? artifact.hash}
+      expectedType="ScalarMetric"
+      displayName="Scalar metric"
+      isEmpty={(p) =>
+        p.payload?.value === null ||
+        p.payload?.value === undefined ||
+        !Number.isFinite(p.payload.value)
+      }
+      emptyMessage="The scalar metric persisted but its value is not finite."
+    >
+      {(payload) => <ScalarMetricBody payload={payload} />}
+    </PayloadShell>
+  );
+};
 
-// NB: NO ``registerArtifactRenderer`` call.  Re-enable when the
-// backend ships the type — see file header for the checklist.
+function ScalarMetricBody({
+  payload,
+}: {
+  payload: ScalarMetricPayloadEnvelope;
+}) {
+  const metricKey = payload.metadata.metric_key;
+  const units = payload.metadata.units;
+  const value = payload.payload.value;
+  const valueText = Number.isFinite(value)
+    ? formatNumberWithUnits(value, units)
+    : MISSING_VALUE_DASH;
 
+  return (
+    <div className="flex min-h-0 flex-1 flex-col px-5 pt-3 pb-4">
+      <div className="kicker text-fg-muted">
+        {metricKey}
+        {units && (
+          <span className="ml-2 normal-case tracking-normal text-fg-faint">
+            {units}
+          </span>
+        )}
+      </div>
+      <div className="mt-3 flex items-baseline gap-2">
+        <span className="font-serif-display text-[24px] font-light leading-none text-fg-primary">
+          {valueText}
+        </span>
+      </div>
+      <p className="mt-3 text-[10.5px] leading-[1.5] text-fg-faint">
+        Scalar statistic — a single finite value emitted by an
+        L3 statistical operator (e.g. correlation, covariance,
+        cointegration).  Lineage chain available via the artifact
+        footer.
+      </p>
+    </div>
+  );
+}
+
+registerArtifactRenderer('ScalarMetric', ScalarMetricWidget);
 export { ScalarMetricWidget };

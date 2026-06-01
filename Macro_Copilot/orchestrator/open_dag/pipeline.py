@@ -118,6 +118,7 @@ from orchestrator.open_dag.coverage_gate import (
     CoverageGate,
     GateVerdict,
 )
+from orchestrator.open_dag.executed_dag import ExecutedDag
 from orchestrator.open_dag.intent_chain import IntentChain
 from orchestrator.open_dag.run_record import RunLineage
 from shared.artifacts.lineage import Lineage
@@ -203,6 +204,34 @@ class PipelineOutcome(BaseModel):
             "only when the router itself failed."
         ),
     )
+    workflow: Optional[Workflow] = Field(
+        default=None,
+        description=(
+            "PR-11A: the assembled ``Workflow`` carried out of the "
+            "pipeline on successful Assembly (CLEAN status).  Needed "
+            "by the session layer's open-DAG persistence path — "
+            "``state.dag_repo.persist_dag_from_workflow_result`` "
+            "takes ``workflow + result`` together.  Populated for "
+            "every status that reached or passed Assembly; ``None`` "
+            "for router-side / composer-side failures.  Codex "
+            "correction: do NOT reach back into pipeline state via a "
+            "mutable ``pipeline.last_workflow`` — surface it on the "
+            "outcome instead."
+        ),
+    )
+    executed_dag: Optional[ExecutedDag] = Field(
+        default=None,
+        description=(
+            "PR-11A: the full L5 executor bundle (carrying the "
+            "substrate ``WorkflowResult`` with every node's artifact, "
+            "the cached terminal lineage, the topology summary "
+            "string, and the structured ``TerminalArtifactSummary`` "
+            "the session layer threads into the ``workflow_result`` "
+            "event).  Populated only on ``status == 'PASS'`` AND when "
+            "the executor callback returned successfully; ``None`` on "
+            "every other path (dry-run, refusals, executor failure)."
+        ),
+    )
 
     @property
     def is_pass(self) -> bool:
@@ -228,15 +257,25 @@ class PipelineOutcome(BaseModel):
 # ============================================================================
 
 
-# Executor callback contract: takes (workflow, bound_leaves) and
-# returns (Lineage, executed_summary).  Async so the substrate's
-# execute_workflow can do I/O.  Returns None on executor failure;
-# the pipeline converts that to a structured "execution failed"
-# markdown (still PASS at the gate level — the result is just
-# missing).
+# Executor callback contract (PR-11A): takes (workflow, bound_leaves)
+# and returns an ``ExecutedDag`` carrying the full ``WorkflowResult``
+# (with every node's artifact keyed by ``node_id``) + cached lineage +
+# topology summary + structured ``TerminalArtifactSummary``.  Async so
+# the substrate's execute_workflow can do I/O.  Returns None on
+# executor failure; the pipeline converts that to a structured
+# "execution failed" markdown (still PASS at the gate level — the
+# result is just missing).
+#
+# Why ExecutedDag instead of the prior (Lineage, str) tuple
+# ---------------------------------------------------------
+# Persistence (state.dag_repo.persist_dag_from_workflow_result) needs
+# the full WorkflowResult, not just the terminal artifact's lineage.
+# Surfacing ExecutedDag through the executor + pipeline contract is
+# the clean path; the prior tuple shape blocked open-DAG persistence
+# and was the load-bearing gap Codex flagged.
 ExecutorCallback = Callable[
     [Workflow, Sequence[BoundLeaf]],
-    Awaitable[Optional[Tuple[Lineage, str]]],
+    Awaitable[Optional[ExecutedDag]],
 ]
 
 
@@ -553,8 +592,15 @@ class OpenDagPipeline:
             composer_llm_rationale=composer_llm_rationale,
         )
 
+        # PR-11A: the executor callback now returns ``ExecutedDag``
+        # (carrying the full WorkflowResult + cached lineage + topology
+        # summary + structured terminal summary).  The old
+        # ``(Lineage, summary_str)`` tuple shape is gone; that shape
+        # threw away the full WorkflowResult and blocked open-DAG
+        # persistence.
         executed_summary: str = ""
         compute_lineage: Optional[Lineage] = None
+        executed_dag: Optional[ExecutedDag] = None
         if self._executor_callback is not None:
             try:
                 executed = await self._executor_callback(
@@ -584,8 +630,11 @@ class OpenDagPipeline:
                     intent_chain=intent_chain,
                     run_lineage=run_lineage,
                     route_decision=route_decision,
+                    workflow=assembly_result.workflow,
                 )
-            compute_lineage, executed_summary = executed
+            executed_dag = executed
+            compute_lineage = executed_dag.lineage
+            executed_summary = executed_dag.workflow_lineage_summary
 
         # PR-10D F5: derive the bucket from the pair (gate, compute).
         if compute_lineage is None:
@@ -621,6 +670,8 @@ class OpenDagPipeline:
                 intent_chain=intent_chain,
                 run_lineage=run_lineage,
                 route_decision=route_decision,
+                workflow=assembly_result.workflow,
+                # No executed_dag — dry-run by definition skipped L5.
             )
 
         # PR-10A Codex F8: defensive wrap around L6 render.  The
@@ -651,6 +702,8 @@ class OpenDagPipeline:
                 intent_chain=intent_chain,
                 run_lineage=run_lineage,
                 route_decision=route_decision,
+                workflow=assembly_result.workflow,
+                executed_dag=executed_dag,
             )
         return PipelineOutcome(
             status="PASS",
@@ -658,6 +711,8 @@ class OpenDagPipeline:
             intent_chain=intent_chain,
             run_lineage=run_lineage,
             route_decision=route_decision,
+            workflow=assembly_result.workflow,
+            executed_dag=executed_dag,
         )
 
     # ------------------------------------------------------------------

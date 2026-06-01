@@ -51,6 +51,7 @@ from rates_agent.workflows import rates_primitive_resolver
 from shared.artifacts.types import (
     EventSet,
     Panel,
+    ScalarMetric,
     Series,
     SeriesSet,
     WindowedPanel,
@@ -265,6 +266,25 @@ def _summarize_windowed_panel(w: WindowedPanel) -> Dict[str, Any]:
     }
 
 
+def _summarize_scalar_metric(s: ScalarMetric) -> Dict[str, Any]:
+    """PR-11A: closed-family v2.0 ScalarMetric branch.
+
+    ScalarMetric is the structurally-honest output shape for
+    statistical operators that produce a single number — correlation,
+    covariance, cointegration test stat — replacing the prior
+    single-row-Series + sentinel-date workaround.  The wire shape
+    surfaces ``metric_key`` + ``value`` + ``units`` so the frontend
+    workflow_result card can render the actual number (e.g. the
+    correlation coefficient), not a hash.
+    """
+    return {
+        "type": "ScalarMetric",
+        "metric_key": s.metric_key,
+        "value": _safe_float(s.value),
+        "units": s.units.value,
+    }
+
+
 def summarize_terminal(artifact: Any) -> Dict[str, Any]:
     """Dispatch on the closed-family artifact union and return a
     JSON-friendly summary dict.
@@ -282,6 +302,8 @@ def summarize_terminal(artifact: Any) -> Dict[str, Any]:
         return _summarize_panel(artifact)
     if isinstance(artifact, WindowedPanel):
         return _summarize_windowed_panel(artifact)
+    if isinstance(artifact, ScalarMetric):
+        return _summarize_scalar_metric(artifact)
     return {"type": type(artifact).__name__, "summary": "unknown artifact"}
 
 

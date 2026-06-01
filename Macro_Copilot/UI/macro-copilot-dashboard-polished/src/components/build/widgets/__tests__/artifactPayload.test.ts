@@ -206,11 +206,14 @@ check('isArtifactPayloadResponseShape: rejects missing artifact_type', () => {
 });
 
 check('isArtifactPayloadResponseShape: rejects unknown artifact_type', () => {
-  const bad = { artifact_type: 'ScalarMetric', metadata: {}, payload: {} };
+  // PR-11B: ScalarMetric is NOW in the closed family (admitted v2.0 /
+  // ADR 0016).  Use a truly-unknown type tag here for the guard's
+  // rejection check.
+  const bad = { artifact_type: 'NotAnArtifact', metadata: {}, payload: {} };
   assertEqual(
     isArtifactPayloadResponseShape(bad),
     false,
-    'ScalarMetric is not in the closed family',
+    'NotAnArtifact is not in the closed family',
   );
 });
 
@@ -235,17 +238,26 @@ check('isArtifactPayloadResponseShape: null / non-object rejected', () => {
 });
 
 check('isKnownArtifactType: closed family check', () => {
+  // PR-11B / v2.0 (ADR 0016): ScalarMetric IS in the closed family
+  // (admitted for statistical-operator outputs).  TradeSet stays in
+  // the frontend family DORMANT for paused backtest surfaces until
+  // backtest is re-admitted as a primitive set (separate PR).
   for (const t of [
     'Series',
     'SeriesSet',
     'EventSet',
     'Panel',
     'WindowedPanel',
+    'ScalarMetric',
     'TradeSet',
   ]) {
     assertEqual(isKnownArtifactType(t), true, t);
   }
-  assertEqual(isKnownArtifactType('ScalarMetric'), false, 'not in family');
+  assertEqual(
+    isKnownArtifactType('NotAnArtifact'),
+    false,
+    'NotAnArtifact rejected',
+  );
 });
 
 // ----------------------------------------------------------------------------

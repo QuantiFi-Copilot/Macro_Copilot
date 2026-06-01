@@ -203,15 +203,15 @@ check('TradeSetWidget: reads payload.trades + has paused-state branch', () => {
 });
 
 // ----------------------------------------------------------------------------
-// ScalarMetricWidget — registration dropped
+// ScalarMetricWidget — registration RESTORED (PR-11B / v2.0 ART4/ART5)
 // ----------------------------------------------------------------------------
 
-check('ScalarMetricWidget: registration is dropped (deferred backend type)', () => {
+check('ScalarMetricWidget: self-registers via registerArtifactRenderer', () => {
   const src = SRC['ScalarMetricWidget.tsx'];
-  assertNotContains(
+  assertContains(
     src,
     "registerArtifactRenderer('ScalarMetric'",
-    'no ScalarMetric registration',
+    'ScalarMetric registration is present (v2.0 / PR-11B)',
   );
 });
 
@@ -223,6 +223,7 @@ check('every payload-backed widget imports PayloadShell', () => {
   for (const f of [
     'EventSetWidget.tsx',
     'PanelWidget.tsx',
+    'ScalarMetricWidget.tsx',  // PR-11B: real renderer ships PayloadShell
     'SeriesWidget.tsx',
     'SeriesSetWidget.tsx',
     'WindowedPanelWidget.tsx',
@@ -240,6 +241,7 @@ check('every payload-backed widget self-registers a renderer', () => {
   for (const [f, type] of [
     ['EventSetWidget.tsx', 'EventSet'],
     ['PanelWidget.tsx', 'Panel'],
+    ['ScalarMetricWidget.tsx', 'ScalarMetric'],  // PR-11B / v2.0
     ['SeriesWidget.tsx', 'Series'],
     ['SeriesSetWidget.tsx', 'SeriesSet'],
     ['WindowedPanelWidget.tsx', 'WindowedPanel'],

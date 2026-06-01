@@ -101,7 +101,16 @@ export function WorkspaceSlotsPanel({ detail }: Props) {
   );
 
   if (!isForkable) {
-    return <NotForkableBanner />;
+    // PR-11C — distinguish open-DAG workspaces (template_id === null
+    // AND bound_slot_values === null) from legacy pre-PR-B workspaces
+    // (template_id is a non-empty string but bound_slot_values is
+    // null).  Open-DAG runs are non-forkable BY DESIGN: there's no
+    // template recipe to vary; the LLM composed the DAG at query
+    // time.  Re-asking the original prompt produces a fresh
+    // composition, not a slot patch.
+    const isOpenDag =
+      detail.template_id === null && detail.bound_slot_values === null;
+    return isOpenDag ? <OpenDagNotForkableBanner /> : <NotForkableBanner />;
   }
 
   return (
@@ -277,6 +286,37 @@ function NotForkableBanner() {
           <code className="font-mono text-fg-muted">bound_slot_values</code>,
           so it can&apos;t be forked.  Re-run the original prompt to
           produce a fresh workspace whose slots are editable.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+/** PR-11C — open-DAG composition banner.
+ *
+ *  Distinct copy from the legacy NotForkableBanner because open-DAG
+ *  workspaces are non-forkable by DESIGN, not by drift: the LLM
+ *  stitched primitives + operators at query time, so there are no
+ *  template slots to patch.  Honest disclosure (FP7) — tell the user
+ *  why they can't fork and what TO do instead. */
+function OpenDagNotForkableBanner() {
+  return (
+    <section className="flex items-start gap-2 border-b border-line-subtle px-5 py-3">
+      <AlertCircle
+        size={13}
+        className="mt-0.5 shrink-0 text-lineage-300"
+        aria-hidden
+      />
+      <div className="min-w-0">
+        <div className="text-[12px] font-semibold text-fg-primary">
+          Open DAG composition · not slot-forkable
+        </div>
+        <p className="mt-1 text-[10.5px] leading-[1.5] text-fg-secondary">
+          This workspace was composed at query time by the LLM-DAG lane
+          (no template recipe, so no slot schema to patch).  To vary the
+          analysis, re-ask the original question in Ask with the change
+          you want — the lane will compose a fresh DAG and persist a new
+          workspace.  The per-stage inspector below is read-only.
         </p>
       </div>
     </section>

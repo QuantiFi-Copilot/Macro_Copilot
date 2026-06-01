@@ -45,6 +45,7 @@ from orchestrator.open_dag import (
     Composer,
     ComposerRefusal,
     CoverageGate,
+    ExecutedDag,
     Frequency,
     GOLDEN_RELATIONSHIP_CORRELATION,
     GateVerdict,
@@ -57,7 +58,10 @@ from orchestrator.open_dag.composer import ComposerLLMOutput
 from orchestrator.open_dag.answer import _AnswerLLMOutput
 from shared.artifacts.lineage import FetchStep, Lineage
 from shared.artifacts.registry import ArtifactTypeName
+from shared.artifacts.types import ScalarMetric
+from shared.schemas.time_series import TimeSeriesUnits
 from shared.workflow.registry import PrimitiveSpec
+from shared.workflow.result import WorkflowResult
 from shared.workflow.types import Workflow
 
 
@@ -494,7 +498,26 @@ class TestGatePassPaths:
         lineage = Lineage.from_steps([step])
 
         async def executor(workflow, leaves):
-            return (lineage, "ScalarMetric: 0.62 (n=1257)")
+            # PR-11A: ExecutorCallback now returns ExecutedDag carrying
+            # the full WorkflowResult (with every node's artifact)
+            # instead of the prior (Lineage, summary_str) tuple — the
+            # tuple shape blocked open-DAG persistence because the
+            # WorkflowResult was discarded.
+            artifact = ScalarMetric(
+                metric_key="test_correlation",
+                value=0.62,
+                units=TimeSeriesUnits.RATIO,
+                lineage=lineage,
+            )
+            workflow_result = WorkflowResult(
+                workflow_id=workflow.workflow_id,
+                terminal_artifact=artifact,
+                workflow_lineage_summary="ScalarMetric: 0.62 (n=1257)",
+                node_artifacts={
+                    node.node_id: artifact for node in workflow.nodes
+                },
+            )
+            return ExecutedDag.from_workflow_result(workflow_result)
 
         pipeline = _make_pipeline(
             router=_MockRouter(_canonical_route_decision()),

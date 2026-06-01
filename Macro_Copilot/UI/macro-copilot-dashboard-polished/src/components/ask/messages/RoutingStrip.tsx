@@ -78,9 +78,25 @@ function describeRoute(message: CopilotMessage): {
       detail: message.workflow.routeDecision.template_id,
     };
   }
-  // V2: detect ad-hoc operator DAG by sniffing message metadata.
-  // Today the supervisor never produces this shape, so we never enter
-  // this branch — left in the union for forward-compatibility.
+  // PR-11B — a workflow turn whose route_decision arrived with
+  // ``template_id === null`` is an open-DAG composition (the LLM
+  // stitched primitives + operators at query time rather than binding
+  // a registered template).  ``message.workflow`` is populated by the
+  // useCopilot reducer when ``action === 'route'``; the null template
+  // surfaces here as the "composed" kind.  Carry the workflow_lineage
+  // summary as detail when available so PMs see the node chain at a
+  // glance ("p1 → p2 → align_series → correlation").
+  if (
+    message.workflow &&
+    message.workflow.routeDecision.template_id === null
+  ) {
+    const summary = message.workflow.result?.workflow_lineage_summary;
+    return {
+      kind: 'composed',
+      kicker: 'COMPOSED',
+      detail: summary || undefined,
+    };
+  }
 
   const toolCount = message.traceSteps.filter(
     (s) => s.status === 'complete' || s.status === 'error',

@@ -37,13 +37,12 @@ import './EventSetWidget';
 import './PanelWidget';
 import './WindowedPanelWidget';
 import './TradeSetWidget';
-// PR4 — ``ScalarMetricWidget`` registration is deliberately dropped:
-// the backend's ``ArtifactTypeLiteral`` is closed at six families
-// and ``ScalarMetric`` is a deferred future addition (see
-// ``shared/operators/summarize_trades/config.yaml`` planned_extensions).
-// Scalar-shaped outputs ship as ``Panel`` with one row today; the
-// PR4 ``PanelWidget`` handles them.  See ``ScalarMetricWidget.tsx``
-// header for the re-enablement checklist.
+// PR-11B — re-enabled per v2.0 (ADR 0016 / ART4 / ART5).  Backend
+// admitted ``ScalarMetric`` as a closed-family artifact for statistical
+// operators (correlation, covariance, cointegration, ...).  The widget
+// self-registers via ``registerArtifactRenderer('ScalarMetric', ...)``
+// at module load.
+import './ScalarMetricWidget';
 
 import './FallbackWidget';
 

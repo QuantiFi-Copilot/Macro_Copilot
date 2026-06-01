@@ -122,6 +122,14 @@ function resolveBuildHref(message: CopilotMessage): string | null {
   //    to Build's slug-bound shell, which materialises the saved DAG +
   //    per-node artifacts.  This wins over every other path because
   //    the persisted workspace IS the authoritative result.
+  //
+  //    PR-11B: this also handles open-DAG runs (template_id === null)
+  //    that successfully persisted — they emit ``workspace.slug`` the
+  //    same way template-lane runs do, and the slug path renders both
+  //    correctly via BuildCompleted + GenericResultsDashboard.  Do
+  //    NOT route open-DAG to ``?workflow=`` (step 2 below) — that
+  //    path is template-only and surfaces a "paused / unknown" card
+  //    via ``WorkflowStatusCanvas``.
   const workflowSlug = message.workflow?.workspace?.slug;
   if (workflowSlug) {
     return `/workspace/${workflowSlug}`;
@@ -135,6 +143,12 @@ function resolveBuildHref(message: CopilotMessage): string | null {
   //    ``?workflow=<template_id>`` URL param and surfaces the right
   //    state (paused / unavailable / unknown) via the
   //    ``classifyWorkflow`` registry.
+  //
+  //    PR-11B: the falsy check ``if (templateId)`` correctly excludes
+  //    open-DAG (template_id === null): open-DAG without a slug means
+  //    persistence failed, and we have no honest "open-DAG paused"
+  //    card to render — fall through to the supervisor path (step 3)
+  //    or return null cleanly.
   const templateId = message.workflow?.routeDecision.template_id;
   if (templateId) {
     const status = classifyWorkflow(templateId);

@@ -179,8 +179,15 @@ export function WorkspaceOverridesProvider({
   const apply = useCallback(async () => {
     if (!hasPendingOverrides(overrides)) return;
     if (!isForkable) {
+      // PR-11C — open-DAG workspaces (template_id === null AND
+      // bound_slot_values === null) get a distinct honest message
+      // because they're non-forkable BY DESIGN, not by drift.
+      const isOpenDag =
+        workspace.template_id === null && workspace.bound_slot_values === null;
       setError(
-        'This workspace pre-dates the fork substrate (no template_id / bound_slot_values).  Re-run the original prompt to make it forkable.',
+        isOpenDag
+          ? 'Open-DAG compositions are not slot-forkable (no template recipe).  Re-ask the original question in Ask with your change; the lane will compose a fresh DAG and persist a new workspace.'
+          : 'This workspace pre-dates the fork substrate (no template_id / bound_slot_values).  Re-run the original prompt to make it forkable.',
       );
       return;
     }

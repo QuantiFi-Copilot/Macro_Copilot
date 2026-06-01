@@ -1015,6 +1015,240 @@ class CopilotSession:
         return True
 
     # ------------------------------------------------------------------
+    # PR-11A — open-DAG persistence + workflow_result emission
+    # ------------------------------------------------------------------
+
+    async def _maybe_emit_open_dag_workflow_events(
+        self,
+        *,
+        outcome: Any,
+        emit,
+    ) -> None:
+        """On a successful open-DAG run, persist the workflow as a
+        slug-routed workspace AND emit the three workflow events
+        (``workflow_route_decision`` / ``workflow_status`` /
+        ``workflow_result``) the frontend chat bubble + Build CTA need.
+
+        PR-11A — the open-DAG analog of the template lane's emission
+        block at ``_maybe_run_workflow`` (lines 945-994).  Emits
+        ``template_id=None`` to distinguish the open-DAG lane; the
+        frontend ``useCopilot`` reducer (PR-11B) accepts null
+        template_id as the open-DAG variant.
+
+        No-ops when:
+          - The outcome's status is not PASS (no executed_dag to
+            persist; dry-run / refusal paths surface their markdown
+            verbatim with no workflow card).
+          - The outcome is missing ``workflow`` or ``executed_dag``
+            (defensive; should not happen on PASS but the typed
+            outcome allows either to be None).
+          - Engine or object_storage couldn't be acquired (mirrors
+            the template-lane's graceful degradation:
+            ``persistence: {ok: false, error: ...}`` is emitted but
+            the chat answer keeps flowing).
+
+        Persistence uses the same helpers the template lane uses
+        (``persist_dag_from_workflow_result`` + ``create_workspace``)
+        with ``template_id=None``, ``bound_slot_values=None``, and
+        ``focus_node=workflow.terminal_node_id``.
+        """
+        if getattr(outcome, "status", None) != "PASS":
+            return
+        executed_dag = getattr(outcome, "executed_dag", None)
+        workflow = getattr(outcome, "workflow", None)
+        if executed_dag is None or workflow is None:
+            logger.warning(
+                "[%s] PR-11A: open-DAG PASS without executed_dag/workflow "
+                "(executed_dag=%s, workflow=%s); skipping persistence + "
+                "workflow events",
+                self.thread_id,
+                executed_dag is not None,
+                workflow is not None,
+            )
+            return
+
+        # Acquire engine + object_storage the same way the template
+        # lane does at ``_maybe_run_workflow`` (lines 887-912).
+        # Graceful degradation: a missing dependency surfaces as
+        # persistence.ok=False, not a turn failure.
+        engine = None
+        object_storage = None
+        try:
+            from api.dependencies import (
+                get_engine,
+                get_object_storage,
+                init_engine,
+                init_object_storage,
+            )
+            try:
+                engine = get_engine()
+            except RuntimeError:
+                engine = init_engine()
+            try:
+                object_storage = get_object_storage()
+            except RuntimeError:
+                object_storage = init_object_storage()
+        except Exception as exc:
+            logger.warning(
+                "[%s] PR-11A: could not acquire persistence dependencies "
+                "for open-DAG run: %s; emitting workflow_result without "
+                "workspace handle",
+                self.thread_id, exc,
+            )
+
+        # Persist (best-effort).  Mirror the template lane:
+        # persist_dag_from_workflow_result -> create_workspace
+        # (template_id=None, bound_slot_values=None,
+        #  focus_node=workflow.terminal_node_id).
+        persistence: Dict[str, Any] = {"ok": False, "error": None}
+        workspace_payload: Optional[Dict[str, Any]] = None
+        dag_hash: Optional[str] = None
+        terminal_artifact_hash: Optional[str] = None
+        node_artifact_hashes: Optional[Dict[str, str]] = None
+        if engine is not None and object_storage is not None:
+            try:
+                from state.dag_repo import persist_dag_from_workflow_result
+                from state.workspace_repo import (
+                    create_workspace,
+                    InvalidNameError,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "[%s] PR-11A: persistence import failed: %s",
+                    self.thread_id, exc,
+                )
+                persistence = {
+                    "ok": False, "error": f"import failed: {exc}",
+                }
+            else:
+                try:
+                    with engine.begin() as conn:
+                        persisted = persist_dag_from_workflow_result(
+                            workflow,
+                            executed_dag.workflow_result,
+                            conn=conn,
+                            object_storage=object_storage,
+                        )
+                        ws = create_workspace(
+                            persisted.dag_hash,
+                            conn=conn,
+                            name=None,
+                            created_by=(
+                                str(self._session_id)
+                                if self._session_id else None
+                            ),
+                            focus_node=workflow.terminal_node_id,
+                            # Codex correction: open-DAG runs use
+                            # template_id=None + bound_slot_values=None.
+                            # ``create_workspace`` already accepts
+                            # ``Optional[str]`` (verified at
+                            # api/routes/workspace.py:174 +
+                            # state/workspace_repo.py).
+                            template_id=None,
+                            bound_slot_values=None,
+                            parent_workspace_id=None,
+                        )
+                    dag_hash = persisted.dag_hash
+                    terminal_artifact_hash = (
+                        persisted.terminal_artifact_hash
+                    )
+                    node_artifact_hashes = dict(
+                        persisted.node_artifact_hashes
+                    )
+                    workspace_payload = {
+                        "id": str(ws.id),
+                        "slug": ws.slug,
+                        "name": ws.name,
+                        "dag_hash": ws.dag_hash,
+                        "url": f"/workspace/{ws.slug}",
+                    }
+                    persistence = {"ok": True}
+                except InvalidNameError as exc:
+                    # name=None can't trigger this in practice, but
+                    # log defensively if it ever does.
+                    logger.warning(
+                        "[%s] PR-11A: workspace create rejected: %s",
+                        self.thread_id, exc,
+                    )
+                    persistence = {"ok": False, "error": str(exc)}
+                except Exception as exc:
+                    logger.exception(
+                        "[%s] PR-11A: open-DAG persistence failed",
+                        self.thread_id,
+                    )
+                    persistence = {"ok": False, "error": str(exc)}
+
+        # Emit workflow_route_decision (template_id=None).
+        # Carry the L1 router's rationale through when available.
+        rationale = "Open DAG composed from primitives + operators"
+        route_decision = getattr(outcome, "route_decision", None)
+        if route_decision is not None:
+            router_rationale = getattr(route_decision, "rationale", None)
+            if router_rationale:
+                rationale = f"Open DAG ({router_rationale})"
+        await emit(
+            SessionEvent(
+                type="workflow_route_decision",
+                data={
+                    "action": "route",
+                    "template_id": None,
+                    "slot_values": {},
+                    "rationale": rationale,
+                    "clarification_question": None,
+                    "adjustments": [],
+                },
+            )
+        )
+
+        # Emit workflow_status complete.  The pipeline ran to
+        # completion before we reached this method, so the
+        # intermediate "running" state has no observable window;
+        # mirror the template-lane error-path which also emits a
+        # single terminal status.
+        await emit(
+            SessionEvent(
+                type="workflow_status",
+                data={"status": "complete"},
+            )
+        )
+
+        # Emit workflow_result with terminal_artifact summary +
+        # workspace handle.  Use the runner's summarize_terminal so
+        # the wire shape matches the template lane exactly (the
+        # frontend reducer is template-id-agnostic about the
+        # terminal_artifact dict shape; the ScalarMetric branch
+        # added in this PR ensures correlation runs emit
+        # {type, metric_key, value, units}).
+        from rates_agent.workflows._runner import summarize_terminal
+        terminal_artifact_dict = summarize_terminal(
+            executed_dag.workflow_result.terminal_artifact,
+        )
+        await emit(
+            SessionEvent(
+                type="workflow_result",
+                data={
+                    "ok": True,
+                    "template_id": None,
+                    "terminal_artifact": terminal_artifact_dict,
+                    "workflow_lineage_summary": (
+                        executed_dag.workflow_lineage_summary
+                    ),
+                    "error": None,
+                    "terminal_artifact_hash": terminal_artifact_hash,
+                    "node_artifact_hashes": node_artifact_hashes,
+                    "dag_hash": dag_hash,
+                    "workspace": workspace_payload,
+                    "persistence": persistence,
+                    "route": {
+                        "template_id": None,
+                        "slot_values": {},
+                        "rationale": rationale,
+                    },
+                },
+            )
+        )
+
+    # ------------------------------------------------------------------
     # PR 8 — persistent turn lifecycle + reference resolver
     # ------------------------------------------------------------------
 
@@ -1389,6 +1623,25 @@ class CopilotSession:
                 if open_dag_outcome is not None and getattr(
                     open_dag_outcome, "status", None,
                 ) != "PIPELINE_ERROR":
+                    # PR-11A: on PASS with executed_dag + workflow,
+                    # persist the run as a slug-routed workspace and
+                    # emit workflow_route_decision / workflow_status /
+                    # workflow_result (template_id=None) so the
+                    # frontend chat bubble + Build "Open in Build" CTA
+                    # behave like the template lane.  No-op on
+                    # PASS_DRYRUN / refusal paths.
+                    try:
+                        await self._maybe_emit_open_dag_workflow_events(
+                            outcome=open_dag_outcome,
+                            emit=emit,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "[%s] %s open-DAG persistence/emission "
+                            "raised; continuing with markdown + done",
+                            self.thread_id, turn_label,
+                        )
+
                     # Surface the open-DAG outcome verbatim to the
                     # user.  The PipelineOutcome's markdown is
                     # always populated.

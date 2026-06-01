@@ -1,4 +1,4 @@
-"""orchestrator.open_dag.default_executor — PR-10A Codex F2.
+"""orchestrator.open_dag.default_executor — PR-10A Codex F2 / PR-11A.
 
 A default ``ExecutorCallback`` for ``OpenDagPipeline`` that wraps the
 substrate's ``shared.workflow.execute_workflow`` and:
@@ -8,10 +8,17 @@ substrate's ``shared.workflow.execute_workflow`` and:
   - extracts the terminal artifact's ``Lineage`` (the
     ``WorkflowResult.terminal_artifact.lineage`` field, which every
     typed artifact wrapper carries),
-  - renders a short ``executed_summary`` string the L6 AnswerRenderer
-    consumes.
+  - builds the structured ``TerminalArtifactSummary`` the session
+    layer threads into the ``workflow_result`` event (PR-11A; replaces
+    the prior summary-string-only return),
+  - bundles all of the above into ``ExecutedDag`` so the pipeline can
+    carry the full ``WorkflowResult`` through to ``CopilotSession``
+    for persistence (the template lane's
+    ``persist_dag_from_workflow_result`` helper needs ``node_artifacts``
+    keyed by ``node_id``; the prior ``(Lineage, str)`` tuple discarded
+    that and blocked open-DAG persistence — Codex correction).
 
-Per PR-10A Codex F2's correction:
+Per PR-10A Codex F2's correction (still load-bearing):
 
   > PR-10's pipeline makes execution an optional callback.  Default
   > the pipeline to use shared.workflow.execute_workflow when no
@@ -25,18 +32,33 @@ This module ships the BRIDGE between the open-DAG pipeline's
   - use ``build_default_executor_callback(engine, resolver)`` to get
     a ready-made callback, OR
   - call the lower-level helpers
-    (``execute_workflow_async`` + ``executed_summary_from_result``)
-    directly when more control is needed.
+    (``execute_workflow_async`` + ``executed_summary_from_result`` +
+    ``terminal_summary_from_result``) directly when more control is
+    needed.
 
-Both paths are exercised in the PR-10A end-to-end test.
+Both paths are exercised in the open-DAG end-to-end tests.
+
+PR-11A change
+=============
+
+The return type of ``execute_workflow_async`` and the
+``ExecutorCallback`` Protocol it satisfies evolved from
+``Optional[Tuple[Lineage, str]]`` to ``Optional[ExecutedDag]``.  The
+new shape carries the full ``WorkflowResult`` + the structured
+``TerminalArtifactSummary`` so the session layer can persist the run
++ emit a slug-bearing ``workflow_result`` event.  The old summary
+string (the topological "p1 → p2 → ..." label) is still produced
+by ``executed_summary_from_result`` — that helper is unchanged and
+``ExecutedDag.workflow_lineage_summary`` carries the same value.
 
 Finance-blindness
 =================
 
 This module sits in ``orchestrator/open_dag/``.  It imports from
-``shared.workflow.executor`` (the substrate) and from
-``shared.artifacts.lineage`` (the substrate's Lineage type).  It
-does NOT import from ``rates_agent/`` — the primitive resolver is
+``shared.workflow.executor`` (the substrate), from
+``shared.artifacts.lineage`` (the substrate's Lineage type), and from
+``orchestrator.open_dag.executed_dag`` (the in-package typed carrier).
+It does NOT import from ``rates_agent/`` — the primitive resolver is
 passed in by the caller.
 """
 
@@ -44,9 +66,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Optional, Sequence, Tuple
+from typing import Any, Optional, Sequence
 
-from shared.artifacts.lineage import Lineage
+from orchestrator.open_dag.executed_dag import (
+    ExecutedDag,
+    TerminalArtifactSummary,
+)
 from shared.workflow.executor import execute_workflow
 from shared.workflow.registry import PrimitiveResolver
 from shared.workflow.types import Workflow
@@ -80,7 +105,8 @@ def build_default_executor_callback(
     Returns
     -------
     An async callable that accepts ``(workflow, bound_leaves)`` and
-    returns either a ``(Lineage, executed_summary_str)`` tuple OR
+    returns an ``ExecutedDag`` (carrying the full ``WorkflowResult`` +
+    cached lineage + structured ``TerminalArtifactSummary``) OR
     ``None`` on execution failure.  Failure conversion to None is
     intentional: the pipeline's executor-callback contract treats
     None as "execution failed; mark RunLineage compute-incomplete".
@@ -89,7 +115,7 @@ def build_default_executor_callback(
     async def callback(
         workflow: Workflow,
         bound_leaves: Sequence[Any],
-    ) -> Optional[Tuple[Lineage, str]]:
+    ) -> Optional[ExecutedDag]:
         return await execute_workflow_async(
             workflow=workflow,
             engine=engine,
@@ -104,14 +130,14 @@ async def execute_workflow_async(
     workflow: Workflow,
     engine: Any,
     primitive_resolver: PrimitiveResolver,
-) -> Optional[Tuple[Lineage, str]]:
+) -> Optional[ExecutedDag]:
     """Run the substrate executor inside an async wrapper.
 
     The substrate's ``execute_workflow`` is synchronous.  This helper
     runs it in the default executor pool so the open-DAG pipeline's
     async run loop is not blocked.
 
-    Returns the ``(Lineage, executed_summary)`` tuple on success.
+    Returns the ``ExecutedDag`` bundle on success.
     Returns ``None`` on any exception — the pipeline's
     executor-callback contract treats None as "execution failed".
     Exception details are logged (not propagated) so the pipeline can
@@ -133,30 +159,14 @@ async def execute_workflow_async(
         )
         return None
 
-    lineage = _lineage_from_workflow_result(result)
-    if lineage is None:
-        logger.warning(
-            "default executor: terminal artifact has no .lineage; "
-            "falling back to None"
+    try:
+        return ExecutedDag.from_workflow_result(result)
+    except Exception:
+        logger.exception(
+            "default executor: building ExecutedDag from result raised; "
+            "treating as execute failure"
         )
         return None
-    summary = executed_summary_from_result(result)
-    return (lineage, summary)
-
-
-def _lineage_from_workflow_result(result: Any) -> Optional[Lineage]:
-    """Extract the substrate's ``Lineage`` from a ``WorkflowResult``.
-
-    Every typed artifact wrapper carries a ``.lineage`` field (see
-    ``shared/artifacts/types.py``).  This helper reaches into the
-    terminal artifact to pull it out; returns None when the artifact
-    doesn't expose one (defensive — should not happen for any
-    registered closed-family wrapper).
-    """
-    terminal = getattr(result, "terminal_artifact", None)
-    if terminal is None:
-        return None
-    return getattr(terminal, "lineage", None)
 
 
 def executed_summary_from_result(result: Any) -> str:
@@ -173,6 +183,13 @@ def executed_summary_from_result(result: Any) -> str:
       ``"<terminal_artifact_type>: <workflow_lineage_summary>"``
 
     Tests use this string verbatim; deterministic.
+
+    PR-11A note
+    -----------
+    This helper is now ALSO the source for
+    ``ExecutedDag.workflow_lineage_summary``.  Kept as a free function
+    so legacy callers + tests that constructed the string directly
+    still work unchanged.
     """
     terminal = getattr(result, "terminal_artifact", None)
     type_label = (
@@ -182,8 +199,31 @@ def executed_summary_from_result(result: Any) -> str:
     return f"{type_label}: {summary}"
 
 
+def terminal_summary_from_result(result: Any) -> TerminalArtifactSummary:
+    """Build the structured ``TerminalArtifactSummary`` for a
+    ``WorkflowResult``.
+
+    Thin wrapper around
+    ``TerminalArtifactSummary.from_terminal_artifact`` that pulls the
+    terminal off the result for callers that want the structured
+    summary without going through ``ExecutedDag``.
+
+    Raises ``ValueError`` when the terminal artifact's runtime type
+    isn't in the closed family (see TerminalArtifactSummary for
+    rationale).
+    """
+    terminal = getattr(result, "terminal_artifact", None)
+    if terminal is None:
+        raise ValueError(
+            "terminal_summary_from_result: result.terminal_artifact "
+            "is None; cannot build TerminalArtifactSummary."
+        )
+    return TerminalArtifactSummary.from_terminal_artifact(terminal)
+
+
 __all__ = [
     "build_default_executor_callback",
     "execute_workflow_async",
     "executed_summary_from_result",
+    "terminal_summary_from_result",
 ]

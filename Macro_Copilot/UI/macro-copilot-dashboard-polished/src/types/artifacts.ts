@@ -40,7 +40,13 @@ export type ArtifactType =
   | 'EventSet'
   | 'Panel'
   | 'WindowedPanel'
-  | 'TradeSet';
+  | 'ScalarMetric'   // PR-11B / v2.0 (ADR 0016) — active in backend
+  | 'TradeSet';      // KEEP DORMANT — paused backtest surfaces still
+                     //                import it; PR-11 explicitly does
+                     //                NOT delete dormant TradeSet refs.
+                     //                Backend removed it per OPR6 (v2.0);
+                     //                pruning lands alongside backtest
+                     //                re-admission as a primitive set.
 
 // ---------------------------------------------------------------------------
 // Common shapes — repeated across the per-type bodies.
@@ -249,6 +255,42 @@ export interface WindowedPanelPayloadEnvelope {
 }
 
 // ---------------------------------------------------------------------------
+// ScalarMetric — a single finite scalar statistic (PR-11B / v2.0 ART4/ART5).
+//   Backend Pydantic shape (shared/artifacts/types.py:420):
+//     metric_key: str
+//     value: float (finite — ±Inf/NaN rejected at construction per ART11)
+//     units: TimeSeriesUnits (e.g. "RATIO" for correlation)
+//     lineage: Lineage
+// ---------------------------------------------------------------------------
+
+export interface ScalarMetricMetadata {
+  /** Operator-supplied identifier (e.g. "correlation_coefficient").
+   *  Load-bearing — frontend cards key chip labels off this field. */
+  metric_key: string;
+  /** TimeSeriesUnits — RATIO for correlation, BPS / PERCENT / Z_SCORE etc.
+   *  for other statistical operators.  String here because the closed
+   *  family lives on the backend (shared/schemas/time_series.py); the
+   *  frontend treats it as an opaque short label and formats by it. */
+  units: string;
+  lineage: Lineage;
+}
+
+export interface ScalarMetricPayloadBody {
+  /** Single finite number.  Backend invariant: ART11 forbids ±Inf and NaN
+   *  on the wire — the operator raises a typed error rather than emitting
+   *  a non-finite ScalarMetric. */
+  value: number;
+  /** Forward-compat catch-all for any payload fields the backend adds. */
+  [extra: string]: unknown;
+}
+
+export interface ScalarMetricPayloadEnvelope {
+  artifact_type: 'ScalarMetric';
+  metadata: ScalarMetricMetadata;
+  payload: ScalarMetricPayloadBody;
+}
+
+// ---------------------------------------------------------------------------
 // TradeSet — flattened trade-record list.
 //   _trade_set_to_stored: {trades: TradeSet.to_records()}
 // ---------------------------------------------------------------------------
@@ -296,13 +338,21 @@ export interface TradeSetPayloadEnvelope {
 
 /** Discriminated union over ``artifact_type``.  Consumers MUST switch
  *  on ``response.artifact_type`` (or use a helper like
- *  ``isSeriesPayload``) before reading typed metadata / payload fields. */
+ *  ``isSeriesPayload``) before reading typed metadata / payload fields.
+ *
+ *  PR-11B: ``ScalarMetricPayloadEnvelope`` added (v2.0 ART4/ART5 — the
+ *  backend admitted ``ScalarMetric`` for statistical operators like
+ *  correlation/covariance/cointegration).  ``TradeSetPayloadEnvelope``
+ *  kept DORMANT — paused backtest surfaces still import it and PR-11
+ *  explicitly does not delete dormant TradeSet references.  Pruning
+ *  lands alongside backtest re-admission. */
 export type ArtifactPayloadResponse =
   | SeriesPayloadEnvelope
   | SeriesSetPayloadEnvelope
   | EventSetPayloadEnvelope
   | PanelPayloadEnvelope
   | WindowedPanelPayloadEnvelope
+  | ScalarMetricPayloadEnvelope
   | TradeSetPayloadEnvelope;
 
 // ---------------------------------------------------------------------------
@@ -346,6 +396,12 @@ export function isTradeSetPayload(
   return r.artifact_type === 'TradeSet';
 }
 
+export function isScalarMetricPayload(
+  r: ArtifactPayloadResponse,
+): r is ScalarMetricPayloadEnvelope {
+  return r.artifact_type === 'ScalarMetric';
+}
+
 /** Validate a JSON-decoded object looks like an ArtifactPayloadResponse.
  *  Pure structural check — does NOT verify the per-type body fields.
  *  Used by the API client / hook to fail fast on a malformed response
@@ -370,6 +426,7 @@ export function isKnownArtifactType(s: string): s is ArtifactType {
     s === 'EventSet' ||
     s === 'Panel' ||
     s === 'WindowedPanel' ||
-    s === 'TradeSet'
+    s === 'ScalarMetric' || // PR-11B / v2.0 ART4/ART5
+    s === 'TradeSet'        // KEEP DORMANT — see ArtifactType comment
   );
 }

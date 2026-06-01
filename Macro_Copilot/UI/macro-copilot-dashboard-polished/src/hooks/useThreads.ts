@@ -36,8 +36,13 @@ export type ThreadSummary = {
   lastActivityAt: string;
   messageCount: number;
   /** Workflow template_id of the last workflow turn, when present.
-   *  Surfaces in the rail subtitle as a quick "what was this about". */
-  lastWorkflowTemplateId?: string;
+   *  Surfaces in the rail subtitle as a quick "what was this about".
+   *
+   *  PR-11B: ``null`` is the open-DAG variant (no recipe).  The rail
+   *  subtitle renders "open dag" when null; subtitle code should fall
+   *  back to a generic label via ``?? 'open dag'`` rather than
+   *  treating null as "no workflow at all". */
+  lastWorkflowTemplateId?: string | null;
 };
 
 export type RelativeDateGroup =

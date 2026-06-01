@@ -200,36 +200,46 @@ check('registry: unknown template_id → generic', () => {
 });
 
 // ----------------------------------------------------------------------------
-// 2. Topology-fingerprint fallback when template_id is null
+// 2. Open-DAG: template_id === null ALWAYS routes to generic (PR-11C)
 // ----------------------------------------------------------------------------
+//
+// Open-DAG runs are LLM-composed at query time — they have NO template
+// recipe (template_id === null by design).  Specialised dashboards
+// rely on template-bound node IDs (signal / target / align / events /
+// ...) that open-DAG nodes do not carry, so an LLM-DAG that happens to
+// use the same operators as event_study / regime / backtest MUST NOT
+// be routed there: the dashboard would fail to find its expected node
+// IDs.  Per the PR-11C decision, null template_id → 'generic'
+// unconditionally; the topology-fingerprint fallback only fires for
+// LEGACY workspaces with a non-null but unknown template_id.
 
-check('registry: null template_id + event_study fingerprint → event_study', () => {
+check('registry: null template_id + event_study fingerprint → generic (PR-11C: open-DAG bypass)', () => {
   const ws = eventStudyWorkspace();
   ws.template_id = null;
   assertEqual(
     resolveWorkflowDashboard(ws),
-    'event_study',
-    'fingerprint fallback',
+    'generic',
+    'open-DAG bypasses fingerprint',
   );
 });
 
-check('registry: null template_id + regime fingerprint → regime', () => {
+check('registry: null template_id + regime fingerprint → generic (PR-11C: open-DAG bypass)', () => {
   const ws = regimeWorkspace();
   ws.template_id = null;
   assertEqual(
     resolveWorkflowDashboard(ws),
-    'regime_conditioned_relationship',
-    'fingerprint fallback',
+    'generic',
+    'open-DAG bypasses fingerprint',
   );
 });
 
-check('registry: null template_id + backtest fingerprint → backtest', () => {
+check('registry: null template_id + backtest fingerprint → generic (PR-11C: open-DAG bypass)', () => {
   const ws = backtestWorkspace();
   ws.template_id = null;
   assertEqual(
     resolveWorkflowDashboard(ws),
-    'backtest',
-    'fingerprint fallback',
+    'generic',
+    'open-DAG bypasses fingerprint',
   );
 });
 
@@ -249,13 +259,13 @@ check('registry: null template_id + no matching fingerprint → generic', () => 
   );
 });
 
-check('registry: backtest fingerprint takes priority over event_study (shares threshold_events)', () => {
-  // A workspace with construct_trades / evaluate_trades / summarize_trades
-  // AND threshold_events / event_windows / conditional_aggregate should
-  // be classified as backtest, not event_study, because the backtest
-  // fingerprint is checked first.  Defensive priority.
+// PR-11C: legacy fallback still works for non-null but UNKNOWN
+// template_ids (workspaces from before the closed registry that came
+// from a real template at run-time).  Backtest fingerprint priority
+// preserved here for that legacy path.
+check('registry: legacy unknown template_id + backtest fingerprint → backtest', () => {
   const ws = workspace({
-    template_id: null,
+    template_id: 'legacy_unknown_template',
     nodes: [
       node('signal', 'primitive'),
       node('events', 'operator', 'threshold_events'),
@@ -266,7 +276,11 @@ check('registry: backtest fingerprint takes priority over event_study (shares th
       node('summarize', 'operator', 'summarize_trades'),
     ],
   });
-  assertEqual(resolveWorkflowDashboard(ws), 'backtest', 'priority');
+  assertEqual(
+    resolveWorkflowDashboard(ws),
+    'backtest',
+    'legacy fingerprint priority',
+  );
 });
 
 // ----------------------------------------------------------------------------
