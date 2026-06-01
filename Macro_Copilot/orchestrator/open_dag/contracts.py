@@ -42,10 +42,17 @@ Two families of fields are split deliberately:
   - **Free-form fields** (``semantic_role``,
     ``requested_output_meaning``, ``nl_intent``) are
     natural-language strings the LLM authors at L3 and the L2
-    Selector echoes back on BoundLeaf.  PR-4's Boundary A will do
-    normalised-string equality on these and surface mismatches as
-    SOFT warnings (not hard rejects) — Boundary B (the coverage
-    gate) consumes those warnings as supplementary evidence.
+    Selector echoes back on BoundLeaf.  PR-4's Boundary A does
+    normalised-string equality on ``semantic_role`` and
+    ``requested_output_meaning`` and emits
+    ``E_ROLE_DISCRIMINANT_MISMATCH`` at severity=ERROR
+    (owner_layer=L2_BINDING) on disagreement — PR-10D F4 hardened
+    these from warnings to hard errors so a
+    semantic-wrong-but-type-legal DAG can never reach execution.
+    Mismatches go through one bounded rebinder round; if still
+    mismatched, the Assembler returns ``REFUSED`` and Boundary B
+    never sees the DAG.  ``nl_intent`` is the Selector's prompt
+    input only and is not cross-checked on BoundLeaf.
 
 This split is the explicit answer to R5 (no curated role enum): the
 substrate gets hard structured checks only on things that ARE
@@ -113,8 +120,13 @@ class LeafRequest(BaseModel):
 
     Two field families.  Closed-substrate fields are hard-validated by
     Boundary A (PR-4) against the matching declared_* fields on the
-    BoundLeaf.  Free-form fields are normalised-string compared and
-    escalate to SOFT warnings, not hard rejects.
+    BoundLeaf (E_TYPE_MISMATCH / E_UNIT_MISMATCH /
+    E_FREQUENCY_MISMATCH).  Free-form role-discriminant fields
+    (``semantic_role``, ``requested_output_meaning``) are
+    normalised-string compared and, per PR-10D F4, also raise HARD
+    errors (``E_ROLE_DISCRIMINANT_MISMATCH``, severity=ERROR,
+    owner_layer=L2_BINDING) — Boundary A refuses any
+    semantic-wrong-but-type-legal binding rather than warning.
 
     Frozen so the Assembler / Composer cannot mutate after emission —
     the Selector receives an immutable contract.
@@ -162,7 +174,11 @@ class LeafRequest(BaseModel):
         ),
     )
 
-    # ---- FREE-FORM FIELDS (SOFT signals — normalised-equality check) ----
+    # ---- FREE-FORM ROLE-DISCRIMINANT FIELDS ----
+    # PR-10D F4: normalised-string compared by Boundary A and HARD-checked
+    # (E_ROLE_DISCRIMINANT_MISMATCH, severity=ERROR) on disagreement.
+    # Still free-form English (R5: no curated role enum) — the check is
+    # mechanical contradiction-detection on LLM-authored text.
 
     semantic_role: str = Field(
         ...,
@@ -172,8 +188,11 @@ class LeafRequest(BaseModel):
             "quantity this leaf should produce (e.g. 'spread_level', "
             "'breakeven_level', 'regime_event').  Free string by "
             "design (R5: no curated role enum); the BoundLeaf echoes a "
-            "declared_semantic_role and Boundary A flags contradictions "
-            "as SOFT warnings."
+            "declared_semantic_role and Boundary A raises "
+            "E_ROLE_DISCRIMINANT_MISMATCH (severity=ERROR, "
+            "owner_layer=L2_BINDING) on a normalised-string contradiction "
+            "so the assembler refuses semantic-wrong-but-type-legal "
+            "bindings (PR-10D F4)."
         ),
     )
     requested_output_meaning: str = Field(
@@ -181,8 +200,10 @@ class LeafRequest(BaseModel):
         min_length=1,
         description=(
             "One-sentence English description of the answer this leaf "
-            "should provide.  Used by Boundary B as supplementary "
-            "evidence; the BoundLeaf echoes a declared_output_meaning."
+            "should provide.  The BoundLeaf echoes a "
+            "declared_output_meaning; Boundary A normalised-string "
+            "compares them and raises E_ROLE_DISCRIMINANT_MISMATCH "
+            "(severity=ERROR) on mismatch (PR-10D F4)."
         ),
     )
     nl_intent: str = Field(
@@ -330,22 +351,34 @@ class BoundLeaf(BaseModel):
         ),
     )
 
-    # ---- FREE-FORM DECLARATIONS (SOFT signals — Boundary A warns only) ----
+    # ---- FREE-FORM ROLE-DISCRIMINANT DECLARATIONS ----
+    # PR-10D F4: HARD-checked by Boundary A (E_ROLE_DISCRIMINANT_MISMATCH,
+    # severity=ERROR, owner_layer=L2_BINDING) on normalised-string
+    # disagreement with the LeafRequest counterparts.  The Selector gets
+    # one bounded rebinder round to correct the declared_* fields; if
+    # mismatch persists the Assembler returns REFUSED and Boundary B
+    # never receives the DAG.
 
     declared_semantic_role: str = Field(
         default="",
         description=(
             "The Selector's own tag for the bound primitive's role.  "
             "PR-4 Boundary A normalised-string compares against the "
-            "LeafRequest.semantic_role; mismatch surfaces as a SOFT "
-            "warning that Boundary B (PR-8) consumes."
+            "LeafRequest.semantic_role and raises "
+            "E_ROLE_DISCRIMINANT_MISMATCH (severity=ERROR) on mismatch "
+            "(PR-10D F4).  Refusal-mode allows the empty default; in "
+            "binding mode the model validator enforces a non-empty value."
         ),
     )
     declared_output_meaning: str = Field(
         default="",
         description=(
             "One-sentence English describing what this bound primitive "
-            "produces.  Compared against LeafRequest.requested_output_meaning."
+            "produces.  PR-4 Boundary A normalised-string compares "
+            "against LeafRequest.requested_output_meaning and raises "
+            "E_ROLE_DISCRIMINANT_MISMATCH (severity=ERROR) on mismatch "
+            "(PR-10D F4).  Refusal-mode allows the empty default; in "
+            "binding mode the model validator enforces a non-empty value."
         ),
     )
 

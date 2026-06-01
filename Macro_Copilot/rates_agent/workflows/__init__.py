@@ -136,6 +136,12 @@ from rates_agent.sovereign_bonds.tools.beta_adjusted_spread import (
     BetaAdjustedSpreadOutput,
     calculate_beta_adjusted_spread,
 )
+from rates_agent.sovereign_bonds.tools.butterfly import (
+    CONFIG_PATH as SOV_BUTTERFLY_CONFIG_PATH,
+    ButterflyInput,
+    ButterflyOutput,
+    calculate_butterfly,
+)
 from rates_agent.sovereign_bonds.tools.zscore_custom import (
     CONFIG_PATH as ZSCORE_CUSTOM_CONFIG_PATH,
     ZscoreCustomInput,
@@ -479,8 +485,8 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             "time_series_zscore": "z_score",
         },
     ),
-    "get_ois_rate_level_tool": PrimitiveSpec(
-        tool_name="get_ois_rate_level_tool",
+    "calculate_ois_rate_level_tool": PrimitiveSpec(
+        tool_name="calculate_ois_rate_level_tool",
         callable=get_ois_rate_level,
         input_class=OISRateLevelInput,
         output_class=OISRateLevelOutput,
@@ -844,6 +850,22 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             "time_series_zscore": "z_score",
         },
     ),
+    # PR-10F gap #1: previously-unregistered sovereign butterfly tool.
+    # Mirrors calculate_real_yield_butterfly_tool /
+    # calculate_breakeven_butterfly_tool / calculate_inflation_swap_butterfly_tool /
+    # calculate_ois_butterfly_tool exactly — same field shape, same units.
+    "calculate_butterfly_tool": PrimitiveSpec(
+        tool_name="calculate_butterfly_tool",
+        callable=calculate_butterfly,
+        input_class=ButterflyInput,
+        output_class=ButterflyOutput,
+        config_path=SOV_BUTTERFLY_CONFIG_PATH,
+        output_field_units={
+            "time_series": "bps",
+            "time_series_butterfly": "bps",
+            "time_series_zscore": "z_score",
+        },
+    ),
     "calculate_breakeven_butterfly_tool": PrimitiveSpec(
         tool_name="calculate_breakeven_butterfly_tool",
         callable=calculate_breakeven_butterfly,
@@ -1033,8 +1055,8 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         },
         output_artifact_type="Panel",
     ),
-    "build_policy_futures_strip_panel_tool": PrimitiveSpec(
-        tool_name="build_policy_futures_strip_panel_tool",
+    "policy_futures_build_policy_futures_strip_panel_tool": PrimitiveSpec(
+        tool_name="policy_futures_build_policy_futures_strip_panel_tool",
         callable=build_policy_futures_strip_panel,
         input_class=BuildPolicyFuturesStripPanelInput,
         output_class=BuildPolicyFuturesStripPanelOutput,
@@ -1092,8 +1114,8 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         config_path=FUTURES_VOLUME_OI_CONFIG_PATH,
         output_field_units={},
     ),
-    "get_scan_policy_futures_extremes_tool": PrimitiveSpec(
-        tool_name="get_scan_policy_futures_extremes_tool",
+    "policy_futures_get_scan_policy_futures_extremes_tool": PrimitiveSpec(
+        tool_name="policy_futures_get_scan_policy_futures_extremes_tool",
         callable=calculate_scan_policy_futures_extremes,
         input_class=ScanPolicyFuturesExtremesInput,
         output_class=ScanPolicyFuturesExtremesOutput,
@@ -1176,16 +1198,16 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         config_path=SCAN_BOND_FUTURES_EXTREMES_CONFIG_PATH,
         output_field_units={},
     ),
-    "scan_inflation_linkers_extremes_tool": PrimitiveSpec(
-        tool_name="scan_inflation_linkers_extremes_tool",
+    "get_scan_inflation_linkers_extremes_tool": PrimitiveSpec(
+        tool_name="get_scan_inflation_linkers_extremes_tool",
         callable=calculate_scan_inflation_linkers_extremes,
         input_class=ScanInflationLinkersExtremesInput,
         output_class=ScanInflationLinkersExtremesOutput,
         config_path=SCAN_INFLATION_LINKERS_EXTREMES_CONFIG_PATH,
         output_field_units={},
     ),
-    "scan_inflation_swaps_extremes_tool": PrimitiveSpec(
-        tool_name="scan_inflation_swaps_extremes_tool",
+    "get_scan_inflation_swaps_extremes_tool": PrimitiveSpec(
+        tool_name="get_scan_inflation_swaps_extremes_tool",
         callable=calculate_scan_inflation_swaps_extremes,
         input_class=ScanInflationSwapsExtremesInput,
         output_class=ScanInflationSwapsExtremesOutput,
@@ -1213,6 +1235,101 @@ def rates_primitive_resolver(tool_name: str) -> PrimitiveSpec:
             "to register a new primitive."
         )
     return _PRIMITIVE_SPECS[tool_name]
+
+
+# ============================================================================
+# PR-10F Codex audit gap #3 — env-var extension hook for real
+# production-style registration tests.
+# ============================================================================
+#
+# Production behaviour is unchanged when ``RATES_TOOLS_EXTRA_PATH`` is unset
+# (the loader is a no-op).  When set, the loader scans each colon-separated
+# path for child tool packages, imports them via importlib, and looks for a
+# module-level ``_PRIMITIVE_SPEC: PrimitiveSpec`` attribute.  Each spec is
+# folded into ``_PRIMITIVE_SPECS`` at runtime so the real
+# ``rates_primitive_resolver`` resolves it without any wrapper closure.
+#
+# Test-only teardown helper ``_unload_extra_primitives`` is exposed so the
+# scaling-proof test can restore state cleanly even when its registration
+# step crashes mid-way.
+
+_EXTRA_REGISTERED_NAMES: list[str] = []
+
+
+def _load_extra_primitives_from_env() -> list[str]:
+    """Scan ``RATES_TOOLS_EXTRA_PATH`` for runtime-registered primitives.
+
+    Reads colon-separated paths.  Each path is the PARENT of one or more
+    canonical 4-file tool packages (``<tool>/{__init__.py, schemas.py,
+    compute.py, config.yaml}``) whose ``__init__.py`` exposes a module-level
+    ``_PRIMITIVE_SPEC`` of type ``PrimitiveSpec``.  Each spec is folded into
+    ``_PRIMITIVE_SPECS``.  Returns the list of tool names registered (empty
+    when the env var is unset).
+
+    No-op when the env var is unset or empty.  This is the single sanctioned
+    runtime extension hook for the PR-10F Codex audit-gap-#3 proof.
+    """
+    import importlib.util
+    import os
+    import sys
+
+    raw = os.environ.get("RATES_TOOLS_EXTRA_PATH", "").strip()
+    if not raw:
+        return []
+
+    from pathlib import Path
+
+    newly_registered: list[str] = []
+    for parent_str in raw.split(":"):
+        parent = Path(parent_str.strip())
+        if not parent.is_dir():
+            continue
+        for child in sorted(parent.iterdir()):
+            if not child.is_dir():
+                continue
+            init_py = child / "__init__.py"
+            if not init_py.is_file():
+                continue
+            mod_name = f"rates_agent_extra.{child.name}"
+            spec = importlib.util.spec_from_file_location(mod_name, init_py)
+            if spec is None or spec.loader is None:
+                continue
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[mod_name] = module
+            spec.loader.exec_module(module)
+            prim_spec = getattr(module, "_PRIMITIVE_SPEC", None)
+            if not isinstance(prim_spec, PrimitiveSpec):
+                continue
+            if prim_spec.tool_name in _PRIMITIVE_SPECS:
+                raise RuntimeError(
+                    f"_load_extra_primitives_from_env: tool_name "
+                    f"{prim_spec.tool_name!r} collides with an already-"
+                    "registered primitive; refusing to overwrite."
+                )
+            _PRIMITIVE_SPECS[prim_spec.tool_name] = prim_spec
+            _EXTRA_REGISTERED_NAMES.append(prim_spec.tool_name)
+            newly_registered.append(prim_spec.tool_name)
+    return newly_registered
+
+
+def _unload_extra_primitives() -> list[str]:
+    """Test-only: pop every tool registered by the env-var loader.
+
+    Returns the list of unloaded tool names.  Idempotent."""
+    popped: list[str] = []
+    while _EXTRA_REGISTERED_NAMES:
+        name = _EXTRA_REGISTERED_NAMES.pop()
+        if _PRIMITIVE_SPECS.pop(name, None) is not None:
+            popped.append(name)
+    import sys
+    for mod_name in [k for k in sys.modules if k.startswith("rates_agent_extra.")]:
+        sys.modules.pop(mod_name, None)
+    return popped
+
+
+# Run the loader at import time so production setups that wire the env var
+# (none today; the seam is test-only) pick up extras transparently.
+_load_extra_primitives_from_env()
 
 
 def known_rates_primitives() -> list[str]:

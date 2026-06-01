@@ -158,27 +158,31 @@ MCP_SERVERS: dict = {
 # the enforcement mechanism is: one MultiServerMCPClient per domain, each
 # initialised with only that domain's server config.
 
+# PR-10F gap #2: DOMAIN_MCP_SERVERS is now BUILT from the
+# orchestrator.domain_registry's DOMAIN_SPECS at import time.  Each
+# rates_agent/<domain>/__init__.py declares its own
+# __mcp_server_module__ + __mcp_client_key__; this dict comprehension
+# wires them into the per-domain stdio subprocess config.  Adding the
+# Nth domain requires NO edit to this dict.
+from orchestrator.domain_registry import DOMAIN_SPECS as _DOMAIN_SPECS
+
+
+def _build_domain_mcp_server(module_path: str) -> dict:
+    """Construct one stdio MCP-subprocess config from a module path."""
+    return {
+        "transport": "stdio",
+        "command": _PYTHON,
+        "args": ["-m", module_path],
+        "cwd": str(PROJECT_ROOT),
+        "env": _MCP_SUBPROCESS_ENV,
+    }
+
+
 DOMAIN_MCP_SERVERS: dict = {
-    Domain.SOVEREIGN_BONDS: {
-        "sovereign_bonds": MCP_SERVERS["rates_agent"],
-    },
-    Domain.OIS: {
-        "ois": MCP_SERVERS["ois_agent"],
-    },
-    Domain.INFLATION_INDEXED_BONDS: {
-        "inflation_indexed_bonds": MCP_SERVERS[
-            "inflation_indexed_bonds_agent"
-        ],
-    },
-    Domain.INFLATION_SWAPS: {
-        "inflation_swaps": MCP_SERVERS["inflation_swaps_agent"],
-    },
-    Domain.POLICY_FUTURES: {
-        "policy_futures": MCP_SERVERS["policy_futures_agent"],
-    },
-    Domain.BOND_FUTURES: {
-        "bond_futures": MCP_SERVERS["bond_futures_agent"],
-    },
+    Domain(spec.domain_id): {
+        spec.mcp_client_key: _build_domain_mcp_server(spec.mcp_server_module),
+    }
+    for spec in _DOMAIN_SPECS.values()
 }
 
 

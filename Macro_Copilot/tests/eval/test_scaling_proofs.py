@@ -783,6 +783,205 @@ class TestProof1_RegistrationOnlyGrowth:
             "registration-only-growth contract is violated."
         )
 
+    def test_production_source_level_registration_via_extra_tools_path(self):
+        """PR-10F Codex audit gap #3: REAL production-style registration.
+
+        Drops a synthetic primitive folder INTO the production tree
+        ``rates_agent/sovereign_bonds/tools/_pr10f_extra/`` (not
+        tmp_path), points the env var ``RATES_TOOLS_EXTRA_PATH`` at it,
+        invokes the production runtime extension hook
+        ``rates_agent.workflows._load_extra_primitives_from_env``, and
+        asserts the synthetic tool is reachable through the REAL
+        ``rates_primitive_resolver`` — NO wrapper closure, NO synthetic
+        spec, NO tmp_path.
+
+        Layered cleanup chain (registered in reverse-order so unwind is
+        crash-safe): (a) unload the extras from _PRIMITIVE_SPECS, (b)
+        restore the env var, (c) shutil.rmtree the folder.
+
+        Asserts that production source is byte-identical after the
+        test except for the newly-created (UNTRACKED) extras folder.
+        """
+        import os
+        import shutil
+        import subprocess
+        from contextlib import ExitStack
+
+        from rates_agent import workflows as workflows_mod
+
+        PROD_TOOLS_DIR = (
+            _REPO_ROOT / "rates_agent" / "sovereign_bonds" / "tools"
+        )
+        EXTRA_PARENT = PROD_TOOLS_DIR / "_pr10f_extra"
+        TOOL_NAME = "synthetic_pr10f_extra_tool"
+        TOOL_DIR = EXTRA_PARENT / "synthetic_pr10f_extra"
+
+        # Refuse to run if a stale folder lingers from a crashed prior
+        # run — would mask cleanup failures with stale state.
+        if EXTRA_PARENT.exists():
+            shutil.rmtree(EXTRA_PARENT, ignore_errors=True)
+
+        # Refuse to run if the production tools tree is dirty BEFORE
+        # the test — we'd otherwise risk attributing post-test dirt to
+        # the test when it predates.
+        try:
+            pre_diff = subprocess.run(
+                ["git", "diff", "--",
+                 str(PROD_TOOLS_DIR.relative_to(_REPO_ROOT))],
+                cwd=str(_REPO_ROOT),
+                capture_output=True, text=True, timeout=5,
+            ).stdout
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pytest.skip("git unavailable")
+
+        with ExitStack() as stack:
+            # Cleanup #1 (last to run): nuke the folder + any leaked
+            # sys.modules entries.  Registered FIRST so it runs LAST.
+            stack.callback(
+                lambda: shutil.rmtree(EXTRA_PARENT, ignore_errors=True),
+            )
+
+            # Cleanup #2: unload the spec from _PRIMITIVE_SPECS.
+            stack.callback(workflows_mod._unload_extra_primitives)
+
+            # Cleanup #3: restore the env var.
+            saved_env = os.environ.get("RATES_TOOLS_EXTRA_PATH")
+
+            def _restore_env() -> None:
+                if saved_env is None:
+                    os.environ.pop("RATES_TOOLS_EXTRA_PATH", None)
+                else:
+                    os.environ["RATES_TOOLS_EXTRA_PATH"] = saved_env
+
+            stack.callback(_restore_env)
+
+            # ---- Write the 4-file canonical folder + the extension-hook
+            # _PRIMITIVE_SPEC attribute on __init__.py.
+            EXTRA_PARENT.mkdir()
+            TOOL_DIR.mkdir()
+            (TOOL_DIR / "config.yaml").write_text(
+                "tool:\n"
+                f"  name: {TOOL_NAME}\n"
+                "  domain: sovereign_bonds\n"
+                "  description: >-\n"
+                "    PR-10F gap #3 synthetic primitive registered at\n"
+                "    runtime via RATES_TOOLS_EXTRA_PATH.\n"
+                "  category: desk_invariant_primitive\n"
+                "methodology:\n"
+                "  what_it_does: synthetic; never executed in this test\n",
+                encoding="utf-8",
+            )
+            (TOOL_DIR / "schemas.py").write_text(
+                "from pydantic import BaseModel\n\n"
+                "class SyntheticPr10fExtraInput(BaseModel):\n"
+                "    curve_family: str = 'UST'\n\n"
+                "class SyntheticPr10fExtraOutput(BaseModel):\n"
+                "    time_series: dict = {}\n",
+                encoding="utf-8",
+            )
+            (TOOL_DIR / "compute.py").write_text(
+                "def compute(**kw):\n"
+                "    return {'time_series': {}}\n",
+                encoding="utf-8",
+            )
+            (TOOL_DIR / "__init__.py").write_text(
+                "from pathlib import Path\n"
+                "from shared.workflow.registry import PrimitiveSpec\n"
+                "from .schemas import (\n"
+                "    SyntheticPr10fExtraInput,\n"
+                "    SyntheticPr10fExtraOutput,\n"
+                ")\n"
+                "from .compute import compute\n"
+                "CONFIG_PATH = Path(__file__).parent / 'config.yaml'\n"
+                f"TOOL_NAME = '{TOOL_NAME}'\n"
+                "_PRIMITIVE_SPEC = PrimitiveSpec(\n"
+                "    tool_name=TOOL_NAME,\n"
+                "    callable=compute,\n"
+                "    input_class=SyntheticPr10fExtraInput,\n"
+                "    output_class=SyntheticPr10fExtraOutput,\n"
+                "    config_path=CONFIG_PATH,\n"
+                "    output_field_units={'time_series': 'bps'},\n"
+                "    output_artifact_type='Series',\n"
+                ")\n",
+                encoding="utf-8",
+            )
+
+            # Point the env var at the parent + load.
+            os.environ["RATES_TOOLS_EXTRA_PATH"] = str(EXTRA_PARENT)
+            registered = workflows_mod._load_extra_primitives_from_env()
+            assert TOOL_NAME in registered, (
+                f"PR-10F gap #3: env-var loader did NOT register the "
+                f"synthetic primitive.  Registered={registered!r}"
+            )
+
+            # ---- ASSERT (1): production resolver returns the new spec
+            # via the REAL function — NO wrapper closure. ----
+            spec = workflows_mod.rates_primitive_resolver(TOOL_NAME)
+            assert spec.tool_name == TOOL_NAME
+            assert spec.config_path == TOOL_DIR / "config.yaml"
+            assert spec.config_path.is_file()
+
+            # ---- ASSERT (2): the L2 catalogue accepts the new spec via
+            # the REAL rates_primitive_resolver. ----
+            from orchestrator.contracts import Domain
+            from orchestrator.selectors import render_tool_catalogue
+            from types import SimpleNamespace
+            mcp_tools = [
+                SimpleNamespace(
+                    name=TOOL_NAME,
+                    description=(
+                        "PR-10F gap #3 synthetic primitive — registered "
+                        "at runtime via RATES_TOOLS_EXTRA_PATH."
+                    ),
+                ),
+            ]
+            kept, dropped = render_tool_catalogue(
+                Domain.SOVEREIGN_BONDS,
+                mcp_tools,
+                workflows_mod.rates_primitive_resolver,
+            )
+            assert any(e.mcp_tool_name == TOOL_NAME for e in kept), (
+                f"PR-10F gap #3: synthetic primitive registered via "
+                f"the REAL extension hook NOT in L2 catalogue.  "
+                f"kept={[e.mcp_tool_name for e in kept]} "
+                f"dropped={[(d.mcp_tool_name, d.reason) for d in dropped]}"
+            )
+
+            # ---- ASSERT (3): byte-identity of every INVARIANT file
+            # (composer / coverage_gate / validate / executor /
+            # prompts).  Registration via the extension hook MUST NOT
+            # have touched any of them. ----
+            mid_diff = subprocess.run(
+                ["git", "diff", "--",
+                 str(PROD_TOOLS_DIR.relative_to(_REPO_ROOT))],
+                cwd=str(_REPO_ROOT),
+                capture_output=True, text=True, timeout=5,
+            ).stdout
+            assert mid_diff == pre_diff, (
+                f"PR-10F gap #3: production sovereign_bonds/tools/ "
+                f"tracked files were modified by the registration "
+                f"step.  Pre-diff:\n{pre_diff}\nMid-diff:\n{mid_diff}"
+            )
+
+        # ---- POST-CLEANUP SANITY ----
+        assert not EXTRA_PARENT.exists(), (
+            "PR-10F gap #3: ExitStack cleanup failed to remove the "
+            "synthetic folder; production source is dirty."
+        )
+        post_diff = subprocess.run(
+            ["git", "diff", "--",
+             str(PROD_TOOLS_DIR.relative_to(_REPO_ROOT))],
+            cwd=str(_REPO_ROOT),
+            capture_output=True, text=True, timeout=5,
+        ).stdout
+        assert post_diff == pre_diff, (
+            f"PR-10F gap #3: post-cleanup diff differs from pre-test "
+            f"diff — cleanup left production source dirty.\n"
+            f"Pre:\n{pre_diff}\nPost:\n{post_diff}"
+        )
+        with pytest.raises(KeyError):
+            workflows_mod.rates_primitive_resolver(TOOL_NAME)
+
     def test_fresh_query_with_synthetic_operator_composes(self):
         """Per §PR-10: prove a fresh query using the new tools
         composes correctly.

@@ -595,113 +595,235 @@ def test_executed_summary_from_result_format():
 
 
 # ============================================================================
-# PR-10D Codex F1 — REAL end-to-end (no monkeypatch on execute_workflow)
+# PR-10D Codex F1 + PR-10F gap #4 — REAL end-to-end with REAL production
+# primitives (no monkeypatch on execute_workflow, no synthetic primitives).
 # ============================================================================
+#
+# The earlier PR-10E version of this section bound two stand-in
+# ``synthetic_pair_stats_tool_a/b`` primitives so the test could prove
+# the substrate executor + bridge end-to-end without standing up the
+# real production primitives' DB dependencies.  PR-10F Codex audit gap
+# #4 pointed out that the wiring was honest but the *primitives* were
+# not — the gap-closer canonical query references the production tools
+# ``calculate_curve_spread_tool`` (sov 2s10s) and
+# ``calculate_breakeven_inflation_simple_tool`` (USD 5Y breakeven), and
+# the REAL_executor test should bind THOSE primitives end-to-end.
+#
+# This section binds the REAL production primitives + the REAL
+# ``rates_primitive_resolver``.  Both compute paths require a live
+# ``BloombergSnapshotEngine`` for their DB SELECTs; the test mocks at
+# the fetch boundary (``fetch_tenor_pair`` for sov,
+# ``fetch_single_tenor`` for iib) and at the same-country invariant
+# guard (``_enforce_same_country_invariant``) so a deterministic
+# synthetic ``raw_df`` flows through the REAL compute path — every
+# methodology choice (z-score window, ffill, alignment, rounding,
+# canonical TimeSeries builder) runs for REAL inside
+# ``calculate_curve_spread`` / ``calculate_breakeven_inflation_simple``.
+#
+# What this proves vs the earlier synthetic version
+# --------------------------------------------------
+#   - The substrate executor really dispatches by (domain, tool_name)
+#     into the REAL ``rates_primitive_resolver``.
+#   - The REAL primitive callables execute their REAL compute (config
+#     loading, spread math, rolling-z math, canonical TimeSeries
+#     builders) — only the engine-bound fetch is synthesised.
+#   - The REAL bridges (``tool_output_to_artifact_series``) validate
+#     the REAL ``CurveSpreadOutput`` / ``BreakevenInflationSimpleOutput``
+#     dicts and extract the canonical BPS TimeSeries field.
+#   - The Lineage chain at the terminal carries BOTH REAL primitive
+#     step names (``calculate_curve_spread_tool`` on correlation's
+#     left chain, ``calculate_breakeven_inflation_simple_tool`` on
+#     correlation's right via ``auxiliary_lineages``).
 
 
-_REAL_E2E_CONFIG_YAML = """
-tool:
-  name: synthetic_pair_stats_tool
-  domain: synthetic
-  description: Synthetic primitive for the REAL canonical end-to-end test (PR-10D F1).
-  category: desk_invariant_primitive
-conventions:
-  ffill_limit_days:
-    value: 5
-    source: pr10d_f1_test_default
-    rationale: Required by tool_output_to_artifact_series.
-methodology:
-  what_it_does: >-
-    Returns a deterministic synthetic series.  Used only by the
-    PR-10D F1 canonical end-to-end test to exercise the REAL
-    substrate executor without monkeypatching.
-"""
+_REAL_CURVE_FAMILY = "UST"
+_REAL_SHORT_TENOR = "2Y"
+_REAL_LONG_TENOR = "10Y"
+_REAL_BEI_TENOR = "5Y"
+_REAL_LINKER_CURVE_FAMILY = "USD_TIPS"
+_REAL_LOOKBACK_DAYS = 1825
 
 
-class _SyntheticPairInput(BaseModel):
-    """*Input schema for the synthetic pair-stats primitive."""
-    series_name: str = "synthetic_pair_series"
-    n_rows: int = 252
-    base: float = 4.0
-    drift: float = 0.005
-    units: str = "bps"
+def _synthetic_tenor_pair_df(
+    *,
+    curve_family: str,
+    short_tenor: str,
+    long_tenor: str,
+    start_date,
+) -> pd.DataFrame:
+    """Build a deterministic long-format ``[trade_date, tenor, field_value]``
+    DataFrame the real ``calculate_curve_spread`` consumes — matches the
+    shape ``shared.analytics.rates_fetch.fetch_tenor_pair`` returns.
+
+    Two tenors over a business-day index that comfortably covers the
+    primitive's z-window warmup (252) + lookback_days (1825) +
+    buffer (~378d).  Short-tenor and long-tenor yields drift apart over
+    time so the rolling z-score has real signal to compute.
+    """
+    import numpy as np
+    dates = pd.bdate_range(start_date, periods=2400)
+    np.random.seed(11)
+    # Short leg: 2y yield ~ 4.0% drifting to 4.5% with noise.
+    short_yield = 4.0 + np.linspace(0.0, 0.5, len(dates)) + 0.05 * np.random.randn(len(dates))
+    # Long leg: 10y yield ~ 4.2% drifting to 5.0% with noise (steepening).
+    long_yield = 4.2 + np.linspace(0.0, 0.8, len(dates)) + 0.05 * np.random.randn(len(dates))
+    rows: List[dict] = []
+    for d, sy, ly in zip(dates, short_yield, long_yield):
+        rows.append({"trade_date": d, "tenor": short_tenor, "field_value": float(sy)})
+        rows.append({"trade_date": d, "tenor": long_tenor, "field_value": float(ly)})
+    df = pd.DataFrame(rows, columns=["trade_date", "tenor", "field_value"])
+    return df
 
 
-class _SyntheticPairMetrics(BaseModel):
-    as_of_date: str
-
-
-class _SyntheticPairOutput(BaseModel):
-    """*Output schema with REAL TimeSeries field + current_metrics.
-    The substrate bridge (tool_output_to_artifact_series) validates
-    against this and extracts the time_series field."""
-    current_metrics: _SyntheticPairMetrics
-    time_series: TimeSeries
-
-
-def _make_real_synthetic_callable(seed_offset: float):
-    """Build a primitive callable returning the dict shape the
-    substrate bridge consumes."""
-    def _cb(*, engine, params, config):
-        dates = pd.bdate_range("2020-01-01", periods=params.n_rows)
-        values = [
-            params.base + seed_offset + i * params.drift
-            for i in range(params.n_rows)
-        ]
-        rows = [
-            TimeSeriesRow(date=d.strftime("%Y-%m-%d"), value=v)
-            for d, v in zip(dates, values)
-        ]
-        return {
-            "current_metrics": {"as_of_date": rows[-1].date},
-            "time_series": {
-                "series_name": params.series_name,
-                "units": params.units,
-                "description": "Synthetic pair-stats series",
-                "rows": [r.model_dump() for r in rows],
-            },
-        }
-    return _cb
+def _synthetic_single_tenor_df(
+    *,
+    curve_family: str,
+    base_yield: float,
+    drift: float,
+    start_date,
+) -> pd.DataFrame:
+    """Build a deterministic long-format ``[trade_date, field_value]``
+    DataFrame matching what ``fetch_single_tenor`` returns.  Used to
+    stand up both legs of the breakeven primitive (nominal + linker)
+    in turn — each call gets its own ``base_yield`` / ``drift``.
+    """
+    import numpy as np
+    dates = pd.bdate_range(start_date, periods=2400)
+    np.random.seed(int((abs(base_yield) + abs(drift)) * 1000) or 1)
+    yields = base_yield + np.linspace(0.0, drift, len(dates)) + 0.04 * np.random.randn(len(dates))
+    return pd.DataFrame(
+        {"trade_date": dates, "field_value": [float(v) for v in yields]},
+        columns=["trade_date", "field_value"],
+    )
 
 
 @pytest.fixture
-def _real_e2e_resolver(tmp_path):
-    """Real PrimitiveResolver wiring two synthetic primitives that
-    the substrate executor + bridge will REALLY invoke (no mocks)."""
-    cfg_dir = tmp_path / "synth_e2e"
-    cfg_dir.mkdir()
-    cfg = cfg_dir / "config.yaml"
-    cfg.write_text(_REAL_E2E_CONFIG_YAML)
+def _real_e2e_resolver(monkeypatch):
+    """Bind the REAL ``rates_primitive_resolver`` after monkeypatching
+    every fetch boundary on the two production primitives this test
+    exercises.
 
-    leaf_a_spec = PrimitiveSpec(
-        tool_name="synthetic_pair_stats_tool_a",
-        callable=_make_real_synthetic_callable(seed_offset=0.0),
-        input_class=_SyntheticPairInput,
-        output_class=_SyntheticPairOutput,
-        config_path=cfg,
-        output_field_units={"time_series": "bps"},
-        output_artifact_type="Series",
+    Wires three patches in the two compute modules:
+
+      1. ``rates_agent.sovereign_bonds.tools.curve_spread.compute.fetch_tenor_pair``
+         → returns a deterministic two-tenor long-format DF for the UST
+         2Y/10Y spread.  The REAL ``calculate_curve_spread`` then runs
+         pivot_and_align_tenors → compute_spread_bps → rolling_zscore →
+         canonical TimeSeries builders, ALL for real.
+
+      2. ``rates_agent.inflation_indexed_bonds.tools.breakeven_inflation_simple.compute.fetch_single_tenor``
+         → returns the per-leg single-tenor DF the breakeven primitive
+         then tags with ``curve_family``, concatenates, and feeds into
+         pivot_and_align_tenors → breakeven_bps → rolling_zscore →
+         canonical TimeSeries builders.  Each call returns a different
+         level of yields (UST nominal ~4.3%, USD_TIPS real ~1.8%) so the
+         breakeven is realistic (~250bps).
+
+      3. ``rates_agent.inflation_indexed_bonds.tools.breakeven_inflation_simple.compute._enforce_same_country_invariant``
+         → returns None (no error).  The real implementation issues a
+         ``SELECT DISTINCT country, currency FROM macro_data.instrument_master``
+         which requires a live DB; this patch lets the rest of the REAL
+         compute path run while keeping the same-country guard
+         structurally honest (it returns None for the canonical
+         UST + USD_TIPS pair anyway).
+    """
+    from rates_agent.sovereign_bonds.tools.curve_spread import compute as sov_compute
+    from rates_agent.inflation_indexed_bonds.tools.breakeven_inflation_simple import (
+        compute as iib_compute,
     )
-    leaf_b_spec = PrimitiveSpec(
-        tool_name="synthetic_pair_stats_tool_b",
-        callable=_make_real_synthetic_callable(seed_offset=0.15),
-        input_class=_SyntheticPairInput,
-        output_class=_SyntheticPairOutput,
-        config_path=cfg,
-        output_field_units={"time_series": "bps"},
-        output_artifact_type="Series",
+    from rates_agent.workflows import rates_primitive_resolver
+
+    # Patch 1: sov curve_spread's fetch_tenor_pair.
+    def _fake_fetch_tenor_pair(
+        *,
+        engine,
+        curve_family,
+        short_tenor,
+        long_tenor,
+        field_name,
+        start_date,
+        contract_code=None,
+    ):
+        assert curve_family == _REAL_CURVE_FAMILY, (
+            f"sov curve_spread asked for curve_family={curve_family!r}; "
+            f"test expects {_REAL_CURVE_FAMILY!r}"
+        )
+        assert {short_tenor, long_tenor} == {_REAL_SHORT_TENOR, _REAL_LONG_TENOR}, (
+            f"sov curve_spread asked for tenors=({short_tenor!r}, "
+            f"{long_tenor!r}); test expects 2Y/10Y"
+        )
+        return _synthetic_tenor_pair_df(
+            curve_family=curve_family,
+            short_tenor=short_tenor,
+            long_tenor=long_tenor,
+            start_date=start_date,
+        )
+
+    monkeypatch.setattr(sov_compute, "fetch_tenor_pair", _fake_fetch_tenor_pair)
+
+    # Patch 2: iib breakeven's fetch_single_tenor.  Called twice — once
+    # for the linker leg (USD_TIPS) and once for the nominal leg (UST).
+    def _fake_fetch_single_tenor(
+        *,
+        engine,
+        curve_family,
+        tenor,
+        field_name,
+        start_date,
+        contract_code=None,
+        instrument_type=None,
+    ):
+        assert tenor == _REAL_BEI_TENOR, (
+            f"breakeven asked for tenor={tenor!r}; test expects "
+            f"{_REAL_BEI_TENOR!r}"
+        )
+        # Linker leg = lower (real) yield; nominal leg = higher yield.
+        # The breakeven (nominal − linker) is positive (~250bps).
+        if curve_family == _REAL_LINKER_CURVE_FAMILY:
+            assert instrument_type == "inflation_linker", (
+                f"linker leg fetched with instrument_type={instrument_type!r}; "
+                "expected 'inflation_linker'"
+            )
+            return _synthetic_single_tenor_df(
+                curve_family=curve_family,
+                base_yield=1.8,
+                drift=0.3,
+                start_date=start_date,
+            )
+        if curve_family == _REAL_CURVE_FAMILY:
+            assert instrument_type == "sovereign_benchmark", (
+                f"nominal leg fetched with instrument_type={instrument_type!r}; "
+                "expected 'sovereign_benchmark'"
+            )
+            return _synthetic_single_tenor_df(
+                curve_family=curve_family,
+                base_yield=4.3,
+                drift=0.6,
+                start_date=start_date,
+            )
+        raise AssertionError(
+            f"breakeven asked for unexpected curve_family={curve_family!r}; "
+            f"test expects {_REAL_CURVE_FAMILY!r} or {_REAL_LINKER_CURVE_FAMILY!r}"
+        )
+
+    monkeypatch.setattr(iib_compute, "fetch_single_tenor", _fake_fetch_single_tenor)
+
+    # Patch 3: skip the same-country DB invariant lookup (requires a
+    # live macro_data.instrument_master row set).  UST + USD_TIPS would
+    # pass it anyway; the patch keeps the rest of the REAL compute path
+    # intact.
+    def _no_same_country_error(engine, *, nominal_curve_family, linker_curve_family):
+        assert nominal_curve_family == _REAL_CURVE_FAMILY
+        assert linker_curve_family == _REAL_LINKER_CURVE_FAMILY
+        return None
+
+    monkeypatch.setattr(
+        iib_compute,
+        "_enforce_same_country_invariant",
+        _no_same_country_error,
     )
-    registry = {
-        "synthetic_pair_stats_tool_a": leaf_a_spec,
-        "synthetic_pair_stats_tool_b": leaf_b_spec,
-    }
 
-    def _resolver(tool_name):
-        if tool_name in registry:
-            return registry[tool_name]
-        raise KeyError(tool_name)
-
-    return _resolver
+    return rates_primitive_resolver
 
 
 # ----------------------------------------------------------------------------
@@ -762,18 +884,43 @@ def _build_cross_domain_correlation_shape():
 async def test_canonical_cross_domain_correlation_REAL_executor(
     _real_e2e_resolver,
 ):
-    """PR-10D Codex F1 + PR-10E Codex audit gap #2 corrective: the
-    canonical gap-closer query — 'Correlation between US 2s10s and 5Y
-    breakeven over 5y' — proven END-TO-END with the REAL substrate
-    execute_workflow AND with two DISTINCT per-domain selector
-    dispatches.
+    """PR-10D Codex F1 + PR-10E Codex audit gap #2 + PR-10F Codex audit
+    gap #4 corrective: the canonical gap-closer query — 'Correlation
+    between US 2s10s and 5Y breakeven over 5y' — proven END-TO-END with
+    the REAL substrate execute_workflow, two DISTINCT per-domain
+    selector dispatches, AND the REAL production primitives
+    ``calculate_curve_spread_tool`` (sov UST 2s10s) +
+    ``calculate_breakeven_inflation_simple_tool`` (USD 5Y breakeven).
 
-    NO monkeypatching of execute_workflow.  The substrate executor
-    walks the canonical pair-stats shape:
+    NO monkeypatching of execute_workflow.  NO synthetic stand-in
+    primitives.  The substrate executor walks the canonical pair-stats
+    shape:
 
-      leaf_a (sovereign_bonds) + leaf_b (inflation_indexed_bonds)
+      leaf_a (sovereign_bonds, calculate_curve_spread_tool, UST 2Y/10Y)
+        + leaf_b (inflation_indexed_bonds,
+                  calculate_breakeven_inflation_simple_tool,
+                  UST + USD_TIPS 5Y)
         -> align_series -> select x2 -> correlation
         -> ScalarMetric
+
+    The two REAL compute paths (curve_spread + breakeven_inflation_simple)
+    run end-to-end:
+      - real config.yaml loaded for both
+      - real pivot_and_align_tenors / compute_spread_bps / rolling_zscore
+      - real canonical TimeSeries builders
+      - real bridge (tool_output_to_artifact_series) validates the
+        REAL CurveSpreadOutput / BreakevenInflationSimpleOutput dicts
+        and extracts the canonical ``time_series_spread`` (BPS) /
+        ``time_series_breakeven`` (BPS) fields
+      - real substrate operators (align_series, select_from_series_set,
+        correlation) consume the typed Series artifacts
+      - real Lineage chain assembled with REAL PrimitiveStep names
+
+    Only the engine-bound boundaries are mocked (in the
+    ``_real_e2e_resolver`` fixture): ``fetch_tenor_pair`` for sov,
+    ``fetch_single_tenor`` for iib, and ``_enforce_same_country_invariant``
+    for iib.  Everything between the synthetic raw_df and the terminal
+    ScalarMetric is the REAL production compute path.
 
     The shape is _build_cross_domain_correlation_shape() — a local
     mirror of GOLDEN_RELATIONSHIP_CORRELATION with domain_hint
@@ -784,11 +931,9 @@ async def test_canonical_cross_domain_correlation_REAL_executor(
     domain-mixed sibling to exercise the real cross-domain dispatch.
 
     Two distinct per-domain SelectorCallbacks are registered.  Each
-    binds a DIFFERENT synthetic tool (synthetic_pair_stats_tool_a vs
-    synthetic_pair_stats_tool_b) so the assembled Workflow's
-    PrimitiveNodes carry two different tool_names — and the substrate
-    executor really resolves two distinct primitives across two
-    distinct domains.
+    binds a DIFFERENT REAL production tool with the canonical
+    parameters the gap-closer query implies — UST 2Y/10Y over 1825d
+    for the sov leaf, UST + USD_TIPS 5Y over 1825d for the iib leaf.
 
     All boundary contracts run for real: PR-1 substrate validator,
     PR-4 Assembler + role-discriminant check, PR-8 gate, PR-9
@@ -803,12 +948,14 @@ async def test_canonical_cross_domain_correlation_REAL_executor(
         (proves real cross-domain dispatch).
       - The two BoundLeaves carry two different domain strings
         (sovereign_bonds + inflation_indexed_bonds).
-      - The assembled Workflow's two PrimitiveNodes carry two
-        different tool_names.
+      - The IntentChain selector records carry the two REAL production
+        tool names (calculate_curve_spread_tool and
+        calculate_breakeven_inflation_simple_tool).
       - run_lineage.is_executed == True.
-      - The compute lineage contains TWO distinct primitive step
-        names — proves end-to-end resolution of both cross-domain
-        primitives.
+      - The compute lineage records BOTH REAL primitive step names
+        (the sov primitive on correlation's left chain, the iib
+        primitive on correlation's right via ``auxiliary_lineages``).
+      - The terminal operator step is correlation.
     """
     from orchestrator.contracts import (
         Domain, EconomicQuantity, IntentTag, RouteAction, RouteDecision,
@@ -869,10 +1016,13 @@ async def test_canonical_cross_domain_correlation_REAL_executor(
             )
             return f"REAL_E2E_ANSWER: {kw.get('executed_summary', '')}"
 
-    # PR-10E Codex audit gap #2: TWO distinct per-domain selectors.
-    # Each binds a DIFFERENT synthetic tool, and both record their
-    # invocations so the test can prove both fired.  This is what the
-    # original single-shared-callable design failed to do.
+    # PR-10F gap #4: TWO distinct per-domain selectors, each binding
+    # the REAL production tool with the canonical query parameters.
+    # The sov leaf binds calculate_curve_spread_tool with UST 2s10s,
+    # lookback_days=1825 (5y).  The iib leaf binds
+    # calculate_breakeven_inflation_simple_tool with UST + USD_TIPS at
+    # 5Y, lookback_days=1825.  Each selector's params are the EXACT
+    # canonical primitive inputs the gap-closer query implies.
     sov_selector_calls: List[str] = []
     iib_selector_calls: List[str] = []
 
@@ -885,10 +1035,19 @@ async def test_canonical_cross_domain_correlation_REAL_executor(
         return BoundLeaf(
             leaf_id=leaf_id,
             domain="sovereign_bonds",
-            mcp_tool_name="synthetic_pair_stats_tool_a",
-            resolver_tool_key="synthetic_pair_stats_tool_a",
-            params={"series_name": f"sov_{leaf_id}"},
-            output_field="time_series",
+            mcp_tool_name="calculate_curve_spread_tool",
+            resolver_tool_key="calculate_curve_spread_tool",
+            params={
+                "curve_family": _REAL_CURVE_FAMILY,
+                "short_tenor": _REAL_SHORT_TENOR,
+                "long_tenor": _REAL_LONG_TENOR,
+                "lookback_days": _REAL_LOOKBACK_DAYS,
+            },
+            # Lift the canonical BPS spread series the primitive emits
+            # under ``time_series_spread`` (the wire-frozen bespoke
+            # ``time_series`` list is NOT a TimeSeries-typed field and
+            # would fail the bridge type check).
+            output_field="time_series_spread",
             declared_output_artifact_type=ArtifactTypeName.SERIES,
             declared_units=TimeSeriesUnits.BPS,
             declared_frequency=Frequency.DAILY,
@@ -906,10 +1065,19 @@ async def test_canonical_cross_domain_correlation_REAL_executor(
         return BoundLeaf(
             leaf_id=leaf_id,
             domain="inflation_indexed_bonds",
-            mcp_tool_name="synthetic_pair_stats_tool_b",
-            resolver_tool_key="synthetic_pair_stats_tool_b",
-            params={"series_name": f"iib_{leaf_id}"},
-            output_field="time_series",
+            mcp_tool_name="calculate_breakeven_inflation_simple_tool",
+            resolver_tool_key=(
+                "calculate_breakeven_inflation_simple_tool"
+            ),
+            params={
+                "nominal_curve_family": _REAL_CURVE_FAMILY,
+                "linker_curve_family": _REAL_LINKER_CURVE_FAMILY,
+                "tenor": _REAL_BEI_TENOR,
+                "lookback_days": _REAL_LOOKBACK_DAYS,
+            },
+            # Lift the canonical BPS breakeven series the primitive
+            # emits under ``time_series_breakeven``.
+            output_field="time_series_breakeven",
             declared_output_artifact_type=ArtifactTypeName.SERIES,
             declared_units=TimeSeriesUnits.BPS,
             declared_frequency=Frequency.DAILY,
@@ -940,9 +1108,9 @@ async def test_canonical_cross_domain_correlation_REAL_executor(
         "Correlation between US 2s10s and 5Y breakeven over 5y",
     )
 
-    # PR-10E Codex audit gap #2: BOTH per-domain selectors must have
-    # fired exactly once.  This is the core assertion that proves the
-    # pipeline really fanned out to two distinct domains.
+    # PR-10E gap #2: BOTH per-domain selectors must have fired exactly
+    # once.  This is the core assertion that proves the pipeline really
+    # fanned out to two distinct domains.
     assert sov_selector_calls == ["leaf_a"], (
         f"sovereign_bonds selector must have been invoked exactly once "
         f"for leaf_a; got calls={sov_selector_calls!r}"
@@ -952,10 +1120,11 @@ async def test_canonical_cross_domain_correlation_REAL_executor(
         f"exactly once for leaf_b; got calls={iib_selector_calls!r}"
     )
 
-    # PR-10D F1: strict PASS — substrate executor ran for REAL.
+    # PR-10D F1: strict PASS — substrate executor ran for REAL through
+    # the REAL production primitives.
     assert outcome.status == "PASS", (
-        f"PR-10D F1: REAL cross-domain canonical end-to-end must reach "
-        f"strict PASS; got status={outcome.status} markdown="
+        f"PR-10F gap #4: REAL canonical end-to-end with REAL primitives "
+        f"must reach strict PASS; got status={outcome.status} markdown="
         f"{outcome.markdown[:300]}"
     )
     assert outcome.is_pass, "is_pass must be strict PASS"
@@ -968,9 +1137,10 @@ async def test_canonical_cross_domain_correlation_REAL_executor(
     assert len(rendered_lineage_hashes) == 1
     assert rendered_lineage_hashes[0] == outcome.run_lineage.head_hash
 
-    # PR-10E Codex audit gap #2: per-leaf selector records on the
-    # IntentChain must carry two DIFFERENT domain strings.  Proves
-    # the cross-domain assignment survived through the assembler.
+    # PR-10E gap #2 + PR-10F gap #4: per-leaf selector records on the
+    # IntentChain must carry two DIFFERENT domain strings AND the two
+    # REAL production tool names.  Proves the cross-domain assignment
+    # survived through the assembler with REAL bindings.
     selector_records = outcome.intent_chain.selectors
     assert len(selector_records) == 2
     bound_domains = sorted({sr.domain for sr in selector_records})
@@ -981,13 +1151,14 @@ async def test_canonical_cross_domain_correlation_REAL_executor(
         f"Selector records must span both domains; got "
         f"{bound_domains!r}"
     )
-    # The two tool_names must differ (one tool per domain).
+    # PR-10F gap #4: the bound tool names are the REAL production tool
+    # names (NOT the prior synthetic stand-ins).
     bound_tool_names = sorted({sr.bound_tool_name for sr in selector_records})
     assert bound_tool_names == [
-        "synthetic_pair_stats_tool_a",
-        "synthetic_pair_stats_tool_b",
+        "calculate_breakeven_inflation_simple_tool",
+        "calculate_curve_spread_tool",
     ], (
-        f"Each domain must bind its own distinct tool; got "
+        f"Each domain must bind its REAL production tool; got "
         f"{bound_tool_names!r}"
     )
 
@@ -1003,29 +1174,43 @@ async def test_canonical_cross_domain_correlation_REAL_executor(
         f"Compute lineage must contain operator step(s); got kinds "
         f"{step_kinds}"
     )
-    # PR-10E Codex audit gap #2: the lineage chain is a SINGLE linear
-    # walk back from terminal (substrate design); when correlation
-    # consumes two distinct primitives the chain still surfaces only
-    # the head's deepest predecessor as a top-level step.  Both
-    # primitives' execution is already proven above by:
-    #   (a) sov_selector_calls + iib_selector_calls each firing once,
-    #   (b) the two BoundLeaves with distinct domains + tool_names,
-    #   (c) strict PASS (the substrate would have errored if either
-    #       primitive failed to resolve).
-    # So here we only assert the lineage records AT LEAST one of the
-    # two cross-domain primitives — the chain's linear-walk shape is
-    # not a per-leaf inventory.
-    primitive_step_names = {
-        s.name for s in steps if s.kind == "primitive"
+
+    # PR-10F gap #4: BOTH REAL primitive step names must be reachable
+    # from the terminal lineage.  The substrate's correlation operator
+    # appends its OperatorStep to the LEFT input's chain and carries
+    # the RIGHT input's chain in ``auxiliary_lineages`` on that
+    # OperatorStep (see shared.operators.correlation.operator).  So
+    # both primitives' names are recorded — one on the primary chain,
+    # one on the auxiliary chain — and we walk both to assert both
+    # REAL production tools fired through the bridge end-to-end.
+    expected_real_tools = {
+        "calculate_curve_spread_tool",
+        "calculate_breakeven_inflation_simple_tool",
     }
-    expected_cross_domain_tools = {
-        "synthetic_pair_stats_tool_a",
-        "synthetic_pair_stats_tool_b",
-    }
-    assert primitive_step_names & expected_cross_domain_tools, (
-        f"Lineage must record at least one of the cross-domain "
-        f"primitives; got {primitive_step_names!r}"
+
+    def _collect_all_primitive_names(lineage) -> set:
+        """Walk a Lineage's primary steps AND every nested
+        ``auxiliary_lineages`` chain, collecting every primitive step
+        name encountered.  The correlation operator's auxiliary chain
+        carries the RIGHT primitive's lineage."""
+        seen: set = set()
+        for step in lineage.steps:
+            if step.kind == "primitive":
+                seen.add(step.name)
+            for aux in getattr(step, "auxiliary_lineages", ()) or ():
+                seen |= _collect_all_primitive_names(aux)
+        return seen
+
+    all_primitive_names = _collect_all_primitive_names(
+        outcome.run_lineage.compute_lineage,
     )
+    assert expected_real_tools.issubset(all_primitive_names), (
+        f"PR-10F gap #4: lineage (primary + auxiliary chains) must "
+        f"record BOTH REAL production primitives "
+        f"{sorted(expected_real_tools)!r}; got "
+        f"{sorted(all_primitive_names)!r}"
+    )
+
     # The terminal operator is correlation.
     terminal_step = steps[-1]
     assert terminal_step.kind == "operator"

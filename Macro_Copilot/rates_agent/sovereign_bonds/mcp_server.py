@@ -915,7 +915,7 @@ def scan_extremes_tool(
 # TOOL 7: zscore_custom
 # ===========================================================================
 @mcp.tool()
-def zscore_custom_tool(
+def calculate_zscore_custom_tool(
     curve_family: str,
     tenor: str,
     z_score_window_days: int,
@@ -1013,7 +1013,7 @@ def zscore_custom_tool(
 # TOOL 8: rolling_regression  (first nested-input MCP wrapper)
 # ===========================================================================
 @mcp.tool()
-def rolling_regression_tool(
+def calculate_rolling_regression_tool(
     target_spec: SeriesSpec,
     regressor_specs: List[SeriesSpec],
     regression_window_days: int,
@@ -1121,7 +1121,7 @@ def rolling_regression_tool(
 # TOOL 9: beta_adjusted_spread  (flat scalar inputs)
 # ===========================================================================
 @mcp.tool()
-def beta_adjusted_spread_tool(
+def calculate_beta_adjusted_spread_tool(
     target_curve_family: str,
     target_tenor: str,
     regressor_curve_family: str,
@@ -1248,7 +1248,7 @@ def beta_adjusted_spread_tool(
 # TOOL 10: half_life  (nested union input — MCP only this sprint)
 # ===========================================================================
 @mcp.tool()
-def half_life_tool(
+def calculate_half_life_tool(
     series_spec: Optional[SeriesSpec] = None,
     pair_spec: Optional[PairSpec] = None,
     pasted_series: Optional[PastedTimeSeries] = None,
@@ -1349,7 +1349,7 @@ def half_life_tool(
 # TOOL 11: pca_yield_curve  (flat scalar inputs + tenors list)
 # ===========================================================================
 @mcp.tool()
-def pca_yield_curve_tool(
+def calculate_pca_yield_curve_tool(
     curve_family: str,
     tenors: Optional[List[str]] = None,
     lookback_days: int = 1825,
@@ -1505,7 +1505,7 @@ def pca_yield_curve_tool(
 # TOOL 12: yield_change_attribution_pca  (nested input — MCP only this sprint)
 # ===========================================================================
 @mcp.tool()
-def yield_change_attribution_pca_tool(
+def calculate_yield_change_attribution_pca_tool(
     curve_family: str,
     target_tenor: str,
     start_date: str,

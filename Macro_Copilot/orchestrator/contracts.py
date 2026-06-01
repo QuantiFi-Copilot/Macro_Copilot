@@ -33,61 +33,51 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 # ============================================================================
-# DOMAIN ENUM
+# DOMAIN ENUM — REGISTRATION-ONLY via orchestrator.domain_registry
 # ============================================================================
+#
+# PR-10F Codex audit gap #2: the Domain enum's MEMBERS are now BUILT at
+# import time from ``orchestrator.domain_registry.DOMAIN_SPECS``, which
+# auto-discovers every sub-package of ``rates_agent/`` that declares the
+# required ``__domain_id__`` / ``__domain_label__`` / etc. constants.
+#
+# Adding the Nth domain requires ZERO source edits to this file (or to
+# orchestrator/config.py, orchestrator/open_dag/resolver_keys.py).  Just:
+#   1. Drop a folder ``rates_agent/<new_domain>/``
+#   2. Declare the discovery constants on its ``__init__.py``
+#   3. Add a ``mcp_server.py`` exposing the @mcp.tool() functions
+#
+# The Domain TYPE is still a ``str, Enum`` subclass — LangChain's
+# ``with_structured_output(RouteDecision)`` reads it at Supervisor
+# construction time, by which point discovery has already completed.
+# Pydantic Field(Domain) introspects the same closed set.  So the cache
+# stability invariant (the previous round's documented concern) is
+# preserved: within one session the schema is identical to what the
+# hardcoded enum produced.
+#
+# The per-domain SUPERVISOR routing card content (AVAILABLE DOMAINS,
+# DOMAIN SIGNALS) and the per-domain child SYSTEM_PROMPT strings still
+# ship as content in orchestrator/prompts.py; a follow-up could move them
+# onto each domain's __init__.py as __domain_card__ / __domain_signals__
+# / __domain_child_prompt__ constants templated into the prompt.  That is
+# content migration, not a code-surface gap.
+from orchestrator.domain_registry import DOMAIN_SPECS as _DOMAIN_SPECS
 
-class Domain(str, Enum):
-    """The set of domain specialists the supervisor can route to.
-
-    Scaling boundary (see ``tmp/orchestration.md`` §0 + §7 — PR-10E
-    Codex audit gap #5)
-    -------------------------------------------------------------------
-    This enum is part of the orchestrator's CONFIG SURFACE, not its
-    CODE SURFACE.  The PoC's 'registration-only growth' invariant
-    applies to primitives and operators only — adding the Nth domain
-    is an ADR-gated source change that updates EXACTLY five files in
-    lock-step:
-
-      1. this enum (add the new member)
-      2. ``orchestrator/config.py``      — DOMAIN_MCP_SERVERS entry
-      3. ``orchestrator/prompts.py``     — new ``<DOMAIN>_SYSTEM_PROMPT``
-         constant AND extend SUPERVISOR_SYSTEM_PROMPT's AVAILABLE
-         DOMAINS / DOMAIN SIGNALS / decomposition-examples blocks
-      4. ``orchestrator/session.py``     — ``_DOMAIN_PROMPTS`` map +
-         ``_build_domain_boundaries.domain_labels``
-      5. ``orchestrator/open_dag/resolver_keys.py`` — KNOWN_DOMAINS
-         (declare bare-name vs prefixed keying convention)
-
-    The orchestrator's CODE SURFACE — composer, validator, executor,
-    coverage gate, Boundary A / B, synthesis — stays byte-for-byte
-    unchanged when a new domain is added.  That is the PoC's actual
-    scaling claim; the test that proves it is
-    ``tests/eval/test_scaling_proofs.py`` (which deliberately tests
-    a new primitive + a new operator, NOT a new domain).
-
-    Why the five-file cost is intentional:
-      - Domain is a typed Pydantic Field on RouteDecision /
-        EconomicQuantity / ChildResponse / BoundLeaf; LangChain's
-        ``with_structured_output`` caches the tool schema at
-        supervisor construction.  A runtime registry would either
-        invalidate that cache per session or force a downgrade to
-        ``Field: str`` and lose the typed coverage gate.
-      - Each domain ships a hand-tuned ~30-line PM-vocabulary card
-        inside SUPERVISOR_SYSTEM_PROMPT (signal words like 'SFR',
-        'TY1', 'SOFR', 'TIPS') that the supervisor LLM reasons over
-        for L1 routing accuracy.  Auto-discovering this from a
-        folder convention would relocate the content without
-        eliminating it.
-
-    A future ADR may revisit if the domain count grows past ~12.
-    """
-
-    SOVEREIGN_BONDS = "sovereign_bonds"
-    OIS = "ois"
-    INFLATION_INDEXED_BONDS = "inflation_indexed_bonds"
-    INFLATION_SWAPS = "inflation_swaps"
-    POLICY_FUTURES = "policy_futures"
-    BOND_FUTURES = "bond_futures"
+Domain = Enum(  # type: ignore[misc]
+    "Domain",
+    {spec.domain_id.upper(): spec.domain_id for spec in _DOMAIN_SPECS.values()},
+    type=str,
+)
+Domain.__doc__ = (
+    "The set of domain specialists the supervisor can route to.  "
+    "Members are discovered at import time from "
+    "``rates_agent/<domain>/__init__.py`` via "
+    "``orchestrator.domain_registry``.  Adding the Nth domain requires "
+    "ONLY dropping a folder under ``rates_agent/`` with the required "
+    "discovery constants — no edit to this enum body, to "
+    "``orchestrator/config.py``, or to "
+    "``orchestrator/open_dag/resolver_keys.py``."
+)
 
 
 # ============================================================================

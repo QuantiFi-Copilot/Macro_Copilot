@@ -58,25 +58,21 @@ The substrate ships the FULL set up-front so a typo at L1 or L2 surfaces
 deterministically here, not as a confusing resolver miss inside the
 executor.
 
-Scaling-claim boundary (PR-10E Codex audit gap #5)
---------------------------------------------------
-This file is part of the orchestrator's CONFIG SURFACE, not its
-CODE SURFACE.  The PoC's 'registration-only growth' invariant
-(``tmp/orchestration.md`` §0) covers primitive + operator growth
-only.  Adding the Nth domain is an ADR-gated source change that
-updates this file in lock-step with ``orchestrator/contracts.py``
-(Domain enum), ``orchestrator/config.py`` (DOMAIN_MCP_SERVERS),
-``orchestrator/prompts.py`` (new ``<DOMAIN>_SYSTEM_PROMPT`` constant
-+ extension to SUPERVISOR_SYSTEM_PROMPT's AVAILABLE DOMAINS /
-DOMAIN SIGNALS cards), and ``orchestrator/session.py``
-(``_DOMAIN_PROMPTS`` + ``_build_domain_boundaries`` labels).
+Scaling-claim boundary (PR-10F Codex audit gap #2 — UPDATED)
+------------------------------------------------------------
+This file is now ALSO registration-only on domain growth.  The
+two convention sets (``_DOMAIN_PREFIXED``, ``_BARE_NAME_DOMAINS``)
+are built at import time from ``orchestrator.domain_registry.
+DOMAIN_SPECS`` — each new domain declares its own
+``__resolver_key_convention__`` on its
+``rates_agent/<domain>/__init__.py``.  Adding the Nth domain
+requires NO edit to this file.
 
-The orchestrator's CODE SURFACE — composer, validator, executor,
-coverage gate, Boundary A / B, synthesis — stays byte-for-byte
-unchanged on domain growth.  This file is DELIBERATELY excluded
-from ``tests/eval/test_scaling_proofs.py``'s registration-only
-proof's invariant-files list because it (correctly) needs to grow
-when a domain is added.
+The previous-round documentation (PR-10E gap #5) noted this file
+as part of the orchestrator's CONFIG SURFACE that needed lock-step
+edits.  PR-10F gap #2 closed that gap: the SOURCE OF TRUTH moved
+to the per-folder declaration on ``rates_agent/<domain>/__init__.py``,
+and this file just consumes the discovery output.
 """
 
 from __future__ import annotations
@@ -103,20 +99,19 @@ from typing import FrozenSet
 # (``get_futures_price_level_tool``,
 # ``get_futures_volume_oi_tool``-equivalent shapes), and the resolver
 # uses the prefix to disambiguate.
-_DOMAIN_PREFIXED: FrozenSet[str] = frozenset({
-    "policy_futures",
-})
+# PR-10F gap #2: both convention sets are now BUILT from
+# orchestrator.domain_registry.DOMAIN_SPECS at import time.  Each
+# domain declares its own __resolver_key_convention__ on its
+# ``rates_agent/<domain>/__init__.py``.  Adding the Nth domain
+# requires NO edit to this file — the new domain's folder declaration
+# flows in automatically.
+from orchestrator.domain_registry import (
+    bare_domain_ids as _bare_domain_ids,
+    prefixed_domain_ids as _prefixed_domain_ids,
+)
 
-
-# Domains whose primitives are registered under their bare MCP tool name
-# (no domain prefix).  Five today: every domain except ``policy_futures``.
-_BARE_NAME_DOMAINS: FrozenSet[str] = frozenset({
-    "sovereign_bonds",
-    "ois",
-    "inflation_indexed_bonds",
-    "inflation_swaps",
-    "bond_futures",
-})
+_DOMAIN_PREFIXED: FrozenSet[str] = _prefixed_domain_ids()
+_BARE_NAME_DOMAINS: FrozenSet[str] = _bare_domain_ids()
 
 
 # The closed set of known domains.  Disjoint union of the two convention
