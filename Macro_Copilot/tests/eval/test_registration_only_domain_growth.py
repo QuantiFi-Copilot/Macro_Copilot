@@ -107,6 +107,7 @@ def fixture_domain():
     [
         "test_invariant_files_unchanged_after_dropping_new_domain_folder",
         "test_orchestrator_discovers_new_domain_with_zero_source_edits",
+        "test_synthetic_domain_appears_in_llm_facing_surfaces",
     ],
 )
 def test_via_subprocess(fixture_domain, inner_test_name: str):

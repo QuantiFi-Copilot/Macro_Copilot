@@ -125,3 +125,4 @@ card:
     - correlation: "Full-sample correlation.  How correlated, not how steep."
     - rolling_correlation: "Time-varying correlation.  Strength only; no slope."
     - cointegration: "Is a linear combination of the two series stationary?"
+  intent_hints: [regression]

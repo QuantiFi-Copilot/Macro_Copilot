@@ -97,3 +97,4 @@ card:
     - correlation: "Full-sample correlation — one ScalarMetric instead of a Series.  Pick when the user wants a single summary number."
     - cointegration: "Is a linear combination of the two stationary?  Different question, same input shape."
     - rolling_regression: "Rolling slope (beta).  Use when the question is 'how much per unit', not 'how correlated'."
+  intent_hints: [relationship, transform]

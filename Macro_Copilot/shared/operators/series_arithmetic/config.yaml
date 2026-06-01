@@ -102,3 +102,4 @@ card:
     - convert_units: "Use BEFORE this operator when binary operands have different-but-convertible units."
     - align_series: "Required upstream when both operands are Series."
     - summarize_series: "If you want a single-row summary instead of elementwise arithmetic."
+  intent_hints: [transform]

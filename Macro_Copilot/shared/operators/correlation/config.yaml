@@ -79,3 +79,4 @@ card:
     - rolling_correlation: "Time-varying (windowed) correlation — emits a Series of coefficients, not a single ScalarMetric."
     - cointegration: "Stationarity of a linear combination of the two series (Engle-Granger ADF on residuals).  Same input shape, different question."
     - rolling_regression: "Slope (beta) of one Series on another.  Emits {beta, alpha, r_squared} SeriesSet.  Use when the question is 'how much per unit of the regressor', not 'how correlated'."
+  intent_hints: [relationship]

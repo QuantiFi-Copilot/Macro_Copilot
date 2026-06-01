@@ -95,3 +95,4 @@ card:
     - threshold_events: "Required upstream — produces the EventSet."
     - conditional_aggregate: "Required downstream to reduce WindowedPanel to a per-offset Series."
     - apply_mask: "Alternative when the user wants values, not windows."
+  intent_hints: [event_regime]

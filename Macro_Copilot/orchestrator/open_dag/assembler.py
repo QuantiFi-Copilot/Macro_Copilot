@@ -28,10 +28,13 @@ Three-pass pipeline
      Hard for closed-substrate fields (artifact type, units,
      frequency) → ``E_TYPE_MISMATCH`` / ``E_UNIT_MISMATCH`` /
      ``E_FREQUENCY_MISMATCH`` at severity=ERROR with
-     owner_layer=L2_BINDING.  Soft for free-form fields
-     (semantic_role / requested_output_meaning) → normalised-string
-     compare; mismatch surfaces as ``E_ROLE_DISCRIMINANT_MISMATCH``
-     at severity=WARNING.
+     owner_layer=L2_BINDING.  Free-form fields (semantic_role /
+     requested_output_meaning) are compared via normalised-string
+     match; a mismatch surfaces as ``E_ROLE_DISCRIMINANT_MISMATCH``
+     at severity=ERROR (also owner_layer=L2_BINDING) — hardened in
+     PR-10D from the original WARNING so the bounded repair loop
+     either rebinds the leaf or REFUSES the assembly, keeping
+     role-mismatched DAGs out of Boundary B.
    - **Structural (PR-1's ``validate_workflow_result``)**: the
      existing 13-code substrate check (cycles, slot existence, type
      compat, output_field validity, unit_validator hooks, etc.).
@@ -682,11 +685,17 @@ class Assembler:
           - E_UNIT_MISMATCH: expected_units set AND ≠ declared_units.
           - E_FREQUENCY_MISMATCH: expected_frequency set AND ≠
             declared_frequency (case-insensitive, whitespace-trimmed).
-
-        SOFT (severity=WARNING, owner_layer=L2_BINDING):
           - E_ROLE_DISCRIMINANT_MISMATCH: semantic_role or
             requested_output_meaning differ under normalised
-            comparison.
+            comparison.  Hardened from WARNING to ERROR in PR-10D so
+            role-mismatched DAGs cannot reach Boundary B; see the
+            inline narrative around the emission sites for the full
+            rationale and how it co-exists with the no-role-enum
+            ruling.
+
+        All errors are HARD (severity=ERROR, owner_layer=L2_BINDING)
+        — every code listed will, if unrepaired after the bounded
+        rebind round, drive AssemblyResult to status=REFUSED.
         """
         out: List[ValidationError] = []
         for hole in shape.leaf_holes():

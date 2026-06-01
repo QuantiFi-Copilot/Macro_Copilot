@@ -143,3 +143,4 @@ card:
     - threshold_events: "Required upstream to produce the EventSet."
     - event_windows: "Alternative when the user wants per-event WINDOWS rather than just values."
     - summarize_series: "Natural downstream for per-regime central-tendency summaries."
+  intent_hints: [event_regime]

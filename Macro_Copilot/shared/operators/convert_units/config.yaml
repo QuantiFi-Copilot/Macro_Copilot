@@ -55,3 +55,4 @@ card:
       shape: "Series(PERCENT) -> convert_units(target_units='bps') -> series_arithmetic(op='add', other=Series(BPS)) -> Series(BPS)"
   sibling_operators:
     - series_arithmetic: "The most common downstream — convert_units lets binary same-unit ops succeed."
+  intent_hints: []

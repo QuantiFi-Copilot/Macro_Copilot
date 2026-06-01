@@ -547,22 +547,36 @@ def _intent_section_for_prompt(catalogue: Dict[str, OperatorCard]) -> str:
         IntentTag.BASIS: ["align_series", "select_from_series_set", "series_arithmetic"],
     }
 
-    # Merge: card-declared intent_hints take precedence.  An operator
-    # whose card lists ``intent_hints: [RELATIONSHIP]`` gets added to
-    # the RELATIONSHIP row even if it wasn't in the baseline.
-    intent_to_operators_dict: Dict[IntentTag, List[str]] = {
-        tag: list(ops) for tag, ops in _BASELINE.items()
-    }
+    # PR-10H gap #5: per-tag precedence — if ANY operator declares
+    # ``intent_hints`` for a given IntentTag, the rendered row for
+    # that tag is the (deterministically sorted) union of those
+    # operators and the baseline row is DROPPED.  When NO operator
+    # declares hints for a tag, the baseline row is preserved
+    # verbatim.  This is what lets the SCAN '(scanner primitives)'
+    # textual hint and the LOOKUP '(direct primitive answer)'
+    # textual hint survive (no operator can claim them), while
+    # still letting a new operator REPLACE the RELATIONSHIP row by
+    # declaring intent_hints: [relationship] in its YAML — true
+    # registration-only growth on the intent table.  Empty
+    # intent_hints lists on utility operators (align_series,
+    # select_from_series_set, convert_units) signal "this operator
+    # is intent-agnostic, invoked structurally" and contribute
+    # nothing to the rendered table.
+    card_hints: Dict[IntentTag, List[str]] = {}
     for op_name, card in catalogue.items():
         hints = getattr(card, "intent_hints", ()) or ()
         for hint in hints:
-            # Case-insensitive match against IntentTag enum values.
             try:
                 tag = IntentTag(hint.lower().strip())
             except ValueError:
                 continue
-            if op_name not in intent_to_operators_dict.get(tag, []):
-                intent_to_operators_dict.setdefault(tag, []).append(op_name)
+            card_hints.setdefault(tag, []).append(op_name)
+    intent_to_operators_dict: Dict[IntentTag, List[str]] = {}
+    for tag in IntentTag:
+        if tag in card_hints:
+            intent_to_operators_dict[tag] = sorted(set(card_hints[tag]))
+        elif tag in _BASELINE:
+            intent_to_operators_dict[tag] = list(_BASELINE[tag])
 
     intent_to_operators: List[Tuple[IntentTag, List[str]]] = [
         (tag, intent_to_operators_dict[tag]) for tag in IntentTag

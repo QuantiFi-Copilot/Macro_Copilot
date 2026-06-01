@@ -92,11 +92,17 @@ class ErrorCode(str, Enum):
     E_PRIMITIVE_RESOLVE_FAIL = "E_PRIMITIVE_RESOLVE_FAIL"
     # Declared in PR-1, raised in PR-3 / PR-4 — see class docstring.
     E_FREQUENCY_MISMATCH = "E_FREQUENCY_MISMATCH"
-    # Added in PR-4 for the free-form Boundary A check.  Always emitted
-    # with severity=WARNING (not ERROR) per the plan's role-discriminant
-    # policy (R5: no curated role enum, mismatches are SOFT signals).
-    # detail['field'] indicates which free-form subfield mismatched
-    # ('semantic_role' or 'requested_output_meaning').
+    # Added in PR-4 for the free-form Boundary A check; HARDENED in
+    # PR-10D from WARNING to ERROR.  Emitted with severity=ERROR and
+    # owner_layer=L2_BINDING — a mismatch (after the Selector's one
+    # bounded rebind round) drives AssemblyResult to status=REFUSED,
+    # so no role-mismatched DAG ever reaches Boundary B.  Still
+    # honours the no-role-enum ruling (rulings #1, #5): the
+    # comparison is a mechanical normalised-string check of
+    # LLM-authored free-form English, not a lookup into a curated
+    # role vocabulary.  detail['field'] indicates which free-form
+    # subfield mismatched ('semantic_role' or
+    # 'requested_output_meaning').
     E_ROLE_DISCRIMINANT_MISMATCH = "E_ROLE_DISCRIMINANT_MISMATCH"
 
 

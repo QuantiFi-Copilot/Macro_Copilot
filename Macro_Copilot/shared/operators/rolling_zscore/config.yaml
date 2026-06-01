@@ -101,3 +101,4 @@ card:
     - percentile_rank: "Pick when the user wants percentile rank (0–100) instead of σ-units."
     - rolling_statistic: "Pick when the user wants raw rolling mean / std / min / max / sum, not standardisation."
     - threshold_events: "Common downstream for event detection on the standardised signal."
+  intent_hints: [transform]

@@ -113,3 +113,4 @@ card:
     - rolling_zscore: "If the user wants the value standardised by the rolling mean and std together."
     - percentile_rank: "If the user wants the rank against history."
     - series_arithmetic: "Often paired downstream to compute (value − rolling_mean) deviation."
+  intent_hints: [transform]

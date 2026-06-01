@@ -81,3 +81,4 @@ card:
   sibling_operators:
     - apply_mask: "Pair downstream when the user wants the qualifying dates' VALUES from a target Series."
     - event_windows: "Pair downstream when the user wants per-event sequences of another Series around each event."
+  intent_hints: [event_regime]

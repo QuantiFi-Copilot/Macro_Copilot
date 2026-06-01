@@ -60,3 +60,4 @@ card:
       shape: "rolling_regression -> SeriesSet -> select_from_series_set(key='beta') -> Series"
   sibling_operators:
     - align_series: "The natural upstream — produces the SeriesSet you extract from."
+  intent_hints: []

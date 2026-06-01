@@ -129,3 +129,4 @@ card:
     - correlation: "How correlated, not whether stationary.  Same input shape, different question."
     - rolling_correlation: "Time-varying correlation.  Use to see when the relationship strengthened or weakened."
     - rolling_regression: "Slope (beta) of one Series on another.  Useful as a companion to cointegration."
+  intent_hints: [cointegration]

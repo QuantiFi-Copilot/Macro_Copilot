@@ -112,3 +112,4 @@ card:
     - rolling_zscore: "Pick when the user wants σ-units instead of percentile rank."
     - rolling_statistic: "Pick when the user wants the raw rolling stat (mean / std / min / max / sum)."
     - threshold_events: "Common downstream for 'top decile' / 'bottom decile' event detection."
+  intent_hints: [transform, lookup]

@@ -92,3 +92,4 @@ card:
   sibling_operators:
     - event_windows: "Required upstream — produces the WindowedPanel."
     - summarize_series: "Single-Series version (collapses a 1D Series to a single 1-row summary)."
+  intent_hints: [event_regime]

@@ -2173,14 +2173,18 @@ def _build_domain_boundaries(domains: list[Domain]) -> dict[Domain, str]:
     """For each domain in a multi-domain fan-out, build a short scope
     instruction that tells the child which part of the user's compound
     query it should answer and which parts to leave to its siblings.
+
+    PR-10H gap #3: per-domain labels read from
+    ``orchestrator.domain_registry.DOMAIN_SPECS[<id>].domain_label``
+    so a newly-registered domain gets a PM-grade label automatically,
+    without an edit to this function.  Fallback to ``d.value`` only
+    when the registry has no entry for the domain (defensive — the
+    registry is the source of truth for every domain in the Domain
+    enum, by construction).
     """
-    domain_labels = {
-        Domain.SOVEREIGN_BONDS: "cash sovereign bonds",
-        Domain.OIS: "OIS swaps",
-        Domain.INFLATION_INDEXED_BONDS: "inflation-linked bonds (linkers)",
-        Domain.INFLATION_SWAPS: "zero-coupon inflation swaps (ZCIS)",
-        Domain.POLICY_FUTURES: "policy / STIR strip futures",
-        Domain.BOND_FUTURES: "sovereign bond futures (monitors only at V1)",
+    domain_labels: dict[Domain, str] = {
+        Domain[spec.domain_id.upper()]: spec.domain_label
+        for spec in _DOMAIN_SPECS.values()
     }
     out: dict[Domain, str] = {}
     for d in domains:

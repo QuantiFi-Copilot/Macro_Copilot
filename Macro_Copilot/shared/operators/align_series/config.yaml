@@ -109,3 +109,4 @@ card:
   sibling_operators:
     - select_from_series_set: "Natural downstream extractor — pulls one named Series out by key."
     - convert_units: "Insert on one branch BEFORE align_series when inputs have different-but-convertible units."
+  intent_hints: []

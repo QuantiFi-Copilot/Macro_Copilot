@@ -61,6 +61,13 @@ _DOMAIN_GROWTH_INVARIANT_FILES = [
     _REPO_ROOT / "orchestrator" / "contracts.py",
     _REPO_ROOT / "orchestrator" / "config.py",
     _REPO_ROOT / "orchestrator" / "open_dag" / "resolver_keys.py",
+    # PR-10H gap #2: prompts.py and session.py are part of the
+    # registration-only-growth code surface — they render their LLM-
+    # facing content from DOMAIN_SPECS at import time, so registering
+    # a new domain MUST NOT mutate either file.  Adding them here
+    # guarantees that contract.
+    _REPO_ROOT / "orchestrator" / "prompts.py",
+    _REPO_ROOT / "orchestrator" / "session.py",
 ]
 
 
@@ -69,14 +76,20 @@ def _file_hash(p: Path) -> str:
 
 
 def test_invariant_files_unchanged_after_dropping_new_domain_folder():
-    """8 orchestrator code-surface files MUST stay byte-identical."""
+    """10 orchestrator code-surface files MUST stay byte-identical."""
     pre_hashes = {p: _file_hash(p) for p in _DOMAIN_GROWTH_INVARIANT_FILES}
-    # Importing the orchestrator's registry should NOT mutate any
-    # tracked file — it only reads the fixture folder.
+    # Importing the orchestrator's registry + the templated prompt /
+    # session modules should NOT mutate any tracked file — they only
+    # READ the fixture folder at import time.  Per PR-10H gap #2 the
+    # prompts/session modules are now part of the invariant set: their
+    # import-time rendering from DOMAIN_SPECS must add the new domain
+    # without an edit to either file.
     from orchestrator import domain_registry  # noqa: F401
     from orchestrator import contracts as contracts_mod  # noqa: F401
     from orchestrator import config as config_mod  # noqa: F401
     from orchestrator.open_dag import resolver_keys  # noqa: F401
+    from orchestrator import prompts as prompts_mod  # noqa: F401
+    from orchestrator import session as session_mod  # noqa: F401
 
     post_hashes = {p: _file_hash(p) for p in _DOMAIN_GROWTH_INVARIANT_FILES}
     assert pre_hashes == post_hashes, (
@@ -132,4 +145,96 @@ def test_orchestrator_discovers_new_domain_with_zero_source_edits():
         f"PR-10G gap #2: DOMAIN_MCP_SERVERS did NOT pick up the "
         f"fixture domain.  Keys: "
         f"{sorted(d.value for d in config_mod.DOMAIN_MCP_SERVERS.keys())}"
+    )
+
+
+def test_synthetic_domain_appears_in_llm_facing_surfaces():
+    """PR-10H gap #2: the fixture's __domain_card__,
+    __domain_signals__, and __domain_child_prompt__ MUST reach all
+    three LLM-facing surfaces — otherwise the supervisor / child
+    models never see the new domain even though the registry knows
+    about it.
+
+    Surfaces asserted:
+      (a) orchestrator.prompts.SUPERVISOR_SYSTEM_PROMPT contains
+          the fixture's domain_card.
+      (b) orchestrator.prompts.SUPERVISOR_SYSTEM_PROMPT contains
+          the fixture's domain_signals.
+      (c) orchestrator.prompts has the backwards-compat
+          ``<FIXTURE_DOMAIN_ID_UPPER>_SYSTEM_PROMPT`` alias and it
+          equals the fixture's __domain_child_prompt__.
+      (d) orchestrator.session._DOMAIN_PROMPTS[Domain(<id>)]
+          equals the fixture's __domain_child_prompt__.
+    """
+    from orchestrator import prompts as prompts_mod
+    from orchestrator import session as session_mod
+    from orchestrator.contracts import Domain
+    from orchestrator.domain_registry import DOMAIN_SPECS
+
+    spec = DOMAIN_SPECS[_FIXTURE_DOMAIN_ID]
+
+    # Stable substrings of the fixture's parsed strings (Python
+    # collapses the inline `\<newline>` continuations).
+    _CARD_SUBSTRING = (
+        "pr10g_fixture — test-only synthetic domain that exists "
+        "ONLY to prove the orchestrator picks up new "
+        "rates_agent/<domain>/ folders on first import."
+    )
+    _SIGNALS_SUBSTRING = (
+        "PR-10G fixture signals: only the test fixture invokes "
+        "this domain; no production routing should ever reach it."
+    )
+
+    # Sanity: fixture's parsed constants MUST contain those
+    # substrings — otherwise the fixture itself drifted.
+    assert _CARD_SUBSTRING in spec.domain_card, (
+        f"PR-10H gap #2: fixture's __domain_card__ no longer "
+        f"contains the expected substring.  Got: {spec.domain_card!r}"
+    )
+    assert _SIGNALS_SUBSTRING in spec.domain_signals, (
+        f"PR-10H gap #2: fixture's __domain_signals__ no longer "
+        f"contains the expected substring.  Got: "
+        f"{spec.domain_signals!r}"
+    )
+
+    # (a) Supervisor system prompt carries the domain card.
+    assert _CARD_SUBSTRING in prompts_mod.SUPERVISOR_SYSTEM_PROMPT, (
+        "PR-10H gap #2 (a): SUPERVISOR_SYSTEM_PROMPT does NOT "
+        "contain the fixture domain's __domain_card__ substring. "
+        "The supervisor LLM will never see the new domain in its "
+        "AVAILABLE DOMAINS block."
+    )
+
+    # (b) Supervisor system prompt carries the domain signals.
+    assert _SIGNALS_SUBSTRING in prompts_mod.SUPERVISOR_SYSTEM_PROMPT, (
+        "PR-10H gap #2 (b): SUPERVISOR_SYSTEM_PROMPT does NOT "
+        "contain the fixture domain's __domain_signals__ "
+        "substring."
+    )
+
+    # (c) Backwards-compat alias exists on prompts module + equals
+    # the fixture's __domain_child_prompt__.
+    alias_name = f"{_FIXTURE_DOMAIN_ID.upper()}_SYSTEM_PROMPT"
+    assert hasattr(prompts_mod, alias_name), (
+        f"PR-10H gap #2 (c): orchestrator.prompts is missing the "
+        f"backwards-compat alias {alias_name!r}.  Existing "
+        f"`from orchestrator.prompts import {alias_name}` imports "
+        f"would fail for the newly-registered domain."
+    )
+    assert getattr(prompts_mod, alias_name) == spec.child_system_prompt, (
+        f"PR-10H gap #2 (c): {alias_name} on orchestrator.prompts "
+        f"does NOT equal the fixture's __domain_child_prompt__."
+    )
+
+    # (d) session._DOMAIN_PROMPTS keyed by the Domain enum member.
+    new_domain = Domain(_FIXTURE_DOMAIN_ID)
+    assert new_domain in session_mod._DOMAIN_PROMPTS, (
+        f"PR-10H gap #2 (d): orchestrator.session._DOMAIN_PROMPTS "
+        f"is missing an entry for Domain({_FIXTURE_DOMAIN_ID!r}).  "
+        f"Keys: "
+        f"{sorted(d.value for d in session_mod._DOMAIN_PROMPTS.keys())}"
+    )
+    assert session_mod._DOMAIN_PROMPTS[new_domain] == spec.child_system_prompt, (
+        f"PR-10H gap #2 (d): _DOMAIN_PROMPTS[Domain({_FIXTURE_DOMAIN_ID!r})] "
+        f"does NOT equal the fixture's __domain_child_prompt__."
     )

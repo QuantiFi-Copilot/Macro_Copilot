@@ -98,3 +98,4 @@ card:
     - conditional_aggregate: "Per-offset (panel-flattening) sibling — use when input is WindowedPanel, not Series."
     - apply_mask: "Common upstream to produce the regime-conditioned sample."
     - series_arithmetic: "Natural downstream for cross-regime delta (subtract)."
+  intent_hints: [lookup]
