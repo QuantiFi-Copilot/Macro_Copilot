@@ -45,6 +45,7 @@ import {
   isArtifactPayloadResponseShape,
   isEventSetPayload,
   isPanelPayload,
+  isScalarMetricPayload,
   isSeriesPayload,
   isSeriesSetPayload,
   isTradeSetPayload,
@@ -128,6 +129,27 @@ function panelEnvelope(): ArtifactPayloadResponse {
         [4.5, 2.3],
         [4.4, null],
       ],
+    },
+  };
+}
+
+/** PR-11 Codex Round 2 — ScalarMetric envelope for the narrowing
+ *  test below.  Mirrors the v2.0 backend shape: ``metric_key`` +
+ *  ``value`` on the payload (a single finite scalar — correlation
+ *  coefficient, covariance test statistic, etc.) + ``units`` +
+ *  ``lineage`` on the metadata. */
+function scalarMetricEnvelope(): ArtifactPayloadResponse {
+  return {
+    artifact_type: 'ScalarMetric',
+    metadata: {
+      metric_key: 'correlation_coefficient',
+      units: 'ratio',
+      lineage: {
+        steps: [{ name: 'unit_test_seed', params: {} }],
+      },
+    },
+    payload: {
+      value: -0.342,
     },
   };
 }
@@ -277,19 +299,36 @@ check('isPanelPayload narrows correctly', () => {
   assertEqual(isSeriesPayload(env), false, 'reject Series');
 });
 
+check('isScalarMetricPayload narrows correctly', () => {
+  // PR-11 Codex follow-up #2: the per-type narrowing assertion was
+  // missing from the original file — Series / Panel each had one but
+  // ScalarMetric (admitted v2.0 / ADR 0016) did not.
+  const env = scalarMetricEnvelope();
+  assertEqual(isScalarMetricPayload(env), true, 'narrow to ScalarMetric');
+  assertEqual(isSeriesPayload(env), false, 'reject Series');
+  assertEqual(isPanelPayload(env), false, 'reject Panel');
+  assertEqual(isTradeSetPayload(env), false, 'reject dormant TradeSet');
+});
+
 check('every kind has a guard', () => {
   // Ensure each kind name is exported as a guard — keeps the file
   // honest if someone adds a new artifact_type without updating the
   // type-guard surface.
+  //
+  // PR-11 Codex follow-up #2: this list was 6-long pre-PR-11B and
+  // omitted ``isScalarMetricPayload`` even after ScalarMetric was
+  // admitted to the active artifact union.  Bumped to 7.  TradeSet
+  // stays in the list (dormant; paused-backtest surfaces consume it).
   const guards = [
     isSeriesPayload,
     isSeriesSetPayload,
     isEventSetPayload,
     isPanelPayload,
     isWindowedPanelPayload,
+    isScalarMetricPayload,
     isTradeSetPayload,
   ];
-  assertEqual(guards.length, 6, 'six per-type guards');
+  assertEqual(guards.length, 7, 'seven per-type guards');
 });
 
 // ----------------------------------------------------------------------------
