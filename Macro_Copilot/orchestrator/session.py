@@ -323,6 +323,13 @@ class CopilotSession:
                     domain.value,
                 )
                 continue
+            # PR-10B Codex F2: pass the primitive resolver to each
+            # DomainAgentSession so the open-DAG lane's fill_leaf can
+            # run.  Without it, fill_leaf raises ("not available;
+            # pass primitive_resolver=") on first invocation and
+            # every selector returns a refusal — silently breaking
+            # the live run_open_dag path.
+            from rates_agent.workflows import rates_primitive_resolver
             self._children[domain] = DomainAgentSession(
                 domain=domain,
                 system_prompt=_DOMAIN_PROMPTS[domain],
@@ -336,6 +343,7 @@ class CopilotSession:
                 # thread id, NOT by giving each child its own
                 # checkpointer object.
                 checkpointer=self._make_checkpointer(),
+                primitive_resolver=rates_primitive_resolver,
             )
             self._child_open_locks[domain] = asyncio.Lock()
 
@@ -405,6 +413,7 @@ class CopilotSession:
         user_prompt: str,
         *,
         executor_callback: Optional[Any] = None,
+        dry_run: bool = False,
     ) -> Any:
         """Run one user prompt through the open-DAG lane.
 
@@ -450,12 +459,16 @@ class CopilotSession:
         # Lazy construction of the open-DAG sub-components.
         await self._ensure_open_dag_components_open()
 
-        # Build per-domain SelectorCallbacks that wrap
-        # DomainAgentSession.fill_leaf and lazy-open the child.
-        async def _make_selector_cb(domain: Domain):
-            child = await self._ensure_child_open(domain)
-
+        # PR-10B Codex F11: build per-domain SelectorCallbacks as
+        # LAZY closures.  ``_ensure_child_open`` is deferred until
+        # the callback is INVOKED — when a LeafHole's domain_hint
+        # actually targets the domain.  This preserves the plan's
+        # "local fan-out per decision" discipline: a query that only
+        # involves sovereign_bonds never spawns the OIS / inflation
+        # children's MCP subprocesses.
+        def _make_lazy_selector_cb(target_domain: Domain):
             async def _cb(*, leaf_id, request, timeout_s):
+                child = await self._ensure_child_open(target_domain)
                 return await child.fill_leaf(
                     leaf_id=leaf_id,
                     request=request,
@@ -464,15 +477,35 @@ class CopilotSession:
 
             return _cb
 
-        selectors_map = {}
-        for domain in self._children:
-            selectors_map[domain] = await _make_selector_cb(domain)
+        selectors_map = {
+            domain: _make_lazy_selector_cb(domain)
+            for domain in self._children
+        }
 
         # Build the per-call pipeline.  The pipeline itself is
         # stateless beyond construction — cheap to instantiate per
         # call.
-        from orchestrator.open_dag import OpenDagPipeline
+        from orchestrator.open_dag import (
+            OpenDagPipeline,
+            build_default_executor_callback,
+        )
         from rates_agent.workflows import rates_primitive_resolver
+
+        # PR-10B Codex F3: default executor_callback to the real
+        # substrate execute_workflow adapter so the canonical query
+        # actually runs end-to-end.  dry_run=True is the explicit
+        # opt-in for the old behaviour (gate-PASS + intent echo, no
+        # execution).
+        effective_executor: Optional[Any]
+        if executor_callback is not None:
+            effective_executor = executor_callback
+        elif dry_run:
+            effective_executor = None
+        else:
+            effective_executor = build_default_executor_callback(
+                engine=self._engine,
+                primitive_resolver=rates_primitive_resolver,
+            )
 
         pipeline = OpenDagPipeline(
             router=self._supervisor,
@@ -481,7 +514,7 @@ class CopilotSession:
             answer_renderer=self._open_dag_renderer,
             selectors=selectors_map,
             primitive_resolver=rates_primitive_resolver,
-            executor_callback=executor_callback,
+            executor_callback=effective_executor,
         )
         return await pipeline.run(user_prompt)
 
@@ -1311,6 +1344,76 @@ class CopilotSession:
                     augmented_message, turn_label, emit, turn_start,
                 )
                 if workflow_handled:
+                    return
+
+            # ----------------------------------------------------------
+            # 0.5 OPEN-DAG PRE-ROUTER (PR-10B Codex F1)
+            # ----------------------------------------------------------
+            #
+            # Plan §PR-10 line 762-764: "A pre-router in
+            # ``CopilotSession`` (very thin) that picks between the
+            # existing template path and the new open-DAG path.
+            # Simplest rule for PoC: if a template-router would match
+            # cleanly, use the template lane; otherwise route to
+            # open-DAG."
+            #
+            # The template router above is the "match-cleanly"
+            # check.  Anything it didn't handle drops into the
+            # open-DAG lane here.  This is what makes the canonical
+            # gap-closer query ("correlate US 2s10s with 5Y
+            # breakeven") actually work — the legacy supervisor +
+            # flat domain-agent path can't compose two cross-domain
+            # leaves into the correlation operator.
+            #
+            # The legacy supervisor / domain-agent path is preserved
+            # below as a fallback for two cases:
+            #   1. The open-DAG pipeline returns PIPELINE_ERROR
+            #      (router / composer construction failure).
+            #   2. The opt-out env var OPEN_DAG_PRE_ROUTER=0 is set —
+            #      lets a developer pin to the legacy path during
+            #      debugging without code edits.
+            import os as _os_module
+            _open_dag_enabled = _os_module.environ.get(
+                "OPEN_DAG_PRE_ROUTER", "1",
+            ).strip() not in ("0", "false", "False", "no")
+            if _open_dag_enabled:
+                try:
+                    open_dag_outcome = await self.run_open_dag(
+                        augmented_message,
+                    )
+                except Exception:
+                    logger.exception(
+                        "[%s] %s open-DAG pre-router raised; falling "
+                        "back to legacy supervisor path",
+                        self.thread_id, turn_label,
+                    )
+                    open_dag_outcome = None
+
+                if open_dag_outcome is not None and getattr(
+                    open_dag_outcome, "status", None,
+                ) != "PIPELINE_ERROR":
+                    # Surface the open-DAG outcome verbatim to the
+                    # user.  The PipelineOutcome's markdown is
+                    # always populated.
+                    await emit(
+                        SessionEvent(
+                            type="token",
+                            data={"content": open_dag_outcome.markdown},
+                        )
+                    )
+                    await emit(
+                        SessionEvent(
+                            type="done",
+                            data={
+                                "workspace_context": None,
+                                "tool_calls": [],
+                                "total_duration_ms": round(
+                                    (time.monotonic() - turn_start) * 1000
+                                ),
+                                "open_dag_status": open_dag_outcome.status,
+                            },
+                        )
+                    )
                     return
 
             # --------------------------------------------------------------

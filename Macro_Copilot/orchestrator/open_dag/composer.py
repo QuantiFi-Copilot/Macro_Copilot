@@ -348,6 +348,19 @@ class ComposerLLMOutput(BaseModel):
             "fake LeafHole to force the pipeline onward."
         ),
     )
+    rationale: str = Field(
+        default="",
+        description=(
+            "PR-10B Codex F14: optional free-form English explaining "
+            "the WIRING choice — why this operator chain, why this "
+            "terminal type.  When the Composer LLM provides this, "
+            "the IntentChain captures it verbatim, preserving the "
+            "LLM-authored wiring rationale the plan asks for.  "
+            "When empty (default), the IntentChain derives a "
+            "deterministic rationale from operator_names + "
+            "terminal_operator_name."
+        ),
+    )
 
     @field_validator("refusal")
     @classmethod
@@ -499,32 +512,61 @@ def _intent_section_for_prompt(catalogue: Dict[str, OperatorCard]) -> str:
     """Render the IntentTag → canonical-operator-family map the
     Composer prompt embeds.  Per R3 / R4: the LLM gets the priors, then
     reasons.
+
+    PR-10B Codex F15: hints are derived from each operator card's
+    ``intent_hints`` YAML field (registration-only growth — a new
+    operator with ``intent_hints: [RELATIONSHIP]`` in its YAML
+    automatically appears in the RELATIONSHIP row without any
+    composer.py edit).  Cards that don't declare intent_hints fall
+    through to the V1 hardcoded baseline below so existing operators
+    keep their established positions until each YAML is updated.
     """
-    # Build the map at prompt-build time so adding a new operator
-    # automatically threads through — the operator's own card.
-    # ``sibling_operators`` maps tell the Composer the V1 canonical
-    # operators per intent.
-    intent_to_operators: List[Tuple[IntentTag, List[str]]] = [
-        (IntentTag.LOOKUP, ["(direct primitive answer — no operators required)"]),
-        (IntentTag.RELATIONSHIP, ["correlation", "rolling_correlation"]),
-        (IntentTag.REGRESSION, ["rolling_regression"]),
-        (IntentTag.COINTEGRATION, ["cointegration"]),
-        (IntentTag.TRANSFORM, [
+    # V1 hardcoded baseline — preserved for operators whose YAML
+    # doesn't declare intent_hints yet.  New operator families
+    # SHOULD ship with their own intent_hints in YAML.
+    _BASELINE: Dict[IntentTag, List[str]] = {
+        IntentTag.LOOKUP: ["(direct primitive answer — no operators required)"],
+        IntentTag.RELATIONSHIP: ["correlation", "rolling_correlation"],
+        IntentTag.REGRESSION: ["rolling_regression"],
+        IntentTag.COINTEGRATION: ["cointegration"],
+        IntentTag.TRANSFORM: [
             "rolling_zscore",
             "rolling_statistic",
             "percentile_rank",
             "convert_units",
             "series_arithmetic",
-        ]),
-        (IntentTag.EVENT_REGIME, [
+        ],
+        IntentTag.EVENT_REGIME: [
             "threshold_events",
             "event_windows",
             "conditional_aggregate",
             "apply_mask",
-        ]),
-        (IntentTag.SCAN, ["(scanner primitives — no operator chain)"]),
-        (IntentTag.PANEL, ["select_from_series_set"]),
-        (IntentTag.BASIS, ["align_series", "select_from_series_set", "series_arithmetic"]),
+        ],
+        IntentTag.SCAN: ["(scanner primitives — no operator chain)"],
+        IntentTag.PANEL: ["select_from_series_set"],
+        IntentTag.BASIS: ["align_series", "select_from_series_set", "series_arithmetic"],
+    }
+
+    # Merge: card-declared intent_hints take precedence.  An operator
+    # whose card lists ``intent_hints: [RELATIONSHIP]`` gets added to
+    # the RELATIONSHIP row even if it wasn't in the baseline.
+    intent_to_operators_dict: Dict[IntentTag, List[str]] = {
+        tag: list(ops) for tag, ops in _BASELINE.items()
+    }
+    for op_name, card in catalogue.items():
+        hints = getattr(card, "intent_hints", ()) or ()
+        for hint in hints:
+            # Case-insensitive match against IntentTag enum values.
+            try:
+                tag = IntentTag(hint.lower().strip())
+            except ValueError:
+                continue
+            if op_name not in intent_to_operators_dict.get(tag, []):
+                intent_to_operators_dict.setdefault(tag, []).append(op_name)
+
+    intent_to_operators: List[Tuple[IntentTag, List[str]]] = [
+        (tag, intent_to_operators_dict[tag]) for tag in IntentTag
+        if tag in intent_to_operators_dict
     ]
     lines: List[str] = ["INTENT → CANONICAL OPERATOR FAMILY:"]
     for tag, ops in intent_to_operators:
@@ -1245,6 +1287,74 @@ class Composer:
         if parsed is None:
             return ()
         return llm_repair_output_to_patches(parsed)
+
+    # ------------------------------------------------------------------
+    # SYNC WRAPPER — satisfies the Assembler's ShapePatchProvider Protocol
+    # ------------------------------------------------------------------
+
+    def repair_sync(
+        self,
+        workflow: "Workflow",
+        errors: Sequence["ValidationError"],
+    ) -> Sequence["ShapePatch"]:
+        """Synchronous wrapper around ``repair`` matching the
+        ``ShapePatchProvider`` Protocol declared in
+        ``orchestrator.open_dag.assembler``.
+
+        PR-10B Codex F4: the Assembler's repair callback signature is
+        sync ``(workflow, errors) -> Sequence[ShapePatch]``.  This
+        wrapper bridges the gap by running the async ``repair`` to
+        completion in the current event loop (when there is none) or
+        in a fresh loop on a worker thread (when called from inside
+        an existing async context — e.g. the OpenDagPipeline).
+
+        The Assembler invokes this synchronously inside ``assemble``;
+        it MUST NOT block the caller's async loop.  Implementation
+        picks the right path based on whether a loop is currently
+        running.
+
+        Returns an empty sequence on any failure mode — the Assembler
+        treats an empty patch list as "no repair possible" and
+        gracefully refuses the assembly.
+        """
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No loop running — safe to use asyncio.run.
+            try:
+                return asyncio.run(
+                    self.repair(workflow=workflow, errors=errors),
+                )
+            except Exception:
+                logger.exception(
+                    "Composer.repair_sync (no-loop path) raised",
+                )
+                return ()
+
+        # A loop IS running.  asyncio.run() would error; instead,
+        # offload to a fresh loop on a worker thread and block this
+        # thread until it returns.  The Assembler runs in the same
+        # thread that called assemble(); the pipeline awaits
+        # assemble() so this thread is FREE to block briefly.
+        import concurrent.futures
+
+        def _runner():
+            new_loop = asyncio.new_event_loop()
+            try:
+                return new_loop.run_until_complete(
+                    self.repair(workflow=workflow, errors=errors),
+                )
+            finally:
+                new_loop.close()
+
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                return pool.submit(_runner).result()
+        except Exception:
+            logger.exception(
+                "Composer.repair_sync (worker-thread path) raised",
+            )
+            return ()
 
 
 # ============================================================================

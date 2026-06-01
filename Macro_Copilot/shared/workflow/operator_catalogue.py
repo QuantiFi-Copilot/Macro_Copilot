@@ -107,6 +107,16 @@ class OperatorCard(BaseModel):
     knobs_quick_ref: Dict[str, str] = Field(default_factory=dict)
     example_shapes: Tuple[ExampleShape, ...] = ()
     sibling_operators: Dict[str, str] = Field(default_factory=dict)
+    # PR-10B Codex F15: optional list of IntentTag values this
+    # operator serves (e.g. ["RELATIONSHIP", "REGRESSION"]).  Empty
+    # by default — existing operators continue to work via the
+    # Composer's hardcoded intent-table fallback.  New operators
+    # ship with their own intent_hints in YAML and AUTOMATICALLY
+    # appear in the Composer's intent → operator table without any
+    # code edit (registration-only growth on a new operator
+    # family).  Values are matched case-insensitively against
+    # ``orchestrator.contracts.IntentTag.value``.
+    intent_hints: Tuple[str, ...] = ()
 
     # ---- Structural metadata (registry-sourced) ------------------
     input_slots: Dict[str, SlotDescriptor]
@@ -358,6 +368,11 @@ def render_operator_card(
             ),
             sibling_operators=_normalise_sibling_operators(
                 card_block.get("sibling_operators"),
+            ),
+            # PR-10B Codex F15: optional intent_hints list.  Empty by
+            # default; new operators add their own without code edits.
+            intent_hints=_normalise_string_tuple(
+                card_block.get("intent_hints"), "intent_hints",
             ),
             input_slots=dict(spec.input_slots),
             output=spec.output,

@@ -134,7 +134,8 @@ logger = logging.getLogger(__name__)
 
 
 PipelineStatus = Literal[
-    "PASS",                # gate PASS + (optionally) executed + L6 rendered
+    "PASS",                # gate PASS + executor ran + L6 rendered (FULL pipeline)
+    "PASS_DRYRUN",         # gate PASS + NO executor wired (intent echo only)
     "GATE_REFUSE",         # gate returned REFUSE
     "GATE_CLARIFY",        # gate returned CLARIFY (with question)
     "COMPOSER_REFUSE",     # composer declined
@@ -205,7 +206,21 @@ class PipelineOutcome(BaseModel):
 
     @property
     def is_pass(self) -> bool:
+        """True iff status is the strict PASS — pipeline fully
+        executed + L6 answer rendered.  PR-10B Codex F16:
+        intentionally NOT True for PASS_DRYRUN — that's a gate-pass
+        without execution, and the PoC's PASS bar requires
+        execution.  Use ``is_gate_pass`` when you want the
+        gate-passed-or-better predicate (PASS OR PASS_DRYRUN)."""
         return self.status == "PASS"
+
+    @property
+    def is_gate_pass(self) -> bool:
+        """True iff the gate verdict was PASS, regardless of whether
+        execution actually ran.  Use this when the caller cares about
+        gate-clearance + intent capture (e.g. lineage indexing,
+        observability), not strict end-to-end execution."""
+        return self.status in ("PASS", "PASS_DRYRUN")
 
 
 # ============================================================================
@@ -293,8 +308,113 @@ class OpenDagPipeline:
         self._gate_timeout_s = gate_timeout_s
         self._answer_timeout_s = answer_timeout_s
 
-        # Assembler is stateless — built once at construction time.
-        self._assembler = Assembler(primitive_resolver=primitive_resolver)
+        # PR-10B Codex F4: wire the L4 bounded repair loop into the
+        # Assembler.  Without these callbacks the Assembler refuses
+        # on any L3_WIRING / L2_BINDING hard error — defeating the
+        # purpose of the repair round.
+        #
+        # ``composer.repair_sync`` satisfies the sync
+        # ``ShapePatchProvider`` Protocol (it runs the async
+        # ``Composer.repair`` to completion on a worker thread when
+        # called from inside an existing async context).  Pulled via
+        # ``getattr`` so test mocks that don't implement repair_sync
+        # still construct cleanly — the Assembler treats a None
+        # callback as "no repair possible" (the pre-PR-10B behaviour).
+        #
+        # The leaf rebinder is a sync closure over
+        # ``self._selectors``: it dispatches by
+        # ``leaf_request.domain_hint`` to the matching
+        # ``SelectorCallback`` and runs it to completion via the
+        # same worker-thread pattern.
+        shape_patch_provider = getattr(composer, "repair_sync", None)
+        self._assembler = Assembler(
+            primitive_resolver=primitive_resolver,
+            shape_patch_provider=shape_patch_provider,
+            leaf_rebinder=self._build_sync_leaf_rebinder(),
+        )
+
+    def _build_sync_leaf_rebinder(self):
+        """Build the sync ``LeafRebinder`` callback the PR-4
+        Assembler's repair round expects.
+
+        Dispatches by ``leaf_request.domain_hint`` to the matching
+        per-domain ``SelectorCallback``.  Runs the async fill_leaf to
+        completion on a worker thread (the Assembler is called
+        synchronously from inside ``OpenDagPipeline.run``'s async
+        context — direct asyncio.run would error).
+
+        Returns a refusal ``BoundLeaf`` on every failure mode so the
+        Assembler's repair loop sees a structured outcome and
+        proceeds to its own refusal path.
+        """
+        import asyncio
+        import concurrent.futures
+
+        def _rebind(*, leaf_request, current_bound, errors):
+            domain_str = leaf_request.domain_hint
+            try:
+                domain = Domain(domain_str)
+            except ValueError:
+                return BoundLeaf(
+                    leaf_id=current_bound.leaf_id,
+                    domain=domain_str,
+                    fit_confidence=0.0,
+                    refusal=(
+                        f"LeafRebinder: domain_hint {domain_str!r} "
+                        "is not in the closed Domain enum."
+                    ),
+                )
+            cb = self._selectors.get(domain)
+            if cb is None:
+                return BoundLeaf(
+                    leaf_id=current_bound.leaf_id,
+                    domain=domain_str,
+                    fit_confidence=0.0,
+                    refusal=(
+                        f"LeafRebinder: no SelectorCallback registered "
+                        f"for domain {domain_str!r}."
+                    ),
+                )
+
+            async def _invoke():
+                return await cb(
+                    leaf_id=current_bound.leaf_id,
+                    request=leaf_request,
+                    timeout_s=self._leaf_timeout_s,
+                )
+
+            try:
+                # Always offload to a fresh-loop worker thread —
+                # the rebinder runs inside the Assembler, which the
+                # pipeline calls SYNCHRONOUSLY from within its
+                # async run().  asyncio.run() from inside an active
+                # loop raises.
+                def _runner():
+                    new_loop = asyncio.new_event_loop()
+                    try:
+                        return new_loop.run_until_complete(_invoke())
+                    finally:
+                        new_loop.close()
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    return pool.submit(_runner).result()
+            except Exception as exc:
+                logger.exception(
+                    "LeafRebinder: re-bind invocation failed for "
+                    "leaf %s in domain %s",
+                    current_bound.leaf_id, domain_str,
+                )
+                return BoundLeaf(
+                    leaf_id=current_bound.leaf_id,
+                    domain=domain_str,
+                    fit_confidence=0.0,
+                    refusal=(
+                        f"LeafRebinder: re-bind raised "
+                        f"{type(exc).__name__}: {exc}"
+                    ),
+                )
+
+        return _rebind
 
     # ------------------------------------------------------------------
     # PUBLIC ENTRY POINT
@@ -474,8 +594,11 @@ class OpenDagPipeline:
                 "executor_callback to OpenDagPipeline to render the "
                 "full answer.)"
             )
+            # PR-10B Codex F16: distinct PASS_DRYRUN status so the
+            # PoC's PASS flag means "validated + gated + executed +
+            # answered" and dry-run is its own observable state.
             return PipelineOutcome(
-                status="PASS",
+                status="PASS_DRYRUN",
                 markdown=markdown,
                 intent_chain=intent_chain,
                 run_lineage=run_lineage,

@@ -372,6 +372,22 @@ class BoundLeaf(BaseModel):
             "string."
         ),
     )
+    rationale: str = Field(
+        default="",
+        description=(
+            "PR-10B Codex F14: optional free-form English the "
+            "Selector LLM authored explaining why this primitive was "
+            "chosen for this LeafRequest.  When populated, the "
+            "IntentChain captures it verbatim — preserving the "
+            "actual LLM-authored lingo-resolution rationale per the "
+            "plan §PR-9.  When empty (the default), the IntentChain "
+            "derives a deterministic rationale from the BoundLeaf's "
+            "structured fields.  P11-safe: this is free-form English "
+            "about WHY, not what tool — it's surfaced to the user "
+            "via the L6 provenance footer where primitive names ARE "
+            "the documented exception."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_consistency(self) -> "BoundLeaf":

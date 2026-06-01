@@ -454,7 +454,11 @@ class TestGatePassPaths:
             executor_callback=None,
         )
         outcome = await pipeline.run("p")
-        assert outcome.status == "PASS"
+        # PR-10B Codex F16: gate-PASS + no executor → PASS_DRYRUN
+        # status (distinct from full PASS which requires execution).
+        assert outcome.status == "PASS_DRYRUN"
+        assert outcome.is_gate_pass
+        assert not outcome.is_pass  # strict PASS requires execution
         # Dry-run path: L6 LLM NOT consulted.
         assert renderer.calls == 0
         # The dry-run markdown surfaces the intent echo.

@@ -392,7 +392,7 @@ class TestCanonicalIntentEval:
         )
         outcome = await pipeline.run("Where is the US 10Y vs its 1-year range?")
         # Shape correctness: percentile_rank terminal.
-        assert outcome.is_pass
+        assert outcome.is_gate_pass  # PR-10B F16: dry-run path now returns PASS_DRYRUN; is_gate_pass covers both
         assert outcome.intent_chain is not None
         assert outcome.intent_chain.composer.terminal_operator_name == "percentile_rank"
         # Intent correctness: LOOKUP tag captured.
@@ -453,7 +453,7 @@ class TestCanonicalIntentEval:
             },
         )
         outcome = await pipeline.run("Correlation between US 2s10s and 5Y breakeven over 5y")
-        assert outcome.is_pass
+        assert outcome.is_gate_pass  # PR-10B F16: dry-run path now returns PASS_DRYRUN; is_gate_pass covers both
         assert outcome.intent_chain.composer.terminal_operator_name == "correlation"
         assert outcome.intent_chain.composer.terminal_artifact_type == "ScalarMetric"
         assert outcome.intent_chain.router.intent_tag == IntentTag.RELATIONSHIP
@@ -488,7 +488,7 @@ class TestCanonicalIntentEval:
             },
         )
         outcome = await pipeline.run("Rolling 1y correlation between SOFR 2s10s and UST 2s10s")
-        assert outcome.is_pass
+        assert outcome.is_gate_pass  # PR-10B F16: dry-run path now returns PASS_DRYRUN; is_gate_pass covers both
         assert outcome.intent_chain.composer.terminal_operator_name == "rolling_correlation"
 
     async def test_eval_regression_rolling_beta(self):
@@ -502,7 +502,7 @@ class TestCanonicalIntentEval:
             gate_verdict=GateVerdict(status="PASS", reason="ok"),
         )
         outcome = await pipeline.run("Rolling 1y beta of BTP-Bund to Bund 10Y yield")
-        assert outcome.is_pass
+        assert outcome.is_gate_pass  # PR-10B F16: dry-run path now returns PASS_DRYRUN; is_gate_pass covers both
         assert outcome.intent_chain.composer.terminal_operator_name == "rolling_regression"
         assert outcome.intent_chain.composer.terminal_artifact_type == "SeriesSet"
 
@@ -517,7 +517,7 @@ class TestCanonicalIntentEval:
             gate_verdict=GateVerdict(status="PASS", reason="ok"),
         )
         outcome = await pipeline.run("Are US 5Y and US 30Y yields cointegrated over the last 5 years?")
-        assert outcome.is_pass
+        assert outcome.is_gate_pass  # PR-10B F16: dry-run path now returns PASS_DRYRUN; is_gate_pass covers both
         assert outcome.intent_chain.composer.terminal_operator_name == "cointegration"
         assert outcome.intent_chain.composer.terminal_artifact_type == "ScalarMetric"
 
@@ -577,7 +577,7 @@ class TestCanonicalIntentEval:
             selectors={Domain.OIS: ois_cb},
         )
         outcome = await pipeline.run("Z-score of the SOFR 5Y vs its 1y history")
-        assert outcome.is_pass
+        assert outcome.is_gate_pass  # PR-10B F16: dry-run path now returns PASS_DRYRUN; is_gate_pass covers both
         assert outcome.intent_chain.composer.terminal_operator_name == "rolling_zscore"
         # OIS dispatch fired.
         assert ois_calls == ["leaf_input"]
@@ -603,7 +603,7 @@ class TestCanonicalIntentEval:
             },
         )
         outcome = await pipeline.run("Average UST 10Y move 5 days after each NFP surprise > 50K")
-        assert outcome.is_pass
+        assert outcome.is_gate_pass  # PR-10B F16: dry-run path now returns PASS_DRYRUN; is_gate_pass covers both
         assert outcome.intent_chain.composer.terminal_operator_name == "conditional_aggregate"
 
     async def test_eval_scan_refuses_when_terminal_only(self):
@@ -707,7 +707,7 @@ class TestCanonicalIntentEval:
             primitive_resolver=_panel_resolver,
         )
         outcome = await pipeline.run("Build a panel of every UST curve spread today")
-        assert outcome.is_pass
+        assert outcome.is_gate_pass  # PR-10B F16: dry-run path now returns PASS_DRYRUN; is_gate_pass covers both
         # The intent tag captured.
         assert outcome.intent_chain.router.intent_tag == IntentTag.PANEL
 
@@ -781,7 +781,7 @@ class TestCanonicalIntentEval:
             },
         )
         outcome = await pipeline.run("Basis between USD 5Y linker breakeven and 5Y inflation swap")
-        assert outcome.is_pass
+        assert outcome.is_gate_pass  # PR-10B F16: dry-run path now returns PASS_DRYRUN; is_gate_pass covers both
         # Terminal is series_arithmetic.
         ic = outcome.intent_chain
         assert ic.composer.terminal_operator_name == "series_arithmetic"
@@ -803,21 +803,69 @@ class TestMessyLingoEval:
     without re-routing)."""
 
     async def test_messy_lingo_twos_tens_vs_five_year_breakeven_correl(self):
-        # "twos tens vs five year breakeven correl, five years back"
-        # SHAPE must == RELATIONSHIP canonical (golden #1).
+        # PR-10B Codex F8: "twos tens vs five year breakeven correl,
+        # five years back" — SHAPE must == RELATIONSHIP canonical AND
+        # the cross-domain assignment must match the formal-language
+        # counterpart (sovereign_bonds + inflation_indexed_bonds).
+        # Previously this test used sovereign-only decomposition,
+        # which proved messy-lingo doesn't trip the parser but did
+        # NOT prove the cross-domain dispatch holds under trader
+        # vocabulary.
+        cross_domain_shape = _build_cross_domain_pair_stats_shape(
+            workflow_id="eval_messy_twos_tens_vs_5y_breakeven",
+            domain_a=Domain.SOVEREIGN_BONDS.value,
+            domain_b=Domain.INFLATION_INDEXED_BONDS.value,
+            semantic_role_a="spread_level",
+            semantic_role_b="breakeven_level",
+            meaning_a="UST 2s10s curve spread series",
+            meaning_b="USD 5Y breakeven inflation series",
+        )
+
+        sov_calls: List[str] = []
+        iib_calls: List[str] = []
+
+        async def sov_cb(*, leaf_id, request, timeout_s):
+            sov_calls.append(leaf_id)
+            return _mk_bound_leaf(
+                leaf_id=leaf_id,
+                domain=Domain.SOVEREIGN_BONDS.value,
+                role="spread_level",
+                meaning="UST 2s10s curve spread series",
+                tool="calculate_curve_spread_tool",
+            )
+
+        async def iib_cb(*, leaf_id, request, timeout_s):
+            iib_calls.append(leaf_id)
+            return _mk_bound_leaf(
+                leaf_id=leaf_id,
+                domain=Domain.INFLATION_INDEXED_BONDS.value,
+                role="breakeven_level",
+                meaning="USD 5Y breakeven inflation series",
+                tool="calculate_breakeven_inflation_simple_tool",
+            )
+
         pipeline = _make_pipeline_for_eval(
             intent=IntentTag.RELATIONSHIP,
             decomp=[
                 EconomicQuantity(name="us_2s10s", nl_description="2s10s spread", domain_hint=Domain.SOVEREIGN_BONDS),
-                EconomicQuantity(name="us_5y_breakeven", nl_description="5y breakeven", domain_hint=Domain.SOVEREIGN_BONDS),
+                EconomicQuantity(name="us_5y_breakeven", nl_description="5y breakeven", domain_hint=Domain.INFLATION_INDEXED_BONDS),
             ],
-            composer_result=GOLDEN_RELATIONSHIP_CORRELATION,
+            composer_result=cross_domain_shape,
             gate_verdict=GateVerdict(status="PASS", reason="ok"),
+            selectors={
+                Domain.SOVEREIGN_BONDS: sov_cb,
+                Domain.INFLATION_INDEXED_BONDS: iib_cb,
+            },
         )
         outcome = await pipeline.run("twos tens vs five year breakeven correl, five years back")
-        assert outcome.is_pass
+        assert outcome.is_gate_pass  # PR-10B F16: dry-run path now returns PASS_DRYRUN; is_gate_pass covers both
         # Same shape topology as the formal-language eval row.
         assert outcome.intent_chain.composer.terminal_operator_name == "correlation"
+        # PR-10B F8: messy-lingo prompt routed correctly across two
+        # different domains (proves trader vocab doesn't collapse
+        # the routing back to one domain).
+        assert sov_calls == ["leaf_a"]
+        assert iib_calls == ["leaf_b"]
 
     async def test_messy_lingo_reds_vs_greens_sofr_strip(self):
         # "where are reds vs greens in SOFR strip" — uses policy_futures
@@ -876,7 +924,7 @@ class TestMessyLingoEval:
             selectors={Domain.POLICY_FUTURES: pf_selector_cb},
         )
         outcome = await pipeline.run("where are reds vs greens in SOFR strip")
-        assert outcome.is_pass
+        assert outcome.is_gate_pass  # PR-10B F16: dry-run path now returns PASS_DRYRUN; is_gate_pass covers both
         # The selector's tool name is the policy_futures pack-average.
         assert any(
             "policy_futures" in s.domain
@@ -930,7 +978,7 @@ class TestMessyLingoEval:
             },
         )
         outcome = await pipeline.run("how rich is BTP-Bund vs 3-year history")
-        assert outcome.is_pass
+        assert outcome.is_gate_pass  # PR-10B F16: dry-run path now returns PASS_DRYRUN; is_gate_pass covers both
         assert outcome.intent_chain.composer.terminal_operator_name == "percentile_rank"
 
 

@@ -215,8 +215,14 @@ of quantity.
   - ``nl_description`` — one-sentence English meaning a senior PM would \
 write (e.g. "UST curve spread, 2Y minus 10Y").  Used by the downstream \
 verification step.
-  - ``domain_hint``    — which domain owns this quantity.  MUST be in your \
-``domains`` list, otherwise the code drops the entry.
+  - ``domain_hint``    — which domain owns this quantity.  PREFER a \
+domain that's already in your ``domains`` list.  If the prompt mentions \
+a quantity from a domain NOT in your routing — DO NOT drop the entry; \
+INCLUDE it with the correct domain_hint.  The downstream normaliser \
+preserves out-of-routing entries with a structured adjustment note so \
+Boundary B (the coverage gate) sees the under-scoping evidence and can \
+refuse or clarify.  Silently dropping mismatched entries hides the very \
+failure Boundary B exists to catch.
 
 SINGLE-DOMAIN queries STILL produce decomposition (one entry).  This is \
 the coverage oracle for the downstream verification step.  An empty \

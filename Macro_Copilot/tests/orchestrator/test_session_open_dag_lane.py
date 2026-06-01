@@ -192,7 +192,12 @@ async def test_run_open_dag_constructs_pipeline_with_session_state():
     # The right child's fill_leaf was called (sovereign_bonds — the
     # GOLDEN_TRANSFORM_ROLLING_ZSCORE leaf is hardcoded sovereign_bonds).
     sov_child = session._children[Domain.SOVEREIGN_BONDS]
-    assert sov_child.calls == ["leaf_input"], (
+    # PR-10B Codex F4: with the bounded repair loop wired in, the
+    # leaf rebinder may fire fill_leaf again during repair when the
+    # assembler refuses (e.g. because the mock BoundLeaf's tool name
+    # isn't in the real resolver).  Assert at-least-once rather than
+    # exactly-once so the test remains valid post-repair-loop wiring.
+    assert sov_child.calls and all(c == "leaf_input" for c in sov_child.calls), (
         f"sovereign_bonds child should have received leaf_input; "
         f"got {sov_child.calls}"
     )

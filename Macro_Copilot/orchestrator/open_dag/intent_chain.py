@@ -411,6 +411,7 @@ class IntentChain(BaseModel):
         shape_or_workflow: Union[ShapeSpec, Workflow, None],
         gate_verdict: GateVerdict,
         composer_refusal: Optional[str] = None,
+        composer_llm_rationale: str = "",
     ) -> "IntentChain":
         """Build an IntentChain from the substrate inputs.
 
@@ -485,7 +486,10 @@ class IntentChain(BaseModel):
                 rationale=f"REFUSED: {refusal_reason}",
             )
         else:
-            composer = _composer_record_from(shape_or_workflow)
+            composer = _composer_record_from(
+                shape_or_workflow,
+                llm_authored_rationale=composer_llm_rationale,
+            )
 
         # --- GATE ---
         gate = GateIntentRecord(
@@ -524,22 +528,23 @@ class IntentChain(BaseModel):
 
 
 def _derive_selector_rationale(leaf: BoundLeaf) -> str:
-    """Derive the V1 selector lingo-resolution rationale string.
+    """Selector lingo-resolution rationale string.
 
-    Per PR-9A Codex F2 + plan §PR-9 ("selector lingo-resolution
-    rationales"): the SelectorIntentRecord MUST carry a rationale
-    field.  PR-6's SelectorLLMOutput doesn't currently emit a
-    free-form rationale (only declared_semantic_role + declared_
-    output_meaning + fit_confidence), so V1 derives the rationale
-    deterministically from those fields.  When a future PR-6
-    extension adds a free-form ``rationale`` to SelectorLLMOutput,
-    this helper can be retired and the rationale read directly off
-    the BoundLeaf.
+    PR-10B Codex F14: if the BoundLeaf carries an LLM-authored
+    ``rationale`` field (populated when SelectorLLMOutput.rationale
+    was non-empty), use it VERBATIM — preserving the actual
+    LLM-authored rationale per plan §PR-9.  Otherwise fall back to
+    the deterministic derivation introduced in PR-9A F2 (from
+    declared_semantic_role + declared_output_meaning +
+    fit_confidence).
 
-    Format:
+    Format (fallback):
       - Bound: ``"<role> from <domain> (fit_confidence=<f>): <meaning>"``
       - Refusal: ``"REFUSED on <domain>: <reason>"``
     """
+    llm_authored = getattr(leaf, "rationale", "") or ""
+    if llm_authored.strip():
+        return llm_authored.strip()
     if leaf.is_refusal:
         return (
             f"REFUSED on {leaf.domain}: {leaf.refusal}"
@@ -589,6 +594,8 @@ def _derive_composer_rationale(
 
 def _composer_record_from(
     shape_or_workflow: Union[ShapeSpec, Workflow],
+    *,
+    llm_authored_rationale: str = "",
 ) -> ComposerIntentRecord:
     """Build a ComposerIntentRecord from either a ShapeSpec (pre-
     assembly) or a Workflow (post-assembly).  Both carry the same
@@ -632,17 +639,24 @@ def _composer_record_from(
         terminal_artifact_type = ""
 
     operator_names_tuple = tuple(operator_names_sorted)
+    # PR-10B Codex F14: prefer LLM-authored rationale when supplied;
+    # else fall back to deterministic derivation.
+    rationale = (
+        llm_authored_rationale.strip()
+        if llm_authored_rationale and llm_authored_rationale.strip()
+        else _derive_composer_rationale(
+            workflow_id=shape_or_workflow.workflow_id,
+            operator_names=operator_names_tuple,
+            terminal_operator_name=terminal_operator_name,
+            terminal_artifact_type=terminal_artifact_type,
+        )
+    )
     return ComposerIntentRecord(
         workflow_id=shape_or_workflow.workflow_id,
         terminal_operator_name=terminal_operator_name,
         terminal_artifact_type=terminal_artifact_type,
         operator_names=operator_names_tuple,
-        rationale=_derive_composer_rationale(
-            workflow_id=shape_or_workflow.workflow_id,
-            operator_names=operator_names_tuple,
-            terminal_operator_name=terminal_operator_name,
-            terminal_artifact_type=terminal_artifact_type,
-        ),
+        rationale=rationale,
     )
 
 

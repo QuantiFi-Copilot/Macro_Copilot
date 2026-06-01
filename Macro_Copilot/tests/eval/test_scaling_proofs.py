@@ -177,6 +177,61 @@ class TestProof1_RegistrationOnlyGrowth:
         # is removed from the registry (test isolation).
         assert SYNTHETIC_OPERATOR_17_NAME not in OPERATOR_REGISTRY
 
+    def test_invariant_files_via_literal_git_diff(self):
+        """PR-10B Codex F6: the plan §PR-10 line 804 says 'Assert via
+        git diff'.  The hash-based test above is byte-identity-
+        equivalent, but this test runs `git diff --stat` literally
+        on the invariant set so the assertion satisfies the plan's
+        exact wording.
+
+        Skips gracefully when not in a git repo (CI sandboxes
+        sometimes detach .git).
+        """
+        import subprocess
+
+        repo = _REPO_ROOT
+        if not (repo / ".git").exists():
+            # Detached worktree / sandbox — fall back to hash equivalent.
+            pytest.skip("not in a git repo; literal git diff unavailable")
+
+        relevant = [
+            str(p.relative_to(repo))
+            for p in _INVARIANT_FILES
+            if p.exists()
+        ] + [
+            str(p.relative_to(repo)) for p in _OTHER_DOMAIN_MCP_SERVERS
+        ]
+
+        # Capture HEAD state of these files; perform the synthetic
+        # registration; confirm `git diff --stat -- <paths>` reports
+        # ZERO modified lines.
+        with with_synthetic_operator_17():
+            _ = SYNTHETIC_PRIMITIVE_59_SPEC.tool_name
+            try:
+                proc = subprocess.run(
+                    ["git", "diff", "--stat", "--", *relevant],
+                    capture_output=True, text=True, cwd=str(repo),
+                    timeout=15,
+                )
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pytest.skip("git unavailable or timed out")
+
+        # Empty stdout = no working-tree diffs on the invariant set —
+        # the registration-only growth property literally proven via
+        # git diff.
+        assert proc.returncode == 0, (
+            f"git diff failed: {proc.stderr}"
+        )
+        # `git diff --stat` prints nothing when there are no diffs.
+        if proc.stdout.strip():
+            # Any non-empty output indicates a working-tree
+            # modification on an invariant file — the proof fails.
+            raise AssertionError(
+                "PR-10B F6: literal `git diff --stat` reports working-"
+                "tree changes on the invariant file set under synthetic "
+                f"registration:\n{proc.stdout}"
+            )
+
     def test_fresh_query_with_synthetic_operator_composes(self):
         """Per §PR-10: prove a fresh query using the new tools
         composes correctly.

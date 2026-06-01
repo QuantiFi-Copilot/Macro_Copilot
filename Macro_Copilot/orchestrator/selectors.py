@@ -279,6 +279,21 @@ class SelectorLLMOutput(BaseModel):
             "Selector bound a primitive."
         ),
     )
+    rationale: str = Field(
+        default="",
+        description=(
+            "PR-10B Codex F14: optional free-form English explaining "
+            "WHY this primitive was chosen (or why the leaf was "
+            "refused).  When the Selector LLM provides this, the "
+            "IntentChain captures it verbatim — preserving the "
+            "actual LLM-authored lingo-resolution rationale the "
+            "plan asks for.  When empty (the default), the "
+            "IntentChain derives a deterministic rationale from "
+            "declared_semantic_role + declared_output_meaning + "
+            "fit_confidence.  Surfaced in the L6 provenance footer "
+            "+ Boundary B's soft-warning channel."
+        ),
+    )
 
 
 # ============================================================================
@@ -709,6 +724,10 @@ def llm_output_to_bound_leaf(
         ),
         fit_confidence=output.fit_confidence,
         refusal=None,
+        # PR-10B Codex F14: thread the LLM-authored rationale through.
+        # Empty string when the LLM didn't provide one — IntentChain
+        # falls back to a deterministic derivation in that case.
+        rationale=output.rationale.strip() if output.rationale else "",
     )
 
 
