@@ -96,6 +96,11 @@ from orchestrator.open_dag.intent_chain import (
     RouterIntentRecord,
     SelectorIntentRecord,
 )
+from orchestrator.open_dag.default_executor import (
+    build_default_executor_callback,
+    execute_workflow_async,
+    executed_summary_from_result,
+)
 from orchestrator.open_dag.pipeline import (
     ExecutorCallback,
     OpenDagPipeline,
@@ -236,4 +241,8 @@ __all__ = [
     "PipelineStatus",
     "ExecutorCallback",
     "SelectorCallback",
+    # Default executor (PR-10A F2)
+    "build_default_executor_callback",
+    "execute_workflow_async",
+    "executed_summary_from_result",
 ]

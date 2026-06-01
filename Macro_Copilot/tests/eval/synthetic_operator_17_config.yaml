@@ -1,0 +1,56 @@
+operator:
+  name: synthetic_operator_17
+  method_family: synthetic
+  version: "1.0.0"
+  description: >-
+    Synthetic 17th operator used by the PR-10 registration-only growth
+    scaling proof.  Multiplies a Series by params.scale.  Finance-blind;
+    not registered in the production OPERATOR_REGISTRY — only injected
+    in tests via ``with_synthetic_operator_17``.
+
+defaults:
+  scale:
+    value: 1.0
+    source: synthetic_default
+    rationale: >-
+      Default scale 1.0 — identity transform.  The proof's claim is
+      that ADDING this operator requires zero substrate change; the
+      operator's numerical behaviour is incidental.
+    valid_values: [any non-zero float]
+
+methodology:
+  what_it_does: >-
+    Returns a new Series whose values are ``input_value * params.scale``.
+    Preserves index, length, units, and frequency of the input.  Used
+    by ``tests/eval/test_scaling_proofs.py`` to demonstrate that a
+    newly-registered operator becomes composable + visible to the
+    Composer's catalogue without modifying any substrate file.
+  planned_extensions:
+    - "(none — synthetic test fixture only)"
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# This card is what proves the synthetic operator becomes VISIBLE in
+# render_operator_catalogue() — F6 of the PR-10A corrective.
+# ============================================================================
+card:
+  one_line: >-
+    Synthetic test-only scaling transform.  Multiplies a Series by
+    params.scale.  Used by PR-10 registration-only-growth proof.
+  when_to_use:
+    - "Used only in PR-10 scaling-proof tests; never in production composes."
+    - "Demonstrates that a freshly registered operator becomes composable without substrate changes."
+  when_not_to_use:
+    - "Production composes — this is a test fixture, not a real operator."
+    - "Anywhere outside tests/eval/."
+  upstream_requirements:
+    - "One Series.  Single input."
+  downstream_pattern:
+    - "Output is a Series with the same shape as the input."
+  knobs_quick_ref:
+    scale: "Multiplicative factor (float; default 1.0)."
+  example_shapes:
+    - description: "Identity transform (default scale=1.0)."
+      shape: "leaf -> synthetic_operator_17 -> Series"
+  sibling_operators:
+    - series_arithmetic: "production scalar-arithmetic operator; this synthetic exists only to prove registration-only growth."

@@ -107,6 +107,11 @@ _INVARIANT_FILES: List[Path] = [
     _REPO_ROOT / "orchestrator" / "open_dag" / "composer.py",
     _REPO_ROOT / "orchestrator" / "open_dag" / "coverage_gate.py",
     _REPO_ROOT / "shared" / "workflow" / "validate.py",
+    # PR-10A Codex F5: plan §PR-10 explicitly lists shared/workflow/
+    # executor.py in the invariant set.  Omitting it weakened the
+    # registration-only proof — the executor surface is exactly where
+    # a new primitive registration MUST NOT force a substrate change.
+    _REPO_ROOT / "shared" / "workflow" / "executor.py",
     _REPO_ROOT / "orchestrator" / "prompts.py",
 ]
 
@@ -350,42 +355,68 @@ class TestProof2_ContextBound:
             "registering the 59th primitive"
         )
 
-    def test_composer_prompt_size_independent_of_operator_addition_until_yaml_changes(self):
-        """A complementary proof: adding the synthetic 17th operator
-        TO THE REGISTRY but without a card-block YAML on disk
-        ALSO must not crash the prompt renderer.
+    def test_synthetic_operator_becomes_visible_in_full_catalogue(self):
+        """PR-10A Codex F6: a freshly registered operator MUST become
+        VISIBLE in the full operator catalogue with a rich card.  This
+        is the L3 composability condition the original test sidestepped.
 
-        In production this would be wrong (every operator needs a
-        card.yaml per PR-2), but the test asserts the prompt builder
-        is RESILIENT — registry mutation alone shouldn't blow up the
-        prompt path.
+        Per the PR-10A corrective: the synthetic operator now ships
+        with a real ``synthetic_operator_17_config.yaml`` so
+        ``render_operator_card`` and ``render_operator_catalogue``
+        succeed.  After injection:
+
+          - the catalogue is size 17 (not 16);
+          - the synthetic operator's card is renderable;
+          - the Composer prompt that's built from the catalogue
+            INCLUDES the synthetic operator's name + one-line.
+
+        That's the architecture claim: registration → L3 visibility,
+        without modifying composer.py or coverage_gate.py or any
+        substrate file.
         """
-        # The renderer reads each operator's config_path; the
-        # synthetic operator's config_path points to a non-existent
-        # path.  Per PR-2's OperatorCardError contract, attempting
-        # to render a card for it would raise OperatorCardError.
-        # The proof is that without rendering the synthetic
-        # operator's card, the rest of the catalogue still renders
-        # cleanly — i.e. the prompt path is per-operator, not
-        # all-or-nothing.
-        clear_catalogue_cache()
-        # Render WITHOUT the synthetic operator — baseline.
-        catalogue_baseline = render_operator_catalogue()
-        from orchestrator.prompts import COMPOSER_SYSTEM_PROMPT
-        prompt_baseline = build_compose_system_prompt_text(
-            catalogue_baseline, COMPOSER_SYSTEM_PROMPT,
+        from shared.workflow.operator_catalogue import (
+            render_operator_card,
         )
-        baseline_tokens = approx_tokens(prompt_baseline)
-        # The baseline is the same 16-op token count tested in PR-7.
-        assert baseline_tokens > 0
-        # Inject the synthetic operator — but we DON'T re-render the
-        # catalogue here because that would crash (no card yaml).
-        # The proof: registry mutation is observable WITHOUT
-        # corrupting the prompt-builder if we render only the
-        # operators that have cards.  (PR-2 + PR-7's architecture
-        # already isolates the card render per-operator.)
+
+        clear_catalogue_cache()
+        baseline_size = len(render_operator_catalogue())
+
         with with_synthetic_operator_17():
-            assert SYNTHETIC_OPERATOR_17_NAME in OPERATOR_REGISTRY
+            clear_catalogue_cache()
+            catalogue_with = render_operator_catalogue()
+            # Catalogue grew by exactly 1 — the synthetic operator.
+            assert len(catalogue_with) == baseline_size + 1, (
+                f"PR-10A F6: catalogue size after registering "
+                f"synthetic operator was {len(catalogue_with)}, "
+                f"expected {baseline_size + 1}"
+            )
+            assert SYNTHETIC_OPERATOR_17_NAME in catalogue_with, (
+                "PR-10A F6: synthetic operator NOT visible in the "
+                "rendered catalogue — the L3 composability condition "
+                "is not met"
+            )
+            # The card renders with the rich content the YAML
+            # declares.
+            card = render_operator_card(SYNTHETIC_OPERATOR_17_NAME)
+            assert "Synthetic" in card.one_line
+            assert card.output.artifact_type.value == "Series"
+            assert "series" in card.input_slots
+
+            # The Composer's full system prompt INCLUDES the synthetic
+            # operator's name + its catalogue card content.
+            from orchestrator.prompts import COMPOSER_SYSTEM_PROMPT
+            prompt = build_compose_system_prompt_text(
+                catalogue_with, COMPOSER_SYSTEM_PROMPT,
+            )
+            assert SYNTHETIC_OPERATOR_17_NAME in prompt, (
+                "PR-10A F6: synthetic operator name absent from the "
+                "Composer prompt after registration"
+            )
+
+        # Test isolation: catalogue restored to baseline after the
+        # context manager exits.
+        clear_catalogue_cache()
+        assert len(render_operator_catalogue()) == baseline_size
 
     def test_selector_catalogue_is_per_domain_isolated(self):
         """Acceptance criterion (a): each L2 selector's MCP-visible

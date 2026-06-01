@@ -209,6 +209,93 @@ def _selectors_from_specs(
     return {d: _make_cb(entries) for d, entries in by_domain.items()}
 
 
+def _build_cross_domain_pair_stats_shape(
+    *,
+    workflow_id: str,
+    domain_a: str,
+    domain_b: str,
+    semantic_role_a: str = "input_series_a",
+    semantic_role_b: str = "input_series_b",
+    meaning_a: str = "first leg of the cross-domain pair",
+    meaning_b: str = "second leg of the cross-domain pair",
+    terminal_operator_name: str = "correlation",
+    terminal_node_id: str = "correlation",
+) -> ShapeSpec:
+    """Build a cross-domain pair-stats shape:
+    [leaf_a (domain_a), leaf_b (domain_b)] -> align_series ->
+    select x2 -> <terminal_operator>.
+
+    PR-10A Codex F4 fix: the golden helpers default to
+    sovereign_bonds for both LeafHoles.  The plan's canonical query
+    "US 2s10s vs 5Y breakeven" is cross-domain (sovereign_bonds +
+    inflation_indexed_bonds) and the eval MUST honour the cross-
+    domain assignment so it exercises per-domain selector dispatch.
+    """
+    leaf_a = LeafHole(
+        node_id="leaf_a",
+        leaf_request=LeafRequest(
+            required_artifact_type=ArtifactTypeName.SERIES,
+            expected_frequency=Frequency.DAILY,
+            domain_hint=domain_a,
+            semantic_role=semantic_role_a,
+            requested_output_meaning=meaning_a,
+            nl_intent="fetch first leg of the cross-domain pair",
+        ),
+    )
+    leaf_b = LeafHole(
+        node_id="leaf_b",
+        leaf_request=LeafRequest(
+            required_artifact_type=ArtifactTypeName.SERIES,
+            expected_frequency=Frequency.DAILY,
+            domain_hint=domain_b,
+            semantic_role=semantic_role_b,
+            requested_output_meaning=meaning_b,
+            nl_intent="fetch second leg of the cross-domain pair",
+        ),
+    )
+    align = OperatorNode(
+        node_id="align",
+        operator_name="align_series",
+        params={"output_keys": ["leaf_a", "leaf_b"]},
+    )
+    select_a = OperatorNode(
+        node_id="select_a",
+        operator_name="select_from_series_set",
+        params={"series_key": "leaf_a"},
+    )
+    select_b = OperatorNode(
+        node_id="select_b",
+        operator_name="select_from_series_set",
+        params={"series_key": "leaf_b"},
+    )
+    terminal = OperatorNode(
+        node_id=terminal_node_id,
+        operator_name=terminal_operator_name,
+        params={},
+    )
+    edges = [
+        WorkflowEdge(source_node_id="leaf_a", target_node_id="align",
+                     target_input_slot="series_list"),
+        WorkflowEdge(source_node_id="leaf_b", target_node_id="align",
+                     target_input_slot="series_list"),
+        WorkflowEdge(source_node_id="align", target_node_id="select_a",
+                     target_input_slot="series_set"),
+        WorkflowEdge(source_node_id="align", target_node_id="select_b",
+                     target_input_slot="series_set"),
+        WorkflowEdge(source_node_id="select_a", target_node_id=terminal_node_id,
+                     target_input_slot="left"),
+        WorkflowEdge(source_node_id="select_b", target_node_id=terminal_node_id,
+                     target_input_slot="right"),
+    ]
+    return ShapeSpec(
+        workflow_id=workflow_id,
+        nodes=[leaf_a, leaf_b, align, select_a, select_b, terminal],
+        edges=edges,
+        literal_bindings=[],
+        terminal_node_id=terminal_node_id,
+    )
+
+
 def _make_pipeline_for_eval(
     *,
     intent: IntentTag,
@@ -311,22 +398,75 @@ class TestCanonicalIntentEval:
         # Intent correctness: LOOKUP tag captured.
         assert outcome.intent_chain.router.intent_tag == IntentTag.LOOKUP
 
-    async def test_eval_relationship_full_correlation(self):
-        # Plan row: golden #1 — align -> select x2 -> correlation.
+    async def test_eval_relationship_full_correlation_cross_domain(self):
+        # PR-10A Codex F4: plan row is "Correlation between US 2s10s
+        # and 5Y breakeven" — a CROSS-DOMAIN query (sovereign_bonds +
+        # inflation_indexed_bonds).  PR-10 used the golden which
+        # hardcodes sovereign_bonds for both leaves; PR-10A builds
+        # the proper cross-domain shape so per-domain selector
+        # dispatch IS exercised.
+        cross_domain_shape = _build_cross_domain_pair_stats_shape(
+            workflow_id="eval_relationship_us2s10s_vs_5y_breakeven",
+            domain_a=Domain.SOVEREIGN_BONDS.value,
+            domain_b=Domain.INFLATION_INDEXED_BONDS.value,
+            semantic_role_a="spread_level",
+            semantic_role_b="breakeven_level",
+            meaning_a="UST 2s10s curve spread series",
+            meaning_b="USD 5Y breakeven inflation series",
+        )
+
+        # Track which domain's selector fires for which leaf.
+        sov_calls: List[str] = []
+        iib_calls: List[str] = []
+
+        async def sov_cb(*, leaf_id, request, timeout_s):
+            sov_calls.append(leaf_id)
+            return _mk_bound_leaf(
+                leaf_id=leaf_id,
+                domain=Domain.SOVEREIGN_BONDS.value,
+                role="spread_level",
+                meaning="UST 2s10s curve spread series",
+                tool="calculate_curve_spread_tool",
+            )
+
+        async def iib_cb(*, leaf_id, request, timeout_s):
+            iib_calls.append(leaf_id)
+            return _mk_bound_leaf(
+                leaf_id=leaf_id,
+                domain=Domain.INFLATION_INDEXED_BONDS.value,
+                role="breakeven_level",
+                meaning="USD 5Y breakeven inflation series",
+                tool="calculate_breakeven_inflation_simple_tool",
+            )
+
         pipeline = _make_pipeline_for_eval(
             intent=IntentTag.RELATIONSHIP,
             decomp=[
                 EconomicQuantity(name="us_2s10s", nl_description="UST 2s10s", domain_hint=Domain.SOVEREIGN_BONDS),
-                EconomicQuantity(name="us_5y_breakeven", nl_description="US 5Y breakeven", domain_hint=Domain.SOVEREIGN_BONDS),
+                EconomicQuantity(name="us_5y_breakeven", nl_description="USD 5Y breakeven", domain_hint=Domain.INFLATION_INDEXED_BONDS),
             ],
-            composer_result=GOLDEN_RELATIONSHIP_CORRELATION,
+            composer_result=cross_domain_shape,
             gate_verdict=GateVerdict(status="PASS", reason="ok"),
+            selectors={
+                Domain.SOVEREIGN_BONDS: sov_cb,
+                Domain.INFLATION_INDEXED_BONDS: iib_cb,
+            },
         )
         outcome = await pipeline.run("Correlation between US 2s10s and 5Y breakeven over 5y")
         assert outcome.is_pass
         assert outcome.intent_chain.composer.terminal_operator_name == "correlation"
         assert outcome.intent_chain.composer.terminal_artifact_type == "ScalarMetric"
         assert outcome.intent_chain.router.intent_tag == IntentTag.RELATIONSHIP
+        # Cross-domain proof: each selector fired for ITS leaf only —
+        # the per-domain dispatch the plan asked for.
+        assert sov_calls == ["leaf_a"], (
+            f"sovereign_bonds selector should fire for leaf_a only; "
+            f"got {sov_calls}"
+        )
+        assert iib_calls == ["leaf_b"], (
+            f"inflation_indexed_bonds selector should fire for leaf_b "
+            f"only; got {iib_calls}"
+        )
 
     async def test_eval_relationship_rolling_correlation(self):
         # Plan row: golden #2 — rolling_correlation -> Series.
@@ -381,33 +521,66 @@ class TestCanonicalIntentEval:
         assert outcome.intent_chain.composer.terminal_operator_name == "cointegration"
         assert outcome.intent_chain.composer.terminal_artifact_type == "ScalarMetric"
 
-    async def test_eval_transform_rolling_zscore(self):
-        # The golden's LeafHole hard-codes domain_hint=sovereign_bonds
-        # (see composer_golden_shapes._leaf_hole defaults).  The
-        # pipeline dispatches by LeafHole.domain_hint, so the selector
-        # mapping must cover sovereign_bonds — not the user-facing
-        # decomposition's OIS hint.  This is a fixture artefact, NOT a
-        # production divergence: the real Composer would author a
-        # LeafHole whose domain_hint matched the L1 router's
-        # decomposition.
+    async def test_eval_transform_rolling_zscore_ois(self):
+        # PR-10A Codex F4: plan row is "Z-score of the SOFR 5Y" — an
+        # OIS-domain query.  Build a fresh shape with OIS domain_hint
+        # instead of reusing GOLDEN_TRANSFORM_ROLLING_ZSCORE (which
+        # hardcodes sovereign_bonds).
+        leaf = LeafHole(
+            node_id="leaf_input",
+            leaf_request=LeafRequest(
+                required_artifact_type=ArtifactTypeName.SERIES,
+                expected_frequency=Frequency.DAILY,
+                domain_hint=Domain.OIS.value,
+                semantic_role="ois_rate_level",
+                requested_output_meaning="SOFR 5Y OIS rate level",
+                nl_intent="fetch SOFR 5Y OIS rate level",
+            ),
+        )
+        op = OperatorNode(
+            node_id="rolling_zscore",
+            operator_name="rolling_zscore",
+            params={"window": 252},
+        )
+        shape = ShapeSpec(
+            workflow_id="eval_transform_sofr_5y_zscore",
+            nodes=[leaf, op],
+            edges=[
+                WorkflowEdge(
+                    source_node_id="leaf_input",
+                    target_node_id="rolling_zscore",
+                    target_input_slot="series",
+                ),
+            ],
+            terminal_node_id="rolling_zscore",
+        )
+
+        ois_calls: List[str] = []
+
+        async def ois_cb(*, leaf_id, request, timeout_s):
+            ois_calls.append(leaf_id)
+            return _mk_bound_leaf(
+                leaf_id=leaf_id,
+                domain=Domain.OIS.value,
+                role="ois_rate_level",
+                meaning="SOFR 5Y OIS rate level",
+                tool="calculate_ois_level_tool",
+            )
+
         pipeline = _make_pipeline_for_eval(
             intent=IntentTag.TRANSFORM,
             decomp=[
                 EconomicQuantity(name="sofr_5y", nl_description="SOFR 5Y", domain_hint=Domain.OIS),
             ],
-            composer_result=GOLDEN_TRANSFORM_ROLLING_ZSCORE,
+            composer_result=shape,
             gate_verdict=GateVerdict(status="PASS", reason="ok"),
-            selectors={
-                Domain.SOVEREIGN_BONDS: _selectors_from_specs([
-                    (Domain.SOVEREIGN_BONDS, "leaf_input", "input_series",
-                     "input series to standardise against its own trailing history",
-                     "calculate_ois_level_tool"),
-                ])[Domain.SOVEREIGN_BONDS],
-            },
+            selectors={Domain.OIS: ois_cb},
         )
         outcome = await pipeline.run("Z-score of the SOFR 5Y vs its 1y history")
         assert outcome.is_pass
         assert outcome.intent_chain.composer.terminal_operator_name == "rolling_zscore"
+        # OIS dispatch fired.
+        assert ois_calls == ["leaf_input"]
 
     async def test_eval_event_regime_nfp_yield_move(self):
         pipeline = _make_pipeline_for_eval(
@@ -538,43 +711,62 @@ class TestCanonicalIntentEval:
         # The intent tag captured.
         assert outcome.intent_chain.router.intent_tag == IntentTag.PANEL
 
-    async def test_eval_basis_breakeven_minus_zcis(self):
-        # Plan row: BASIS — 2 leaves -> align -> select x2 ->
-        # series_arithmetic.subtract -> Series.  We construct the
-        # canonical pair-stats upstream + a subtract terminal.
-        from orchestrator.open_dag.composer_golden_shapes import _pair_stats_upstream
-
-        nodes, edges, literals = _pair_stats_upstream()
-        subtract = OperatorNode(
-            node_id="subtract",
-            operator_name="series_arithmetic",
-            params={"op": "subtract"},
-        )
-        nodes = list(nodes) + [subtract]
-        edges = list(edges) + [
-            WorkflowEdge(
-                source_node_id="select_a",
-                target_node_id="subtract",
-                target_input_slot="left",
-            ),
-            WorkflowEdge(
-                source_node_id="select_b",
-                target_node_id="subtract",
-                target_input_slot="right",
-            ),
-        ]
-        shape = ShapeSpec(
+    async def test_eval_basis_breakeven_minus_zcis_cross_domain(self):
+        # PR-10A Codex F4: cross-domain basis query —
+        # inflation_indexed_bonds (breakeven) + inflation_swaps (ZCIS).
+        shape = _build_cross_domain_pair_stats_shape(
             workflow_id="eval_basis_breakeven_zcis",
-            nodes=nodes,
-            edges=edges,
-            literal_bindings=list(literals),
+            domain_a=Domain.INFLATION_INDEXED_BONDS.value,
+            domain_b=Domain.INFLATION_SWAPS.value,
+            semantic_role_a="breakeven_level",
+            semantic_role_b="zcis_level",
+            meaning_a="USD 5Y breakeven inflation",
+            meaning_b="USD 5Y zero-coupon inflation swap",
+            terminal_operator_name="series_arithmetic",
             terminal_node_id="subtract",
         )
-        # Pair-stats upstream helper defaults to sovereign_bonds on
-        # both LeafHoles.  The selector map must cover the SHAPE'S
-        # domain_hint (sovereign_bonds), not the decomposition's
-        # user-facing domains.  Real Composer would assign the
-        # decomposition-correct domain on each LeafHole.
+        # series_arithmetic needs an op param.
+        new_nodes = []
+        for n in shape.nodes:
+            if isinstance(n, OperatorNode) and n.node_id == "subtract":
+                new_nodes.append(OperatorNode(
+                    node_id="subtract",
+                    operator_name="series_arithmetic",
+                    params={"op": "subtract"},
+                ))
+            else:
+                new_nodes.append(n)
+        shape = ShapeSpec(
+            workflow_id=shape.workflow_id,
+            nodes=new_nodes,
+            edges=shape.edges,
+            literal_bindings=shape.literal_bindings,
+            terminal_node_id=shape.terminal_node_id,
+        )
+
+        iib_calls: List[str] = []
+        is_calls: List[str] = []
+
+        async def iib_cb(*, leaf_id, request, timeout_s):
+            iib_calls.append(leaf_id)
+            return _mk_bound_leaf(
+                leaf_id=leaf_id,
+                domain=Domain.INFLATION_INDEXED_BONDS.value,
+                role="breakeven_level",
+                meaning="USD 5Y breakeven inflation",
+                tool="calculate_breakeven_inflation_simple_tool",
+            )
+
+        async def is_cb(*, leaf_id, request, timeout_s):
+            is_calls.append(leaf_id)
+            return _mk_bound_leaf(
+                leaf_id=leaf_id,
+                domain=Domain.INFLATION_SWAPS.value,
+                role="zcis_level",
+                meaning="USD 5Y zero-coupon inflation swap",
+                tool="calculate_inflation_swap_level_tool",
+            )
+
         pipeline = _make_pipeline_for_eval(
             intent=IntentTag.BASIS,
             decomp=[
@@ -584,21 +776,18 @@ class TestCanonicalIntentEval:
             composer_result=shape,
             gate_verdict=GateVerdict(status="PASS", reason="ok"),
             selectors={
-                Domain.SOVEREIGN_BONDS: _selectors_from_specs([
-                    (Domain.SOVEREIGN_BONDS, "leaf_a", "input_series_a",
-                     "first input series (one leg of the pair); the Selector binds the concrete primitive",
-                     "calculate_breakeven_inflation_simple_tool"),
-                    (Domain.SOVEREIGN_BONDS, "leaf_b", "input_series_b",
-                     "second input series (other leg of the pair); the Selector binds the concrete primitive",
-                     "calculate_inflation_swap_level_tool"),
-                ])[Domain.SOVEREIGN_BONDS],
+                Domain.INFLATION_INDEXED_BONDS: iib_cb,
+                Domain.INFLATION_SWAPS: is_cb,
             },
         )
         outcome = await pipeline.run("Basis between USD 5Y linker breakeven and 5Y inflation swap")
         assert outcome.is_pass
-        # Terminal is series_arithmetic with op=subtract.
+        # Terminal is series_arithmetic.
         ic = outcome.intent_chain
         assert ic.composer.terminal_operator_name == "series_arithmetic"
+        # Cross-domain dispatch verified.
+        assert iib_calls == ["leaf_a"]
+        assert is_calls == ["leaf_b"]
 
 
 # ============================================================================
@@ -857,15 +1046,18 @@ class TestEvalMatrixCoverage:
     def test_canonical_10_rows_have_tests(self):
         cases = [
             "test_eval_lookup_us_10y_vs_1y_range",
-            "test_eval_relationship_full_correlation",
+            # PR-10A Codex F4: cross-domain rename.
+            "test_eval_relationship_full_correlation_cross_domain",
             "test_eval_relationship_rolling_correlation",
             "test_eval_regression_rolling_beta",
             "test_eval_cointegration_us_5y_30y",
-            "test_eval_transform_rolling_zscore",
+            # PR-10A Codex F4: OIS rename.
+            "test_eval_transform_rolling_zscore_ois",
             "test_eval_event_regime_nfp_yield_move",
             "test_eval_scan_refuses_when_terminal_only",
             "test_eval_panel_yield_curve_spread",
-            "test_eval_basis_breakeven_minus_zcis",
+            # PR-10A Codex F4: cross-domain rename.
+            "test_eval_basis_breakeven_minus_zcis_cross_domain",
         ]
         attrs = dir(TestCanonicalIntentEval)
         for case in cases:
@@ -890,3 +1082,138 @@ class TestEvalMatrixCoverage:
         attrs = dir(TestAdversarialEval)
         for case in cases:
             assert case in attrs
+
+
+# ============================================================================
+# PR-10A Codex F3: SHAPE ↔ ComposerLLMOutput ROUND-TRIP PROOF
+# ============================================================================
+
+
+class TestPR10A_F3_EvalShapesRoundTripThroughLLMSchema:
+    """Codex F3: PR-10's eval tests pre-supplied the expected
+    ShapeSpec to the Composer mock — proving plumbing not the
+    LLM-output contract.  PR-10A's strengthening: assert that EVERY
+    eval-matrix expected shape round-trips through
+    ``ComposerLLMOutput.model_validate`` and back into a structurally
+    equivalent ShapeSpec.
+
+    This proves the structured-output schema CAN carry these shapes
+    — an LLM emitting JSON that matches one of these expected outputs
+    would parse cleanly via Pydantic into an equivalent ShapeSpec.
+    Couples the eval matrix to the LLM contract without needing a
+    live LLM at test time.
+    """
+
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            GOLDEN_RELATIONSHIP_CORRELATION,
+            GOLDEN_RELATIONSHIP_ROLLING_CORRELATION,
+            GOLDEN_COINTEGRATION,
+            GOLDEN_REGRESSION_ROLLING_BETA,
+            GOLDEN_EVENT_REGIME,
+            GOLDEN_TRANSFORM_ROLLING_ZSCORE,
+        ],
+        ids=[
+            "GOLDEN_RELATIONSHIP_CORRELATION",
+            "GOLDEN_RELATIONSHIP_ROLLING_CORRELATION",
+            "GOLDEN_COINTEGRATION",
+            "GOLDEN_REGRESSION_ROLLING_BETA",
+            "GOLDEN_EVENT_REGIME",
+            "GOLDEN_TRANSFORM_ROLLING_ZSCORE",
+        ],
+    )
+    def test_golden_shapes_parse_via_composer_llm_output(self, shape):
+        import json
+        from orchestrator.open_dag.composer import (
+            ComposerLLMOutput,
+            llm_output_to_shape_spec,
+        )
+        from orchestrator.open_dag.composer_golden_shapes import (
+            render_shape_as_composer_output,
+        )
+
+        rendered = render_shape_as_composer_output(shape)
+        # Parse via the LLM's own structured-output schema —
+        # exactly the path a real LLM emission takes.
+        parsed = ComposerLLMOutput.model_validate(json.loads(rendered))
+        # And re-construct the typed ShapeSpec via the post-LLM
+        # transformer.
+        re_shape = llm_output_to_shape_spec(parsed)
+        assert re_shape.workflow_id == shape.workflow_id
+        assert re_shape.terminal_node_id == shape.terminal_node_id
+        assert len(re_shape.nodes) == len(shape.nodes)
+        assert len(re_shape.edges) == len(shape.edges)
+
+    def test_cross_domain_pair_stats_shape_round_trips(self):
+        # PR-10A F3 + F4: the cross-domain shapes we just rebuilt
+        # for F4 also round-trip via the LLM-output schema.
+        import json
+        from orchestrator.open_dag.composer import (
+            ComposerLLMOutput,
+            llm_output_to_shape_spec,
+        )
+        from orchestrator.open_dag.composer_golden_shapes import (
+            render_shape_as_composer_output,
+        )
+
+        shape = _build_cross_domain_pair_stats_shape(
+            workflow_id="round_trip_cross_domain",
+            domain_a=Domain.SOVEREIGN_BONDS.value,
+            domain_b=Domain.INFLATION_INDEXED_BONDS.value,
+            semantic_role_a="spread_level",
+            semantic_role_b="breakeven_level",
+            meaning_a="UST 2s10s",
+            meaning_b="USD 5Y breakeven",
+        )
+        rendered = render_shape_as_composer_output(shape)
+        parsed = ComposerLLMOutput.model_validate(json.loads(rendered))
+        re_shape = llm_output_to_shape_spec(parsed)
+        # Domain hints survive the round-trip — proves the LLM
+        # contract carries cross-domain assignments.
+        leaf_domains = {
+            n.leaf_request.domain_hint
+            for n in re_shape.nodes
+            if isinstance(n, LeafHole)
+        }
+        assert leaf_domains == {
+            Domain.SOVEREIGN_BONDS.value,
+            Domain.INFLATION_INDEXED_BONDS.value,
+        }
+
+    def test_eval_panel_shape_round_trips(self):
+        # The PANEL eval row uses a custom 1-leaf shape with
+        # required_artifact_type=PANEL.  Confirm it round-trips.
+        import json
+        from orchestrator.open_dag.composer import (
+            ComposerLLMOutput,
+            llm_output_to_shape_spec,
+        )
+        from orchestrator.open_dag.composer_golden_shapes import (
+            render_shape_as_composer_output,
+        )
+
+        leaf = LeafHole(
+            node_id="leaf_panel",
+            leaf_request=LeafRequest(
+                required_artifact_type=ArtifactTypeName.PANEL,
+                domain_hint=Domain.SOVEREIGN_BONDS.value,
+                semantic_role="yield_panel",
+                requested_output_meaning="every UST curve spread today",
+                nl_intent="fetch panel",
+            ),
+        )
+        shape = ShapeSpec(
+            workflow_id="round_trip_panel",
+            nodes=[leaf],
+            edges=[],
+            terminal_node_id="leaf_panel",
+        )
+        rendered = render_shape_as_composer_output(shape)
+        parsed = ComposerLLMOutput.model_validate(json.loads(rendered))
+        re_shape = llm_output_to_shape_spec(parsed)
+        # required_artifact_type=PANEL survives.
+        leaf_out = re_shape.node_by_id("leaf_panel")
+        assert isinstance(leaf_out, LeafHole)
+        assert leaf_out.leaf_request.required_artifact_type == \
+            ArtifactTypeName.PANEL

@@ -356,6 +356,10 @@ class CopilotSession:
             return
 
         logger.info("[%s] closing session", self.thread_id)
+        # PR-10A Codex F1: close the open-DAG components first so
+        # their model state is dropped before the children's MCP
+        # subprocesses get torn down.
+        await self._close_open_dag_components_quiet()
         await self._close_children_quiet()
         self._children = {}
         self._child_open_locks = {}
@@ -370,6 +374,159 @@ class CopilotSession:
             return
         close_tasks = [child.close() for child in self._children.values()]
         await asyncio.gather(*close_tasks, return_exceptions=True)
+
+    # ------------------------------------------------------------------
+    # OPEN-DAG LANE PRE-ROUTER (PR-10A Codex F1)
+    # ------------------------------------------------------------------
+    #
+    # Plan §PR-10 explicitly requires a thin pre-router in
+    # ``CopilotSession`` that picks between the existing template
+    # path (``run`` / ``run_workflow``) and the new open-DAG path.
+    # PR-10 shipped the OpenDagPipeline as a self-contained module
+    # but did NOT wire it into the session — PR-10A's corrective
+    # adds the wiring without disturbing the template lane.
+    #
+    # ``run_open_dag(...)`` is an EXPLICIT opt-in: callers ask for
+    # the open-DAG lane by name.  No template-lane code path
+    # implicitly routes through here.  This honours acceptance #4
+    # ("Pre-router cleanly separates lanes; existing template lane
+    # unaffected") — the existing template tests are not touched
+    # by this method's existence.
+    #
+    # The method constructs the pipeline lazily on first use,
+    # reusing the session's already-cached ``self._supervisor`` (the
+    # L1 router) and ``self._children`` (the per-domain Selectors).
+    # PR-10's Composer / CoverageGate / AnswerRenderer are
+    # constructed here on first call and cached as
+    # ``self._open_dag_*`` attributes.
+
+    async def run_open_dag(
+        self,
+        user_prompt: str,
+        *,
+        executor_callback: Optional[Any] = None,
+    ) -> Any:
+        """Run one user prompt through the open-DAG lane.
+
+        Returns a ``PipelineOutcome``.  Always returns; never raises
+        (matches OpenDagPipeline.run's fail-safe contract).
+
+        Parameters
+        ----------
+        user_prompt :
+            The user's verbatim message.  Passed through to the
+            pipeline's L1 router.
+        executor_callback :
+            Optional L5 executor.  When None, the pipeline returns
+            a PASS / dry-run outcome with the intent echo on PASS.
+            Callers wanting end-to-end execution supply the
+            substrate's ``execute_workflow``-backed callback (see
+            PR-10A F2's default-executor wiring for the canonical
+            pattern).
+
+        Notes
+        -----
+        - The session MUST be ``open()`` first.  This method does
+          NOT re-open the session.
+        - Each LeafHole's ``domain_hint`` selects a child via the
+          existing ``_ensure_child_open`` / ``_children`` machinery.
+          A child that hasn't been spawned yet is opened on demand;
+          subsequent calls for the same domain are cached.
+        - The Composer / CoverageGate / AnswerRenderer are
+          constructed lazily on first call and cached for the
+          remainder of the session lifecycle.
+        """
+        if not self._is_open:
+            raise RuntimeError(
+                f"CopilotSession {self.thread_id!r} is not open. "
+                "Call await session.open() before run_open_dag()."
+            )
+        if self._supervisor is None:
+            raise RuntimeError(
+                "CopilotSession.run_open_dag requires the supervisor "
+                "to be initialised."
+            )
+
+        # Lazy construction of the open-DAG sub-components.
+        await self._ensure_open_dag_components_open()
+
+        # Build per-domain SelectorCallbacks that wrap
+        # DomainAgentSession.fill_leaf and lazy-open the child.
+        async def _make_selector_cb(domain: Domain):
+            child = await self._ensure_child_open(domain)
+
+            async def _cb(*, leaf_id, request, timeout_s):
+                return await child.fill_leaf(
+                    leaf_id=leaf_id,
+                    request=request,
+                    timeout_s=timeout_s,
+                )
+
+            return _cb
+
+        selectors_map = {}
+        for domain in self._children:
+            selectors_map[domain] = await _make_selector_cb(domain)
+
+        # Build the per-call pipeline.  The pipeline itself is
+        # stateless beyond construction — cheap to instantiate per
+        # call.
+        from orchestrator.open_dag import OpenDagPipeline
+        from rates_agent.workflows import rates_primitive_resolver
+
+        pipeline = OpenDagPipeline(
+            router=self._supervisor,
+            composer=self._open_dag_composer,
+            coverage_gate=self._open_dag_gate,
+            answer_renderer=self._open_dag_renderer,
+            selectors=selectors_map,
+            primitive_resolver=rates_primitive_resolver,
+            executor_callback=executor_callback,
+        )
+        return await pipeline.run(user_prompt)
+
+    async def _ensure_open_dag_components_open(self) -> None:
+        """Lazily build + open the Composer / CoverageGate /
+        AnswerRenderer the first time ``run_open_dag`` is called.
+
+        Idempotent — subsequent calls re-use the cached instances.
+        Components are closed by ``close()`` via the
+        ``_close_open_dag_components_quiet`` helper.
+        """
+        if getattr(self, "_open_dag_composer", None) is not None:
+            return  # already open
+
+        from orchestrator.open_dag import (
+            AnswerRenderer,
+            Composer,
+            CoverageGate,
+        )
+
+        self._open_dag_composer = Composer()
+        self._open_dag_gate = CoverageGate()
+        self._open_dag_renderer = AnswerRenderer()
+
+        # ``Composer.open()`` is sync; ``CoverageGate.open()`` and
+        # ``AnswerRenderer.open()`` are sync too.  No awaits needed.
+        self._open_dag_composer.open()
+        self._open_dag_gate.open()
+        self._open_dag_renderer.open()
+
+    async def _close_open_dag_components_quiet(self) -> None:
+        """Close cached open-DAG sub-components.  Called by
+        ``close()``."""
+        for attr in (
+            "_open_dag_composer",
+            "_open_dag_gate",
+            "_open_dag_renderer",
+        ):
+            comp = getattr(self, attr, None)
+            if comp is not None:
+                try:
+                    comp.close()
+                except Exception:
+                    pass
+                setattr(self, attr, None)
 
     async def _ensure_child_open(self, domain: Domain) -> DomainAgentSession:
         """Lazily spawn a child's MCP subprocess on first use.

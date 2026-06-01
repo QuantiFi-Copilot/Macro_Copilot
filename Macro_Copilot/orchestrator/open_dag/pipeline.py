@@ -329,12 +329,29 @@ class OpenDagPipeline:
             return self._router_clarify_outcome(user_prompt, route_decision)
 
         # ---- L3 COMPOSER ----
-        compose_result = await self._composer.compose(
-            prompt=user_prompt,
-            intent_tag=route_decision.intent_tag,  # type: ignore[arg-type]
-            decomposition=route_decision.decomposition,
-            timeout_s=self._compose_timeout_s,
-        )
+        # PR-10A Codex F8: Composer.compose's own fail-safe handles
+        # LLM exceptions internally (returns ComposerRefusal), but a
+        # construction-time exception or a contract violation in the
+        # sub-component could still raise.  Wrap defensively to honour
+        # the "no exception escapes run()" contract documented in this
+        # module's docstring.
+        try:
+            compose_result = await self._composer.compose(
+                prompt=user_prompt,
+                intent_tag=route_decision.intent_tag,  # type: ignore[arg-type]
+                decomposition=route_decision.decomposition,
+                timeout_s=self._compose_timeout_s,
+            )
+        except Exception as exc:
+            logger.exception("OpenDagPipeline: composer raised")
+            return PipelineOutcome(
+                status="PIPELINE_ERROR",
+                markdown=(
+                    "**Pipeline error at L3 composer.**\n\n"
+                    f"```\n{type(exc).__name__}: {exc}\n```"
+                ),
+                route_decision=route_decision,
+            )
         if isinstance(compose_result, ComposerRefusal):
             return self._composer_refuse_outcome(
                 user_prompt=user_prompt,
@@ -366,13 +383,28 @@ class OpenDagPipeline:
             )
 
         # ---- L4.5 COVERAGE GATE (hard-block) ----
-        verdict = await self._coverage_gate.check(
-            user_prompt=user_prompt,
-            assembly_result=assembly_result,
-            route_decision=route_decision,
-            leaves=bound_leaves,
-            timeout_s=self._gate_timeout_s,
-        )
+        # PR-10A Codex F8: defensive wrap.  Gate.check has its own
+        # fail-safe (REFUSE on timeout/LLM-exception) but the wrap
+        # protects against construction-time / contract-violation
+        # exceptions.
+        try:
+            verdict = await self._coverage_gate.check(
+                user_prompt=user_prompt,
+                assembly_result=assembly_result,
+                route_decision=route_decision,
+                leaves=bound_leaves,
+                timeout_s=self._gate_timeout_s,
+            )
+        except Exception as exc:
+            logger.exception("OpenDagPipeline: coverage gate raised")
+            return PipelineOutcome(
+                status="PIPELINE_ERROR",
+                markdown=(
+                    "**Pipeline error at L4.5 coverage gate.**\n\n"
+                    f"```\n{type(exc).__name__}: {exc}\n```"
+                ),
+                route_decision=route_decision,
+            )
         if not verdict.is_pass:
             return self._gate_non_pass_outcome(
                 user_prompt=user_prompt,
@@ -450,12 +482,35 @@ class OpenDagPipeline:
                 route_decision=route_decision,
             )
 
-        markdown = await self._answer_renderer.render(
-            intent_chain=intent_chain,
-            executed_summary=executed_summary,
-            lineage_head_hash=run_lineage.head_hash or "",
-            timeout_s=self._answer_timeout_s,
-        )
+        # PR-10A Codex F8: defensive wrap around L6 render.  The
+        # renderer has its own fail-safe on LLM-side failures, but a
+        # construction-time exception or an unexpected sub-component
+        # contract violation could still raise.
+        try:
+            markdown = await self._answer_renderer.render(
+                intent_chain=intent_chain,
+                executed_summary=executed_summary,
+                lineage_head_hash=run_lineage.head_hash or "",
+                timeout_s=self._answer_timeout_s,
+            )
+        except Exception as exc:
+            logger.exception("OpenDagPipeline: answer renderer raised")
+            from orchestrator.open_dag.answer import _failsafe_answer
+            markdown = _failsafe_answer(
+                intent_chain=intent_chain,
+                lineage_head_hash=run_lineage.head_hash or "",
+                reason=(
+                    f"L6 answer renderer raised: "
+                    f"{type(exc).__name__}: {exc}."
+                ),
+            )
+            return PipelineOutcome(
+                status="PIPELINE_ERROR",
+                markdown=markdown,
+                intent_chain=intent_chain,
+                run_lineage=run_lineage,
+                route_decision=route_decision,
+            )
         return PipelineOutcome(
             status="PASS",
             markdown=markdown,
