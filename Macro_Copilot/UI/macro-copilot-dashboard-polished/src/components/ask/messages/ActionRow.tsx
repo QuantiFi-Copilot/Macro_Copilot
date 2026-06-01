@@ -117,7 +117,15 @@ function ActionButton({
   );
 }
 
-function resolveBuildHref(message: CopilotMessage): string | null {
+/** Resolve a chat message into the "Open in Build" deep-link URL.
+ *
+ *  Exported (PR-11 Codex follow-up) so the open-DAG handoff smoke
+ *  test can assert the three load-bearing branches without mounting
+ *  the React component.
+ *
+ *  Returns ``null`` when the message has nothing Build-resolvable
+ *  (supervisor turn with no tool calls, error states). */
+export function resolveBuildHref(message: CopilotMessage): string | null {
   // 1. Workflow turns with a persisted workspace slug — direct route
   //    to Build's slug-bound shell, which materialises the saved DAG +
   //    per-node artifacts.  This wins over every other path because

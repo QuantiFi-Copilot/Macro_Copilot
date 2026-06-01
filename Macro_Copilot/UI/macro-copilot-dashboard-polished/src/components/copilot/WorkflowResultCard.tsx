@@ -46,9 +46,18 @@ export function WorkflowResultCard({ payload }: WorkflowResultCardProps) {
             <Workflow size={13} />
           </div>
           <div className="min-w-0">
-            <p className="kicker text-ice-300/70">WORKFLOW</p>
+            <p className="kicker text-ice-300/70">
+              {routeDecision.template_id === null
+                ? 'OPEN DAG'
+                : 'WORKFLOW'}
+            </p>
             <p className="mt-0.5 truncate text-[12.5px] font-semibold text-ice-100 mono">
-              {routeDecision.template_id}
+              {/* PR-11 Codex follow-up: open-DAG turns carry
+                * ``template_id === null`` (no recipe).  Render an
+                * honest "open-dag composition" label so the chat
+                * bubble doesn't show a blank string where the
+                * template id used to render. */}
+              {routeDecision.template_id ?? 'open-dag composition'}
             </p>
           </div>
         </div>

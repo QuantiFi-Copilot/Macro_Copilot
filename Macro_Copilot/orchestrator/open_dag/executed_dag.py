@@ -180,6 +180,52 @@ class TerminalArtifactSummary(BaseModel):
             "widget registry."
         )
 
+    def to_executed_summary(self) -> str:
+        """Render a value-bearing one-line summary the L6 LLM consumes.
+
+        PR-11A.A.2 contract: the AnswerRenderer's ``executed_summary``
+        param feeds the LLM the actual number / artifact to report.
+        Pre-PR-11 the pipeline passed only the topological lineage
+        string (``"workflow X: p1 -> p2 -> ..."``); the LLM had no
+        way to know the actual correlation value for a ScalarMetric
+        terminal.
+
+        Format (stable; tests assert on it):
+          - ScalarMetric : ``"ScalarMetric(<metric_key>=<value> <units>)"``
+            — e.g. ``"ScalarMetric(correlation_coefficient=-0.342 RATIO)"``
+          - Series       : ``"Series<<units>>(n=<row_count>)"`` —
+            e.g. ``"Series<PERCENT>(n=1257)"``
+          - SeriesSet    : ``"SeriesSet(n=<row_count>)"``
+          - EventSet     : ``"EventSet(n=<row_count>)"``
+          - Panel        : ``"Panel(n=<row_count>)"``
+          - WindowedPanel: ``"WindowedPanel<<units>>(n_events=<row_count>)"``
+
+        The format is INTENTIONALLY compact — the L6 LLM authors the
+        prose; this helper just hands it the structured value.
+        """
+        if self.artifact_type == "ScalarMetric":
+            # The load-bearing case: a single finite scalar the L6 LLM
+            # MUST be able to quote in its prose.
+            value_repr = (
+                f"{self.value:.4g}"
+                if self.value is not None
+                else "n/a"
+            )
+            units_repr = f" {self.units}" if self.units else ""
+            return (
+                f"ScalarMetric({self.metric_key}="
+                f"{value_repr}{units_repr})"
+            )
+        if self.artifact_type == "WindowedPanel":
+            units_repr = f"<{self.units}>" if self.units else ""
+            return f"WindowedPanel{units_repr}(n_events={self.row_count or 0})"
+        if self.artifact_type == "Series":
+            units_repr = f"<{self.units}>" if self.units else ""
+            return f"Series{units_repr}(n={self.row_count or 0})"
+        # SeriesSet / EventSet / Panel — no single-units summary at
+        # this layer (the artifact carries per-key/per-column units).
+        return f"{self.artifact_type}(n={self.row_count or 0})"
+
 
 # ============================================================================
 # EXECUTED DAG
@@ -233,6 +279,37 @@ class ExecutedDag(BaseModel):
     lineage: Lineage
     workflow_lineage_summary: str = Field(..., min_length=1)
     terminal_summary: TerminalArtifactSummary
+
+    @property
+    def executed_summary(self) -> str:
+        """The value-bearing ``executed_summary`` string the L6
+        ``AnswerRenderer`` consumes.
+
+        Combines the structured terminal summary (which carries the
+        ScalarMetric value / Series row count / etc.) with the
+        topological lineage summary (the "p1 -> align -> correlation"
+        string) so the L6 LLM sees BOTH the actual number AND the
+        compute path that produced it.
+
+        Codex correction (PR-11 follow-up): the pre-PR-11 pipeline
+        passed ONLY ``workflow_lineage_summary`` as ``executed_summary``,
+        so the AnswerRenderer's LLM had no way to quote the
+        correlation coefficient in its prose.  ``terminal_summary``
+        carries the value; this property is the glue that hands it to
+        the renderer's existing string-typed contract WITHOUT changing
+        the AnswerRenderer's signature.
+
+        Format (stable):
+          ``"<terminal_summary.to_executed_summary()> · <workflow_lineage_summary>"``
+
+        Examples:
+          - ScalarMetric : ``"ScalarMetric(correlation_coefficient=-0.342 RATIO) · workflow X: p1 -> p2 -> align -> correlation"``
+          - Series       : ``"Series<PERCENT>(n=1257) · workflow X: p1 -> ..."``
+        """
+        return (
+            f"{self.terminal_summary.to_executed_summary()} "
+            f"· {self.workflow_lineage_summary}"
+        )
 
     @classmethod
     def from_workflow_result(cls, result: WorkflowResult) -> "ExecutedDag":

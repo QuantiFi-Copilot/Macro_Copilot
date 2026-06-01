@@ -1200,11 +1200,22 @@ class CopilotSession:
             )
         )
 
-        # Emit workflow_status complete.  The pipeline ran to
-        # completion before we reached this method, so the
-        # intermediate "running" state has no observable window;
-        # mirror the template-lane error-path which also emits a
-        # single terminal status.
+        # Emit workflow_status running → complete.
+        # Plan §A.3 contract: the frontend ``useCopilot`` reducer
+        # tracks a status transition from running to complete (mirrors
+        # the template lane at session.py lines 861 + 947).  The
+        # pipeline ran to completion before we reached this method, so
+        # the "running" window is non-observable in practice; we still
+        # emit it so the frontend status pill renders the same way for
+        # open-DAG turns as for template-lane turns (a workflow that
+        # never enters "running" state would render an inconsistent
+        # status pill in the chat bubble's WorkflowResultCard).
+        await emit(
+            SessionEvent(
+                type="workflow_status",
+                data={"status": "running"},
+            )
+        )
         await emit(
             SessionEvent(
                 type="workflow_status",
@@ -1630,6 +1641,17 @@ class CopilotSession:
                     # frontend chat bubble + Build "Open in Build" CTA
                     # behave like the template lane.  No-op on
                     # PASS_DRYRUN / refusal paths.
+                    #
+                    # NOTE on event ordering: ``self.run_open_dag(...)``
+                    # runs the full L1 → L6 pipeline in one async call
+                    # BEFORE returning, so we can't emit a meaningful
+                    # ``workflow_status: running`` before execution.  We
+                    # emit ``running`` immediately followed by
+                    # ``complete`` inside the helper so the frontend
+                    # reducer sees the full status transition (running
+                    # → complete) the plan §A.3 contract requires —
+                    # mirrors what the template lane emits at lines
+                    # 861 / 947 of this file.
                     try:
                         await self._maybe_emit_open_dag_workflow_events(
                             outcome=open_dag_outcome,

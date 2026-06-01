@@ -634,7 +634,13 @@ class OpenDagPipeline:
                 )
             executed_dag = executed
             compute_lineage = executed_dag.lineage
-            executed_summary = executed_dag.workflow_lineage_summary
+            # Codex follow-up: the L6 AnswerRenderer's ``executed_summary``
+            # must carry the actual terminal value (the correlation
+            # coefficient for a ScalarMetric run), not just the
+            # topological lineage string.  ``ExecutedDag.executed_summary``
+            # combines the structured terminal summary with the topology
+            # so the LLM can quote the number in its prose.
+            executed_summary = executed_dag.executed_summary
 
         # PR-10D F5: derive the bucket from the pair (gate, compute).
         if compute_lineage is None:
