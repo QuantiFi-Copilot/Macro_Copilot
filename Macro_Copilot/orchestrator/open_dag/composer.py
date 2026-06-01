@@ -1030,6 +1030,21 @@ class Composer:
         self._cached_repair_system_message: Optional[Any] = None
         self._compose_model: Optional[Any] = None
         self._repair_model: Optional[Any] = None
+        # PR-10C Codex F7: capture the most recent compose call's
+        # LLM-authored wiring rationale.  Read by the pipeline after
+        # Composer.compose() returns and threaded into
+        # IntentChain.from_inputs(composer_llm_rationale=...).  Reset
+        # on every compose call so a stale rationale never bleeds
+        # across queries.
+        self._last_compose_rationale: str = ""
+
+    @property
+    def last_compose_rationale(self) -> str:
+        """The LLM-authored wiring rationale from the most recent
+        successful ``compose()`` call.  Empty string when (a) compose
+        hasn't run yet, (b) the LLM didn't supply a rationale, or
+        (c) compose returned a ComposerRefusal."""
+        return self._last_compose_rationale
 
     # ------------------------------------------------------------------
     # LIFECYCLE
@@ -1145,6 +1160,12 @@ class Composer:
         """
         from langchain_core.messages import HumanMessage
 
+        # PR-10C Codex F7: reset rationale on every compose call so
+        # a stale value never bleeds across queries.  Populated only
+        # when the LLM returns a non-empty rationale AND the post-
+        # LLM transform succeeds (see end of this method).
+        self._last_compose_rationale = ""
+
         if not self._is_open:
             raise RuntimeError(
                 "Composer is not open.  Call `composer.open()` before "
@@ -1216,6 +1237,15 @@ class Composer:
             shape = llm_output_to_shape_spec(parsed)
         except ComposerOutputError as exc:
             return ComposerRefusal(reason=str(exc))
+        # PR-10C Codex F7: capture the LLM-authored wiring rationale
+        # so the pipeline can thread it through to IntentChain.from_inputs
+        # (via the composer_llm_rationale kwarg added in PR-10B F14).
+        # Stored on the instance because Composer.compose's return
+        # type is the existing ShapeSpec | ComposerRefusal union;
+        # changing it to a tuple would break every caller.  The
+        # pipeline reads ``composer.last_compose_rationale`` AFTER
+        # the compose call returns.
+        self._last_compose_rationale = (parsed.rationale or "").strip()
         return shape
 
     # ------------------------------------------------------------------

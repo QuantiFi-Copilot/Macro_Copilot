@@ -535,12 +535,22 @@ class OpenDagPipeline:
             )
 
         # ---- L5 EXECUTOR (optional via callback) ----
+        # PR-10C Codex F7: thread the LLM-authored wiring rationale
+        # from Composer.last_compose_rationale into the IntentChain so
+        # the L6 echo + lineage record the ACTUAL LLM rationale, not
+        # just the derived fallback.  Empty string when the Composer
+        # LLM didn't supply one — IntentChain falls back to the V1
+        # derivation in that case.
+        composer_llm_rationale = getattr(
+            self._composer, "last_compose_rationale", "",
+        )
         intent_chain = IntentChain.from_inputs(
             user_prompt=user_prompt,
             route_decision=route_decision,
             bound_leaves=tuple(bound_leaves),
             shape_or_workflow=assembly_result.workflow,
             gate_verdict=verdict,
+            composer_llm_rationale=composer_llm_rationale,
         )
 
         executed_summary: str = ""

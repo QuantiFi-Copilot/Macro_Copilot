@@ -186,14 +186,44 @@ class TestP10Lint:
 
 class TestCIWorkflowYAML:
     def test_workflow_yaml_exists(self):
-        wf = _REPO_ROOT / ".github" / "workflows" / "open_dag_lints.yml"
+        # PR-10C Codex F5: the workflow lives at the actual git
+        # root (a parent of _REPO_ROOT in split-checkout layouts).
+        import subprocess
+        try:
+            top = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                capture_output=True, text=True, cwd=str(_REPO_ROOT),
+                timeout=5,
+            )
+            git_root = (
+                Path(top.stdout.strip())
+                if top.returncode == 0 else _REPO_ROOT
+            )
+        except Exception:
+            git_root = _REPO_ROOT
+        wf = git_root / ".github" / "workflows" / "open_dag_lints.yml"
         assert wf.is_file(), (
             "PR-10A Codex F7: .github/workflows/open_dag_lints.yml must "
             "exist to wire the three CI lints into CI"
         )
 
     def test_workflow_yaml_includes_all_three_lints(self):
-        wf = _REPO_ROOT / ".github" / "workflows" / "open_dag_lints.yml"
+        # PR-10C Codex F5: the workflow lives at the actual git
+        # root (a parent of _REPO_ROOT in split-checkout layouts).
+        import subprocess
+        try:
+            top = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                capture_output=True, text=True, cwd=str(_REPO_ROOT),
+                timeout=5,
+            )
+            git_root = (
+                Path(top.stdout.strip())
+                if top.returncode == 0 else _REPO_ROOT
+            )
+        except Exception:
+            git_root = _REPO_ROOT
+        wf = git_root / ".github" / "workflows" / "open_dag_lints.yml"
         text = wf.read_text(encoding="utf-8")
         # All three lint commands referenced.
         assert "ci_lint_domain_tool_count.py" in text

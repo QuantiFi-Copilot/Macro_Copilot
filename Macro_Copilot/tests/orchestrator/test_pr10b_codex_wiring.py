@@ -319,3 +319,83 @@ def test_pr10b_f16_pipeline_outcome_has_is_gate_pass_property():
         "PR-10B F16: PipelineOutcome must expose is_gate_pass "
         "covering both PASS + PASS_DRYRUN"
     )
+
+
+# ============================================================================
+# PR-10C — fresh Codex audit corrective tests
+# ============================================================================
+
+
+def test_pr10c_f7_composer_exposes_last_compose_rationale():
+    """PR-10C Codex F7: Composer must capture LLM-authored rationale
+    from each compose call so the pipeline can thread it through to
+    IntentChain.from_inputs (without changing Composer.compose's
+    return signature)."""
+    from orchestrator.open_dag import Composer
+
+    assert hasattr(Composer, "last_compose_rationale"), (
+        "PR-10C F7: Composer must expose last_compose_rationale "
+        "property so the pipeline can thread the LLM-authored "
+        "wiring rationale into IntentChain"
+    )
+
+
+def test_pr10c_f7_pipeline_threads_composer_rationale_to_intent_chain():
+    """The pipeline must read composer.last_compose_rationale after
+    compose() and pass it to IntentChain.from_inputs as
+    composer_llm_rationale."""
+    import inspect
+    from orchestrator.open_dag import OpenDagPipeline
+
+    src = inspect.getsource(OpenDagPipeline.run)
+    assert "last_compose_rationale" in src, (
+        "PR-10C F7: pipeline.run must read composer.last_compose_rationale"
+    )
+    assert "composer_llm_rationale" in src, (
+        "PR-10C F7: pipeline.run must pass composer_llm_rationale to "
+        "IntentChain.from_inputs"
+    )
+
+
+def test_pr10c_f4_scaling_proof_uses_git_rev_parse_show_toplevel():
+    """PR-10C Codex F4: literal git-diff test must discover git root
+    via `git rev-parse --show-toplevel` rather than assuming
+    _REPO_ROOT contains .git."""
+    import inspect
+    from tests.eval import test_scaling_proofs as proofs_mod
+
+    src = inspect.getsource(
+        proofs_mod.TestProof1_RegistrationOnlyGrowth.test_invariant_files_via_literal_git_diff,
+    )
+    assert "rev-parse" in src and "--show-toplevel" in src, (
+        "PR-10C F4: literal git-diff test must use "
+        "`git rev-parse --show-toplevel` for git root discovery"
+    )
+
+
+def test_pr10c_f5_github_workflow_at_actual_git_root():
+    """PR-10C Codex F5: .github/workflows/open_dag_lints.yml must
+    live at the actual git root (parent of Macro_Copilot in split-
+    checkout layouts), not under Macro_Copilot/."""
+    import subprocess
+    from pathlib import Path
+
+    repo_root = Path("/Volumes/Sreeram/Macro/Macro_Copilot")
+    try:
+        top = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, cwd=str(repo_root),
+            timeout=5,
+        )
+        if top.returncode != 0:
+            import pytest
+            pytest.skip("not in a git repo")
+        git_root = Path(top.stdout.strip())
+    except Exception:
+        import pytest
+        pytest.skip("git unavailable")
+    wf = git_root / ".github" / "workflows" / "open_dag_lints.yml"
+    assert wf.is_file(), (
+        f"PR-10C F5: GitHub Actions workflow must live at git "
+        f"root .github/workflows/, got {wf}"
+    )

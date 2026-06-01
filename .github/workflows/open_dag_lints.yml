@@ -1,0 +1,63 @@
+# .github/workflows/open_dag_lints.yml — PR-10 CI lints.
+#
+# Per tmp/orchestration.md §PR-10 the open-DAG PoC ships three CI
+# lints:
+#
+#   1. Domain tool-count cap (per-domain MCP primitive ceiling).
+#   2. P10 — no operator card content duplicated as a Python string.
+#   3. P9  — no rates_agent imports inside shared/operators/.
+#
+# Each lint is independent.  All three run on every PR + every push to
+# main / revamp.  Failure on any one halts the merge — the disciplines
+# they protect are part of the substrate's invariants, not stylistic.
+
+name: open-DAG lints
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - revamp
+
+jobs:
+  domain-tool-count:
+    name: Domain tool-count cap (max 25 per domain)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run lint
+        working-directory: Macro_Copilot
+        run: python scripts/ci_lint_domain_tool_count.py --limit 25
+
+  p9-no-rates-imports:
+    name: P9 — no rates_agent imports under shared/operators/
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run lint
+        working-directory: Macro_Copilot
+        run: python scripts/ci_lint_p9_no_rates_imports.py
+
+  p10-no-card-duplication:
+    name: P10 — no operator card content duplicated as Python string
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pyyaml
+        run: python -m pip install pyyaml
+      - name: Run lint
+        working-directory: Macro_Copilot
+        run: python scripts/ci_lint_p10_no_card_duplication.py

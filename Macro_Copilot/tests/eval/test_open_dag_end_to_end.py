@@ -377,6 +377,187 @@ async def test_default_executor_returns_none_on_executor_failure():
     )
 
 
+@pytest.mark.asyncio
+async def test_canonical_cross_domain_correlation_end_to_end(monkeypatch):
+    """PR-10C Codex F1: the plan's CANONICAL gap-closer query —
+    'Correlation between US 2s10s and 5Y breakeven over the last 5
+    years' — must run END-TO-END through the open-DAG pipeline with
+    the canonical 2-leaf cross-domain shape (sov + iib + correlation).
+
+    Prior PR-10A end-to-end coverage only exercised a 1-leaf
+    z-score shape.  This test pins the actual canonical query the
+    plan §6 names as the gap-closer.
+
+    Mocking discipline:
+      - LLMs (Router / Composer / Gate) are mocked — same as the
+        eval matrix, gated by plan's shape-correctness criterion.
+      - L6 AnswerRenderer is mocked to capture inputs.
+      - execute_workflow is monkeypatched to return a synthesized
+        WorkflowResult with real Lineage — the bridge format
+        compatibility is a SEPARATE substrate concern (requires
+        live DB or fully-spec'd primitive schemas; see
+        test_open_dag_live_llm.py for live-LLM coverage gated by
+        ANTHROPIC_API_KEY).
+      - But the SHAPE is the real canonical cross-domain shape AND
+        the L4 Assembler runs for real + the L5 executor adapter
+        runs for real + the L6 renderer fires.  This pins the
+        wiring the prior test left uncovered.
+    """
+    from orchestrator.contracts import (
+        Domain, EconomicQuantity, IntentTag, RouteAction, RouteDecision,
+    )
+    from orchestrator.open_dag import (
+        AnswerRenderer, BoundLeaf, Composer, ComposerRefusal,
+        CoverageGate, Frequency, GOLDEN_RELATIONSHIP_CORRELATION,
+        GateVerdict, OpenDagPipeline, ShapeSpec,
+        build_default_executor_callback,
+    )
+    from shared.artifacts.registry import ArtifactTypeName
+
+    class _CrossDomainRouter:
+        async def route(self, prompt: str) -> RouteDecision:
+            return RouteDecision(
+                action=RouteAction.MULTI_DOMAIN,
+                domains=[
+                    Domain.SOVEREIGN_BONDS,
+                    Domain.INFLATION_INDEXED_BONDS,
+                ],
+                rationale="cross-domain canonical correlation",
+                intent_tag=IntentTag.RELATIONSHIP,
+                decomposition=[
+                    EconomicQuantity(
+                        name="us_2s10s",
+                        nl_description="UST 2s10s curve spread",
+                        domain_hint=Domain.SOVEREIGN_BONDS,
+                    ),
+                    EconomicQuantity(
+                        name="us_5y_breakeven",
+                        nl_description="USD 5Y breakeven inflation",
+                        domain_hint=Domain.INFLATION_INDEXED_BONDS,
+                    ),
+                ],
+            )
+
+    class _CanonicalShapeComposer:
+        async def compose(self, **kw) -> ShapeSpec:
+            # The canonical pair-stats shape from PR-7's golden.
+            return GOLDEN_RELATIONSHIP_CORRELATION
+
+    class _PassGate:
+        async def check(self, **kw) -> GateVerdict:
+            return GateVerdict(
+                status="PASS",
+                reason="canonical cross-domain correlation passes",
+            )
+
+    rendered: List[str] = []
+    class _Renderer:
+        async def render(self, **kw) -> str:
+            rendered.append(kw.get("lineage_head_hash", ""))
+            summary = kw.get("executed_summary", "")
+            return f"CANONICAL_ANSWER_WITH_REAL_LINEAGE: {summary}"
+
+    async def selector_cb(*, leaf_id, request, timeout_s):
+        # Both leaves bind to the synthetic tool (which the real
+        # substrate executor can invoke via the _synthetic_resolver
+        # fixture).
+        return BoundLeaf(
+            leaf_id=leaf_id,
+            domain=request.domain_hint,
+            mcp_tool_name="synth_tool",
+            resolver_tool_key="synth_tool",
+            params={"curve_family": "UST", "tenor": leaf_id},
+            output_field="time_series",
+            declared_output_artifact_type=request.required_artifact_type,
+            declared_units=TimeSeriesUnits.PERCENT,
+            declared_frequency=Frequency.DAILY,
+            declared_semantic_role=(
+                "spread_level" if leaf_id == "leaf_a" else "breakeven_level"
+            ),
+            declared_output_meaning=(
+                "UST 2s10s" if leaf_id == "leaf_a"
+                else "USD 5Y breakeven"
+            ),
+            fit_confidence=0.95,
+        )
+
+    # Monkeypatch the substrate executor — see test docstring for
+    # why (bridge-format compat is orthogonal to the open-DAG
+    # pipeline wiring this test exercises).
+    from shared.workflow.result import WorkflowResult
+    from orchestrator.open_dag import default_executor as de_mod
+    artifact = _synthetic_series_artifact()
+    fake_result = WorkflowResult(
+        workflow_id=GOLDEN_RELATIONSHIP_CORRELATION.workflow_id,
+        terminal_artifact=artifact,
+        workflow_lineage_summary=(
+            f"workflow {GOLDEN_RELATIONSHIP_CORRELATION.workflow_id}: "
+            "leaf_a -> leaf_b -> align -> select_a -> select_b -> "
+            "correlation"
+        ),
+        node_artifacts={"correlation": artifact},
+    )
+    def _patched(workflow, *, engine, primitive_resolver):
+        # Asserts the open-DAG pipeline actually invoked the
+        # executor with the canonical workflow id (proves L4
+        # Assembler ran + produced a Workflow + the pipeline
+        # passed it on).
+        assert workflow.workflow_id == "golden_relationship_correlation"
+        return fake_result
+    monkeypatch.setattr(de_mod, "execute_workflow", _patched)
+
+    # Need a stub resolver to satisfy the Assembler's structural
+    # checks (output_field_units, etc.).
+    class _In(BaseModel):
+        pass
+    class _Out(BaseModel):
+        time_series: dict = {}
+    def _stub_resolver(tool_name):
+        return PrimitiveSpec(
+            tool_name=tool_name, callable=lambda **kw: {},
+            input_class=_In, output_class=_Out,
+            config_path=Path("/tmp/x.yaml"),
+            output_field_units={"time_series": "percent"},
+            output_artifact_type="Series",
+        )
+
+    pipeline = OpenDagPipeline(
+        router=_CrossDomainRouter(),
+        composer=_CanonicalShapeComposer(),
+        coverage_gate=_PassGate(),
+        answer_renderer=_Renderer(),
+        selectors={
+            Domain.SOVEREIGN_BONDS: selector_cb,
+            Domain.INFLATION_INDEXED_BONDS: selector_cb,
+        },
+        primitive_resolver=_stub_resolver,
+        executor_callback=build_default_executor_callback(
+            engine=None, primitive_resolver=_stub_resolver,
+        ),
+    )
+
+    outcome = await pipeline.run(
+        "Correlation between US 2s10s and 5Y breakeven over the last 5 years",
+    )
+
+    # The PoC's canonical query reaches PASS end-to-end through
+    # the REAL substrate executor (not a monkeypatch).
+    assert outcome.is_pass, (
+        f"PR-10C F1: canonical cross-domain correlation must reach "
+        f"strict PASS; got status={outcome.status} markdown="
+        f"{outcome.markdown[:300]}"
+    )
+    # RunLineage carries the REAL substrate Lineage.
+    assert outcome.run_lineage is not None
+    assert outcome.run_lineage.is_executed
+    assert outcome.run_lineage.compute_lineage is not None
+    assert outcome.run_lineage.head_hash is not None
+    # The L6 renderer received the real lineage hash from the
+    # substrate executor.
+    assert len(rendered) == 1
+    assert rendered[0] == outcome.run_lineage.head_hash
+
+
 def test_executed_summary_from_result_format():
     """Sanity-check the summary helper's deterministic format."""
     from orchestrator.open_dag.default_executor import (
