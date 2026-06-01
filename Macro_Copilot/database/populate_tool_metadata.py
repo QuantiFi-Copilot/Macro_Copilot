@@ -113,10 +113,20 @@ _TOOL_NAME_ALIASES: Dict[str, str] = {
         "calculate_yield_change_attribution_pca_tool"
     ),
     "zscore_custom_tool": "calculate_zscore_custom_tool",
-    # Verb mismatch — manifesto emits the ``calculate_`` form; backend
-    # registry uses ``get_`` because the OIS rate-level tool is a
-    # snapshot-only primitive (no compute).
-    "calculate_ois_rate_level_tool": "get_ois_rate_level_tool",
+    # PR-10F gap #1 backend renames — manifesto emits the un-prefixed
+    # form; _PRIMITIVE_SPECS keys carry the get_/policy_futures_ prefix.
+    "scan_inflation_linkers_extremes_tool": (
+        "get_scan_inflation_linkers_extremes_tool"
+    ),
+    "scan_inflation_swaps_extremes_tool": (
+        "get_scan_inflation_swaps_extremes_tool"
+    ),
+    "build_policy_futures_strip_panel_tool": (
+        "policy_futures_build_policy_futures_strip_panel_tool"
+    ),
+    "get_scan_policy_futures_extremes_tool": (
+        "policy_futures_get_scan_policy_futures_extremes_tool"
+    ),
 }
 
 

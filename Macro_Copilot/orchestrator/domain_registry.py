@@ -71,9 +71,15 @@ logger = logging.getLogger(__name__)
 class DomainSpec:
     """Frozen record holding one domain's discovered metadata.
 
-    All five fields are required for a folder to be classified as a
+    All eight fields are required for a folder to be classified as a
     domain.  Folders missing any required field are skipped at
     discovery (with a logger.warning).
+
+    PR-10G gap #3: the last three fields hold the LLM-facing
+    per-domain content (AVAILABLE DOMAINS card, DOMAIN SIGNALS bullet,
+    full child SYSTEM_PROMPT body).  Migrating them onto the domain
+    folder makes adding the Nth domain a true registration-only
+    operation — no prompt-file edits.
     """
 
     domain_id: str
@@ -81,6 +87,11 @@ class DomainSpec:
     mcp_server_module: str
     mcp_client_key: str
     resolver_key_convention: Literal["bare", "prefixed"]
+    # PR-10G gap #3 — LLM-facing per-domain content the SUPERVISOR
+    # template + the child SYSTEM_PROMPT are rebuilt from.
+    domain_card: str
+    domain_signals: str
+    child_system_prompt: str
 
 
 # ============================================================================
@@ -94,6 +105,12 @@ _REQUIRED_CONSTANTS = (
     "__mcp_server_module__",
     "__mcp_client_key__",
     "__resolver_key_convention__",
+    # PR-10G gap #3 — LLM-facing per-domain content.  Required so
+    # adding the Nth domain needs zero edits to orchestrator/prompts.py
+    # or orchestrator/session.py.
+    "__domain_card__",
+    "__domain_signals__",
+    "__domain_child_prompt__",
 )
 
 
@@ -150,6 +167,9 @@ def _discover_domains() -> Dict[str, DomainSpec]:
             resolver_key_convention=getattr(
                 mod, "__resolver_key_convention__",
             ),
+            domain_card=getattr(mod, "__domain_card__"),
+            domain_signals=getattr(mod, "__domain_signals__"),
+            child_system_prompt=getattr(mod, "__domain_child_prompt__"),
         )
         if spec.resolver_key_convention not in ("bare", "prefixed"):
             logger.warning(

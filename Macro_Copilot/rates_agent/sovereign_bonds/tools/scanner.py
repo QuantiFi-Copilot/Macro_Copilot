@@ -30,6 +30,7 @@ output-schema assembly.
 from __future__ import annotations
 
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -58,6 +59,17 @@ from shared.analytics.spreads import (
 # ============================================================================
 
 _INSTRUMENT_TYPE = "sovereign_benchmark"
+
+
+# PR-10G gap #4 — stub CONFIG_PATH so the workflow registry's
+# PrimitiveSpec(config_path=...) has a typed Path to point at.
+# scanner.py predates the per-tool-folder convention and has no
+# bundled config.yaml; the file does NOT need to exist on disk
+# because the open-DAG composability audit classifies this primitive
+# as TERMINAL_ONLY_SNAPSHOT (output_field_units={}) and the executor
+# refuses to bridge it.  load_tool_config(CONFIG_PATH) is never
+# invoked in production for this primitive.
+CONFIG_PATH: Path = Path(__file__).resolve().parent / "scanner_config.yaml"
 
 
 # ============================================================================

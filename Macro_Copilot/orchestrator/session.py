@@ -86,15 +86,8 @@ from orchestrator.contracts import (
 )
 from orchestrator.domain_agent import DomainAgentSession
 from orchestrator.events import SessionEvent, extract_workspace_context
-from orchestrator.prompts import (
-    BOND_FUTURES_SYSTEM_PROMPT,
-    INFLATION_INDEXED_BONDS_SYSTEM_PROMPT,
-    INFLATION_SWAPS_SYSTEM_PROMPT,
-    OIS_SYSTEM_PROMPT,
-    POLICY_FUTURES_SYSTEM_PROMPT,
-    SOVEREIGN_BONDS_SYSTEM_PROMPT,
-    render_routing_prefix,
-)
+from orchestrator.domain_registry import DOMAIN_SPECS as _DOMAIN_SPECS
+from orchestrator.prompts import render_routing_prefix
 from orchestrator.supervisor import Supervisor
 from orchestrator.workflow_contracts import (
     WorkflowExecutionResult,
@@ -109,16 +102,20 @@ logger = logging.getLogger("orchestrator.session")
 # ============================================================================
 # DOMAIN → SYSTEM PROMPT MAPPING
 # ============================================================================
-# Single source of truth for which prompt each child agent uses.  Adding a
-# new domain = add entry here + in DOMAIN_MCP_SERVERS + in contracts.Domain.
+# PR-10G gap #3: built at module-import time from
+# ``orchestrator.domain_registry.DOMAIN_SPECS``.  Each domain folder
+# (``rates_agent/<domain>/__init__.py``) declares its own
+# ``__domain_child_prompt__`` constant.  Adding the Nth domain is a
+# single-folder operation — no edit to this file.
+#
+# The dict is keyed by the Domain enum so existing
+# ``Domain.SOVEREIGN_BONDS``-style lookups across the codebase keep
+# working.  The enum's member names match ``spec.domain_id.upper()`` by
+# construction (see ``orchestrator.contracts`` PR-10F enum derivation).
 
 _DOMAIN_PROMPTS: dict[Domain, str] = {
-    Domain.SOVEREIGN_BONDS: SOVEREIGN_BONDS_SYSTEM_PROMPT,
-    Domain.OIS: OIS_SYSTEM_PROMPT,
-    Domain.INFLATION_INDEXED_BONDS: INFLATION_INDEXED_BONDS_SYSTEM_PROMPT,
-    Domain.INFLATION_SWAPS: INFLATION_SWAPS_SYSTEM_PROMPT,
-    Domain.POLICY_FUTURES: POLICY_FUTURES_SYSTEM_PROMPT,
-    Domain.BOND_FUTURES: BOND_FUTURES_SYSTEM_PROMPT,
+    Domain[spec.domain_id.upper()]: spec.child_system_prompt
+    for spec in _DOMAIN_SPECS.values()
 }
 
 

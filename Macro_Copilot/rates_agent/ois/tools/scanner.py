@@ -29,6 +29,7 @@ output-schema assembly.
 from __future__ import annotations
 
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -57,6 +58,12 @@ from shared.analytics.spreads import (
 # ============================================================================
 
 _INSTRUMENT_TYPE = "ois_swap"
+
+
+# PR-10G gap #4 — stub CONFIG_PATH; see sovereign scanner.py for the
+# full rationale.  TERMINAL_ONLY_SNAPSHOT primitive; load_tool_config
+# is never invoked because the open-DAG executor refuses to bridge it.
+CONFIG_PATH: Path = Path(__file__).resolve().parent / "ois_scanner_config.yaml"
 
 
 # ============================================================================

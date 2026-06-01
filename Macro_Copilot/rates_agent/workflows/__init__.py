@@ -70,6 +70,24 @@ from rates_agent.ois.tools.swap_spread import (
     SwapSpreadOutput,
     calculate_swap_spread,
 )
+# PR-10G gap #4 — two flat-file scanners (predating the per-tool-folder
+# convention) registered as TERMINAL_ONLY_SNAPSHOT entries.
+from rates_agent.sovereign_bonds.tools.scanner import (
+    CONFIG_PATH as SOV_SCANNER_CONFIG_PATH,
+    scan_extremes,
+)
+from rates_agent.sovereign_bonds.tools.schemas.scanner import (
+    ScannerInput,
+    ScannerOutput,
+)
+from rates_agent.ois.tools.scanner import (
+    CONFIG_PATH as OIS_SCANNER_CONFIG_PATH,
+    scan_ois_extremes,
+)
+from rates_agent.ois.tools.schemas.scanner import (
+    OISScannerInput,
+    OISScannerOutput,
+)
 from rates_agent.sovereign_bonds.tools.curve_spread import (
     CONFIG_PATH as SOV_CURVE_SPREAD_CONFIG_PATH,
     CurveSpreadInput,
@@ -1212,6 +1230,29 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         input_class=ScanInflationSwapsExtremesInput,
         output_class=ScanInflationSwapsExtremesOutput,
         config_path=SCAN_INFLATION_SWAPS_EXTREMES_CONFIG_PATH,
+        output_field_units={},
+    ),
+    # PR-10G gap #4 — flat-file scanners registered as
+    # TERMINAL_ONLY_SNAPSHOT (output_field_units={}) so the open-DAG
+    # composability audit classifies them honestly and the catalogue
+    # reports an explicit "snapshot-shape, cannot bridge" drop reason
+    # instead of a misleading "registration drift" diagnostic.  The
+    # MCP-tool surface (scan_extremes_tool / scan_ois_extremes_tool)
+    # remains live for the legacy domain-agent ReAct path.
+    "scan_extremes_tool": PrimitiveSpec(
+        tool_name="scan_extremes_tool",
+        callable=scan_extremes,
+        input_class=ScannerInput,
+        output_class=ScannerOutput,
+        config_path=SOV_SCANNER_CONFIG_PATH,
+        output_field_units={},
+    ),
+    "scan_ois_extremes_tool": PrimitiveSpec(
+        tool_name="scan_ois_extremes_tool",
+        callable=scan_ois_extremes,
+        input_class=OISScannerInput,
+        output_class=OISScannerOutput,
+        config_path=OIS_SCANNER_CONFIG_PATH,
         output_field_units={},
     ),
 }
