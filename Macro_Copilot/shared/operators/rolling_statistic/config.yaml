@@ -91,6 +91,7 @@ card:
     - "User asks for rolling min / max / range building blocks (statistic='min' or 'max')."
     - "User asks for rolling sum / aggregate (statistic='sum')."
   when_not_to_use:
+    - "If the user wants a SINGLE-NUMBER full-sample summary (the mean / std / sum / median of X over the whole period, ONE scalar — not a value per date), use summarize_series.  rolling_statistic emits a Series over time (one value PER DATE); it is the WRONG operator for 'what is the average of X over 5 years' (that is a single scalar → summarize_series)."
     - "If the user wants the value STANDARDISED vs that rolling stat, use rolling_zscore (combines mean/std into a z)."
     - "If the user wants the percentile RANK of the latest value, use percentile_rank."
     - "If the user wants a per-event panel summary, use event_windows + conditional_aggregate."

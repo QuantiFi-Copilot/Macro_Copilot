@@ -1100,20 +1100,22 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
             "series": SlotDescriptor.of(
                 "Series",
                 (
-                    "Single typed Series to collapse to one scalar "
-                    "summary via params.statistic (mean, median, std, "
-                    "min, max, last, first, count, sum).  USE this slot "
-                    "when the user wants a per-regime number that will "
-                    "be COMPARED against another regime's number — "
-                    "e.g. 'mean spread in tightening vs cutting' is "
-                    "two apply_mask -> summarize_series -> "
-                    "series_arithmetic(subtract) chains.  The 1-row "
-                    "Series output (at a fixed sentinel date) preserves "
-                    "the Series-only type discipline so it can feed "
-                    "back into Series-consuming operators.  DO NOT use "
-                    "for full Series histories (use the Series itself); "
-                    "DO NOT use for cross-series summaries (this is "
-                    "single-Series only)."
+                    "Single typed Series to collapse to ONE scalar "
+                    "full-sample summary via params.statistic — exactly "
+                    "{mean, median, std, sum, count} (NO min/max/last/"
+                    "first; use rolling_statistic for min/max as a "
+                    "rolling Series).  PRIMARY use: a plain descriptive "
+                    "summary ('the mean / std / median of X over the "
+                    "period') — summarize_series is the terminal, one "
+                    "number out.  SECONDARY use: a per-regime number "
+                    "compared against another regime via apply_mask -> "
+                    "summarize_series -> series_arithmetic(subtract).  "
+                    "The 1-row Series output (at a fixed sentinel date) "
+                    "preserves the Series-only type discipline so it can "
+                    "feed back into Series-consuming operators.  DO NOT "
+                    "use for a value-per-date rolling statistic (that is "
+                    "rolling_statistic); DO NOT use for cross-series "
+                    "summaries (single-Series only)."
                 ),
             ),
         },

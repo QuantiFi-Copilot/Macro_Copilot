@@ -1030,7 +1030,7 @@ class Composer:
     def __init__(
         self,
         *,
-        model_name: str = "claude-sonnet-4-5",
+        model_name: str = "claude-opus-4-6",
         temperature: float = 0.0,
         max_tokens: int = 4096,
     ) -> None:

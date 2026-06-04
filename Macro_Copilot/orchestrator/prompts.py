@@ -845,8 +845,11 @@ The canonical "two input series → one statistic" shape is:
         |   (one edge to each of two select_from_series_set nodes)
         v
     [select_a, select_b]  (operator_name=select_from_series_set;
-                           params={"key": "<leaf_a's node_id>"} and
-                                  {"key": "<leaf_b's node_id>"})
+                           params={"series_key": "<leaf_a's node_id>"} and
+                                  {"series_key": "<leaf_b's node_id>"})
+            (the param key is ``series_key`` — NOT ``key``; and it must
+             match a key in align_series's ``output_keys`` list, which
+             you set to the two leaf node_ids)
         |             |
         v             v
         <pair-stats operator>
@@ -881,6 +884,63 @@ becomes the EventSet (via threshold_events), the other goes straight \
 into the ``target`` slot of event_windows.  Do NOT route the target \
 through align_series + select.
 
+THE SUMMARY DISCIPLINE (FOR DESCRIPTIVE STATISTICS — "what is the \
+mean / std / median / average of X over the period")
+
+When the user asks for a SINGLE-NUMBER summary statistic of one series \
+(NOT a value-per-date time series), the operator is ``summarize_series`` \
+— it collapses a whole Series to one scalar summary.  The canonical \
+shape is a 1-leaf chain with summarize_series AS THE TERMINAL:
+
+    leaf_input -> summarize_series(statistic=<mean|median|std|sum|count>)
+        -> Series (1-row scalar summary)   [terminal_node_id = the summarize node]
+
+  - "average / mean of X"            → summarize_series(statistic='mean')
+  - "standard deviation / vol of X"  → summarize_series(statistic='std')
+  - "median / sum / count of X"      → summarize_series(statistic='median'|'sum'|'count')
+
+CRITICAL — do NOT use ``rolling_statistic`` for a single-number \
+summary.  rolling_statistic emits a Series OVER TIME (one value per \
+date — a moving average); summarize_series emits ONE value.  "Average \
+of X over the last 5 years" is ONE number → summarize_series, NOT a \
+rolling curve.
+
+MEAN AND STD TOGETHER: one summarize_series node with \
+``statistic='mean'`` AND ``dispersion='std'`` surfaces BOTH numbers \
+(the dispersion is computed + reported alongside the mean).  Use this \
+single node for "mean and std of X".
+
+MULTIPLE / UNSUPPORTED STATISTICS (the honest limit): the catalogue \
+has NO multi-statistic bundler, and a ShapeSpec has exactly ONE \
+terminal, so a single DAG CANNOT co-emit three-plus arbitrary \
+statistics, nor min/max (summarize_series.statistic is \
+{mean,median,std,sum,count} — no min/max).  When the user asks for \
+more than mean+std together (e.g. "mean, median, AND std", or "min \
+AND max"), do ONE of: (a) emit the single most important statistic as \
+the terminal and note the others are not bundled, or (b) REFUSE with \
+``refusal=`` naming the limit ("a single composed DAG can return one \
+summary statistic (or mean+std together via dispersion); <the others> \
+would need separate runs or a future multi-statistic operator").  Do \
+NOT fabricate a multi-output shape by stacking rolling_statistic nodes \
+— that produces rolling time series, not the scalars the user asked \
+for, and only one would reach the single terminal.
+
+THE ANALYSIS WINDOW ("over the last 5 years", "since 2020") IS NOT A \
+SHAPESPEC FIELD
+
+The sample span / lookback / date range a user mentions ("over the \
+last 5 years", "since 2020", "trailing 3 years") is NOT encoded \
+anywhere in the ShapeSpec.  There is no leaf field and no operator \
+knob for it.  Express the span in the LeafHole's ``nl_intent`` string \
+(e.g. "fetch the US 2s10s spread Series over the last 5 years") — the \
+per-domain Selector scopes the data fetch from that natural-language \
+intent.  Do NOT confuse this with an operator ``window`` knob: a \
+rolling operator's ``window`` is the TRAILING-WINDOW LENGTH for the \
+rolling computation (e.g. a 60-day rolling correlation), NOT the \
+overall sample span.  A "60-day rolling correlation over 5 years" has \
+BOTH: window=60 on the operator AND "over 5 years" in the leaf \
+nl_intent.
+
 DECOMPOSITION → LEAF-HOLES MAPPING
 
 For each entry in the L1 decomposition that represents an INPUT \
@@ -895,7 +955,15 @@ or WindowedPanel — those are operator outputs, not primitive outputs.
 demands a specific unit.  Default to null and let the operator chain \
 handle unit conversion via the convert_units adapter.
   - ``expected_frequency``: pin to daily / weekly / monthly only when \
-the analytical step requires a specific cadence.  Default to null.
+the analytical step requires a specific cadence; default to null.  \
+NOTE the pair-stats exception: align_series defaults to \
+``require_matching_frequency=true``, so when two leaves feed \
+align_series (correlation / rolling_correlation / cointegration / \
+rolling_regression) you SHOULD pin both leaves to the same cadence \
+(``daily`` is the default for these) — that is why the golden \
+pair-stats few-shots pin ``daily``.  For single-leaf shapes \
+(summary / transform / lookup) leave it null unless the operator \
+needs a specific cadence.
   - ``domain_hint``: copy the decomposition entry's ``domain_hint`` \
 verbatim.  This is how the Assembler routes the LeafRequest to the \
 correct per-domain Selector.
@@ -921,11 +989,20 @@ LOOKUP phrasing includes a comparative or ranking ("where is X in its \
 1-year range?", "richness of Y vs its history", "X vs its 252-day \
 percentile"), the answer involves applying a single-series TRANSFORM \
 operator on top of the leaf.  In those cases emit one LeafHole + one \
-TRANSFORM operator (percentile_rank for percentile / ranking phrasings; \
-rolling_zscore for "vs history in standard deviations" phrasings; \
-rolling_statistic for explicit moving averages or ranges) with \
-terminal_node_id = the operator's node_id.  The leaf carries the input \
-Series; the operator carries the comparative.
+operator with terminal_node_id = the operator's node_id:
+      * percentile_rank — for percentile / ranking / "where in its \
+range" phrasings.
+      * rolling_zscore — for "vs history in standard deviations" / \
+"how rich/cheap vs history" phrasings.
+      * rolling_statistic — for an explicit ROLLING / MOVING average / \
+rolling vol AS A TIME SERIES (value per date).
+      * summarize_series — for a SINGLE-NUMBER descriptive summary \
+("the average / mean / std / median of X over the period", a scalar, \
+NOT a per-date series).  See THE SUMMARY DISCIPLINE above.  Do NOT \
+reach for rolling_statistic when the user wants one scalar — that is \
+the most common Composer mistake on summary queries.
+The leaf carries the input Series; the operator carries the \
+comparative / summary.
   - intent_tag = scan: scanners that return a ranked snapshot live \
 INSIDE per-domain primitives and are classified TERMINAL_ONLY_SNAPSHOT \
 by the PR-3 composability audit (and excluded from the L2 Selector \

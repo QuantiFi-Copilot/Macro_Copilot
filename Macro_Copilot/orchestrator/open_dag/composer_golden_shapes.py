@@ -537,12 +537,66 @@ def _build_rolling_zscore_shape() -> ShapeSpec:
 # ============================================================================
 
 
+# ============================================================================
+# GOLDEN #7 — SUMMARY (single-number descriptive statistic)
+# ============================================================================
+#
+# Shape: 1 leaf -> summarize_series -> Series (1-row scalar summary).
+# The canonical "what is the mean / std / median of X over the period"
+# shape.  summarize_series is the TERMINAL — no further wiring.  This
+# few-shot exists because both Sonnet and Opus, lacking it, reached for
+# rolling_statistic (a rolling time series) for plain scalar-summary
+# requests — the single most common Composer mistake on summary queries
+# (diagnosed via a 12-agent opus fan-out, 2026-06).  ``dispersion='std'``
+# makes the one node surface BOTH the mean and the standard deviation,
+# so "mean and std of X" is answered by this exact shape.
+
+
+def _build_summary_single_stat_shape() -> ShapeSpec:
+    leaf = _leaf_hole(
+        node_id="leaf_input",
+        domain_hint="sovereign_bonds",
+        semantic_role="input_series",
+        requested_output_meaning=(
+            "input series whose full-sample summary statistic the user "
+            "wants as a single number"
+        ),
+        nl_intent=(
+            "fetch the input Series whose mean / standard deviation over "
+            "the requested period the user wants summarised"
+        ),
+    )
+    summarize = OperatorNode(
+        node_id="summarize",
+        operator_name="summarize_series",
+        # statistic='mean' + dispersion='std' surfaces BOTH the mean and
+        # the standard deviation from one node (the sanctioned answer to
+        # "mean and std of X").
+        params={"statistic": "mean", "dispersion": "std"},
+    )
+    edges = [
+        WorkflowEdge(
+            source_node_id="leaf_input",
+            target_node_id="summarize",
+            target_input_slot="series",
+        ),
+    ]
+    return ShapeSpec(
+        workflow_id="golden_summary_single_stat",
+        nodes=[leaf, summarize],
+        edges=edges,
+        literal_bindings=[],
+        terminal_node_id="summarize",
+    )
+
+
 GOLDEN_RELATIONSHIP_CORRELATION: ShapeSpec = _build_correlation_shape()
 GOLDEN_RELATIONSHIP_ROLLING_CORRELATION: ShapeSpec = _build_rolling_correlation_shape()
 GOLDEN_COINTEGRATION: ShapeSpec = _build_cointegration_shape()
 GOLDEN_REGRESSION_ROLLING_BETA: ShapeSpec = _build_rolling_regression_shape()
 GOLDEN_EVENT_REGIME: ShapeSpec = _build_event_regime_shape()
 GOLDEN_TRANSFORM_ROLLING_ZSCORE: ShapeSpec = _build_rolling_zscore_shape()
+GOLDEN_SUMMARY_SINGLE_STAT: ShapeSpec = _build_summary_single_stat_shape()
 
 
 # Map IntentTag → preferred golden shape.  When two IntentTags share a
@@ -555,6 +609,13 @@ GOLDEN_SHAPES_BY_INTENT: Dict[IntentTag, ShapeSpec] = {
     IntentTag.REGRESSION: GOLDEN_REGRESSION_ROLLING_BETA,
     IntentTag.EVENT_REGIME: GOLDEN_EVENT_REGIME,
     IntentTag.TRANSFORM: GOLDEN_TRANSFORM_ROLLING_ZSCORE,
+    # LOOKUP covers both the bare-leaf "current value" case and the
+    # single-number descriptive summary ("mean/std of X over the
+    # period").  The summary golden is the canonical example for the
+    # latter — added after the 12-agent opus diagnosis showed the
+    # summary shape had NO worked example and the LLM defaulted to
+    # rolling_statistic (wrong: a time series, not a scalar).
+    IntentTag.LOOKUP: GOLDEN_SUMMARY_SINGLE_STAT,
 }
 
 
@@ -568,6 +629,7 @@ GOLDEN_SHAPES: List[ShapeSpec] = [
     GOLDEN_REGRESSION_ROLLING_BETA,
     GOLDEN_EVENT_REGIME,
     GOLDEN_TRANSFORM_ROLLING_ZSCORE,
+    GOLDEN_SUMMARY_SINGLE_STAT,
 ]
 
 
@@ -736,6 +798,7 @@ __all__ = [
     "GOLDEN_REGRESSION_ROLLING_BETA",
     "GOLDEN_EVENT_REGIME",
     "GOLDEN_TRANSFORM_ROLLING_ZSCORE",
+    "GOLDEN_SUMMARY_SINGLE_STAT",
     "GOLDEN_SHAPES_BY_INTENT",
     "GOLDEN_SHAPES",
     "render_shape_for_prompt",
