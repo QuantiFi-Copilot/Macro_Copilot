@@ -163,6 +163,12 @@ class TestSelfCorrectsShapeMismatch:
         # The 2nd compose carried a correction; the 1st did not.
         assert composer.corrections[0] is None
         assert composer.corrections[1] and "shape" in composer.corrections[1].lower()
+        # Plan D9: the audit trace records the one self-correction.
+        assert len(outcome.recompose_trace) == 1
+        step = outcome.recompose_trace[0]
+        assert step.attempt == 0
+        assert step.failed_status == "ASSEMBLY_REFUSE"
+        assert step.reason
 
     async def test_persistent_wrong_shape_hard_blocks_and_never_executes(self):
         # Both attempts produce a Series terminal vs expected ['scalar'].
@@ -203,6 +209,9 @@ class TestSelfCorrectsGateRefuse:
         assert composer.calls == 2
         assert gate.calls == 2
         assert composer.corrections[1]  # reason threaded into re-compose
+        # Plan D9: trace records the gate-refuse → re-compose event.
+        assert len(outcome.recompose_trace) == 1
+        assert outcome.recompose_trace[0].failed_status == "GATE_REFUSE"
 
     async def test_gate_refuse_twice_hard_blocks_and_never_executes(self):
         composer = _SequenceComposer([GOLDEN_SUMMARY_SINGLE_STAT])
@@ -258,3 +267,5 @@ class TestBudgetAndUnconstrained:
         assert outcome.status == "PASS_DRYRUN"
         assert composer.calls == 1
         assert composer.corrections == [None]
+        # Plan D9: no self-correction → empty trace.
+        assert outcome.recompose_trace == ()

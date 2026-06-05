@@ -159,6 +159,29 @@ PipelineStatus = Literal[
 ]
 
 
+class RecomposeStep(BaseModel):
+    """One bounded self-correction event (orchestration-upgrade plan
+    D1/D9): a prior attempt failed recomposably and the composer was
+    re-run with a specific reason.  Recorded for the audit trail (the
+    build page's self-correction surface) so a PM can SEE the system
+    caught + corrected its own mistake before answering."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    attempt: int = Field(
+        ..., ge=0,
+        description="0-based index of the attempt that failed and triggered this re-compose.",
+    )
+    failed_status: str = Field(
+        ...,
+        description="The recomposable status of the failed attempt (GATE_REFUSE / ASSEMBLY_REFUSE).",
+    )
+    reason: str = Field(
+        ..., min_length=1,
+        description="The specific correction seed fed into the re-compose.",
+    )
+
+
 class PipelineOutcome(BaseModel):
     """The typed outcome of one OpenDagPipeline.run() call.
 
@@ -243,6 +266,18 @@ class PipelineOutcome(BaseModel):
             "event).  Populated only on ``status == 'PASS'`` AND when "
             "the executor callback returned successfully; ``None`` on "
             "every other path (dry-run, refusals, executor failure)."
+        ),
+    )
+    recompose_trace: Tuple[RecomposeStep, ...] = Field(
+        default=(),
+        description=(
+            "Plan D1/D9: the bounded self-correction trace — one entry "
+            "per re-compose the loop performed (empty when the first "
+            "attempt succeeded or failed non-recomposably).  Each entry "
+            "records the failed attempt's status + the reason fed into "
+            "the re-compose.  The audit foundation for the build page's "
+            "'self-correction' surface (the workspace-persist + frontend "
+            "rendering land in the credit/UI phase)."
         ),
     )
 
@@ -515,8 +550,10 @@ class OpenDagPipeline:
 
         # ---- L3→L6 attempt, with bounded re-compose (plan D1/D3) ----
         correction: Optional[str] = None
+        recompose_steps: list[RecomposeStep] = []
         attempts_remaining = 1 + self._recompose_budget
         outcome: Optional[PipelineOutcome] = None
+        attempt_index = 0
         while attempts_remaining > 0:
             attempts_remaining -= 1
             outcome = await self._attempt(
@@ -528,17 +565,31 @@ class OpenDagPipeline:
                 outcome.status not in _RECOMPOSABLE_STATUSES
                 or attempts_remaining == 0
             ):
-                return outcome
+                break
             # Fixable failure + budget remains → ONE reason-seeded
             # re-compose.  The hard-block floor still applies if the
             # re-composed DAG fails again.
             correction = self._derive_correction(outcome)
+            recompose_steps.append(
+                RecomposeStep(
+                    attempt=attempt_index,
+                    failed_status=outcome.status,
+                    reason=correction,
+                )
+            )
+            attempt_index += 1
             logger.info(
                 "OpenDagPipeline: self-correction — re-composing once "
                 "(prior status=%s; reason: %s)",
                 outcome.status, (correction or "")[:160],
             )
         assert outcome is not None  # loop runs at least once
+        # Plan D9: stamp the self-correction trace on the final outcome
+        # (audit foundation; persist + render land in the credit/UI phase).
+        if recompose_steps:
+            outcome = outcome.model_copy(
+                update={"recompose_trace": tuple(recompose_steps)}
+            )
         return outcome
 
     async def _attempt(
