@@ -154,10 +154,17 @@ async def execute_workflow_async(
             ),
         )
     except Exception:
+        # Plan D4: a typed execute-time failure — an operator error such
+        # as rolling_zscore's all-NaN (rolling window >= available rows),
+        # or a primitive input bound out of range — is RECOVERABLE.
+        # PROPAGATE it so the pipeline can route it into the bounded
+        # self-correction loop with the reason (instead of a dead
+        # PIPELINE_ERROR).  The rare ExecutedDag-build failure below still
+        # returns None (an internal, non-recoverable condition).
         logger.exception(
             "default executor: execute_workflow raised",
         )
-        return None
+        raise
 
     try:
         return ExecutedDag.from_workflow_result(result)

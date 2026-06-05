@@ -94,6 +94,20 @@ class _RecordingExecutor:
         return None
 
 
+class _RaisingExecutor:
+    """Mimics the production default_executor on a typed execute-time
+    failure (plan D4): RAISES (carrying the reason) instead of returning
+    None.  The pipeline routes this into the self-correction loop."""
+
+    def __init__(self, msg: str = "RollingZscoreError: produced an all-NaN output (252 rows, window=252)"):
+        self.calls = 0
+        self._msg = msg
+
+    async def __call__(self, workflow, bound_leaves):
+        self.calls += 1
+        raise RuntimeError(self._msg)
+
+
 def _route(expected_shape: List[str]) -> RouteDecision:
     return RouteDecision(
         action=RouteAction.SINGLE_DOMAIN,
@@ -231,6 +245,54 @@ class TestSelfCorrectsGateRefuse:
 # ============================================================================
 # 3. Budget + unconstrained behavior
 # ============================================================================
+
+
+class TestSelfCorrectsExecutionError:
+    """Plan D4: a typed execute-time failure (e.g. z-score all-NaN) is
+    routed into the self-correction loop, then hard-blocks — it does NOT
+    dead-end as PIPELINE_ERROR, and it never ships a wrong answer."""
+
+    async def test_execution_error_routes_to_recompose_then_hard_blocks(self):
+        composer = _SequenceComposer([GOLDEN_SUMMARY_SINGLE_STAT])  # valid shape; gate PASSes
+        executor = _RaisingExecutor()
+        pipe = _pipeline_for(
+            _route(["scalar"]),
+            composer=composer,
+            gate=_SequenceGate([_PASS]),
+            executor=executor,
+        )
+        outcome = await pipe.run("Z-score of US 2s10s vs its 1-year history")
+        assert outcome.status == "EXECUTION_REFUSE"   # hard-block floor (not PIPELINE_ERROR)
+        assert executor.calls == 2   # executed attempt 1 + the one re-composed attempt
+        assert composer.calls == 2   # one bounded re-compose
+        # The audit trace records the execution failure + its reason.
+        assert len(outcome.recompose_trace) == 1
+        assert outcome.recompose_trace[0].failed_status == "EXECUTION_REFUSE"
+        assert "all-nan" in outcome.recompose_trace[0].reason.lower() \
+            or "rolling" in outcome.recompose_trace[0].reason.lower()
+        # The 2nd compose was given the execution reason.
+        assert composer.corrections[1]
+
+    async def test_returns_none_executor_stays_pipeline_error(self):
+        # Opaque failure (executor returns None, no reason) is NOT
+        # recomposable — stays PIPELINE_ERROR (back-compat).
+        composer = _SequenceComposer([GOLDEN_SUMMARY_SINGLE_STAT])
+
+        class _NoneExec:
+            def __init__(self): self.calls = 0
+            async def __call__(self, w, b):
+                self.calls += 1
+                return None
+
+        ex = _NoneExec()
+        pipe = _pipeline_for(
+            _route(["scalar"]), composer=composer,
+            gate=_SequenceGate([_PASS]), executor=ex,
+        )
+        outcome = await pipe.run("Average US 2s10s over 5y")
+        assert outcome.status == "PIPELINE_ERROR"
+        assert ex.calls == 1   # no re-compose on opaque None
+        assert composer.calls == 1
 
 
 class TestBudgetAndUnconstrained:

@@ -132,14 +132,19 @@ from shared.workflow.validation_result import ErrorCode
 logger = logging.getLogger(__name__)
 
 
-# Orchestration-upgrade plan D1/D3: pipeline statuses that a bounded
+# Orchestration-upgrade plan D1/D3/D4: pipeline statuses that a bounded
 # RE-COMPOSE can plausibly fix.  GATE_REFUSE (the DAG answers the wrong
-# question) and ASSEMBLY_REFUSE (structural / terminal-shape / param
-# failure the additive repair couldn't heal) get ONE reason-seeded
-# re-compose, then the hard-block floor.  NOT recomposable: COMPOSER_REFUSE
-# (the composer already declined), *_CLARIFY (needs the user), and
-# PIPELINE_ERROR (an exception — retrying won't help).
-_RECOMPOSABLE_STATUSES = frozenset({"GATE_REFUSE", "ASSEMBLY_REFUSE"})
+# question), ASSEMBLY_REFUSE (structural / terminal-shape / param failure
+# the additive repair couldn't heal), and EXECUTION_REFUSE (a typed
+# execute-time failure — e.g. rolling window >= data span → all-NaN, or a
+# primitive input out of range) each get ONE reason-seeded re-compose,
+# then the hard-block floor.  NOT recomposable: COMPOSER_REFUSE (the
+# composer already declined), *_CLARIFY (needs the user), and
+# PIPELINE_ERROR (an opaque executor None / escaped exception — no reason
+# to re-plan on).
+_RECOMPOSABLE_STATUSES = frozenset(
+    {"GATE_REFUSE", "ASSEMBLY_REFUSE", "EXECUTION_REFUSE"}
+)
 
 
 # ============================================================================
@@ -154,6 +159,9 @@ PipelineStatus = Literal[
     "GATE_CLARIFY",        # gate returned CLARIFY (with question)
     "COMPOSER_REFUSE",     # composer declined
     "ASSEMBLY_REFUSE",     # assembler couldn't substitute / repair
+    "EXECUTION_REFUSE",    # typed execute-time failure (plan D4) — after the
+                           # bounded re-compose, the hard-block floor (an
+                           # honest "couldn't compute", never a wrong answer)
     "ROUTER_CLARIFY",      # L1 router routed CLARIFY (no decomposition)
     "PIPELINE_ERROR",      # an exception escaped a sub-call (rare)
 ]
@@ -748,10 +756,23 @@ class OpenDagPipeline:
             except Exception as exc:
                 logger.exception("OpenDagPipeline: executor callback failed")
                 executed = None
+                # Plan D4: a RAISED execute-time failure carries a typed
+                # reason (e.g. rolling_zscore all-NaN: window >= rows; or a
+                # primitive input bound out of range).  Route it into the
+                # bounded self-correction loop with the reason so the
+                # composer can re-plan (then hard-block) — instead of a dead
+                # PIPELINE_ERROR.
+                return self._execution_refuse_outcome(
+                    user_prompt=user_prompt,
+                    route_decision=route_decision,
+                    shape=shape,
+                    bound_leaves=bound_leaves,
+                    reason=f"{type(exc).__name__}: {exc}",
+                )
             if executed is None:
-                # Executor failure — still surface the intent chain +
-                # gate PASS, but mark execution incomplete.
-                # PR-10D F5: gate PASSED + no compute → DRY_RUN bucket.
+                # Executor signalled failure by returning None WITHOUT a
+                # reason (opaque) — keep the legacy PIPELINE_ERROR (nothing
+                # specific to re-plan on).
                 run_lineage = RunLineage(
                     intent_chain=intent_chain,
                     compute_lineage=None,
@@ -917,6 +938,45 @@ class OpenDagPipeline:
         markdown = render_refusal(intent_chain)
         return PipelineOutcome(
             status="ASSEMBLY_REFUSE",
+            markdown=markdown,
+            intent_chain=intent_chain,
+            run_lineage=RunLineage(
+                intent_chain=intent_chain,
+                compute_lineage=None,
+                determinism_bucket="GATE_REFUSED_NO_EXECUTION",
+            ),
+            route_decision=route_decision,
+        )
+
+    def _execution_refuse_outcome(
+        self,
+        *,
+        user_prompt: str,
+        route_decision: RouteDecision,
+        shape: ShapeSpec,
+        bound_leaves: Sequence[BoundLeaf],
+        reason: str,
+    ) -> PipelineOutcome:
+        """Build the EXECUTION_REFUSE outcome for a typed execute-time
+        failure (plan D4).  Recomposable: the bounded loop re-composes
+        once with the reason (so the composer can, e.g., widen the
+        z-score lookback past its window); on exhaustion this is the
+        hard-block floor — an honest 'couldn't compute', never a wrong
+        answer."""
+        intent_chain = IntentChain.from_inputs(
+            user_prompt=user_prompt,
+            route_decision=route_decision,
+            bound_leaves=tuple(bound_leaves),
+            shape_or_workflow=shape,
+            gate_verdict=GateVerdict(
+                status="REFUSE",
+                reason=f"Execution failed (recoverable): {reason}",
+            ),
+        )
+        from orchestrator.open_dag.answer import render_refusal
+        markdown = render_refusal(intent_chain)
+        return PipelineOutcome(
+            status="EXECUTION_REFUSE",
             markdown=markdown,
             intent_chain=intent_chain,
             run_lineage=RunLineage(

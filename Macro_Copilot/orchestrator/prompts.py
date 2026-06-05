@@ -995,6 +995,19 @@ overall sample span.  A "60-day rolling correlation over 5 years" has \
 BOTH: window=60 on the operator AND "over 5 years" in the leaf \
 nl_intent.
 
+ROLLING WARMUP (avoid the all-NaN trap)
+
+A rolling operator (rolling_zscore / rolling_statistic / \
+rolling_correlation / rolling_regression) needs WARMUP: its first \
+non-NaN value appears only after a full ``window`` of observations.  So \
+the input leaf MUST fetch a span COMFORTABLY LONGER than the window — at \
+least ~2x — expressed in the leaf nl_intent.  CRITICAL CASE: "z-score of \
+X vs its 1-year history" means the rolling WINDOW is ~1 year (≈252 \
+trading days); the leaf must then fetch MORE than 1 year (e.g. "fetch ~3 \
+years of X so a 252-day rolling z-score has warmup").  NEVER set the \
+fetch span equal to the window — a window that equals (or exceeds) the \
+fetched rows yields an ALL-NaN series and execution fails.
+
 DECOMPOSITION → LEAF-HOLES MAPPING
 
 For each entry in the L1 decomposition that represents an INPUT \
