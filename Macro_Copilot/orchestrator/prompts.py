@@ -96,13 +96,22 @@ Beyond the routing action, you must:
 (A) Tag the user's intent with one of NINE closed-family ``intent_tag`` \
 values:
 
-  - ``lookup``        — "where is X?", "what's X today?", "X vs its history"
+  - ``lookup``        — ONE NUMBER out (a scalar, not a per-date series). \
+"where is X?", "what's X today?", "the current/latest X", "X vs its \
+history", AND any single DESCRIPTIVE SUMMARY STATISTIC of X over a period: \
+"the average / mean / median / std / dispersion / sum / count of X over the \
+last N days / years". A whole-period summary collapses to ONE scalar -> \
+lookup (it is NOT a transform).
   - ``relationship``  — "correlation between X and Y" (full-sample)
   - ``regression``    — "rolling beta of X on Y", "regression of X on Y"
   - ``cointegration`` — "is the X-Y spread stationary?", "do X and Y \
 cointegrate?"
-  - ``transform``     — "z-score of X", "rolling mean of X", a single-series \
-derivation
+  - ``transform``     — a NEW PER-DATE SERIES (one value PER DATE, over \
+time): "z-score of X over time", "rolling/moving N-day mean or vol of X AS \
+A TIME SERIES", "percentile rank of X over time". KEY TEST: if the answer \
+is one value PER DATE -> transform; if it collapses to ONE number for the \
+whole period -> lookup. "The average / mean of X over the last N days" is \
+ONE number -> lookup, NOT a rolling mean.
   - ``event_regime``  — "X around event Y", "X conditional on regime Z"
   - ``scan``          — "biggest dislocations in domain D", "extremes \
 across instruments"
@@ -173,6 +182,27 @@ section below.
 For the ``clarify`` action, leave ``decomposition`` empty and \
 ``intent_tag`` null — the intent is unknown until the user disambiguates.
 
+(C) Declare the ``expected_answer_shape`` — the SHAPE of the answer the \
+user's question expects, as a SET of one or more closed-vocab values: \
+``scalar`` (ONE number), ``series`` (one value PER DATE — a time series / \
+chart), ``series_set`` (several aligned series), ``event_set`` (flagged \
+dates), ``panel`` (cross-section x time), or ``any`` (genuinely \
+open-ended).  A downstream verifier checks the built DAG's terminal \
+against this set and only flags a CLEAR contradiction, so prefer the \
+honest minimal set.
+
+  - ONE number → ``["scalar"]``: "the average / current / median / std of \
+X", "how correlated are X and Y", "is X cointegrated with Y", "the (single) \
+beta of X on Y".
+  - One value PER DATE → ``["series"]``: "show me X over time", "the \
+z-score of X over its history", "rolling correlation / rolling beta of X \
+and Y", "plot X".
+  - Ambiguous → list BOTH (e.g. ``["scalar","series"]``).  Genuinely \
+open-ended or unsure → ``["any"]`` (never blocks).
+  - Keep it CONSISTENT with intent_tag: ``lookup`` → ["scalar"]; \
+``relationship``/``cointegration`` → ["scalar"]; ``transform`` → \
+["series"]; ``regression`` → ["series"].  For ``clarify`` leave it empty.
+
 COMPOSITE NOUNS (the hardest case)
 
 When the user names a composite quantity built from two market-implied \
@@ -186,16 +216,24 @@ EXAMPLES
 
 User: "Where is US 10Y?"
 { "action": "single_domain", "domains": ["sovereign_bonds"],
-  "intent_tag": "lookup",
+  "intent_tag": "lookup", "expected_answer_shape": ["scalar"],
   "decomposition": [{"name": "us_10y_yield",
                      "nl_description": "UST 10Y benchmark yield level",
                      "domain_hint": "sovereign_bonds"}],
   "rationale": "single yield level on US 10Y" }
 
+User: "Average US 2s10s over the last 5 years."
+{ "action": "single_domain", "domains": ["sovereign_bonds"],
+  "intent_tag": "lookup", "expected_answer_shape": ["scalar"],
+  "decomposition": [{"name": "us_2s10s",
+                     "nl_description": "UST curve spread, 2Y minus 10Y",
+                     "domain_hint": "sovereign_bonds"}],
+  "rationale": "single descriptive summary (the average) -> ONE number" }
+
 User: "Correlation between US 2s10s and 5Y breakeven over the last 5 years."
 { "action": "multi_domain",
   "domains": ["sovereign_bonds", "inflation_indexed_bonds"],
-  "intent_tag": "relationship",
+  "intent_tag": "relationship", "expected_answer_shape": ["scalar"],
   "decomposition": [
     {"name": "us_2s10s", "nl_description": "UST curve spread, 2Y minus 10Y",
      "domain_hint": "sovereign_bonds"},
@@ -211,7 +249,7 @@ cointegration operator, which produces the spread internally.  Never \
 decompose to a precomputed spread; that would hide the pair-stats \
 shape from the downstream verification step.)
 { "action": "single_domain", "domains": ["sovereign_bonds"],
-  "intent_tag": "cointegration",
+  "intent_tag": "cointegration", "expected_answer_shape": ["scalar"],
   "decomposition": [
     {"name": "ust_5y_yield",
      "nl_description": "UST 5Y benchmark yield level",
@@ -227,7 +265,7 @@ wires the rolling_zscore operator that produces the standardised \
 output.  Never put the already-transformed quantity in decomposition \
 or the leaf would be a derived series.)
 { "action": "single_domain", "domains": ["ois"],
-  "intent_tag": "transform",
+  "intent_tag": "transform", "expected_answer_shape": ["series"],
   "decomposition": [{"name": "sofr_5y_rate",
                      "nl_description": "SOFR OIS 5Y rate level",
                      "domain_hint": "ois"}],
@@ -235,7 +273,7 @@ or the leaf would be a derived series.)
 
 User: "Show the 5 biggest OIS dislocations today."
 { "action": "single_domain", "domains": ["ois"],
-  "intent_tag": "scan",
+  "intent_tag": "scan", "expected_answer_shape": ["any"],
   "decomposition": [{"name": "ois_extremes_scan",
                      "nl_description": "Top-N extreme OIS instruments by \
 statistical dislocation",
@@ -244,7 +282,7 @@ statistical dislocation",
 
 User: "Build a panel of UST curve spreads today."
 { "action": "single_domain", "domains": ["sovereign_bonds"],
-  "intent_tag": "panel",
+  "intent_tag": "panel", "expected_answer_shape": ["panel"],
   "decomposition": [{"name": "ust_curve_spread_panel",
                      "nl_description": "UST all-tenor curve-spread panel \
 snapshot",
@@ -254,7 +292,7 @@ snapshot",
 User: "Basis between USD 5Y linker breakeven and 5Y inflation swap."
 { "action": "multi_domain",
   "domains": ["inflation_indexed_bonds", "inflation_swaps"],
-  "intent_tag": "basis",
+  "intent_tag": "basis", "expected_answer_shape": ["series"],
   "decomposition": [
     {"name": "us_5y_linker_breakeven",
      "nl_description": "USD linker-implied 5Y breakeven from TIPS",
@@ -266,7 +304,7 @@ User: "Basis between USD 5Y linker breakeven and 5Y inflation swap."
 
 User: "Rolling 1y beta of BTP-Bund spread to Bund 10Y yield."
 { "action": "single_domain", "domains": ["sovereign_bonds"],
-  "intent_tag": "regression",
+  "intent_tag": "regression", "expected_answer_shape": ["series"],
   "decomposition": [
     {"name": "btp_bund_spread",
      "nl_description": "BTP minus Bund cross-market yield spread",
@@ -278,7 +316,7 @@ User: "Rolling 1y beta of BTP-Bund spread to Bund 10Y yield."
 
 User: "UST 10Y move 5 days after each NFP surprise > 50K."
 { "action": "single_domain", "domains": ["sovereign_bonds"],
-  "intent_tag": "event_regime",
+  "intent_tag": "event_regime", "expected_answer_shape": ["series"],
   "decomposition": [
     {"name": "nfp_surprise_events",
      "nl_description": "Dates with NFP surprise above 50K",
@@ -830,6 +868,20 @@ leaf_hole).
 catalogue produces what the prompt asks for, set ``refusal=<reason>`` \
 and leave the lists empty.  A refusal is honest evidence the \
 clarification path uses; a forced shape is silent harm.
+
+6. THE ``intent_tag`` IS A HINT, NOT A COMMAND — ANCHOR ON THE QUESTION \
++ THE ANSWER SHAPE.  The router's ``intent_tag`` and the question's \
+``L1 INTENT`` are advisory priors, not directives; reason from what the \
+USER ACTUALLY ASKED.  In particular, match the ANSWER SHAPE the question \
+implies: if it asks for ONE NUMBER (an average / current value / a single \
+statistic / a correlation / a cointegration verdict) the TERMINAL node \
+MUST produce a SCALAR (a ScalarMetric — e.g. via summarize_series / \
+correlation / cointegration), NOT a Series — EVEN IF the intent_tag says \
+"transform".  If it asks for a value PER DATE (a chart / a z-score over \
+time / a rolling statistic) the terminal is a Series.  A downstream \
+DETERMINISTIC check refuses a terminal whose shape clearly contradicts \
+the question (and you will be asked to re-compose), so get the terminal \
+shape right on the FIRST try.
 
 THE PAIR-STATS DISCIPLINE (CRITICAL FOR INTENT = relationship / \
 regression / cointegration)
