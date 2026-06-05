@@ -51,6 +51,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from orchestrator.config import COMPOSER_MODEL
 from orchestrator.contracts import EconomicQuantity, IntentTag
 from orchestrator.open_dag.composer_golden_shapes import (
     GOLDEN_SHAPES,
@@ -1043,11 +1044,14 @@ class Composer:
     def __init__(
         self,
         *,
-        model_name: str = "claude-opus-4-6",
+        model_name: Optional[str] = None,
         temperature: float = 0.0,
         max_tokens: int = 4096,
     ) -> None:
-        self._model_name = model_name
+        # Plan D7: the model is a config knob (COMPOSER_MODEL, default
+        # claude-opus-4-6).  An explicit model_name still overrides (tests
+        # pin a model); ``Composer()`` picks up the configured default.
+        self._model_name = model_name or COMPOSER_MODEL
         self._temperature = temperature
         self._max_tokens = max_tokens
         # Open-on-first-use scaffolding; populated by open().

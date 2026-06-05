@@ -48,6 +48,15 @@ LLM_MODEL: str = os.getenv("LLM_MODEL", "claude-sonnet-4-20250514")
 LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0"))
 LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "4096"))
 
+# Orchestration-upgrade plan D7: the L3 Composer's model is a CONFIG KNOB,
+# not a baked constant — so upgrading it (e.g. to a newer Opus that handles
+# the disambiguation cases more robustly) is a one-line / one-env-var flip,
+# and the deterministic verifier + self-correction loop mean correctness
+# never DEPENDS on a specific version (the upgrade only raises the floor).
+# Default stays the known-good claude-opus-4-6; the head-to-head against a
+# newer Opus is the credit-gated Phase E step.
+COMPOSER_MODEL: str = os.getenv("COMPOSER_MODEL", "claude-opus-4-6")
+
 
 # ===========================================================================
 # MCP SERVER DEFINITIONS
