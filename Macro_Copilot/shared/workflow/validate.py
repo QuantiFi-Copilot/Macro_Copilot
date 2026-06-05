@@ -65,8 +65,13 @@ text the pre-refactor validator did.  No caller needs to change.
 from __future__ import annotations
 
 from graphlib import CycleError, TopologicalSorter
-from typing import Dict, List, Optional
+from typing import Dict, FrozenSet, List, Optional
 
+from shared.workflow.answer_shape import (
+    AnswerShape,
+    is_unconstrained,
+    shape_contract_satisfied,
+)
 from shared.workflow.registry import (
     OPERATOR_REGISTRY,
     PrimitiveResolver,
@@ -78,6 +83,7 @@ from shared.workflow.types import (
     PrimitiveNode,
     Workflow,
     WorkflowEdge,
+    WorkflowNode,
 )
 from shared.workflow.validation_result import (
     ErrorCode,
@@ -124,6 +130,40 @@ def _topological_node_ids(workflow: Workflow) -> List[str]:
     return list(sorter.static_order())
 
 
+def _node_output_artifact_type(
+    node: WorkflowNode,
+    primitive_resolver: Optional[PrimitiveResolver],
+) -> Optional[str]:
+    """The closed-family artifact-type VALUE (e.g. ``"Series"``,
+    ``"ScalarMetric"``) a node emits, or ``None`` when it can't be
+    determined (unknown operator — already reported as
+    E_UNKNOWN_OPERATOR elsewhere, so callers skip to avoid double-report).
+
+    Mirrors the source-type derivation inside CHECK 5: a PrimitiveNode
+    emits whatever its PrimitiveSpec declares (``Series`` by default, or
+    via the resolver when supplied); an OperatorNode emits its
+    OperatorSpec's ``output.artifact_type``.  Extracted so the terminal
+    shape check (plan D2) and CHECK 5 share one definition of truth.
+    """
+    if isinstance(node, PrimitiveNode):
+        if primitive_resolver is not None:
+            try:
+                return getattr(
+                    primitive_resolver(node.tool_name),
+                    "output_artifact_type",
+                    "Series",
+                )
+            except Exception:
+                return "Series"
+        return "Series"
+    if isinstance(node, OperatorNode):
+        spec = OPERATOR_REGISTRY.get(node.operator_name)
+        if spec is None:
+            return None
+        return spec.output.artifact_type.value
+    return None
+
+
 # ============================================================================
 # COLLECT-ALL VALIDATOR (the new substrate)
 # ============================================================================
@@ -133,6 +173,7 @@ def validate_workflow_result(
     workflow: Workflow,
     *,
     primitive_resolver: Optional[PrimitiveResolver] = None,
+    expected_answer_shapes: Optional[FrozenSet[AnswerShape]] = None,
 ) -> ValidationResult:
     """Validate a Workflow against the substrate's structural contract,
     collecting EVERY problem found into a frozen ``ValidationResult``.
@@ -156,6 +197,14 @@ def validate_workflow_result(
         compatibility checks.  When omitted, those checks are skipped
         (templates can still validate their non-primitive structure
         offline).
+    expected_answer_shapes :
+        Optional SOFT output-shape contract (plan D2) — the SET of
+        ``AnswerShape`` the L1 router declared the question expects.
+        When supplied AND not unconstrained (no ``ANY``), CHECK 10
+        verifies the terminal node's artifact type satisfies it and
+        emits ``E_TERMINAL_SHAPE_MISMATCH`` (owner L3_WIRING) on a clear
+        contradiction.  When omitted / unconstrained, the check is
+        skipped — every existing caller (templates, tests) is unaffected.
 
     Returns
     -------
@@ -672,6 +721,81 @@ def validate_workflow_result(
                             },
                         )
                     )
+
+    # ------------------------------------------------------------------
+    # CHECK 10 (E_TERMINAL_SHAPE_MISMATCH) — plan D2.  When the caller
+    # supplied a non-unconstrained ``expected_answer_shapes`` contract,
+    # the DAG's TERMINAL artifact type must satisfy it.  SOFT: a
+    # multi-shape / ``ANY`` contract is permissive; only a clear
+    # contradiction trips it.  owner_layer=L3_WIRING drives the
+    # bounded self-correction loop (D1).  Skipped entirely when no
+    # contract was passed (every legacy caller) — back-compat clean.
+    # ------------------------------------------------------------------
+    if expected_answer_shapes is not None and not is_unconstrained(
+        expected_answer_shapes
+    ):
+        terminal = workflow.node_by_id(workflow.terminal_node_id)
+        actual_type = _node_output_artifact_type(terminal, primitive_resolver)
+        # ``None`` ⇒ unknown operator, already reported as
+        # E_UNKNOWN_OPERATOR; don't double-report.
+        if actual_type is not None and not shape_contract_satisfied(
+            expected_answer_shapes, actual_type
+        ):
+            wanted = sorted(s.value for s in expected_answer_shapes)
+            errors.append(
+                ValidationError(
+                    code=ErrorCode.E_TERMINAL_SHAPE_MISMATCH,
+                    owner_layer=OwnerLayer.L3_WIRING,
+                    message=(
+                        f"Workflow {wf_id!r}: terminal node "
+                        f"{workflow.terminal_node_id!r} produces a "
+                        f"{actual_type!r}, but the question expects answer "
+                        f"shape {wanted} (a {actual_type!r} answers a "
+                        "different question).  Rebuild the DAG so its "
+                        "terminal produces the requested shape — e.g. for a "
+                        "single-number answer, end in an operator that emits "
+                        "a ScalarMetric (such as summarize_series), not a "
+                        "Series."
+                    ),
+                    node_id=workflow.terminal_node_id,
+                    detail={
+                        "expected_answer_shapes": wanted,
+                        "terminal_artifact_type": actual_type,
+                    },
+                )
+            )
+
+    # ------------------------------------------------------------------
+    # CHECK 11 (E_PARAM_SANITY) — plan D4.  Each operator's optional
+    # STATIC param-sanity hook runs over the node's params.  Pure code,
+    # no external data; operators without a hook are skipped (default
+    # None) so this is registration-clean.  Data-dependent failures
+    # (window >= available rows) are NOT checked here — they surface as
+    # the operator's own typed execute-time error and route to the
+    # self-correction loop.
+    # ------------------------------------------------------------------
+    for node in workflow.nodes:
+        if not isinstance(node, OperatorNode):
+            continue
+        spec = OPERATOR_REGISTRY.get(node.operator_name)
+        if spec is None or spec.param_sanity_validator is None:
+            continue
+        sanity_err = spec.param_sanity_validator(node.params)
+        if sanity_err is not None:
+            errors.append(
+                ValidationError(
+                    code=ErrorCode.E_PARAM_SANITY,
+                    owner_layer=OwnerLayer.L3_WIRING,
+                    message=(
+                        f"Workflow {wf_id!r}: operator node "
+                        f"{node.node_id!r} ({node.operator_name!r}) failed "
+                        f"param-sanity check: {sanity_err}"
+                    ),
+                    node_id=node.node_id,
+                    operator_name=node.operator_name,
+                    detail={"param_sanity_message": sanity_err},
+                )
+            )
 
     return ValidationResult(workflow_id=wf_id, errors=tuple(errors))
 

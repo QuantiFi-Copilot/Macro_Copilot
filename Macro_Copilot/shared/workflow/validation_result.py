@@ -104,6 +104,28 @@ class ErrorCode(str, Enum):
     # subfield mismatched ('semantic_role' or
     # 'requested_output_meaning').
     E_ROLE_DISCRIMINANT_MISMATCH = "E_ROLE_DISCRIMINANT_MISMATCH"
+    # Added by the orchestration-upgrade plan (Decision D2,
+    # ``tmp/prompt_tests/orchestration_upgrade_plan.md``).  Raised when the
+    # DAG's TERMINAL artifact type does not satisfy the L1-declared
+    # ``expected_answer_shape`` contract (e.g. the question asks for ONE
+    # number / ScalarMetric but the terminal produces a Series).  Emitted
+    # with severity=ERROR and owner_layer=L3_WIRING — the Composer owns the
+    # fix; this drives the bounded self-correction loop (Decision D1) and,
+    # on exhaustion, the hard-block floor.  The check is SOFT (plan D2):
+    # only a CLEAR contradiction against the acceptable-type SET trips it;
+    # an unconstrained (``ANY``) contract never does.
+    E_TERMINAL_SHAPE_MISMATCH = "E_TERMINAL_SHAPE_MISMATCH"
+    # Added by the orchestration-upgrade plan (Decision D4).  Raised when an
+    # operator node fails its per-operator STATIC param-sanity predicate
+    # (e.g. min_periods > window).  Emitted with severity=ERROR and
+    # owner_layer=L3_WIRING (the Composer chose the params).  Pure code, no
+    # external data required — registration-clean via the per-operator
+    # ``param_sanity_validator`` hook on ``OperatorSpec``.  NOTE: the
+    # DATA-DEPENDENT param failures (e.g. rolling window >= available rows →
+    # all-NaN) are NOT statically knowable; those are caught at execute-time
+    # as the operator's own typed error and routed into the same
+    # self-correction loop (plan D4 reconciliation).
+    E_PARAM_SANITY = "E_PARAM_SANITY"
 
 
 class OwnerLayer(str, Enum):

@@ -156,9 +156,11 @@ class TestGoldenShapesRoundTrip:
     if any shape fails to construct, the import at module load time
     raises (the constants ARE ShapeSpec instances)."""
 
-    def test_six_golden_shapes_loaded(self):
-        # Exactly six golden few-shots per the plan's table.
-        assert len(GOLDEN_SHAPES) == 6
+    def test_seven_golden_shapes_loaded(self):
+        # Seven golden few-shots: the original six per-intent shapes plus
+        # GOLDEN_SUMMARY_SINGLE_STAT (added in commit 46a3ef6 after the
+        # 12-agent opus diagnosis to anchor the scalar-summary shape).
+        assert len(GOLDEN_SHAPES) == 7
 
     def test_every_golden_terminal_references_real_node(self):
         for shape in GOLDEN_SHAPES:

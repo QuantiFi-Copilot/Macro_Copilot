@@ -324,6 +324,9 @@ class TestP10NoContentDuplication:
         "discriminator_args",
         "arity_validator",
         "unit_validator",
+        # Orchestration-upgrade plan D4: structural validator hook (a
+        # Callable, NOT card content) — registration-clean, no P10 risk.
+        "param_sanity_validator",
     }
 
     def test_operator_spec_carries_no_description_field(self) -> None:

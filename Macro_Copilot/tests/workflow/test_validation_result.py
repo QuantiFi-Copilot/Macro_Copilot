@@ -141,6 +141,9 @@ _EXPECTED_OWNER_LAYER: Dict[ErrorCode, OwnerLayer] = {
     ErrorCode.E_UNIT_MISMATCH: OwnerLayer.L3_WIRING,
     ErrorCode.E_DAG_CYCLE: OwnerLayer.L3_WIRING,
     ErrorCode.E_PRIMITIVE_RESOLVE_FAIL: OwnerLayer.L2_BINDING,
+    # Orchestration-upgrade plan D2/D4 — both owned by the Composer.
+    ErrorCode.E_TERMINAL_SHAPE_MISMATCH: OwnerLayer.L3_WIRING,
+    ErrorCode.E_PARAM_SANITY: OwnerLayer.L3_WIRING,
 }
 
 
@@ -1008,7 +1011,7 @@ class TestClosedFamilies:
         # Adding a new code requires (a) an ADR and (b) updating this
         # number.  This guards against silent enum drift.
         #
-        # Taxonomy size = 15 after PR-4:
+        # Taxonomy size = 17 after the orchestration-upgrade plan:
         #   - 13 codes for the existing structural raise sites inside
         #     validate_workflow_result (CHECKS 1-9 in the validator),
         #   - 1 code (E_FREQUENCY_MISMATCH) declared in PR-A2 per the
@@ -1018,7 +1021,11 @@ class TestClosedFamilies:
         #     SOFT free-form mismatches (semantic_role /
         #     requested_output_meaning).  Always emitted with
         #     severity=WARNING.
-        assert len(ErrorCode) == 15, (
+        #   - 2 codes added by the orchestration-upgrade plan
+        #     (tmp/prompt_tests/orchestration_upgrade_plan.md):
+        #     E_TERMINAL_SHAPE_MISMATCH (D2, CHECK 10) and
+        #     E_PARAM_SANITY (D4, CHECK 11).
+        assert len(ErrorCode) == 17, (
             f"ErrorCode taxonomy size changed to {len(ErrorCode)}.  "
             "Per P8, extending requires an ADR + this assertion bump."
         )

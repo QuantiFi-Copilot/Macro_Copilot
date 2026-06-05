@@ -68,33 +68,29 @@ card:
     "what is the average / standard deviation / median / CURRENT value
     of X over the period" — a single scalar answer, NOT a time series.
   when_to_use:
-    - "PRIMARY: User asks for the mean / average of a Series over the full sample (statistic='mean')."
-    - "PRIMARY: User asks for the standard deviation / volatility of a Series as a single number over the full sample (statistic='std')."
-    - "PRIMARY: User asks for the median / sum / count of a Series over the full sample (statistic='median'/'sum'/'count')."
-    - "CURRENT / LATEST VALUE: User asks 'what is the current / latest X' (e.g. 'the current US 10Y yield') — wrap the Series leaf in summarize_series(statistic='last') to extract the latest finite observation as a ScalarMetric.  Use statistic='first' for the earliest."
-    - "MEAN AND STD TOGETHER: a single summarize_series node with statistic='mean' AND dispersion='std' returns the mean as the ScalarMetric value and records the std in lineage.  This is the sanctioned single-node way to answer 'mean and std of X' (the primary scalar is the mean; the std is the reported dispersion)."
+    - "Mean / average, std / volatility, median, sum, or count of a Series over the full sample → statistic='mean'|'std'|'median'|'sum'|'count'. ONE number out."
+    - "CURRENT / LATEST value ('what is the current / latest X', e.g. 'the current US 10Y yield') → statistic='last' (latest finite point as a ScalarMetric); statistic='first' for the earliest."
+    - "MEAN AND STD together → one node with statistic='mean', dispersion='std': the mean is the ScalarMetric value, the std is recorded in lineage. The sanctioned single-node way to answer 'mean and std of X'."
   when_not_to_use:
-    - "If the user wants a ROLLING / time-varying statistic (a moving average / rolling vol AS A TIME SERIES, one value per date), use rolling_statistic — that emits a Series over time; summarize_series emits ONE value."
-    - "If the user wants where today's value sits vs its own history (z-score / percentile), use rolling_zscore or percentile_rank."
-    - "If the user wants the per-offset summary of an event-window panel, use conditional_aggregate (Panel → Series-by-offset)."
-    - "If the user wants THREE OR MORE distinct statistics, or a statistic this operator does not support (min / max), one summarize_series node cannot bundle them — the catalogue has no multi-statistic bundler and a ShapeSpec has ONE terminal.  Pick the single most important statistic, or refuse with a clarification naming the limit."
+    - "ROLLING / time-varying stat (moving average / rolling vol AS A SERIES, one value per date) → rolling_statistic, not this. summarize_series emits ONE value."
+    - "Where today's value sits vs its own history (z-score / percentile) → rolling_zscore or percentile_rank."
+    - "Per-offset summary of an event-window panel → conditional_aggregate (Panel → Series-by-offset)."
+    - "THREE+ distinct stats, or min / max (unsupported): one node cannot bundle them (one terminal, no multi-stat bundler). Pick the single most important stat, or refuse naming the limit."
   upstream_requirements:
-    - "One Series.  No alignment needed for a standalone summary (single input).  For regime work the Series is typically masked by apply_mask first."
+    - "One Series.  No alignment needed (single input)."
   downstream_pattern:
-    - "Output is a ScalarMetric — a single finite scalar carrying the input's units, with metric_key equal to the statistic name.  This is a TERMINAL answer artifact: summarize_series IS the terminal node for any single-number summary, no further wiring needed."
+    - "Output is a ScalarMetric (one finite scalar, input's units, metric_key = the statistic name).  summarize_series IS the terminal node for any single-number summary — no further wiring."
   knobs_quick_ref:
-    statistic: "mean (default) | median (robust) | std | sum | count | last (latest/current value) | first (earliest value).  NOTE: no min/max — use rolling_statistic for those (as a rolling Series)."
-    dispersion: "std (DEFAULT — computed + reported in lineage alongside the statistic) | mad (robust) | none (suppress). RULE OF THUMB: for 'mean AND std' set statistic='mean', dispersion='std' (the mean is the ScalarMetric value; the std is recorded in lineage). For a SINGLE stat only (e.g. 'the average of X', nothing else) set dispersion='none' so you return strictly that one number. Do not leave dispersion at its 'std' default when the user asked for one stat only — that would report a std they did not request."
+    statistic: "mean (default) | median | std | sum | count | last (current/latest value) | first (earliest).  No min/max — use rolling_statistic for those."
+    dispersion: "std (DEFAULT, recorded in lineage) | mad (robust) | none. For 'mean AND std' use statistic='mean', dispersion='std'. For a SINGLE stat only (e.g. 'the average of X') set dispersion='none' so you return strictly that one number."
   example_shapes:
-    - description: "STANDALONE single-stat summary — the average of a Series over the full sample.  summarize_series IS the terminal."
+    - description: "Average over the full sample — summarize_series IS the terminal."
       shape: "Series -> summarize_series(statistic='mean') -> ScalarMetric(mean)  [terminal]"
-    - description: "CURRENT / LATEST value — 'what is the current US 10Y yield'.  The Series leaf is collapsed to its latest finite point."
+    - description: "Current / latest value ('the current US 10Y yield')."
       shape: "Series -> summarize_series(statistic='last') -> ScalarMetric(last)  [terminal]"
-    - description: "Mean AND std of a Series in ONE node (mean is the scalar value; std recorded in lineage)."
-      shape: "Series -> summarize_series(statistic='mean', dispersion='std') -> ScalarMetric(mean; std in lineage)  [terminal]"
+    - description: "Mean AND std in one node (mean is the value; std in lineage)."
+      shape: "Series -> summarize_series(statistic='mean', dispersion='std') -> ScalarMetric  [terminal]"
   sibling_operators:
-    - rolling_statistic: "The TIME-VARYING sibling — use when the user wants the stat AS A SERIES over time (moving average / rolling vol), not a single number.  summarize_series = one scalar; rolling_statistic = a Series."
-    - conditional_aggregate: "Per-offset (panel-flattening) sibling — use when input is WindowedPanel, not Series."
-    - apply_mask: "Common upstream to produce a regime-conditioned sample for the secondary regime-delta pattern."
-    - series_arithmetic: "Downstream for the cross-regime delta (subtract) in the secondary pattern."
+    - rolling_statistic: "TIME-VARYING sibling — the stat AS A SERIES over time (moving average / rolling vol), not one number."
+    - conditional_aggregate: "Per-offset sibling — use when input is WindowedPanel, not Series."
   intent_hints: [transform, lookup]

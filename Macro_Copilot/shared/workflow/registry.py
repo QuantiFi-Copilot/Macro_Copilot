@@ -230,6 +230,16 @@ class OperatorSpec(BaseModel):
         validator skips checks where source units are
         ``None`` (best-effort discipline — operator runtime
         check stays as the authoritative gate).
+    param_sanity_validator :
+        Optional per-operator STATIC param-sanity hook (plan D4).
+        Called by ``validate_workflow_result`` with the node's
+        ``params`` dict; returns ``None`` (OK) or an error message.
+        Catches param-internal degeneracies the type system is
+        blind to (e.g. ``min_periods > window``).  Pure function,
+        no external data — registration-clean.  Data-dependent
+        failures (window >= available rows) are NOT checked here;
+        they surface at execute-time and route to the
+        self-correction loop.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
@@ -257,6 +267,18 @@ class OperatorSpec(BaseModel):
     ] = None
     unit_validator: Optional[
         Callable[[Dict[str, Any], Dict[str, Optional[str]]], Optional[str]]
+    ] = None
+    # Orchestration-upgrade plan Decision D4: optional per-operator STATIC
+    # param-sanity hook.  Called by ``validate_workflow_result`` with the
+    # node's ``params`` dict; returns ``None`` (OK) or an error message.
+    # Catches purely param-internal degeneracies the type system is blind
+    # to (e.g. ``min_periods > window``).  Pure function, no external data —
+    # so it is registration-clean (adding the Nth operator's check is a
+    # one-line hook).  DATA-DEPENDENT failures (window >= available rows)
+    # are NOT checked here — they are caught at execute-time as the
+    # operator's own typed error and routed into the self-correction loop.
+    param_sanity_validator: Optional[
+        Callable[[Dict[str, Any]], Optional[str]]
     ] = None
 
 
@@ -350,6 +372,52 @@ def _series_arithmetic_unit_validator(
                 "an explicit unit conversion at the template "
                 "layer or pass operands of matching units."
             )
+    return None
+
+
+# ============================================================================
+# PARAM-SANITY HOOKS (orchestration-upgrade plan D4)
+# ============================================================================
+#
+# Per-operator STATIC param-sanity predicates.  Pure functions over the
+# node's raw ``params`` dict; return ``None`` (OK) or an error message.
+# They catch param-internal degeneracies the type system + Pydantic
+# field bounds don't (Pydantic enforces single-field ``ge=``/``le=`` but
+# NOT cross-field relationships).  Registration-clean: attach via the
+# ``param_sanity_validator`` field on the relevant OperatorSpec(s).
+
+
+def _rolling_min_periods_param_sanity(
+    node_params: Dict[str, Any],
+) -> Optional[str]:
+    """Shared by the rolling operators (rolling_zscore / rolling_statistic
+    / rolling_correlation / rolling_regression), all of which carry
+    ``window: int`` and ``min_periods: Optional[int]``.
+
+    The Pydantic schemas enforce ``window >= 2`` and ``min_periods >= 1``
+    individually, but NOT the cross-field invariant ``min_periods <=
+    window``.  A min_periods larger than the window can never accumulate
+    enough observations in any trailing window → the operator emits
+    all-NaN.  We catch that STATICALLY (both values present in params)
+    here; the DATA-DEPENDENT case (window >= available rows) is not
+    statically knowable and surfaces as the operator's own typed
+    execute-time error, which routes to the self-correction loop.
+    """
+    window = node_params.get("window")
+    min_periods = node_params.get("min_periods")
+    # Only check when BOTH are explicit ints.  Absent/None min_periods
+    # defaults to ``window`` (so the invariant holds); absent window
+    # uses the operator's safe schema default.
+    if not isinstance(window, int) or not isinstance(min_periods, int):
+        return None
+    if min_periods > window:
+        return (
+            f"min_periods={min_periods} exceeds window={window}; a rolling "
+            "computation whose min_periods is larger than its window can "
+            "never accumulate enough observations and would emit all-NaN.  "
+            "Set min_periods <= window (or leave it null to default to "
+            "window)."
+        )
     return None
 
 
@@ -808,6 +876,7 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
     ),
     "rolling_regression": OperatorSpec(
         operator_name="rolling_regression",
+        param_sanity_validator=_rolling_min_periods_param_sanity,
         callable=rolling_regression,
         params_class=RollingRegressionParams,
         config_path=_ROLLING_REGRESSION_CONFIG_PATH,
@@ -865,6 +934,7 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
     # "where are we vs our own recent history" question.
     "rolling_zscore": OperatorSpec(
         operator_name="rolling_zscore",
+        param_sanity_validator=_rolling_min_periods_param_sanity,
         callable=rolling_zscore,
         params_class=RollingZscoreParams,
         config_path=_ROLLING_ZSCORE_CONFIG_PATH,
@@ -906,6 +976,7 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
     # primitive for rolling vol, moving averages, rolling ranges.
     "rolling_statistic": OperatorSpec(
         operator_name="rolling_statistic",
+        param_sanity_validator=_rolling_min_periods_param_sanity,
         callable=rolling_statistic,
         params_class=RollingStatisticParams,
         config_path=_ROLLING_STATISTIC_CONFIG_PATH,
@@ -987,6 +1058,7 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
     # NOT take a window flag on ``correlation`` itself.
     "rolling_correlation": OperatorSpec(
         operator_name="rolling_correlation",
+        param_sanity_validator=_rolling_min_periods_param_sanity,
         callable=rolling_correlation,
         params_class=RollingCorrelationParams,
         config_path=_ROLLING_CORRELATION_CONFIG_PATH,
