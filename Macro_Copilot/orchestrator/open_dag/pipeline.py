@@ -122,11 +122,24 @@ from orchestrator.open_dag.executed_dag import ExecutedDag
 from orchestrator.open_dag.intent_chain import IntentChain
 from orchestrator.open_dag.run_record import RunLineage
 from shared.artifacts.lineage import Lineage
+from shared.workflow.answer_shape import is_unconstrained, parse_answer_shapes
 from shared.workflow.registry import PrimitiveResolver
 from shared.workflow.types import Workflow
+from shared.workflow.validate import validate_workflow_result
+from shared.workflow.validation_result import ErrorCode
 
 
 logger = logging.getLogger(__name__)
+
+
+# Orchestration-upgrade plan D1/D3: pipeline statuses that a bounded
+# RE-COMPOSE can plausibly fix.  GATE_REFUSE (the DAG answers the wrong
+# question) and ASSEMBLY_REFUSE (structural / terminal-shape / param
+# failure the additive repair couldn't heal) get ONE reason-seeded
+# re-compose, then the hard-block floor.  NOT recomposable: COMPOSER_REFUSE
+# (the composer already declined), *_CLARIFY (needs the user), and
+# PIPELINE_ERROR (an exception — retrying won't help).
+_RECOMPOSABLE_STATUSES = frozenset({"GATE_REFUSE", "ASSEMBLY_REFUSE"})
 
 
 # ============================================================================
@@ -333,6 +346,7 @@ class OpenDagPipeline:
         compose_timeout_s: float = 15.0,
         gate_timeout_s: float = 10.0,
         answer_timeout_s: float = 15.0,
+        recompose_budget: int = 1,
     ) -> None:
         self._router = router
         self._composer = composer
@@ -346,6 +360,12 @@ class OpenDagPipeline:
         self._compose_timeout_s = compose_timeout_s
         self._gate_timeout_s = gate_timeout_s
         self._answer_timeout_s = answer_timeout_s
+        # Orchestration-upgrade plan D1: how many bounded RE-COMPOSES are
+        # allowed before the hard-block floor.  Default 1 (one
+        # self-correction, then refuse).  The deterministic checks + the
+        # gate are the triggers; a re-composed DAG that still fails is
+        # hard-blocked — a wrong/low-confidence DAG NEVER executes.
+        self._recompose_budget = max(0, int(recompose_budget))
 
         # PR-10B Codex F4: wire the L4 bounded repair loop into the
         # Assembler.  Without these callbacks the Assembler refuses
@@ -466,10 +486,16 @@ class OpenDagPipeline:
         """Run the full open-DAG lane for one user prompt.
 
         Always returns a PipelineOutcome; never raises.  Each boundary
-        either advances or stops the pipeline with a structured
-        outcome explaining what happened.
+        either advances or stops the pipeline with a structured outcome.
+
+        Bounded self-correction (plan D1/D3): L1 runs ONCE; the L3→L6
+        attempt runs up to ``1 + recompose_budget`` times.  On a
+        recomposable failure (gate REFUSE / assembly-or-shape refusal)
+        the composer re-composes ONCE with the SPECIFIC reason, then the
+        HARD-BLOCK floor applies — a wrong/low-confidence DAG NEVER
+        executes.
         """
-        # ---- L1 ROUTER ----
+        # ---- L1 ROUTER (once per turn) ----
         try:
             route_decision: RouteDecision = await self._router.route(user_prompt)
         except Exception as exc:
@@ -487,6 +513,46 @@ class OpenDagPipeline:
         if route_decision.action == RouteAction.CLARIFY:
             return self._router_clarify_outcome(user_prompt, route_decision)
 
+        # ---- L3→L6 attempt, with bounded re-compose (plan D1/D3) ----
+        correction: Optional[str] = None
+        attempts_remaining = 1 + self._recompose_budget
+        outcome: Optional[PipelineOutcome] = None
+        while attempts_remaining > 0:
+            attempts_remaining -= 1
+            outcome = await self._attempt(
+                user_prompt=user_prompt,
+                route_decision=route_decision,
+                correction=correction,
+            )
+            if (
+                outcome.status not in _RECOMPOSABLE_STATUSES
+                or attempts_remaining == 0
+            ):
+                return outcome
+            # Fixable failure + budget remains → ONE reason-seeded
+            # re-compose.  The hard-block floor still applies if the
+            # re-composed DAG fails again.
+            correction = self._derive_correction(outcome)
+            logger.info(
+                "OpenDagPipeline: self-correction — re-composing once "
+                "(prior status=%s; reason: %s)",
+                outcome.status, (correction or "")[:160],
+            )
+        assert outcome is not None  # loop runs at least once
+        return outcome
+
+    async def _attempt(
+        self,
+        *,
+        user_prompt: str,
+        route_decision: RouteDecision,
+        correction: Optional[str],
+    ) -> PipelineOutcome:
+        """ONE composition attempt: L3 composer → L2 selectors → L4
+        assembler → deterministic terminal-shape check → L4.5 gate → L5
+        executor → L6 answer.  Returns a PipelineOutcome.  ``correction``
+        (when set) is the prior attempt's failure reason, threaded into
+        the composer so it RE-COMPOSES a corrected DAG (plan D1/D3)."""
         # ---- L3 COMPOSER ----
         # PR-10A Codex F8: Composer.compose's own fail-safe handles
         # LLM exceptions internally (returns ComposerRefusal), but a
@@ -500,6 +566,7 @@ class OpenDagPipeline:
                 intent_tag=route_decision.intent_tag,  # type: ignore[arg-type]
                 decomposition=route_decision.decomposition,
                 timeout_s=self._compose_timeout_s,
+                correction=correction,
             )
         except Exception as exc:
             logger.exception("OpenDagPipeline: composer raised")
@@ -531,6 +598,9 @@ class OpenDagPipeline:
             )
 
         # ---- L4 ASSEMBLER ----
+        # (The assembler's validate_workflow_result also runs CHECK 11
+        # param-sanity unconditionally — plan D4 — so a degenerate
+        # param surfaces here as ASSEMBLY_REFUSE → re-compose.)
         assembly_result = self._assembler.assemble(shape, bound_leaves)
         if assembly_result.status != AssemblyStatus.CLEAN:
             return self._assembly_refuse_outcome(
@@ -539,6 +609,23 @@ class OpenDagPipeline:
                 shape=shape,
                 bound_leaves=bound_leaves,
                 assembly_result=assembly_result,
+            )
+
+        # ---- L4.25 DETERMINISTIC TERMINAL-SHAPE CHECK (plan D2) ----
+        # Pure code, no LLM: the terminal artifact type must satisfy the
+        # L1-declared expected_answer_shape contract.  A clear
+        # contradiction (e.g. "average" → Series) is an ASSEMBLY_REFUSE,
+        # which the bounded loop re-composes once, then hard-blocks.
+        shape_reason = self._check_terminal_shape(
+            route_decision, assembly_result,
+        )
+        if shape_reason is not None:
+            return self._shape_refuse_outcome(
+                user_prompt=user_prompt,
+                route_decision=route_decision,
+                shape=shape,
+                bound_leaves=bound_leaves,
+                reason=shape_reason,
             )
 
         # ---- L4.5 COVERAGE GATE (hard-block) ----
@@ -720,6 +807,85 @@ class OpenDagPipeline:
             workflow=assembly_result.workflow,
             executed_dag=executed_dag,
         )
+
+    # ------------------------------------------------------------------
+    # INTERNAL — DETERMINISTIC SHAPE CHECK + SELF-CORRECTION (plan D1/D2/D3)
+    # ------------------------------------------------------------------
+
+    def _check_terminal_shape(
+        self,
+        route_decision: RouteDecision,
+        assembly_result: AssemblyResult,
+    ) -> Optional[str]:
+        """Plan D2: verify the assembled DAG's TERMINAL artifact type
+        satisfies the L1-declared ``expected_answer_shape`` contract.
+
+        Returns the mismatch reason string when the terminal CLEARLY
+        contradicts the contract; ``None`` when it satisfies (or the
+        contract is unconstrained / absent).  Pure code — no LLM."""
+        shapes = parse_answer_shapes(route_decision.expected_answer_shape)
+        if is_unconstrained(shapes):
+            return None
+        workflow = assembly_result.workflow
+        if workflow is None:  # defensive — CLEAN assembly always has one
+            return None
+        result = validate_workflow_result(
+            workflow,
+            primitive_resolver=self._primitive_resolver,
+            expected_answer_shapes=shapes,
+        )
+        shape_errors = result.by_code(ErrorCode.E_TERMINAL_SHAPE_MISMATCH)
+        if not shape_errors:
+            return None
+        return shape_errors[0].message
+
+    def _shape_refuse_outcome(
+        self,
+        *,
+        user_prompt: str,
+        route_decision: RouteDecision,
+        shape: ShapeSpec,
+        bound_leaves: Sequence[BoundLeaf],
+        reason: str,
+    ) -> PipelineOutcome:
+        """Build the ASSEMBLY_REFUSE outcome for a deterministic
+        terminal-shape mismatch (plan D2).  Mirrors
+        ``_assembly_refuse_outcome`` so the refusal renders + records
+        consistently; the bounded loop re-composes once on this status."""
+        intent_chain = IntentChain.from_inputs(
+            user_prompt=user_prompt,
+            route_decision=route_decision,
+            bound_leaves=tuple(bound_leaves),
+            shape_or_workflow=shape,
+            gate_verdict=GateVerdict(
+                status="REFUSE",
+                reason=f"Terminal shape mismatch (deterministic Boundary A): {reason}",
+            ),
+        )
+        from orchestrator.open_dag.answer import render_refusal
+        markdown = render_refusal(intent_chain)
+        return PipelineOutcome(
+            status="ASSEMBLY_REFUSE",
+            markdown=markdown,
+            intent_chain=intent_chain,
+            run_lineage=RunLineage(
+                intent_chain=intent_chain,
+                compute_lineage=None,
+                determinism_bucket="GATE_REFUSED_NO_EXECUTION",
+            ),
+            route_decision=route_decision,
+        )
+
+    def _derive_correction(self, outcome: PipelineOutcome) -> str:
+        """Plan D1/D3: extract a concise correction reason from a
+        recomposable failure outcome, to seed the next (re-)compose.
+        The outcome's markdown always carries the gate / assembly /
+        shape refusal reason.  Capped so the re-compose prompt stays
+        bounded."""
+        md = (outcome.markdown or "").strip()
+        if len(md) > 600:
+            md = md[:600] + " …"
+        return md or "The previous DAG was rejected; build a different one."
 
     # ------------------------------------------------------------------
     # INTERNAL — SELECTOR DISPATCH

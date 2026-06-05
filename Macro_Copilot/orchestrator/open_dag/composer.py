@@ -630,6 +630,7 @@ def render_composer_user_message(
     prompt: str,
     intent_tag: IntentTag,
     decomposition: Sequence[EconomicQuantity],
+    correction: Optional[str] = None,
 ) -> str:
     """Render the per-call user message the Composer LLM sees.
 
@@ -654,6 +655,18 @@ def render_composer_user_message(
         lines.append(f"     domain_hint={q.domain_hint.value}")
         lines.append(f"     nl_description={q.nl_description!r}")
     lines.append("")
+    # Plan D1/D3: reason-seeded RE-COMPOSE.  When the previous attempt's
+    # DAG failed a deterministic check or the coverage gate, the SPECIFIC
+    # reason is surfaced here so this fresh compose corrects it.
+    if correction:
+        lines.append("CORRECTION — your PREVIOUS attempt was rejected:")
+        lines.append(correction.strip())
+        lines.append(
+            "Build a DIFFERENT ShapeSpec that fixes the issue above.  Do "
+            "NOT repeat the same mistake; in particular, make the TERMINAL "
+            "node produce the artifact shape the question asks for."
+        )
+        lines.append("")
     lines.append(
         "Emit a ShapeSpec.  One LeafHole per decomposition entry whose "
         "input quantity must be fetched from a domain Selector; one "
@@ -1160,9 +1173,22 @@ class Composer:
         intent_tag: IntentTag,
         decomposition: Sequence[EconomicQuantity],
         timeout_s: float = 15.0,
+        correction: Optional[str] = None,
     ) -> ComposeResult:
         """Emit a ``ShapeSpec`` (or a ``ComposerRefusal``) for the
         user's prompt.
+
+        Parameters
+        ----------
+        correction :
+            Orchestration-upgrade plan D1/D3: when set, this is the
+            SPECIFIC reason the PREVIOUS attempt failed a deterministic
+            check or the coverage gate (e.g. "terminal produced a Series
+            but the question needs a ScalarMetric").  It is appended to
+            the user message so the LLM RE-COMPOSES a corrected DAG.
+            The pipeline calls compose() with a correction at most once
+            per turn (bounded re-compose, then hard-block) — this is a
+            FRESH compose, distinct from the adapter-only ``repair()``.
 
         Returns
         -------
@@ -1198,6 +1224,7 @@ class Composer:
             prompt=prompt,
             intent_tag=intent_tag,
             decomposition=decomposition,
+            correction=correction,
         )
         messages = [
             self._cached_system_message,

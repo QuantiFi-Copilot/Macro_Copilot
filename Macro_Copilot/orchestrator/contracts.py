@@ -248,6 +248,24 @@ class RouteDecision(BaseModel):
             "decompose into their constituent legs (nominal + breakeven)."
         ),
     )
+    # ---- Orchestration-upgrade plan D2/D5 (backward-compatible default) ----
+    expected_answer_shape: List[str] = Field(
+        default_factory=list,
+        description=(
+            "The SOFT output-shape contract (closed vocab "
+            "AnswerShape: scalar / series / series_set / event_set / "
+            "panel / any) — the SET of artifact shapes the question's "
+            "answer may take.  ONE number ('the average / current value "
+            "of X', 'how correlated', 'is X cointegrated') → ['scalar']. "
+            "A value-per-date answer ('show me X over time', 'rolling "
+            "z-score', a chart) → ['series'].  Genuinely open-ended → "
+            "['any'].  Ambiguous → list BOTH (e.g. ['scalar','series']). "
+            "Advisory: the deterministic verifier checks the DAG's "
+            "terminal artifact type against this set and only flags a "
+            "CLEAR contradiction.  Empty list == unconstrained (treated "
+            "as 'any').  Populated for non-clarify actions."
+        ),
+    )
 
 
 # ============================================================================
