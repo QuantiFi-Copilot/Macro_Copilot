@@ -892,12 +892,13 @@ When the user asks for a SINGLE-NUMBER summary statistic of one series \
 — it collapses a whole Series to one scalar summary.  The canonical \
 shape is a 1-leaf chain with summarize_series AS THE TERMINAL:
 
-    leaf_input -> summarize_series(statistic=<mean|median|std|sum|count>)
-        -> Series (1-row scalar summary)   [terminal_node_id = the summarize node]
+    leaf_input -> summarize_series(statistic=<mean|median|std|sum|count|last|first>)
+        -> ScalarMetric (ONE scalar)   [terminal_node_id = the summarize node]
 
   - "average / mean of X"            → summarize_series(statistic='mean')
   - "standard deviation / vol of X"  → summarize_series(statistic='std')
   - "median / sum / count of X"      → summarize_series(statistic='median'|'sum'|'count')
+  - "CURRENT / LATEST value of X"    → summarize_series(statistic='last')  (collapses the Series leaf to its latest finite point — the single number the user asked for, as a ScalarMetric)
 
 CRITICAL — do NOT use ``rolling_statistic`` for a single-number \
 summary.  rolling_statistic emits a Series OVER TIME (one value per \
@@ -906,15 +907,16 @@ of X over the last 5 years" is ONE number → summarize_series, NOT a \
 rolling curve.
 
 MEAN AND STD TOGETHER: one summarize_series node with \
-``statistic='mean'`` AND ``dispersion='std'`` surfaces BOTH numbers \
-(the dispersion is computed + reported alongside the mean).  Use this \
-single node for "mean and std of X".
+``statistic='mean'`` AND ``dispersion='std'`` returns the mean as the \
+ScalarMetric value and records the std in lineage alongside it.  Use \
+this single node for "mean and std of X" (the primary scalar is the \
+mean; the std is the reported dispersion).
 
 MULTIPLE / UNSUPPORTED STATISTICS (the honest limit): the catalogue \
 has NO multi-statistic bundler, and a ShapeSpec has exactly ONE \
 terminal, so a single DAG CANNOT co-emit three-plus arbitrary \
 statistics, nor min/max (summarize_series.statistic is \
-{mean,median,std,sum,count} — no min/max).  When the user asks for \
+{mean,median,std,sum,count,last,first} — no min/max).  When the user asks for \
 more than mean+std together (e.g. "mean, median, AND std", or "min \
 AND max"), do ONE of: (a) emit the single most important statistic as \
 the terminal and note the others are not bundled, or (b) REFUSE with \
@@ -982,9 +984,16 @@ to the Selector.
 DEGENERATE CASES
 
   - intent_tag = lookup: when the user's question is literally \
-"what is X right now?" or "give me the current Y," emit one LeafHole \
-with terminal_node_id = leaf_hole.node_id and no operators — the \
-answer IS the raw quantity the Selector binds.  HOWEVER, when the \
+"what is X right now?" or "give me the current Y," they want ONE \
+number — the latest value — NOT the full time series.  Emit one \
+LeafHole + a summarize_series(statistic='last') operator with \
+terminal_node_id = the operator's node_id; that collapses the Series \
+leaf to its latest finite point as a ScalarMetric (the single number \
+the user asked for).  Do NOT emit a bare leaf with no operator for \
+"current / latest X" — a raw Series terminal answers a different \
+question (the whole history) and the coverage gate will refuse it.  \
+(A bare-leaf terminal is only right for "show me / plot X over time," \
+where the user genuinely wants the series.)  HOWEVER, when the \
 LOOKUP phrasing includes a comparative or ranking ("where is X in its \
 1-year range?", "richness of Y vs its history", "X vs its 252-day \
 percentile"), the answer involves applying a single-series TRANSFORM \

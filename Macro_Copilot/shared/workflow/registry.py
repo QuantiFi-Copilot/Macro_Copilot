@@ -1092,42 +1092,40 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         callable=summarize_series,
         params_class=SummarizeSeriesParams,
         config_path=_SUMMARIZE_SERIES_CONFIG_PATH,
-        # Single-Series input → single-row summary Series at a fixed
-        # sentinel date.  Lets two per-regime summaries feed into
-        # series_arithmetic.subtract for the canonical "compare across
-        # regimes" step.
+        # Single-Series input → ONE scalar summary (ScalarMetric).  This
+        # is the canonical terminal for "what is the average / std /
+        # median / current value of X" queries: one number out, which is
+        # exactly what the L4.5 CoverageGate expects for single-number
+        # questions.
         input_slots={
             "series": SlotDescriptor.of(
                 "Series",
                 (
                     "Single typed Series to collapse to ONE scalar "
                     "full-sample summary via params.statistic — exactly "
-                    "{mean, median, std, sum, count} (NO min/max/last/"
-                    "first; use rolling_statistic for min/max as a "
-                    "rolling Series).  PRIMARY use: a plain descriptive "
-                    "summary ('the mean / std / median of X over the "
+                    "{mean, median, std, sum, count, last, first}.  "
+                    "``last`` = the latest finite observation (the "
+                    "'current value' of the series); ``first`` = the "
+                    "earliest.  For a min/max use rolling_statistic (as a "
+                    "rolling Series) — there is no scalar min/max here.  "
+                    "PRIMARY use: a plain descriptive summary ('the mean "
+                    "/ std / median / current value of X over the "
                     "period') — summarize_series is the terminal, one "
-                    "number out.  SECONDARY use: a per-regime number "
-                    "compared against another regime via apply_mask -> "
-                    "summarize_series -> series_arithmetic(subtract).  "
-                    "The 1-row Series output (at a fixed sentinel date) "
-                    "preserves the Series-only type discipline so it can "
-                    "feed back into Series-consuming operators.  DO NOT "
-                    "use for a value-per-date rolling statistic (that is "
-                    "rolling_statistic); DO NOT use for cross-series "
-                    "summaries (single-Series only)."
+                    "number out.  DO NOT use for a value-per-date rolling "
+                    "statistic (that is rolling_statistic); DO NOT use "
+                    "for cross-series summaries (single-Series only)."
                 ),
             ),
         },
         output=OutputDescriptor.of(
-            "Series",
+            "ScalarMetric",
             (
-                "1-row Series at a fixed sentinel timestamp carrying the "
-                "scalar reduction of the input via params.statistic.  "
-                "Unit preserved from the input.  Specifically designed "
-                "as a series_arithmetic operand so two summaries can be "
-                "subtracted to produce the canonical 'difference across "
-                "regimes' answer."
+                "A single finite scalar (ScalarMetric) carrying the "
+                "reduction of the input via params.statistic, with "
+                "metric_key equal to the statistic name and units "
+                "preserved 1:1 from the input.  This is a terminal "
+                "answer artifact — the single number the user asked "
+                "for (e.g. the average / std / current value of X)."
             ),
         ),
     ),

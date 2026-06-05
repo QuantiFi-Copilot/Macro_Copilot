@@ -541,15 +541,17 @@ def _build_rolling_zscore_shape() -> ShapeSpec:
 # GOLDEN #7 — SUMMARY (single-number descriptive statistic)
 # ============================================================================
 #
-# Shape: 1 leaf -> summarize_series -> Series (1-row scalar summary).
-# The canonical "what is the mean / std / median of X over the period"
-# shape.  summarize_series is the TERMINAL — no further wiring.  This
-# few-shot exists because both Sonnet and Opus, lacking it, reached for
-# rolling_statistic (a rolling time series) for plain scalar-summary
-# requests — the single most common Composer mistake on summary queries
-# (diagnosed via a 12-agent opus fan-out, 2026-06).  ``dispersion='std'``
-# makes the one node surface BOTH the mean and the standard deviation,
-# so "mean and std of X" is answered by this exact shape.
+# Shape: 1 leaf -> summarize_series -> ScalarMetric (ONE scalar).
+# The canonical "what is the mean / std / median / current value of X
+# over the period" shape.  summarize_series is the TERMINAL — no further
+# wiring.  This few-shot exists because both Sonnet and Opus, lacking it,
+# reached for rolling_statistic (a rolling time series) for plain
+# scalar-summary requests — the single most common Composer mistake on
+# summary queries (diagnosed via a 12-agent opus fan-out, 2026-06).
+# ``dispersion='std'`` makes the one node report the standard deviation
+# in lineage alongside the mean, so "mean and std of X" is answered by
+# this exact shape; statistic='last' answers "current / latest value of
+# X" (the latest finite point as a ScalarMetric).
 
 
 def _build_summary_single_stat_shape() -> ShapeSpec:
@@ -609,12 +611,15 @@ GOLDEN_SHAPES_BY_INTENT: Dict[IntentTag, ShapeSpec] = {
     IntentTag.REGRESSION: GOLDEN_REGRESSION_ROLLING_BETA,
     IntentTag.EVENT_REGIME: GOLDEN_EVENT_REGIME,
     IntentTag.TRANSFORM: GOLDEN_TRANSFORM_ROLLING_ZSCORE,
-    # LOOKUP covers both the bare-leaf "current value" case and the
-    # single-number descriptive summary ("mean/std of X over the
-    # period").  The summary golden is the canonical example for the
-    # latter — added after the 12-agent opus diagnosis showed the
-    # summary shape had NO worked example and the LLM defaulted to
-    # rolling_statistic (wrong: a time series, not a scalar).
+    # LOOKUP covers both the "current value" case (summarize_series with
+    # statistic='last' → ScalarMetric) and the single-number descriptive
+    # summary ("mean/std of X over the period").  Both route through
+    # summarize_series now — a bare-leaf Series terminal answers a
+    # different question (the whole history) and the coverage gate
+    # refuses it.  The summary golden is the canonical example — added
+    # after the 12-agent opus diagnosis showed the summary shape had NO
+    # worked example and the LLM defaulted to rolling_statistic (wrong:
+    # a time series, not a scalar).
     IntentTag.LOOKUP: GOLDEN_SUMMARY_SINGLE_STAT,
 }
 

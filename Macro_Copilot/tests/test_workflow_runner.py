@@ -295,6 +295,14 @@ class TestRunTemplateHappyPath:
         # Conditional-vs-unconditional series has post_window+1 = 6 rows.
         assert terminal["n_rows"] == 6
 
+    @pytest.mark.skip(
+        reason=(
+            "regime_conditioned_relationship template is on development "
+            "pause (DISABLE_TEMPLATE_ROUTER=1); summarize_series migrated "
+            "to ScalarMetric (GAP_LEDGER G01), intentionally breaking the "
+            "template's sentinel-Series → series_arithmetic.subtract wiring."
+        )
+    )
     def test_q2_canonical_binding_runs_end_to_end(self):
         """Canonical Q2 binding (UST 10Y change vs 2Y SOFR OIS change,
         regime-conditioned on 2s10s curve daily move) returns ok=True

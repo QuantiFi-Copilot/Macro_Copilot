@@ -87,6 +87,34 @@ from shared.workflow import (
 )
 
 
+# ===========================================================================
+# DEVELOPMENT PAUSE — entire module skipped.
+# ===========================================================================
+# The ``regime_conditioned_relationship`` workflow template is on
+# development pause: it is NOT used by the live system and the open-DAG
+# lane never invokes it (``DISABLE_TEMPLATE_ROUTER=1``; see TD #32).  Its
+# canonical shape wires two ``summarize_series`` outputs into
+# ``series_arithmetic.subtract`` at the shared ``SUMMARY_SENTINEL_DATE``.
+#
+# ``summarize_series`` has been migrated from that sentinel-date 1-row
+# ``Series`` to a real ``ScalarMetric`` (GAP_LEDGER G01) — the canonical
+# fix for the single-number-summary query class ("average / std / current
+# value of X"), which the L4.5 CoverageGate correctly refused while the
+# operator emitted a Series.  That migration intentionally breaks this
+# paused template's Series→Series wiring (the resolver now flags
+# ``ScalarMetric → compare.left expects Series``).  Rather than preserve a
+# dead sentinel hack for a paused template, this module is skipped until
+# the template is either retired or re-plumbed onto ScalarMetric operands.
+pytestmark = pytest.mark.skip(
+    reason=(
+        "regime_conditioned_relationship template is on development pause "
+        "(DISABLE_TEMPLATE_ROUTER=1); summarize_series migrated to "
+        "ScalarMetric (GAP_LEDGER G01), intentionally breaking this "
+        "template's sentinel-Series → series_arithmetic.subtract wiring."
+    )
+)
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

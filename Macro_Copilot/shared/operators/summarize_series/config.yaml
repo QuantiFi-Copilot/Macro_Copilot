@@ -3,10 +3,10 @@ operator:
   method_family: aggregation
   version: "1.0.0"
   description: >-
-    Collapse a typed Series to a 1-row summary Series at a hard-coded
-    sentinel date so downstream same-shape arithmetic operators
-    (notably series_arithmetic.subtract) can compare two
-    per-regime summaries that originally had disjoint date indexes.
+    Collapse a typed Series to ONE scalar summary statistic
+    (mean / median / std / sum / count / last / first), emitted as a
+    ScalarMetric carrying the input's units.  This is the canonical
+    "what is the average / std / current value of X" terminal.
     Always reports dispersion in lineage.  Finance-blind.
 
 defaults:
@@ -14,12 +14,13 @@ defaults:
     value: mean
     source: operator_v1_default
     rationale: >-
-      Default ``mean`` matches the canonical desk summary for per-
-      regime relationship analyses (mean β over the regime sample).
-      ``median`` is the robust alternative; ``std``/``sum``/``count``
-      cover the dispersion / aggregation cases when the central
-      tendency is not the deliverable.
-    valid_values: [mean, median, std, sum, count]
+      Default ``mean`` matches the canonical desk summary (the average
+      of X over the period).  ``median`` is the robust alternative;
+      ``std``/``sum``/``count`` cover the dispersion / aggregation
+      cases when the central tendency is not the deliverable; ``last``
+      returns the latest finite observation (the "current value" of
+      the series) and ``first`` the earliest.
+    valid_values: [mean, median, std, sum, count, last, first]
 
   dispersion:
     value: std
@@ -43,30 +44,16 @@ methodology:
          and any per-regime no-coverage gaps would otherwise bias
          the statistic).
       2. Applies the chosen ``statistic`` — mean / median / std /
-         sum / count — on the cleaned payload.
+         sum / count / last / first — on the cleaned payload.
       3. Computes the chosen ``dispersion`` (std / mad) on the
          same cleaned payload, OR records "none" when dispersion
          is suppressed.
-      4. Builds a single-row payload at the hard-coded sentinel
-         date ``1900-01-01`` (see operator docstring; this date
-         identifies "this is a scalar summary," not a meaningful
-         timestamp).
-      5. Wraps the 1-row payload as a typed ``Series``.  Units are
+      4. Returns a ``ScalarMetric``: a single finite scalar with
+         ``metric_key`` equal to the statistic name and units
          inherited 1:1 from the input.  Lineage records the central-
          tendency value, dispersion value, n_observations, and
-         n_dropped (for diagnostic clarity); a downstream
-         ``series_arithmetic.subtract`` can compare two such
-         summaries because both share the sentinel date.
-
-    Why a sentinel rather than a real date: per-regime masked Series
-    in the ``regime_conditioned_relationship`` archetype have
-    DISJOINT date indexes by construction (steepening regime days vs
-    flattening regime days never overlap), so a real-date summary
-    would still produce two single-row Series at different dates and
-    the downstream subtract would have an empty intersection.  The
-    sentinel guarantees alignment.
+         n_dropped (for diagnostic clarity).
   planned_extensions:
-    - "ScalarMetric artifact (build plan v5 / R5 — proper scalar type, no sentinel)"
     - "weighted aggregations (weighted mean / weighted median)"
     - "trimmed-mean and winsorized statistics for tail-robust summaries"
 
@@ -76,16 +63,16 @@ methodology:
 card:
   one_line: >-
     THE single-number summary operator: collapse a whole Series to ONE
-    full-sample summary statistic (mean / median / std / sum / count).
-    This is the operator for "what is the average / standard deviation /
-    median of X over the period" — a single scalar answer, NOT a time
-    series.
+    full-sample summary statistic (mean / median / std / sum / count /
+    last / first), emitted as a ScalarMetric.  This is the operator for
+    "what is the average / standard deviation / median / CURRENT value
+    of X over the period" — a single scalar answer, NOT a time series.
   when_to_use:
     - "PRIMARY: User asks for the mean / average of a Series over the full sample (statistic='mean')."
     - "PRIMARY: User asks for the standard deviation / volatility of a Series as a single number over the full sample (statistic='std')."
     - "PRIMARY: User asks for the median / sum / count of a Series over the full sample (statistic='median'/'sum'/'count')."
-    - "MEAN AND STD TOGETHER: a single summarize_series node with statistic='mean' AND dispersion='std' surfaces BOTH the mean and the standard deviation (the dispersion is computed + reported alongside the central tendency).  This is the sanctioned way to answer 'mean and std of X' in one node."
-    - "SECONDARY (regime work): a per-regime summary of a Series masked to a regime sample; two such outputs at the shared sentinel date feed series_arithmetic.subtract for a cross-regime delta."
+    - "CURRENT / LATEST VALUE: User asks 'what is the current / latest X' (e.g. 'the current US 10Y yield') — wrap the Series leaf in summarize_series(statistic='last') to extract the latest finite observation as a ScalarMetric.  Use statistic='first' for the earliest."
+    - "MEAN AND STD TOGETHER: a single summarize_series node with statistic='mean' AND dispersion='std' returns the mean as the ScalarMetric value and records the std in lineage.  This is the sanctioned single-node way to answer 'mean and std of X' (the primary scalar is the mean; the std is the reported dispersion)."
   when_not_to_use:
     - "If the user wants a ROLLING / time-varying statistic (a moving average / rolling vol AS A TIME SERIES, one value per date), use rolling_statistic — that emits a Series over time; summarize_series emits ONE value."
     - "If the user wants where today's value sits vs its own history (z-score / percentile), use rolling_zscore or percentile_rank."
@@ -94,17 +81,17 @@ card:
   upstream_requirements:
     - "One Series.  No alignment needed for a standalone summary (single input).  For regime work the Series is typically masked by apply_mask first."
   downstream_pattern:
-    - "Output is a 1-row Series at the sentinel date 1900-01-01 (a scalar summary; the date is a placeholder, not meaningful).  It feeds the terminal answer DIRECTLY — for a plain descriptive summary, summarize_series IS the terminal node, no further wiring.  For regime work, two such outputs feed series_arithmetic(op='subtract') for the cross-regime delta."
+    - "Output is a ScalarMetric — a single finite scalar carrying the input's units, with metric_key equal to the statistic name.  This is a TERMINAL answer artifact: summarize_series IS the terminal node for any single-number summary, no further wiring needed."
   knobs_quick_ref:
-    statistic: "mean (default) | median (robust) | std | sum | count.  NOTE: no min/max — use rolling_statistic for those (as a rolling Series) until summarize_series adds them."
-    dispersion: "std (DEFAULT — computed + reported alongside the statistic) | mad (robust) | none (suppress). RULE OF THUMB: for 'mean AND std' set statistic='mean', dispersion='std' (both numbers surface). For a SINGLE stat only (e.g. 'the average of X', nothing else) set dispersion='none' so you return strictly that one number. Do not leave dispersion at its 'std' default when the user asked for one stat only — that would report a std they did not request."
+    statistic: "mean (default) | median (robust) | std | sum | count | last (latest/current value) | first (earliest value).  NOTE: no min/max — use rolling_statistic for those (as a rolling Series)."
+    dispersion: "std (DEFAULT — computed + reported in lineage alongside the statistic) | mad (robust) | none (suppress). RULE OF THUMB: for 'mean AND std' set statistic='mean', dispersion='std' (the mean is the ScalarMetric value; the std is recorded in lineage). For a SINGLE stat only (e.g. 'the average of X', nothing else) set dispersion='none' so you return strictly that one number. Do not leave dispersion at its 'std' default when the user asked for one stat only — that would report a std they did not request."
   example_shapes:
     - description: "STANDALONE single-stat summary — the average of a Series over the full sample.  summarize_series IS the terminal."
-      shape: "Series -> summarize_series(statistic='mean') -> Series(1-row scalar summary)  [terminal]"
-    - description: "Mean AND std of a Series in ONE node (dispersion carries the std)."
-      shape: "Series -> summarize_series(statistic='mean', dispersion='std') -> Series(1-row; mean value + std reported)  [terminal]"
-    - description: "SECONDARY: per-regime mean of a target Series, with cross-regime delta."
-      shape: "[Series(target), EventSet(regime_A)] -> apply_mask -> summarize_series -> Series_A ; [Series(target), EventSet(regime_B)] -> apply_mask -> summarize_series -> Series_B ; [Series_A, Series_B] -> align_series (sentinel-aligned) -> select_from_series_set ×2 -> series_arithmetic(op='subtract') -> Series (delta)"
+      shape: "Series -> summarize_series(statistic='mean') -> ScalarMetric(mean)  [terminal]"
+    - description: "CURRENT / LATEST value — 'what is the current US 10Y yield'.  The Series leaf is collapsed to its latest finite point."
+      shape: "Series -> summarize_series(statistic='last') -> ScalarMetric(last)  [terminal]"
+    - description: "Mean AND std of a Series in ONE node (mean is the scalar value; std recorded in lineage)."
+      shape: "Series -> summarize_series(statistic='mean', dispersion='std') -> ScalarMetric(mean; std in lineage)  [terminal]"
   sibling_operators:
     - rolling_statistic: "The TIME-VARYING sibling — use when the user wants the stat AS A SERIES over time (moving average / rolling vol), not a single number.  summarize_series = one scalar; rolling_statistic = a Series."
     - conditional_aggregate: "Per-offset (panel-flattening) sibling — use when input is WindowedPanel, not Series."

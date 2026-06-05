@@ -1,26 +1,23 @@
-"""summarize_series — collapse a Series to a 1-row summary at a sentinel date.
+"""summarize_series — collapse a Series to ONE scalar summary statistic.
 
-Closes the "compare across regimes" gap in the
-``regime_conditioned_relationship`` archetype.  See module docstring
-in __init__.py for the rationale.
+Emits a ``ScalarMetric`` (mean / median / std / sum / count / last /
+first) carrying the input's units.  This is the canonical "what is the
+average / std / current value of X" path, and its terminal
+``ScalarMetric`` is what the L4.5 CoverageGate expects for single-number
+queries.
 
-Design lock
------------
-The sentinel date is ``pd.Timestamp("1900-01-01")``.  Hard-coded —
-NOT a parameter, NOT configurable.  Two reasons:
-
-  1. Both per-regime summaries in a regime-conditioned-relationship
-     workflow MUST share the same sentinel for the downstream
-     ``series_arithmetic.subtract`` to have a non-empty intersection.
-     A configurable sentinel would invite mismatch bugs.
-  2. The sentinel is semantically meaningless ("this is a scalar
-     summary, the date does not matter").  ``1900-01-01`` is far
-     enough from any real-world rates data that a reader cannot
-     mistake it for a real observation.
-
-When the ``ScalarMetric`` artifact lands (build plan v5 / R5,
-deferred), this sentinel will go away — ``ScalarMetric`` is a
-proper scalar type with no date.
+History — the sentinel-date Series (removed)
+--------------------------------------------
+Before the ``ScalarMetric`` closed-family type existed, this operator
+emitted a single-row ``Series`` at the fake sentinel date
+``1900-01-01`` (``SUMMARY_SENTINEL_DATE``, kept below only for the
+paused regime template's import) because there was no scalar artifact
+type.  The ``regime_conditioned_relationship`` archetype wired two such
+summaries into ``series_arithmetic.subtract`` at that shared sentinel.
+That template is on development pause and the open-DAG lane never
+invokes it (``DISABLE_TEMPLATE_ROUTER=1``); its sentinel-Series
+dependency is intentionally not preserved.  ``ScalarMetric`` is a
+proper scalar with no date, so the sentinel is gone from the output.
 """
 
 from __future__ import annotations
@@ -33,7 +30,7 @@ import numpy as np
 import pandas as pd
 
 from shared.artifacts.lineage import OperatorStep, sanitize_params_for_lineage
-from shared.artifacts.types import Series
+from shared.artifacts.types import ScalarMetric, Series
 from shared.config.operator_config import (
     OperatorConfig,
     OperatorConfigError,
@@ -69,6 +66,13 @@ def _compute_statistic(values: pd.Series, statistic: str, ddof: int = 1) -> floa
         return float(values.sum())
     if statistic == "count":
         return float(len(values))
+    if statistic == "last":
+        # Latest non-NaN observation — the "current value" of the series.
+        # ``values`` is already dropna'd by the caller, so iloc[-1] is the
+        # most recent finite value.
+        return float(values.iloc[-1])
+    if statistic == "first":
+        return float(values.iloc[0])
     raise SummarizeSeriesError(
         f"summarize_series: unsupported statistic={statistic!r}."
     )
@@ -95,18 +99,34 @@ def summarize_series(
     series: Series,
     params: Optional[SummarizeSeriesParams] = None,
     config: Optional[OperatorConfig] = None,
-) -> Series:
-    """Collapse ``series`` to a 1-row summary Series at the hard-coded
-    sentinel date.
+) -> ScalarMetric:
+    """Collapse ``series`` to ONE scalar summary statistic.
 
     Returns
     -------
-    Series
-        Single-row payload at ``SUMMARY_SENTINEL_DATE`` with the
-        chosen statistic.  Units are inherited from the input.
-        Lineage extends the input chain with this operator step;
-        the dispersion value, n_observations, and n_dropped are
-        recorded in step.params for diagnostic recovery.
+    ScalarMetric
+        A single finite scalar (the chosen ``statistic`` — mean /
+        median / std / sum / count / last / first) carrying the
+        input's units and a ``metric_key`` equal to the statistic
+        name.  Lineage extends the input chain with this operator
+        step; the dispersion value, n_observations, and n_dropped
+        are recorded in step.params for diagnostic recovery.
+
+    Migration note (was: 1-row sentinel-date Series)
+    ------------------------------------------------
+    Before the ScalarMetric closed-family type was wired end-to-end,
+    this operator emitted a single-row ``Series`` at the fake sentinel
+    date ``1900-01-01`` because no scalar artifact type existed.  The
+    L4.5 CoverageGate (correctly) refused every "what is the average /
+    std of X" query because a Series is not a scalar answer.  Now that
+    ``ScalarMetric`` is admitted and wired through the executor, store,
+    and frontend (proven by the correlation/cointegration operators),
+    this operator emits a real ``ScalarMetric``.  The old
+    ``regime_conditioned_relationship`` template wired two of these into
+    ``series_arithmetic.subtract`` at the shared sentinel date — that
+    template is on development pause and the open-DAG lane never invokes
+    it (``DISABLE_TEMPLATE_ROUTER=1``); its sentinel-Series dependency is
+    intentionally not preserved here.
     """
     if config is None:
         config = load_operator_config(_CONFIG_PATH)
@@ -170,13 +190,6 @@ def summarize_series(
     else:
         dispersion_value = _compute_dispersion(cleaned, params.dispersion, params.ddof)
 
-    payload = pd.Series(
-        [central],
-        index=pd.DatetimeIndex([SUMMARY_SENTINEL_DATE]),
-        name=series.payload.name,
-        dtype=float,
-    )
-
     step = OperatorStep.build(
         name=_OPERATOR_NAME,
         version=_OPERATOR_VERSION,
@@ -188,20 +201,14 @@ def summarize_series(
             "dispersion_value": dispersion_value,
             "n_observations": n_used,
             "n_dropped": n_dropped,
-            "sentinel_date": SUMMARY_SENTINEL_DATE.strftime("%Y-%m-%d"),
         }),
         input_hashes=(series.lineage.head_hash,),
     )
 
-    return Series(
-        series_key=series.series_key,
-        payload=payload,
+    return ScalarMetric(
+        metric_key=params.statistic,
+        value=central,
         units=series.units,
-        # Frequency on a 1-row sentinel is meaningless — emit None so
-        # downstream operators don't pretend the summary has a real
-        # business-day cadence.
-        frequency=None,
-        missingness_policy=series.missingness_policy,
         lineage=series.lineage.append(step),
     )
 
