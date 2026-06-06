@@ -199,6 +199,93 @@ export type YieldLevelOutput = {
   time_series?: TimeSeries;
 };
 
+// --- /detail/inflation-swap-rate-level (standalone bridge) ---
+//
+// Mirrors rates_agent/inflation_swaps/tools/inflation_swap_rate_level/schemas.py.
+// Per the methodology-exposure standalone-bridge contract
+// (docs_revamped/03_standards/methodology_exposure.md §5) the ZCIS
+// rate-level primitive ships its own typed-detail endpoint at
+// /api/v1/rates/detail/inflation-swap-rate-level and its OWN frontend
+// type — no reuse of the sovereign YieldLevelOutput or OIS rate-level
+// type.  The underlying instrument family is different: a zero-coupon
+// inflation swap, NOT a bond yield or an OIS par-swap rate.  The wire
+// field is ``zcis_rate_pct`` (not ``current_yield_pct`` or
+// ``current_rate_pct``) so downstream operator panels cannot silently
+// mix ZCIS rates with nominal yields, OIS rates, or linker real yields.
+//
+// The wire surface carries the LOAD-BEARING reference metadata
+// (``inflation_index_family`` / ``index_lag`` / ``interpolation`` /
+// ``underlying_index``) so a desk reader can interpret the level
+// honestly: USD_ZCIS references US_CPI_URBAN with a 3M lag and daily
+// interpolation; EUR_ZCIS references EU_HICP (ex-tobacco) with a 3M
+// lag and monthly interpolation; GBP_ZCIS references UK_RPI with a 2M
+// lag and monthly interpolation — these conventions are NOT comparable
+// cross-curve without harmonising index family / lag / interpolation.
+
+export type InflationSwapRateLevelMetrics = {
+  as_of_date: string;
+  curve_family: string;
+  tenor: string;
+  /** Current zero-coupon inflation swap rate in percent.  Quoted as
+   *  the par rate the swap pays for inflation compensation over
+   *  ``tenor``; structurally distinct from the linker bond-implied
+   *  breakeven and from a pure expected-inflation read. */
+  zcis_rate_pct: number;
+  daily_change_bps: number | null;
+  weekly_change_bps: number | null;
+  monthly_change_bps: number | null;
+  /** Rolling 252-trading-day z-score; conventions YAML-locked on this
+   *  primitive (no input-layer overrides — mirrors the OIS rate_level
+   *  / sibling level tools). */
+  z_score: number | null;
+  high_252d_pct: number | null;
+  low_252d_pct: number | null;
+  percentile_252d: number | null;
+  observation_count: number;
+  /** Inflation index family the ZCIS references, from instrument_master
+   *  attributes.  Examples: 'US_CPI_URBAN' (USD_ZCIS), 'EU_HICP'
+   *  (EUR_ZCIS), 'UK_RPI' (GBP_ZCIS).  Load-bearing: surfaced on the
+   *  wire so the desk can interpret the level honestly — these are
+   *  distinct inflation references and the rates are NOT directly
+   *  comparable cross-curve without harmonising index family / lag /
+   *  interpolation. */
+  inflation_index_family: string;
+  /** Indexation lag the ZCIS references.  Examples: '3M' (USD_ZCIS,
+   *  EUR_ZCIS), '2M' (GBP_ZCIS).  Different lags mean the rates are
+   *  quoted against differently dated index fixings. */
+  index_lag: string;
+  /** Index-fixing interpolation convention.  Examples: 'Daily'
+   *  (USD_ZCIS), 'Monthly' (EUR_ZCIS, GBP_ZCIS). */
+  interpolation: string;
+  /** Underlying inflation index Bloomberg ticker (instrument_master's
+   *  ``underlying_index`` column).  Examples: 'CPURNSA Index'
+   *  (USD_ZCIS), 'CPTFEMU Index' (EUR_ZCIS), 'UKRPI Index'
+   *  (GBP_ZCIS).  Optional defensively; present on the live wire. */
+  underlying_index: string | null;
+  /** Wire-honesty disclosure threaded from the YAML's
+   *  ``methodology.what_it_does``.  NOT a hardcoded TS literal — a
+   *  YAML edit flows through to runtime. */
+  methodology_label: string;
+};
+
+export type InflationSwapRateLevelOutput = {
+  current_metrics: InflationSwapRateLevelMetrics;
+  /** Historical ZCIS rate levels at the requested ``(curve_family,
+   *  tenor)`` pillar over the displayed ``lookback_days`` window.
+   *  Closed-enum ``TimeSeriesUnits.PERCENT`` units; series_name
+   *  follows ``<curve_family_lower>_<tenor_lower>_zcis_rate`` so
+   *  downstream operator panels cannot silently mix ZCIS rates with
+   *  nominal sovereign yield, OIS, or linker real-yield series.  Each
+   *  row rounded with the same ``yield_round_decimals`` convention
+   *  the snapshot uses so the latest row matches
+   *  ``current_metrics.zcis_rate_pct`` STRICTLY (pinned by
+   *  rates_agent/inflation_swaps/tools/inflation_swap_rate_level/compute.py).
+   *
+   *  Optional in the TS type for defensive resilience against stale /
+   *  cached payloads; the backend Pydantic schema marks this required. */
+  time_series?: TimeSeries;
+};
+
 // --- /detail/ois-rate-level (standalone bridge) ---
 //
 // Mirrors rates_agent/ois/tools/rate_level/schemas.py.  Per the

@@ -603,10 +603,18 @@ tools:
       - "Methodology disclosure: SOFR/EFFR/SONIA/ESTR family is the risk-neutral implied policy path; cite Fed/BoE/ECB/Norges-style ON rate context"
 
   - id: inflation_swaps__rate_level
-    status: todo
+    status: done
     human_action_required: false
-    last_review_heading: null
-    last_gate_result: not_run
+    last_review_heading: APPROVED
+    last_gate_result: pass
+    dispatch_round: 2
+    active_step: committed
+    dispatched_at: "2026-06-06T23:05:00Z"
+    builder_finished_at: "2026-06-06T23:20:00Z"
+    reviewer_dispatched_at: "2026-06-06T23:22:00Z"
+    reviewer_finished_at: "2026-06-06T23:26:00Z"
+    committed_at: "2026-06-06T23:30:00Z"
+    commit_sha: pending-backfill
     build_order: 11
     backend_tool_name: calculate_inflation_swap_rate_level_tool
     instrument_family: inflation_swaps

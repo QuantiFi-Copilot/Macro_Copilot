@@ -25,6 +25,7 @@ import type {
   OisButterflyOutput,
   OisCurveSpreadOutput,
   OisRateLevelOutput,
+  InflationSwapRateLevelOutput,
   ScanInflationSwapsExtremesOutput,
   PolicyFuturesPriceLevelOutput,
 } from '@/types/rates';
@@ -375,6 +376,31 @@ export function fetchDetailOisRateLevel(
 ): Promise<OisRateLevelOutput> {
   return fetchJSON(
     `${RATES_PREFIX}/detail/ois-rate-level${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/inflation-swap-rate-level  — single-pillar ZCIS rate snapshot bridge
+// ---------------------------------------------------------------------------
+// Per-pillar zero-coupon inflation swap (ZCIS) rate snapshot (e.g. USD_ZCIS
+// 5Y, EUR_ZCIS 10Y, GBP_ZCIS 2Y).  Own typed helper per the standalone-bridge
+// contract; consumed by BOTH Build views and the Monitor tile.  Rolling-
+// z-score conventions are YAML-locked on this primitive (no input-layer
+// overrides — mirrors the OIS rate_level / sibling level tools);
+// ``field_name`` + ``lookback_days`` remain exposed.
+
+export type InflationSwapRateLevelDetailParams = {
+  curve_family: string;
+  tenor: string;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailInflationSwapRateLevel(
+  params: InflationSwapRateLevelDetailParams,
+): Promise<InflationSwapRateLevelOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/inflation-swap-rate-level${buildQuery(params)}`,
   );
 }
 

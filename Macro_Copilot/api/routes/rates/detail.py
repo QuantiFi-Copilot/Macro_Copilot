@@ -202,6 +202,23 @@ from rates_agent.ois.tools.rate_level import (
     OISRateLevelOutput,
     get_ois_rate_level,
 )
+# Standalone-bridge endpoint for the single-pillar zero-coupon inflation swap
+# (ZCIS) rate-level primitive (e.g. USD_ZCIS 5Y, EUR_ZCIS 10Y, GBP_ZCIS 2Y).
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` every new tool
+# ships its OWN typed-detail endpoint consumed by both the extended and
+# compact Build views (rendering_density dual-view) + the Monitor tile.
+# Surfaces the load-bearing reference metadata (``inflation_index_family``,
+# ``index_lag``, ``interpolation``, ``underlying_index``) so the desk can
+# interpret the level honestly — USD_ZCIS / EUR_ZCIS / GBP_ZCIS reference
+# distinct inflation indices (CPI-U / HICPxT / RPI) with different lags +
+# interpolation conventions.  Rolling-z-score conventions are YAML-locked
+# on this primitive — only ``lookback_days`` + ``field_name`` are exposed.
+from rates_agent.inflation_swaps.tools.inflation_swap_rate_level import (
+    CONFIG_PATH as INFLATION_SWAP_RATE_LEVEL_CONFIG_PATH,
+    InflationSwapRateLevelInput,
+    InflationSwapRateLevelOutput,
+    calculate_inflation_swap_rate_level,
+)
 # Standalone-bridge endpoint for the policy_futures strip-position price level
 # primitive (SFR1 / SFR2 / ER1 / SFI1 / ... — STIR strip slots on
 # SOFR_FUT / EUR_SHORT_RATE_FUT / SONIA_FUT).  Keyed by
@@ -1304,6 +1321,99 @@ def ois_rate_level_detail(
     _tool_result_or_raise(
         result,
         f"OIS rate level for {curve_family} {tenor}",
+    )
+    return result
+
+
+# ============================================================================
+# /detail/inflation-swap-rate-level — single-pillar ZCIS rate snapshot bridge
+# ----------------------------------------------------------------------------
+# First level-shape inflation_swaps primitive under the standalone-bridge
+# contract.  Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# ZCIS rate-level primitive ships its OWN typed-detail endpoint.  Same payload
+# feeds BOTH the extended Build view (mounted for single-tool queries) and
+# the compact Build view (mounted as a node body inside multi-tool DAGs) +
+# the Monitor tile per rendering_density.md §10.  Rolling-z-score conventions
+# are YAML-locked on this primitive (no input-layer overrides — mirrors the
+# OIS rate_level sibling); only ``lookback_days`` + ``field_name`` are exposed
+# at the API layer.  Surfaces the LOAD-BEARING reference metadata
+# (``inflation_index_family`` / ``index_lag`` / ``interpolation`` /
+# ``underlying_index``) on the wire so the desk can interpret the level
+# honestly — USD_ZCIS references CPI-U with 3M lag + Daily interpolation,
+# EUR_ZCIS references HICPxT with 3M lag + Monthly interpolation, GBP_ZCIS
+# references RPI with 2M lag + Monthly interpolation.  ``methodology_label``
+# is threaded from config.yaml's ``methodology.what_it_does`` (NOT hardcoded).
+# ============================================================================
+@router.get(
+    "/detail/inflation-swap-rate-level",
+    response_model=InflationSwapRateLevelOutput,
+    summary="ZCIS Rate Level Detail (standalone bridge)",
+)
+def inflation_swap_rate_level_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family: str = Query(
+        ...,
+        description=(
+            "Inflation-swap curve family identifier.  Examples: "
+            "'USD_ZCIS' (US CPI-U), 'EUR_ZCIS' (Eurozone HICPxT), "
+            "'GBP_ZCIS' (UK RPI).  See rates_agent/playbooks/"
+            "inflation_swaps.yml for the ingested universe."
+        ),
+    ),
+    tenor: str = Query(
+        ...,
+        description=(
+            "Tenor point on the ZCIS curve.  Current ingested grid is "
+            "'1Y', '2Y', '3Y', '5Y', '10Y', '20Y', '30Y' on each of "
+            "USD_ZCIS / EUR_ZCIS / GBP_ZCIS."
+        ),
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic.  Omit (None) to use the tool's "
+            "bundled ``default_zcis_rate_field`` convention from "
+            "inflation_swap_rate_level/config.yaml (currently 'PX_MID' "
+            "— the canonical mid quoted ZCIS rate Bloomberg publishes "
+            "for inflation swaps)."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the frontend
+    module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
+    AND the Monitor widget per the rendering-density dual-view + monitor
+    contract.
+
+    The ZCIS rate-level primitive intentionally does NOT expose the z-score
+    conventions at its Input layer — they're sourced from the YAML at
+    compute() time only.  Mirrors the OIS rate_level + sibling level tools.
+    """
+    try:
+        params = InflationSwapRateLevelInput(
+            curve_family=curve_family,
+            tenor=tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        isrl_config = load_tool_config(INFLATION_SWAP_RATE_LEVEL_CONFIG_PATH)
+        result = calculate_inflation_swap_rate_level(
+            engine=engine, params=params, config=isrl_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/inflation-swap-rate-level: tool failed for %s %s",
+            curve_family, tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"ZCIS rate level for {curve_family} {tenor}",
     )
     return result
 
