@@ -347,6 +347,16 @@ def _normalise_route_decision(decision: RouteDecision) -> RouteDecision:
     # evidence to lean on.
     intent_tag = decision.intent_tag
     decomposition = list(decision.decomposition)
+    # PR-5 / Phase-C / Option-A: these advisory fields MUST survive
+    # normalisation.  The reconstruction at the end of this function
+    # rebuilds RouteDecision field-by-field, so anything not threaded
+    # here silently reverts to its default — which previously dropped
+    # ``expected_answer_shape`` (Phase C) on every real route call and
+    # would likewise null ``execution_lane`` (Option A), defeating the
+    # lane gate.  Carry both through; clear them only on CLARIFY (the
+    # shape + lane are unknown until the user disambiguates).
+    expected_answer_shape = list(decision.expected_answer_shape)
+    execution_lane = decision.execution_lane
 
     if action == RouteAction.CLARIFY:
         if decomposition:
@@ -366,6 +376,11 @@ def _normalise_route_decision(decision: RouteDecision) -> RouteDecision:
             logger.warning("Supervisor: %s", note)
             adjustments.append(note)
             intent_tag = None
+        # The answer shape + execution lane are likewise unknown on a
+        # clarify turn — clear them (silently; the intent_tag note above
+        # already records why the clarify turn carries no L1 metadata).
+        expected_answer_shape = []
+        execution_lane = None
     else:
         # Non-clarify: KEEP every decomposition entry (PR-5A
         # corrective per Codex finding #2).  Decomposition is
@@ -431,6 +446,8 @@ def _normalise_route_decision(decision: RouteDecision) -> RouteDecision:
         adjustments=adjustments,
         intent_tag=intent_tag,
         decomposition=decomposition,
+        expected_answer_shape=expected_answer_shape,
+        execution_lane=execution_lane,
     )
 
 

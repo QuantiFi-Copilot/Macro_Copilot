@@ -116,6 +116,34 @@ class IntentTag(str, Enum):
     BASIS = "basis"
 
 
+class ExecutionLane(str, Enum):
+    """Which execution lane should handle the turn (the Ask→Build routing
+    split).  Decided by the L1 router (the LLM), NOT by code string-matching
+    against tool names.
+
+    - ``direct_fetch`` — the prompt is answerable by fetching ONE primitive
+      directly: a level / spread / price / current-or-latest value / "show
+      me X over time" / market color on a single instrument.  NO operator,
+      NO composition.  Routes to the legacy supervisor/domain-agent path,
+      which emits ``workspace_context`` so Build opens the primitive module
+      surface (``/workspace?context=…`` → VirtualPrimitiveCanvas /
+      MultiToolDagCanvas → BuildExtended / BuildCompact).
+    - ``open_dag`` — the prompt needs an OPERATOR or multi-step composition:
+      a summary statistic (average / std / median / sum), a transform
+      (z-score / percentile / rolling stat), a relationship (correlation),
+      cointegration, regression, event windows, a composite noun (5y5y), a
+      scan, or a panel.  Routes to the open-DAG composer → validated,
+      lineage-bearing, persisted workspace (``/workspace/:slug``).
+
+    Default (when the router omits it) is ``open_dag`` — the safe,
+    backward-compatible choice (the open-DAG lane was the catch-all before
+    this field existed; a missing value preserves that behavior).
+    """
+
+    DIRECT_FETCH = "direct_fetch"
+    OPEN_DAG = "open_dag"
+
+
 # ============================================================================
 # ECONOMIC QUANTITY (PR-5: L1 router decomposition)
 # ============================================================================
@@ -264,6 +292,27 @@ class RouteDecision(BaseModel):
             "terminal artifact type against this set and only flags a "
             "CLEAR contradiction.  Empty list == unconstrained (treated "
             "as 'any').  Populated for non-clarify actions."
+        ),
+    )
+    # ---- Ask→Build routing split (Option A; backward-compatible default) ----
+    execution_lane: Optional[ExecutionLane] = Field(
+        default=None,
+        description=(
+            "Which execution lane handles the turn.  'direct_fetch' when the "
+            "answer is ONE primitive fetched directly — a level / spread / "
+            "price / current-or-latest value / 'show me X over time' / market "
+            "color on a SINGLE instrument, with NO operator and NO "
+            "composition; this routes to the primitive module surface.  "
+            "'open_dag' when the answer needs an OPERATOR or multi-step "
+            "composition — a summary statistic (average / std / median / "
+            "sum), a transform (z-score / percentile / rolling stat), a "
+            "relationship (correlation), cointegration, regression, event "
+            "windows, a composite noun (5y5y), a scan, or a panel; this "
+            "routes to the open-DAG composer.  Decide from the QUESTION, not "
+            "from tool names.  Null (or omitted) is treated as 'open_dag' — "
+            "the safe back-compat catch-all; the dispatcher diverts to the "
+            "primitive path ONLY on an explicit 'direct_fetch'.  Leave null "
+            "for clarify (the lane is unknown until the user disambiguates)."
         ),
     )
 

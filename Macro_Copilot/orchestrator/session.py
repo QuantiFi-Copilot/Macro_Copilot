@@ -81,6 +81,7 @@ from orchestrator.contracts import (
     ChildResponse,
     ChildStatus,
     Domain,
+    ExecutionLane,
     RouteAction,
     RouteDecision,
 )
@@ -409,6 +410,7 @@ class CopilotSession:
         self,
         user_prompt: str,
         *,
+        route_decision: Optional[RouteDecision] = None,
         executor_callback: Optional[Any] = None,
         dry_run: bool = False,
     ) -> Any:
@@ -422,6 +424,12 @@ class CopilotSession:
         user_prompt :
             The user's verbatim message.  Passed through to the
             pipeline's L1 router.
+        route_decision :
+            Optional precomputed RouteDecision (Option A — route-once).
+            When the session has ALREADY routed the turn to pick this
+            lane (via ``execution_lane``), it passes the SAME decision
+            in so the pipeline does NOT call L1 a second time.  When
+            None, the pipeline routes internally (standalone use).
         executor_callback :
             Optional L5 executor.  When None, the pipeline returns
             a PASS / dry-run outcome with the intent echo on PASS.
@@ -504,6 +512,22 @@ class CopilotSession:
                 primitive_resolver=rates_primitive_resolver,
             )
 
+        # PR-11 Codex Round 3 — generous per-stage timeouts.
+        #
+        # The PoC defaults (10-15s) are tuned for mock-LLM tests;
+        # they're too aggressive for cold-cache Sonnet on the real
+        # system-prompt surfaces (Composer = 72k chars / ~18k tokens;
+        # Gate = ~10k tokens; AnswerRenderer = ~5k tokens).  The L2
+        # selectors are also subject to retry storms when Anthropic
+        # API has transient slowness (we observed 2 retries + final
+        # timeout in a 10s budget).
+        #
+        # All boundaries widened to 120s.  Wall-clock impact is
+        # minimal — the LLM still returns in 5-40s under normal
+        # cache conditions; the 120s budget is only consumed on
+        # cold-cache + transient-API-slow paths, which are exactly
+        # the cases we DON'T want to fail.  Dial these down once we
+        # have stable cache + production model selection.
         pipeline = OpenDagPipeline(
             router=self._supervisor,
             composer=self._open_dag_composer,
@@ -512,8 +536,12 @@ class CopilotSession:
             selectors=selectors_map,
             primitive_resolver=rates_primitive_resolver,
             executor_callback=effective_executor,
+            compose_timeout_s=120.0,
+            gate_timeout_s=120.0,
+            answer_timeout_s=120.0,
+            leaf_timeout_s=120.0,
         )
-        return await pipeline.run(user_prompt)
+        return await pipeline.run(user_prompt, route_decision=route_decision)
 
     async def _ensure_open_dag_components_open(self) -> None:
         """Lazily build + open the Composer / CoverageGate /
@@ -1581,121 +1609,69 @@ class CopilotSession:
             # composer renders to empty string on a cold session,
             # so this is additive — sessions with no prior context
             # behave exactly as PR 10 did.
-            if self._workflow_router is not None:
+            # ----------------------------------------------------------
+            # PR-11 testing: ``DISABLE_TEMPLATE_ROUTER=1`` skips the
+            # template-lane gate entirely so every turn drops into the
+            # open-DAG lane below.  Used to isolate-test the open-DAG
+            # composer / executor / persistence without the template
+            # router intercepting queries it shouldn't (e.g. the
+            # canonical correlation query getting routed to
+            # ``regime_conditioned_relationship`` because its LLM-side
+            # rationale matched).
+            #
+            # Default (env unset): existing behavior — template lane
+            # runs first; open-DAG is the fallback.
+            # Set to "1": template lane skipped → open-DAG handles
+            # every turn.
+            # ----------------------------------------------------------
+            import os as _tmpl_router_env
+            _template_router_disabled = (
+                _tmpl_router_env.environ.get(
+                    "DISABLE_TEMPLATE_ROUTER", "0",
+                ).strip() in ("1", "true", "True", "yes")
+            )
+
+            if (
+                self._workflow_router is not None
+                and not _template_router_disabled
+            ):
                 workflow_handled = await self._maybe_run_workflow(
                     augmented_message, turn_label, emit, turn_start,
                 )
                 if workflow_handled:
                     return
+            elif _template_router_disabled:
+                logger.info(
+                    "[%s] %s DISABLE_TEMPLATE_ROUTER=1 — skipping "
+                    "template-lane gate; routing directly to open-DAG.",
+                    self.thread_id, turn_label,
+                )
 
             # ----------------------------------------------------------
-            # 0.5 OPEN-DAG PRE-ROUTER (PR-10B Codex F1)
+            # 1. ROUTE ONCE (Option A — route-once-then-dispatch)
             # ----------------------------------------------------------
+            # The supervisor routes the turn EXACTLY ONCE.  The resulting
+            # RouteDecision carries ``execution_lane`` — the L1 LLM's lane
+            # choice — which the gate just below reads to dispatch:
             #
-            # Plan §PR-10 line 762-764: "A pre-router in
-            # ``CopilotSession`` (very thin) that picks between the
-            # existing template path and the new open-DAG path.
-            # Simplest rule for PoC: if a template-router would match
-            # cleanly, use the template lane; otherwise route to
-            # open-DAG."
+            #   - ``direct_fetch`` → the legacy supervisor / domain-agent
+            #     path (emits ``workspace_context`` → the primitive module
+            #     surface at ``/workspace?context=…``).  A bare level /
+            #     spread / price / current value / "show me X" answerable
+            #     by ONE primitive fetch, no operator.
+            #   - ``open_dag`` (or null / unset) → the open-DAG composer
+            #     lane.  The SAME precomputed decision is handed to
+            #     ``run_open_dag`` so L1 is NOT re-run — one Sonnet call,
+            #     one consistent view of the turn across the gate + lane.
             #
-            # The template router above is the "match-cleanly"
-            # check.  Anything it didn't handle drops into the
-            # open-DAG lane here.  This is what makes the canonical
-            # gap-closer query ("correlate US 2s10s with 5Y
-            # breakeven") actually work — the legacy supervisor +
-            # flat domain-agent path can't compose two cross-domain
-            # leaves into the correlation operator.
-            #
-            # The legacy supervisor / domain-agent path is preserved
-            # below as a fallback for two cases:
-            #   1. The open-DAG pipeline returns PIPELINE_ERROR
-            #      (router / composer construction failure).
-            #   2. The opt-out env var OPEN_DAG_PRE_ROUTER=0 is set —
-            #      lets a developer pin to the legacy path during
-            #      debugging without code edits.
-            import os as _os_module
-            _open_dag_enabled = _os_module.environ.get(
-                "OPEN_DAG_PRE_ROUTER", "1",
-            ).strip() not in ("0", "false", "False", "no")
-            if _open_dag_enabled:
-                try:
-                    open_dag_outcome = await self.run_open_dag(
-                        augmented_message,
-                    )
-                except Exception:
-                    logger.exception(
-                        "[%s] %s open-DAG pre-router raised; falling "
-                        "back to legacy supervisor path",
-                        self.thread_id, turn_label,
-                    )
-                    open_dag_outcome = None
-
-                if open_dag_outcome is not None and getattr(
-                    open_dag_outcome, "status", None,
-                ) != "PIPELINE_ERROR":
-                    # PR-11A: on PASS with executed_dag + workflow,
-                    # persist the run as a slug-routed workspace and
-                    # emit workflow_route_decision / workflow_status /
-                    # workflow_result (template_id=None) so the
-                    # frontend chat bubble + Build "Open in Build" CTA
-                    # behave like the template lane.  No-op on
-                    # PASS_DRYRUN / refusal paths.
-                    #
-                    # NOTE on event ordering: ``self.run_open_dag(...)``
-                    # runs the full L1 → L6 pipeline in one async call
-                    # BEFORE returning, so we can't emit a meaningful
-                    # ``workflow_status: running`` before execution.  We
-                    # emit ``running`` immediately followed by
-                    # ``complete`` inside the helper so the frontend
-                    # reducer sees the full status transition (running
-                    # → complete) the plan §A.3 contract requires —
-                    # mirrors what the template lane emits at lines
-                    # 861 / 947 of this file.
-                    try:
-                        await self._maybe_emit_open_dag_workflow_events(
-                            outcome=open_dag_outcome,
-                            emit=emit,
-                        )
-                    except Exception:
-                        logger.exception(
-                            "[%s] %s open-DAG persistence/emission "
-                            "raised; continuing with markdown + done",
-                            self.thread_id, turn_label,
-                        )
-
-                    # Surface the open-DAG outcome verbatim to the
-                    # user.  The PipelineOutcome's markdown is
-                    # always populated.
-                    await emit(
-                        SessionEvent(
-                            type="token",
-                            data={"content": open_dag_outcome.markdown},
-                        )
-                    )
-                    await emit(
-                        SessionEvent(
-                            type="done",
-                            data={
-                                "workspace_context": None,
-                                "tool_calls": [],
-                                "total_duration_ms": round(
-                                    (time.monotonic() - turn_start) * 1000
-                                ),
-                                "open_dag_status": open_dag_outcome.status,
-                            },
-                        )
-                    )
-                    return
-
-            # --------------------------------------------------------------
-            # 1. Supervisor routing — sees augmented message so it can
-            #    route on "compare that with tips_2y_v1"-style refs.
-            # --------------------------------------------------------------
+            # Clarify is lane-independent: the gate skips it and the
+            # legacy branch's clarify handler (below) emits the
+            # clarification.  A routing FAILURE is terminal here (we can't
+            # pick a lane without a decision) — same error UX as before,
+            # just hoisted ahead of the lane split.
             await emit(
                 SessionEvent(type="status", data={"status": "routing"})
             )
-
             try:
                 decision: RouteDecision = await self._supervisor.route(
                     augmented_message
@@ -1741,6 +1717,231 @@ class CopilotSession:
                 turn_status = "failed"
                 return
 
+            # ----------------------------------------------------------
+            # 1.5 LANE GATE — open-DAG when the decision's execution_lane
+            #     is anything but an explicit ``direct_fetch`` (and not a
+            #     clarify).  ``OPEN_DAG_PRE_ROUTER=0`` pins to the legacy
+            #     path for debugging.  Null / unset lane → open_dag (the
+            #     safe back-compat catch-all the open-DAG lane was before
+            #     this field existed).
+            # ----------------------------------------------------------
+            #
+            # (Below is the open-DAG lane body — originally the "0.5
+            # OPEN-DAG PRE-ROUTER", PR-10B Codex F1.  Under Option A the
+            # env gate is still honoured, but the LANE choice now comes
+            # from ``decision.execution_lane`` above, not from "anything
+            # the template router didn't handle".)
+            #
+            # Plan §PR-10 line 762-764: "A pre-router in
+            # ``CopilotSession`` (very thin) that picks between the
+            # existing template path and the new open-DAG path.
+            # Simplest rule for PoC: if a template-router would match
+            # cleanly, use the template lane; otherwise route to
+            # open-DAG."
+            #
+            # The template router above is the "match-cleanly"
+            # check.  Anything it didn't handle drops into the
+            # open-DAG lane here.  This is what makes the canonical
+            # gap-closer query ("correlate US 2s10s with 5Y
+            # breakeven") actually work — the legacy supervisor +
+            # flat domain-agent path can't compose two cross-domain
+            # leaves into the correlation operator.
+            #
+            # The legacy supervisor / domain-agent path is preserved
+            # below as a fallback for two cases:
+            #   1. The open-DAG pipeline returns PIPELINE_ERROR
+            #      (router / composer construction failure).
+            #   2. The opt-out env var OPEN_DAG_PRE_ROUTER=0 is set —
+            #      lets a developer pin to the legacy path during
+            #      debugging without code edits.
+            import os as _os_module
+            _open_dag_enabled = _os_module.environ.get(
+                "OPEN_DAG_PRE_ROUTER", "1",
+            ).strip() not in ("0", "false", "False", "no")
+            # Option A lane gate: the open-DAG lane handles the turn
+            # UNLESS the router explicitly chose ``direct_fetch`` (a bare
+            # primitive lookup → legacy/primitive path) or asked to
+            # CLARIFY (lane-independent → legacy clarify handler).  A
+            # null / unset ``execution_lane`` falls here as open_dag, so
+            # back-compat behaviour (everything non-template → open-DAG)
+            # is preserved when the router omits the field.
+            _lane_is_direct_fetch = (
+                decision.execution_lane == ExecutionLane.DIRECT_FETCH
+            )
+            _lane_is_open_dag = (
+                decision.action != RouteAction.CLARIFY
+                and not _lane_is_direct_fetch
+            )
+            if _lane_is_direct_fetch:
+                logger.info(
+                    "[%s] %s execution_lane=direct_fetch — dispatching to "
+                    "the legacy primitive path (workspace_context).",
+                    self.thread_id, turn_label,
+                )
+            if _open_dag_enabled and _lane_is_open_dag:
+                # Codex follow-up Round 3: emit a PLACEHOLDER
+                # ``workflow_route_decision`` + ``workflow_status:
+                # running`` BEFORE invoking ``run_open_dag`` so the
+                # frontend chat bubble shows an "OPEN DAG · running"
+                # card immediately — the pipeline takes 20-60s with
+                # real LLM calls (L3 Composer + L4.5 gate + L5
+                # executor + L6 AnswerRenderer), and pre-PR-11 the
+                # whole window was silent because the open-DAG block
+                # only emitted events AFTER pipeline return.  The
+                # real route_decision rationale + workflow_result
+                # overwrite this placeholder once the pipeline
+                # completes (see ``_maybe_emit_open_dag_workflow_events``).
+                await emit(
+                    SessionEvent(
+                        type="workflow_route_decision",
+                        data={
+                            "action": "route",
+                            "template_id": None,
+                            "slot_values": {},
+                            "rationale": (
+                                "Composing open-DAG plan…"
+                            ),
+                            "clarification_question": None,
+                            "adjustments": [],
+                        },
+                    )
+                )
+                await emit(
+                    SessionEvent(
+                        type="workflow_status",
+                        data={"status": "running"},
+                    )
+                )
+
+                try:
+                    open_dag_outcome = await self.run_open_dag(
+                        augmented_message,
+                        route_decision=decision,
+                    )
+                except Exception:
+                    logger.exception(
+                        "[%s] %s open-DAG pre-router raised; falling "
+                        "back to legacy supervisor path",
+                        self.thread_id, turn_label,
+                    )
+                    open_dag_outcome = None
+                    # Failure cleanup: emit a workflow_status:error so
+                    # the running pill clears.  The legacy supervisor
+                    # path below will then take the turn and stream
+                    # the actual response — but the user sees the
+                    # state transition cleanly.
+                    await emit(
+                        SessionEvent(
+                            type="workflow_status",
+                            data={"status": "error"},
+                        )
+                    )
+
+                if open_dag_outcome is not None:
+                    # Codex Round 5 corrective: handle EVERY non-None
+                    # outcome here (including PIPELINE_ERROR) and
+                    # return without falling through to the legacy
+                    # supervisor lane.
+                    #
+                    # Pre-fix, PIPELINE_ERROR fell through silently to
+                    # the legacy supervisor, which would re-run the
+                    # bound primitives and emit a misleading
+                    # "out_of_scope" synthesis (the legacy supervisor
+                    # has no cross-domain correlation operator).  The
+                    # user saw a wrong answer instead of the actual
+                    # open-DAG failure reason.  Surfacing
+                    # ``open_dag_outcome.markdown`` directly preserves
+                    # the structured error message the pipeline already
+                    # composed.
+                    #
+                    # PR-11A: on PASS with executed_dag + workflow,
+                    # persist the run as a slug-routed workspace and
+                    # emit workflow_route_decision / workflow_status /
+                    # workflow_result (template_id=None) so the
+                    # frontend chat bubble + Build "Open in Build" CTA
+                    # behave like the template lane.  No-op on
+                    # PASS_DRYRUN / refusal / PIPELINE_ERROR paths.
+                    #
+                    # NOTE on event ordering: ``self.run_open_dag(...)``
+                    # runs the full L1 → L6 pipeline in one async call
+                    # BEFORE returning, so we can't emit a meaningful
+                    # ``workflow_status: running`` before execution.  We
+                    # emit ``running`` immediately followed by
+                    # ``complete`` inside the helper so the frontend
+                    # reducer sees the full status transition (running
+                    # → complete) the plan §A.3 contract requires —
+                    # mirrors what the template lane emits at lines
+                    # 861 / 947 of this file.
+                    try:
+                        await self._maybe_emit_open_dag_workflow_events(
+                            outcome=open_dag_outcome,
+                            emit=emit,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "[%s] %s open-DAG persistence/emission "
+                            "raised; continuing with markdown + done",
+                            self.thread_id, turn_label,
+                        )
+
+                    # Codex follow-up Round 3: on non-PASS outcomes
+                    # (PASS_DRYRUN, GATE_REFUSE, GATE_CLARIFY,
+                    # COMPOSER_REFUSE, ASSEMBLY_REFUSE, ROUTER_CLARIFY),
+                    # ``_maybe_emit_open_dag_workflow_events`` is a
+                    # no-op (it only fires on PASS).  The upfront
+                    # ``workflow_status: running`` we emitted before
+                    # ``run_open_dag`` would then leave the chat
+                    # bubble's status pill stuck on "running" forever.
+                    # Emit a terminal status here so the pill clears
+                    # cleanly for every non-PASS path.
+                    if getattr(open_dag_outcome, "status", None) != "PASS":
+                        terminal_status = (
+                            "complete"
+                            if getattr(open_dag_outcome, "status", None)
+                            in ("PASS_DRYRUN",)
+                            else "error"
+                        )
+                        await emit(
+                            SessionEvent(
+                                type="workflow_status",
+                                data={"status": terminal_status},
+                            )
+                        )
+
+                    # Surface the open-DAG outcome verbatim to the
+                    # user.  The PipelineOutcome's markdown is
+                    # always populated.
+                    await emit(
+                        SessionEvent(
+                            type="token",
+                            data={"content": open_dag_outcome.markdown},
+                        )
+                    )
+                    await emit(
+                        SessionEvent(
+                            type="done",
+                            data={
+                                "workspace_context": None,
+                                "tool_calls": [],
+                                "total_duration_ms": round(
+                                    (time.monotonic() - turn_start) * 1000
+                                ),
+                                "open_dag_status": open_dag_outcome.status,
+                            },
+                        )
+                    )
+                    return
+
+            # --------------------------------------------------------------
+            # 2. LEGACY / DIRECT-FETCH LANE
+            # --------------------------------------------------------------
+            # Reached when the lane gate did NOT take the open-DAG path:
+            #   - execution_lane == direct_fetch (a bare primitive lookup
+            #     → emits ``workspace_context`` → the primitive surface), OR
+            #   - action == CLARIFY (handled by the clarify branch below), OR
+            #   - the open-DAG lane raised and fell through (fallback).
+            # ``decision`` was already produced by the single supervisor
+            # route above (route-once-then-dispatch); we do NOT route again.
             await emit(
                 SessionEvent(
                     type="route_decision",
@@ -1757,6 +1958,17 @@ class CopilotSession:
                         "intent_tag": (
                             decision.intent_tag.value
                             if decision.intent_tag is not None
+                            else None
+                        ),
+                        # Option A: surface the LLM's lane choice so the
+                        # debug panel / eval harness can audit WHY a turn
+                        # took the primitive (direct_fetch) vs open-DAG
+                        # path.  On this legacy branch the lane is
+                        # direct_fetch (or a clarify/fallback); null when
+                        # the router omitted it.
+                        "execution_lane": (
+                            decision.execution_lane.value
+                            if decision.execution_lane is not None
                             else None
                         ),
                         "decomposition": [

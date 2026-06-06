@@ -45,6 +45,7 @@ from shared.artifacts.missingness import RawNoCleaning  # noqa: E402
 from shared.artifacts.types import (  # noqa: E402
     EventSet,
     Panel,
+    ScalarMetric,
     Series,
     SeriesSet,
     WindowedPanel,
@@ -255,6 +256,25 @@ def _windowed_panel(lineage) -> WindowedPanel:
     )
 
 
+def _scalar_metric(lineage) -> ScalarMetric:
+    """PR-11 Codex Round 6: ScalarMetric round-trip fixture.
+
+    Mirrors the single-unit + lineage-carrying shape of the
+    ``_windowed_panel`` builder so the existing round-trip test class
+    can add a ``test_scalar_metric_round_trip`` method without
+    inventing new fixture infrastructure.  ``metric_key`` mimics what
+    the canonical correlation operator emits (the operator-supplied
+    identifier); ``value`` is a finite scalar (ART11 forbids
+    ``±Inf`` / ``NaN`` — see ``shared.artifacts.types.ScalarMetric``).
+    """
+    return ScalarMetric(
+        metric_key="correlation_coefficient",
+        value=-0.342,
+        units=TimeSeriesUnits.RATIO,
+        lineage=lineage,
+    )
+
+
 # ============================================================================
 # Round-trip for every artifact type
 # ============================================================================
@@ -337,6 +357,57 @@ class TestRoundTripAllArtifactTypes:
         assert (recovered.payload == art.payload).all()
         assert recovered.offsets == art.offsets
         assert recovered.event_dates == art.event_dates
+
+    def test_scalar_metric_round_trip(
+        self, engine, storage, lineage_factory
+    ):
+        """PR-11 Codex Round 6: end-to-end ScalarMetric persistence.
+
+        Pre-Round-6, ``put_artifact`` raised ``TypeError`` inside
+        ``_artifact_row_count`` because the helper had no
+        ``ScalarMetric`` branch — see the production log:
+
+          ``TypeError: Unsupported artifact type ScalarMetric``
+          ``state/artifact_store.py line 1102 in _artifact_row_count``
+
+        The crash blocked the canonical open-DAG correlation query
+        from persisting + minting a workspace slug, which in turn
+        broke the chat-bubble "Open in Build" CTA (frontend can only
+        route to ``/workspace/:slug`` when ``workspace.slug`` is
+        populated).
+
+        This test exercises the FULL persist path
+        (``put_artifact`` → ``get_artifact``) so the gap is caught
+        in CI rather than only in production.  Asserts:
+          - put_artifact returns a 64-char hex hash
+          - get_artifact round-trips to a real ScalarMetric instance
+          - value + metric_key + units survive verbatim
+          - lineage.head_hash is preserved (content-addressed identity)
+          - the ArtifactSummary row_count is 1 (single scalar) and
+            units is the artifact's units string (RATIO for the
+            canonical correlation case).
+        """
+        art = _scalar_metric(lineage_factory())
+        with engine.begin() as conn:
+            h = put_artifact(art, conn=conn, object_storage=storage)
+        assert len(h) == HASH_LEN
+        with engine.connect() as conn:
+            recovered = get_artifact(h, conn=conn, object_storage=storage)
+            summary = get_artifact_summary(h, conn=conn)
+        assert isinstance(recovered, ScalarMetric)
+        assert recovered.metric_key == art.metric_key
+        assert recovered.value == art.value
+        assert recovered.units == art.units
+        assert recovered.lineage.head_hash == art.lineage.head_hash
+        # PR-11 Codex Round 6: row_count = 1 (single scalar) and
+        # units promoted to the queryable metadata column (matches
+        # the Series / WindowedPanel pattern).
+        assert summary.row_count == 1
+        assert summary.units == art.units.value
+        # Single scalars are well below the inline-vs-blob threshold;
+        # always inline.
+        assert summary.inline is True
+        assert summary.payload_uri is None
 
 
 # ============================================================================

@@ -84,7 +84,7 @@ from orchestrator.open_dag.composability_audit import (
     classify_primitive,
 )
 from shared.artifacts.types import Panel as PanelArtifact
-from shared.schemas.time_series import TimeSeriesUnits
+from shared.schemas.time_series import TimeSeries as TimeSeriesWire, TimeSeriesUnits
 from shared.workflow.registry import PrimitiveResolver, PrimitiveSpec
 
 
@@ -336,6 +336,62 @@ def _panel_typed_fields(output_class) -> Tuple[str, ...]:
     return tuple(out)
 
 
+def _series_typed_fields(output_class) -> Tuple[str, ...]:
+    """PR-11 Codex Round 5 — introspect a primitive's *Output class
+    and return ONLY the field names whose annotation is the canonical
+    ``shared.schemas.time_series.TimeSeries`` (or ``Optional[TimeSeries]``).
+
+    Why this exists
+    ===============
+
+    The Series bridge
+    (``shared.artifacts.adapters.from_time_series.time_series_to_artifact_series``)
+    requires the chosen ``output_field`` to be a canonical ``TimeSeries``
+    on the primitive's *Output class.  Many production primitives ALSO
+    carry a legacy ``time_series`` field typed as
+    ``List[TimeSeriesRow]`` (the bespoke wire-frozen row format
+    consumed by the older frontend).  Per the catalogue construction
+    pre-PR-11, both shapes were exposed in ``available_output_fields``
+    via ``output_field_units`` because that map keys on field name +
+    unit, not on Python annotation.
+
+    The selector LLM, looking at a list like
+    ``["time_series", "time_series_spread", "time_series_zscore"]``,
+    routinely picked the bare ``time_series`` because it reads as the
+    "default" / "the obvious one" — but on
+    ``CurveSpreadOutput`` / ``BreakevenInflationSimpleOutput`` /
+    similar that field is a list, not a TimeSeries, and the bridge
+    raises at runtime.  Pipeline returns PIPELINE_ERROR; session
+    falls back to the legacy supervisor; user sees a misleading
+    "out_of_scope" answer.
+
+    The fix: filter ``available_output_fields`` down to ONLY canonical
+    ``TimeSeries``-typed fields, by introspecting the *Output Pydantic
+    schema the same way ``_panel_typed_fields`` does for Panel.  The
+    LLM literally CANNOT pick the broken legacy field anymore — it's
+    not in the catalogue.
+
+    Returns a tuple in declaration order for stable catalogue prompts.
+    """
+    out: List[str] = []
+    fields = getattr(output_class, "model_fields", None)
+    if not fields:
+        return ()
+    for name, info in fields.items():
+        annotation = getattr(info, "annotation", None)
+        if annotation is TimeSeriesWire:
+            out.append(name)
+            continue
+        # Handle Optional[TimeSeries] / Union[TimeSeries, None] / etc.
+        try:
+            args = typing.get_args(annotation)
+        except Exception:
+            args = ()
+        if args and any(arg is TimeSeriesWire for arg in args):
+            out.append(name)
+    return tuple(out)
+
+
 def render_tool_catalogue(
     domain: Domain,
     mcp_tools: Sequence[Any],
@@ -437,17 +493,51 @@ def render_tool_catalogue(
         )
 
         if cls == Composability.BRIDGEABLE_SERIES:
-            available = decl.available_output_fields
+            # PR-11 Codex Round 5 corrective: filter the candidate
+            # field list to ONLY fields whose Pydantic annotation is
+            # the canonical ``TimeSeries`` type.  Pre-fix, this took
+            # ``decl.available_output_fields`` verbatim, which included
+            # legacy ``List[TimeSeriesRow]`` fields named
+            # ``time_series`` on production primitives — the bridge
+            # rejected them at runtime and the pipeline silently fell
+            # back to the legacy supervisor lane, surfacing a
+            # misleading "out_of_scope" answer to the user.
+            #
+            # Filtering at catalogue-build time makes the wrong choice
+            # impossible: the LLM literally cannot pick a field that
+            # isn't in ``available_output_fields``.  Tools whose
+            # *Output class exposes NO canonical TimeSeries field are
+            # dropped honestly with a diagnostic — the resolver
+            # classified them as BRIDGEABLE_SERIES but the schema
+            # doesn't actually have a bridgeable Series field.
+            canonical_series_fields = _series_typed_fields(spec.output_class)
+            available = tuple(
+                f for f in decl.available_output_fields
+                if f in canonical_series_fields
+            )
             if not available:
-                # Should not happen — BRIDGEABLE_SERIES requires
-                # non-empty output_field_units.  Defensive drop with
-                # diagnostic.
+                # Two sub-cases:
+                #   (a) The *Output schema has no canonical TimeSeries
+                #       fields at all (the primitive only exposes
+                #       legacy list-shaped wire fields).  The composability
+                #       audit classified BRIDGEABLE_SERIES from
+                #       ``output_field_units`` but that map is
+                #       string-keyed and can't see the runtime
+                #       type — drop honestly.
+                #   (b) Defensive corner: schema has TimeSeries fields
+                #       but none of them appear in
+                #       ``available_output_fields``.  Resolver
+                #       registration drift; surface the diagnostic.
                 dropped.append(DroppedToolEntry(
                     mcp_tool_name=mcp_name,
                     reason=(
-                        "classified BRIDGEABLE_SERIES but "
-                        "available_output_fields is empty — defensive "
-                        "drop; investigate resolver registration"
+                        "classified BRIDGEABLE_SERIES but no canonical "
+                        "``TimeSeries``-typed output_field is exposed "
+                        "via ``available_output_fields`` (legacy "
+                        "``List[TimeSeriesRow]`` fields are filtered "
+                        "from the open-DAG catalogue per the Codex "
+                        "Round 5 corrective; the existing domain-agent "
+                        "path can still call this primitive)"
                     ),
                     composability=cls,
                 ))

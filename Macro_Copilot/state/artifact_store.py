@@ -1099,22 +1099,36 @@ def _artifact_row_count(artifact: Artifact) -> int:
         return len(artifact.payload)
     if isinstance(artifact, WindowedPanel):
         return artifact.payload.shape[0]
+    if isinstance(artifact, ScalarMetric):
+        # PR-11 Codex Round 6: ScalarMetric carries a single finite
+        # scalar value (admitted v2.0 / ADR 0016).  Row count is 1 —
+        # the artifact holds one value, no row dimension.  Used by
+        # the inline-vs-blob threshold (well below it, so always
+        # inline) and surfaced on the ArtifactSummary metadata column.
+        return 1
     raise TypeError(f"Unsupported artifact type {type(artifact).__name__}")
 
 
 def _artifact_units(artifact: Artifact) -> Optional[str]:
     """Best-effort units string for the queryable metadata column.
 
-    Single-unit artifacts (Series, WindowedPanel) emit their unit's
-    string value (e.g. ``"bps"`` / ``"percent"``).  Multi-unit
-    artifacts (SeriesSet, Panel with per-column units, EventSet
-    which has no units) emit NULL — the per-column / per-key units
-    live inside the JSONB payload, queryable but not promoted to a
-    column.
+    Single-unit artifacts (Series, WindowedPanel, ScalarMetric) emit
+    their unit's string value (e.g. ``"bps"`` / ``"percent"`` /
+    ``"ratio"``).  Multi-unit artifacts (SeriesSet, Panel with
+    per-column units, EventSet which has no units) emit NULL — the
+    per-column / per-key units live inside the JSONB payload,
+    queryable but not promoted to a column.
     """
     if isinstance(artifact, Series):
         return artifact.units.value
     if isinstance(artifact, WindowedPanel):
+        return artifact.units.value
+    if isinstance(artifact, ScalarMetric):
+        # PR-11 Codex Round 6: ScalarMetric is single-unit (one
+        # ``TimeSeriesUnits`` value covering the whole scalar).
+        # Promote to the metadata column so ``GET /api/v1/artifacts``
+        # / Build sidebar queries can filter by unit the same way
+        # they do for Series / WindowedPanel.
         return artifact.units.value
     return None
 

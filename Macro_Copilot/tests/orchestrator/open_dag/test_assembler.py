@@ -554,50 +554,88 @@ class TestContractCheckSoftWarnings:
             terminal_node_id="z",
         )
 
-    def test_semantic_role_mismatch_is_hard_error_per_pr10d_f4(self) -> None:
-        # PR-10D Codex F4: semantic_role mismatch MUST be a HARD
-        # error per the original contract — Boundary A rejects
-        # semantic-wrong-but-type-legal candidates.
+    def test_semantic_role_mismatch_is_soft_warning_per_codex_round_4(self) -> None:
+        # Codex Round 4 corrective: PR-10D F4 hardened this from
+        # WARNING to ERROR but the selector prompt explicitly states
+        # the field is the LLM's "own short tag" and that
+        # contradictions surface as a "SOFT warning, not a hard
+        # fail" (orchestrator/prompts.py:397-401).  Live-LLM runs of
+        # the canonical correlation query failed deterministically
+        # under PR-10D's hardening because the LLM paraphrases on
+        # repair as well, exhausting the bounded one-round repair.
+        # Reverted to WARNING; Boundary B (CoverageGate) provides
+        # the real LLM-judged semantic comparison.
         shape = self._single_leaf_shape(
             _request(semantic_role="spread_level"),
         )
         leaves = [
             _binding(
                 leaf_id="h_a", mcp_tool_name="synth_series_bps_a",
-                semantic_role="rate_level",  # mismatch
+                semantic_role="rate_level",  # different wording — soft
             ),
         ]
         asm = Assembler(primitive_resolver=_resolver)
         result = asm.assemble(shape, leaves)
-        # HARD error → REFUSED (no rebinder callback registered).
-        assert result.status == AssemblyStatus.REFUSED
-        # The error IS in the hard errors set.
-        hard = result.validation_result.hard_errors
+        # SOFT warning → assembly CLEAN; the warning flows to
+        # Boundary B per the original pre-PR-10D contract.
+        assert result.status == AssemblyStatus.CLEAN, (
+            f"Codex Round 4: semantic_role wording difference must be a "
+            f"SOFT warning, not a hard fail; got status={result.status} "
+            f"with refusal_reasons={result.refusal_reasons!r}"
+        )
+        # The warning IS in the warnings set (not the hard_errors set).
+        warnings = result.validation_result.warnings
         assert any(
             e.code == ErrorCode.E_ROLE_DISCRIMINANT_MISMATCH
-            and e.severity == Severity.ERROR
+            and e.severity == Severity.WARNING
             and e.detail.get("field") == "semantic_role"
             and e.leaf_id == "h_a"
+            for e in warnings
+        ), (
+            f"Expected a WARNING-severity E_ROLE_DISCRIMINANT_MISMATCH "
+            f"in warnings; got {warnings!r}"
+        )
+        # And absent from the hard_errors set.
+        hard = result.validation_result.hard_errors
+        assert not any(
+            e.code == ErrorCode.E_ROLE_DISCRIMINANT_MISMATCH
+            and e.detail.get("field") == "semantic_role"
             for e in hard
+        ), (
+            f"semantic_role mismatch must NOT appear in hard_errors "
+            f"(Codex Round 4 revert); got {hard!r}"
         )
 
-    def test_output_meaning_mismatch_is_hard_error_per_pr10d_f4(self) -> None:
+    def test_output_meaning_mismatch_is_soft_warning_per_codex_round_4(self) -> None:
+        # Same Codex Round 4 corrective as semantic_role above —
+        # exact-equality on free-form English at Boundary A was
+        # broken for live LLMs; reverted to WARNING.
         shape = self._single_leaf_shape(
             _request(output_meaning="A curve spread series"),
         )
         leaves = [
             _binding(
                 leaf_id="h_a", mcp_tool_name="synth_series_bps_a",
-                output_meaning="A breakeven series",  # mismatch
+                output_meaning="A breakeven series",  # different wording
             ),
         ]
         asm = Assembler(primitive_resolver=_resolver)
         result = asm.assemble(shape, leaves)
-        assert result.status == AssemblyStatus.REFUSED
-        hard = result.validation_result.hard_errors
+        assert result.status == AssemblyStatus.CLEAN, (
+            f"Codex Round 4: requested_output_meaning wording "
+            f"difference must be a SOFT warning; got status="
+            f"{result.status}"
+        )
+        warnings = result.validation_result.warnings
         assert any(
             e.code == ErrorCode.E_ROLE_DISCRIMINANT_MISMATCH
-            and e.severity == Severity.ERROR
+            and e.severity == Severity.WARNING
+            and e.detail.get("field") == "requested_output_meaning"
+            for e in warnings
+        )
+        hard = result.validation_result.hard_errors
+        assert not any(
+            e.code == ErrorCode.E_ROLE_DISCRIMINANT_MISMATCH
             and e.detail.get("field") == "requested_output_meaning"
             for e in hard
         )

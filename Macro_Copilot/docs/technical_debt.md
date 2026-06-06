@@ -751,6 +751,12 @@ this should maybe not live under the OIS domain namespace, because it is cross-d
 Might not be standard!! 
 Probably just a temporary workaround: It is basically a temporary bridge because the artifact layer is still missing the right scalar output type.
 
+UPDATE (2026-06): the SINGLE-scalar half is RESOLVED — ``summarize_series``
+now emits a real ``ScalarMetric`` (the Series→ScalarMetric migration; the
+sentinel-date 1-row Series hack is gone).  The MULTI-scalar half (the
+``dispersion`` knob smuggling a 2nd number into lineage; "mean and std"
+returns only the mean) is the still-open gap — see TD #36.
+
 
 ### 24. Phase 1 deferred 1B desk-critical tools (data-infrastructure-gated)
 
@@ -1276,6 +1282,291 @@ CROSS-REF:
       - `tests/test_real_yield_level_compute.py::TestCanonicalTimeSeries`
         (place to add the per-tool regression test once the bad rows
         are cleaned)
+
+
+### 32. Template-lane router disabled to isolate-test the open-DAG lane (DISABLE_TEMPLATE_ROUTER flag) — TESTING SCAFFOLDING; CLEAR BEFORE PROD
+WHERE:
+      - `orchestrator/session.py` — env-var gate block right above the
+        OPEN-DAG PRE-ROUTER section (look for the comment block
+        "PR-11 testing: ``DISABLE_TEMPLATE_ROUTER=1`` skips the
+        template-lane gate entirely so every turn drops into the
+        open-DAG lane below.").
+      - `docker-compose.yml` — api-server service's ``environment:``
+        block, the line ``- DISABLE_TEMPLATE_ROUTER=1`` (look for
+        the comment "PR-11 isolation flag: skip the template-lane
+        gate so every chat turn drops into the open-DAG composer/
+        executor.")
+      - Also closely related (NOT the same flag but same testing
+        wake): `orchestrator/session.py` around the
+        ``OPEN_DAG_PRE_ROUTER`` block — when the open-DAG pipeline
+        returns ``status=PIPELINE_ERROR`` we now surface that
+        honestly via the structured markdown + emit
+        ``workflow_status: error``, instead of falling through to
+        the legacy supervisor lane.  See the comment
+        "Codex Round 5 corrective: handle EVERY non-None outcome
+        here (including PIPELINE_ERROR) and return without falling
+        through to the legacy supervisor lane."  Reverting this
+        WITHOUT also clearing the flag below would restore
+        silent-legacy-fallback masking — keep the two reverts
+        bundled.
+
+WHAT:
+      Two coupled testing scaffolds added during the live-LLM
+      bring-up of the open-DAG pipeline:
+
+      1. The ``DISABLE_TEMPLATE_ROUTER`` env var, when truthy
+         (default ``"0"``; we ship ``"1"`` in docker-compose),
+         tells ``CopilotSession`` to SKIP the call to
+         ``_maybe_run_workflow`` at the top of each turn.  The
+         template-lane gate (which inspects the user prompt against
+         the registered ``WorkflowTemplate`` recipes — event_study,
+         regime_conditioned_relationship, paused backtest) never
+         fires.  Every turn falls through to the open-DAG
+         pre-router below it.
+
+         Code shape (paraphrased — the canonical text is in
+         ``orchestrator/session.py``):
+
+           import os as _tmpl_router_env
+           _template_router_disabled = (
+               _tmpl_router_env.environ.get(
+                   "DISABLE_TEMPLATE_ROUTER", "0",
+               ).strip() in ("1", "true", "True", "yes")
+           )
+
+           if (
+               self._workflow_router is not None
+               and not _template_router_disabled
+           ):
+               workflow_handled = await self._maybe_run_workflow(...)
+               if workflow_handled:
+                   return
+           elif _template_router_disabled:
+               logger.info(
+                   "[%s] %s DISABLE_TEMPLATE_ROUTER=1 — skipping "
+                   "template-lane gate; routing directly to open-DAG.",
+                   self.thread_id, turn_label,
+               )
+
+         Default behaviour (flag unset or ``"0"``) is unchanged
+         from pre-flag baseline: template-router-first, open-DAG
+         as fallback.  Flag set to ``"1"`` is the isolation-test
+         mode.
+
+      2. The open-DAG block immediately below was modified so
+         ``PIPELINE_ERROR`` outcomes surface their structured
+         markdown directly + emit ``workflow_status: error`` (or
+         ``complete`` for ``PASS_DRYRUN``), instead of falling
+         through to the legacy supervisor.  Pre-fix, a
+         ``PIPELINE_ERROR`` quietly handed the turn back to the
+         supervisor, which would re-run the bound primitives and
+         emit a misleading synthesis (the "out_of_scope" answer we
+         saw during canonical-query bring-up).
+
+      Why both: while testing the open-DAG lane in isolation, we
+      need the template lane OUT OF THE WAY (#1) AND the legacy
+      supervisor lane OUT OF THE FALLBACK PATH on open-DAG failure
+      (#2) — otherwise either path masks the open-DAG behaviour.
+
+WHY THIS IS DEBT (not a permanent design choice):
+      - Both changes were authored as TESTING scaffolds, not as the
+        eventual production routing contract.  Plan §PR-10 line 762
+        states: "if a template-router would match cleanly, use the
+        template lane; otherwise route to open-DAG."  The template
+        lane is the cheaper / faster / more-deterministic path
+        when a template matches a turn cleanly; disabling it
+        permanently is wasteful for templated archetypes.
+      - The PIPELINE_ERROR no-fallback behaviour is correct for
+        bring-up (we want to see open-DAG failures honestly), but
+        the legacy supervisor remains a useful graceful-degradation
+        path in production.  Once open-DAG is stable, the fallback
+        should resume.
+
+WHEN TO CLEAR (decision triggers — any ONE of these is enough):
+      a) The open-DAG lane has been live for ≥1 week with no
+         PIPELINE_ERROR outcomes against a representative prompt
+         suite (correlation, rolling stats, regime queries,
+         out-of-scope refusals).
+      b) The Phase-1 frontend factory hits the next 9 standardized
+         tools and we want to validate template-lane regressions
+         haven't piled up.
+      c) Production go-live cutover.
+
+HOW TO CLEAR (two surgical edits + optional code removal):
+
+      MINIMAL CLEAR (recommended first step — flips behaviour
+      without touching code):
+
+        1. ``docker-compose.yml``: change
+             ``- DISABLE_TEMPLATE_ROUTER=1``
+           to
+             ``- DISABLE_TEMPLATE_ROUTER=0``
+           (or delete the line entirely — the gate defaults to
+           "0"/false when the env is unset).
+        2. ``docker compose up -d --force-recreate api-server``
+           to pick up the env change.
+        3. Confirm in the api-server logs: the
+           ``DISABLE_TEMPLATE_ROUTER=1 — skipping ...`` info line
+           should NO LONGER appear on chat turns; the
+           ``_maybe_run_workflow`` call fires as it did before
+           PR-11 testing.
+        4. Sanity-test that template-matching prompts still route
+           to the template lane (e.g. "event study of US 2s10s
+           around CPI surprise prints" should land on
+           ``event_study``; "regime-conditioned relationship..."
+           should land on ``regime_conditioned_relationship``).
+           See the prompt list in ``tmp/frontend_orchestration.md``
+           "Tier 4" for canonical template-matching queries.
+
+      FULL CLEAR (remove the testing scaffolding entirely — do
+      this once the minimal clear has been live for ≥1 week
+      without incident):
+
+        a) Delete the ``_template_router_disabled`` env-var gate
+           block in ``orchestrator/session.py`` and restore the
+           pre-PR-11 shape (the inner ``if self._workflow_router
+           is not None: ...`` stays; just the surrounding gate
+           goes).
+        b) Remove the ``- DISABLE_TEMPLATE_ROUTER=`` line from
+           ``docker-compose.yml`` entirely.
+        c) Revisit the PIPELINE_ERROR fallback decision: if you
+           want the legacy supervisor to resume serving as the
+           degraded-mode fallback, restore the pre-Codex-Round-5
+           shape (the ``if open_dag_outcome is not None and
+           outcome.status != "PIPELINE_ERROR":`` gate around the
+           emit + return block).  If you'd rather keep
+           PIPELINE_ERROR surfacing honestly (recommended; it
+           prevents the misleading "out_of_scope" failure mode),
+           leave the post-Round-5 shape in place — that path is
+           NOT testing scaffolding, it's a real UX fix.
+
+      Decision summary:
+        - Step 1-4 (minimal clear) = restore template-first
+          routing; ~5 min, no code change.
+        - Step a-c (full clear) = remove the env-var gate + decide
+          on PIPELINE_ERROR fallback policy; ~30 min including
+          regression test.
+
+EFFORT:
+      Trivial (minimal clear: 5 minutes).  Full clear ~30 minutes
+      including a regression sweep on template-matching prompts.
+
+CROSS-REF:
+      - `tmp/frontend_orchestration.md` — the PR-11 plan that
+        triggered the testing scaffolding.  Specifically §C.4
+        ("Tab semantics for template_id=null") and the §D.2 backend
+        integration test pattern that pre-mocks the template lane
+        out of the picture.
+      - `orchestrator/session.py:run_open_dag` — the open-DAG
+        entry point.  The flag only affects the routing-time gate;
+        it does NOT affect ``run_open_dag`` itself.
+      - `orchestrator/open_dag/pipeline.py::PipelineOutcome.status`
+        — the closed set of statuses (PASS / PASS_DRYRUN /
+        GATE_REFUSE / GATE_CLARIFY / COMPOSER_REFUSE /
+        ASSEMBLY_REFUSE / ROUTER_CLARIFY / PIPELINE_ERROR).  The
+        no-fallback decision applies uniformly across all of these.
+      - The git diff that introduced the flag is small (~30 LOC in
+        ``session.py`` + 5 LOC in ``docker-compose.yml``).  No new
+        dependencies, no schema changes.
+
+
+### 36. Multi-scalar response prompts do not work — no first-class "set of numbers" output (architecture gap)
+
+WHERE: shared/artifacts/types.py + shared/artifacts/registry.py (the
+       closed artifact family); shared/operators/summarize_series/
+       (the ``dispersion`` knob); orchestrator/open_dag/composer.py +
+       orchestrator/prompts.py (composer + L1 shape contract);
+       orchestrator/open_dag/answer.py (L6 renderer).  Related to TD #23.
+
+WHAT:  Any query that asks for MORE THAN ONE number does not return all
+       of them.  Confirmed live (real-backend + frontend review, 2026-06):
+         - "mean AND std of US 2s10s" → PARTIAL.  The composer correctly
+           builds ``summarize_series(statistic=mean, dispersion=std)`` and
+           the std IS computed — but the terminal artifact is a single
+           ``ScalarMetric`` that carries ONLY the mean (9.2 bps).  The std
+           is recorded in the lineage step's ``dispersion_value`` and never
+           rendered, so the answer prose + the ScalarMetric widget show the
+           mean only.  The std silently vanishes from the user's answer.
+         - "mean, median AND std of X" (3+ stats) → REFUSED entirely.  The
+           composer knows it cannot bundle three co-equal scalars into one
+           terminal, so it declines (COMPOSER_REFUSE) — no answer at all.
+         - "correlation AND beta of X and Y", "the 25th/50th/75th
+           percentile of X", etc. → same class.  No way to return N numbers.
+
+WHY:   Three structural facts collide:
+         1. The scalar answer type ``ScalarMetric`` holds EXACTLY ONE value
+            by design ({metric_key, value, units, lineage}).  It is the
+            honest "one number" type.
+         2. The open-DAG output contract is SINGLE-TERMINAL: one ShapeSpec
+            → one terminal node → one artifact.  There is no slot for a
+            second co-equal number in the answer.
+         3. ``summarize_series``'s ``dispersion`` knob is a SMUGGLE, not an
+            output: it computes the std and stashes it in lineage params
+            (diagnostic side-record), not as a returned value.  Nothing
+            renders lineage side-records.
+       Net: the system has ``SeriesSet`` (a bundle of N time-series) but NO
+       scalar analog — there is no first-class "bundle of N named scalars"
+       artifact.  So "give me N numbers" has no representation.  (TD #23
+       already flagged ``summarize_series`` as "a temporary bridge because
+       the artifact layer is still missing the right scalar output type."
+       The SINGLE-scalar half of #23 is now RESOLVED — ``summarize_series``
+       emits a real ``ScalarMetric`` since the Series→ScalarMetric
+       migration.  The MULTI-scalar half is this entry, still open.)
+
+IMPACT: Affects every multi-number prompt class, inconsistently: 2-number
+        prompts answer partially (one number shown, the rest hidden);
+        3+-number prompts refuse outright.  A PM asking "mean and std"
+        gets a confidently-incomplete answer (worse than a refusal, because
+        nothing signals the std was dropped).  Does NOT affect single-number
+        prompts (average / current / correlation / cointegration — all
+        correct) or series prompts (z-score / rolling-corr — all correct).
+
+FIX:   GENERAL fix — do NOT hardcode std-surfacing into ``summarize_series``
+       (that only helps std-of-a-summary and nothing else).  Give the
+       architecture a proper multi-scalar OUTPUT, mirroring ``SeriesSet``:
+         (a) New closed-family artifact type ``ScalarMetricSet`` — an
+             ordered bundle of N named scalars (e.g. {mean: 9.2 bps,
+             std: 59.4 bps}).  One ADR; registration-clean (types.py +
+             ArtifactTypeName enum + ARTIFACT_CLASS_TO_NAME + the closed-
+             family lockstep test + executor bridge + store codec).
+         (b) One GENERIC operator ``combine_scalars`` (finance-blind) that
+             fans in N ``ScalarMetric`` inputs and emits a
+             ``ScalarMetricSet``.  Works for ANY scalars from ANY operators.
+         (c) Then every multi-number query is the SAME shape: N scalar
+             sub-DAGs (summarize_series(mean), summarize_series(std), …, or
+             correlation + rolling_regression→last, …) → combine_scalars →
+             ScalarMetricSet terminal.  General by construction.
+         (d) Plumb through the Phase-A-E machinery already in place: add a
+             ``scalar_set`` member to ``AnswerShape``; L1 declares
+             ``["scalar_set"]`` for multi-number prompts; the deterministic
+             verifier checks the terminal is a ScalarMetricSet; the composer
+             gets ONE guidance rule ("N requested statistics → N scalar
+             nodes → combine_scalars").  Retire the ``dispersion`` knob's
+             double-duty (keep it as lineage detail; route real multi-number
+             answers through the bundle).
+         (e) Frontend: a ``ScalarMetricSet`` widget rendering a small
+             named-number table (the scalar analog of the SeriesSet widget).
+       This respects the non-negotiables: closed-family extension (one type
+       + one operator, both registration-only — no composer/validator/
+       executor rewrite), and it makes "give me N numbers" a first-class,
+       scalable shape instead of smuggle-or-refuse.
+
+EFFORT: Medium.  One new artifact type (+ its closed-family wiring + store
+        codec + lockstep), one new generic operator, the shape-vocab +
+        composer-rule additions, and one frontend widget.  No schema
+        migration; no change to the single-terminal contract.
+
+WHEN:   When multi-statistic / multi-metric answers become desk-relevant.
+        Until then, the system is HONEST on single-number prompts and the
+        only user-facing harm is the partial "mean and std" answer — which
+        should at minimum be made to REFUSE-or-clarify ("I can return one
+        summary statistic per run today") rather than silently drop the std,
+        if this entry is not picked up first.
+
+EVIDENCE: tmp/prompt_tests/FRONTEND_SCORECARD.md (T6 mean+std — mean shown,
+          std absent; DAG inspector confirms Dispersion=std was computed);
+          tmp/prompt_tests/sessionE/diagnosis_E.md (E3 #5 "mean, median and
+          std" → COMPOSER_REFUSE); GAP_LEDGER.md G02.
 
 
 ## Phase 1 closure punch list (for reference)

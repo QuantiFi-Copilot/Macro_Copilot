@@ -84,6 +84,7 @@ PR-7 will wire the real LLM-backed implementations.
 
 from __future__ import annotations
 
+import logging
 from enum import Enum
 from typing import (
     Annotated, Any, Dict, List, Literal, Optional, Protocol, Sequence, Tuple,
@@ -91,6 +92,8 @@ from typing import (
 )
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+logger = logging.getLogger(__name__)
 
 from shared.artifacts.registry import ArtifactTypeName
 from shared.schemas.time_series import TimeSeriesUnits
@@ -490,15 +493,44 @@ class Assembler:
                 repair_trace=tuple(trace),
             )
 
+        # Codex Round 3 follow-up: surface the SPECIFIC residual hard
+        # errors so the chat bubble + server logs can show WHY the
+        # repair failed.  Without this, the generic
+        # "residual hard errors present" string masked every diagnostic
+        # signal — making prompt + composability bugs impossible to
+        # triage from the chat view.
+        hard_error_strs = tuple(
+            str(e) for e in (result_v2.hard_errors or ())
+        )
+        logger.warning(
+            "Assembler: bounded one-round repair exhausted on workflow "
+            "%r; %d residual hard error(s) after re-validation: %s",
+            shape.workflow_id,
+            len(hard_error_strs),
+            " ; ".join(hard_error_strs) or "(no specific reasons recorded)",
+        )
+
+        if hard_error_strs:
+            refusal_reasons = (
+                (
+                    f"bounded one-round repair exhausted; "
+                    f"{len(hard_error_strs)} residual hard error(s) "
+                    "after re-validation:"
+                ),
+                *hard_error_strs,
+            )
+        else:
+            refusal_reasons = (
+                "bounded one-round repair exhausted; residual hard errors "
+                "present after re-validation.",
+            )
+
         return AssemblyResult(
             status=AssemblyStatus.REFUSED,
             workflow=None,
             validation_result=result_v2,
             repair_trace=tuple(trace),
-            refusal_reasons=(
-                "bounded one-round repair exhausted; residual hard errors "
-                "present after re-validation.",
-            ),
+            refusal_reasons=refusal_reasons,
         )
 
     # ------------------------------------------------------------------
@@ -758,17 +790,28 @@ class Assembler:
                     },
                 ))
 
-            # 3. Frequency — HARD (only when LeafRequest pinned a freq).
-            # Frequency is a closed Frequency enum (PR-A3 corrective);
-            # comparison is direct enum equality, no normalisation needed.
+            # 3. Frequency — HARD when both sides declared explicit
+            #    mismatched values; SOFT WARNING when the selector
+            #    returned ``declared_frequency=None`` (honest "I don't
+            #    know"). Codex Round 4: the selector prompt explicitly
+            #    permits null ("daily/weekly/monthly when known; null
+            #    otherwise"), so a null bound.declared_frequency
+            #    against a non-null req.expected_frequency MUST NOT
+            #    be a hard fail — Boundary B (CoverageGate) reads the
+            #    catalogue's actual frequency and resolves the gap.
             if (
                 req.expected_frequency is not None
                 and bound.declared_frequency != req.expected_frequency
             ):
+                _freq_severity = (
+                    Severity.WARNING
+                    if bound.declared_frequency is None
+                    else Severity.ERROR
+                )
                 out.append(ValidationError(
                     code=ErrorCode.E_FREQUENCY_MISMATCH,
                     owner_layer=OwnerLayer.L2_BINDING,
-                    severity=Severity.ERROR,
+                    severity=_freq_severity,
                     message=(
                         f"Assembler contract check: leaf "
                         f"{hole.node_id!r} LeafRequest expected "
@@ -790,47 +833,59 @@ class Assembler:
                     },
                 ))
 
-            # 4. Free-form role-discriminant fields — HARD ERROR
-            #    (PR-10D Codex F4).
+            # 4. Free-form role-discriminant fields — SOFT WARNING.
             #
-            # The original contract (plan §5 + plan-decision #4 "Two
-            # trust boundaries") said semantic-wrong-but-type-legal
-            # candidates MUST be rejected by Boundary A via the role
-            # discriminant — NOT warned.  Pre-PR-10D this was a
-            # warning, which let role-mismatched DAGs reach Boundary
-            # B for soft consideration.  Hardening to ERROR makes
-            # the rejection mechanical:
+            # Codex Round 4 corrective: PR-10D's "Codex F4" hardened
+            # these from WARNING to ERROR on the theory that
+            # "semantic-wrong-but-type-legal candidates MUST be
+            # rejected by Boundary A via the role discriminant."  That
+            # principle is sound; the IMPLEMENTATION (exact normalized-
+            # string equality on free-form English) was broken for
+            # live LLMs:
             #
-            #   - The repair loop's leaf_rebinder runs ONE round
-            #     (Selector may correct the binding's declared
-            #     fields).
-            #   - If still mismatched after rebind, AssemblyResult is
-            #     REFUSED.
-            #   - Boundary B never sees a role-mismatched DAG.
+            #   - The selector prompt EXPLICITLY says
+            #     ``declared_semantic_role`` is the LLM's "own short
+            #     tag" and that wording-difference "surfaces as a
+            #     SOFT warning, not a hard fail" (prompts.py:397-401).
+            #   - The selector therefore paraphrases.  Every live run.
+            #   - PR-10D's exact-equality hard-fail then rejects the
+            #     binding.  The bounded one-round repair calls the
+            #     SAME LLM with the SAME prompt → same paraphrase →
+            #     same mismatch → repair exhausts.  The canonical
+            #     correlation query failed for this exact reason in
+            #     every test run.
             #
-            # P11 + the no-role-enum ruling (rulings #1, #5) are
-            # honoured: this is still a mechanical comparison of
-            # LLM-authored free-form English — no curated role
-            # vocabulary.  ``_normalise`` lowercases + whitespace-
-            # collapses so trivial casing differences don't trip
-            # the gate.
+            # Reverting to WARNING restores the contract the prompt
+            # was written for.  The doctrinal need to reject
+            # semantically-wrong bindings is preserved — Boundary B
+            # (CoverageGate, PR-8) is LLM-judged and CAN do real
+            # semantic comparison via its verdict prompt.  Boundary B
+            # consumes the WARNING flow per its existing
+            # ``soft_warnings`` field (warnings_to_string_list in
+            # coverage_gate.py).  A semantically-wrong binding that
+            # paraphrases plausibly would still get caught by the
+            # gate's LLM judgment; pure paraphrase differences pass
+            # through cleanly.
+            #
+            # If we later need stricter rejection, the right fix is
+            # an embedding-similarity check (cos ≥ 0.7) or an LLM-
+            # judge call — NOT exact string equality on English.
             if _normalise(req.semantic_role) != _normalise(
                 bound.declared_semantic_role,
             ):
                 out.append(ValidationError(
                     code=ErrorCode.E_ROLE_DISCRIMINANT_MISMATCH,
                     owner_layer=OwnerLayer.L2_BINDING,
-                    severity=Severity.ERROR,
+                    severity=Severity.WARNING,
                     message=(
                         f"Assembler contract check: leaf "
-                        f"{hole.node_id!r} semantic_role mismatch "
-                        f"(LeafRequest: "
+                        f"{hole.node_id!r} semantic_role differs from "
+                        "LeafRequest (LeafRequest: "
                         f"{req.semantic_role!r}; BoundLeaf: "
-                        f"{bound.declared_semantic_role!r}).  HARD "
-                        "ERROR — Boundary A rejects to prevent a "
-                        "semantic-wrong-but-type-legal DAG from "
-                        "reaching execution.  Per the bounded "
-                        "repair loop the Selector may rebind once."
+                        f"{bound.declared_semantic_role!r}).  SOFT "
+                        "WARNING — flows to Boundary B (CoverageGate) "
+                        "for LLM-judged semantic comparison; pure "
+                        "paraphrase differences pass cleanly."
                     ),
                     leaf_id=hole.node_id,
                     node_id=hole.node_id,
@@ -847,11 +902,13 @@ class Assembler:
                 out.append(ValidationError(
                     code=ErrorCode.E_ROLE_DISCRIMINANT_MISMATCH,
                     owner_layer=OwnerLayer.L2_BINDING,
-                    severity=Severity.ERROR,
+                    severity=Severity.WARNING,
                     message=(
                         f"Assembler contract check: leaf "
                         f"{hole.node_id!r} requested_output_meaning "
-                        "mismatch.  HARD ERROR — Boundary A rejects."
+                        "differs from LeafRequest.  SOFT WARNING — "
+                        "flows to Boundary B (CoverageGate) for "
+                        "LLM-judged semantic comparison."
                     ),
                     leaf_id=hole.node_id,
                     node_id=hole.node_id,

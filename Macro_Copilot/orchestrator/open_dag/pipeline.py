@@ -525,6 +525,7 @@ class OpenDagPipeline:
     async def run(
         self,
         user_prompt: str,
+        route_decision: Optional[RouteDecision] = None,
     ) -> PipelineOutcome:
         """Run the full open-DAG lane for one user prompt.
 
@@ -537,19 +538,31 @@ class OpenDagPipeline:
         the composer re-composes ONCE with the SPECIFIC reason, then the
         HARD-BLOCK floor applies — a wrong/low-confidence DAG NEVER
         executes.
+
+        ``route_decision`` (Option A — route-once dispatch): when the
+        caller has ALREADY routed the turn (the session reads
+        ``execution_lane`` off a single supervisor call to pick this
+        lane), it passes that same RouteDecision in so L1 is NOT called a
+        second time — one Sonnet call per turn, and the lane gate's view
+        of the turn stays identical to the pipeline's.  When None
+        (standalone / test use), the pipeline routes internally as
+        before.
         """
         # ---- L1 ROUTER (once per turn) ----
-        try:
-            route_decision: RouteDecision = await self._router.route(user_prompt)
-        except Exception as exc:
-            logger.exception("OpenDagPipeline: router failed")
-            return PipelineOutcome(
-                status="PIPELINE_ERROR",
-                markdown=(
-                    "**Pipeline error at L1 router.**\n\n"
-                    f"```\n{type(exc).__name__}: {exc}\n```"
-                ),
-            )
+        # Reuse the caller's RouteDecision when supplied (route-once);
+        # otherwise route here.  Either way L1 runs at most once.
+        if route_decision is None:
+            try:
+                route_decision = await self._router.route(user_prompt)
+            except Exception as exc:
+                logger.exception("OpenDagPipeline: router failed")
+                return PipelineOutcome(
+                    status="PIPELINE_ERROR",
+                    markdown=(
+                        "**Pipeline error at L1 router.**\n\n"
+                        f"```\n{type(exc).__name__}: {exc}\n```"
+                    ),
+                )
 
         # Router CLARIFY short-circuit: render the clarification
         # question directly without spawning the downstream lanes.

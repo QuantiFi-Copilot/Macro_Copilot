@@ -234,6 +234,11 @@ services:
     environment:
       - DB_HOST=tsdb
       - DB_PORT=5432
+      # PR-11 isolation flag: skip the template-lane gate so every
+      # chat turn drops into the open-DAG composer/executor.  Set to
+      # "0" (or remove) to restore default routing (template lane
+      # first, open-DAG as fallback).
+      - DISABLE_TEMPLATE_ROUTER=1
     depends_on:
       tsdb:
         condition: service_healthy

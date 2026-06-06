@@ -25,6 +25,7 @@ from pydantic import BaseModel
 from orchestrator.contracts import (
     Domain,
     EconomicQuantity,
+    ExecutionLane,
     IntentTag,
     RouteAction,
     RouteDecision,
@@ -187,8 +188,15 @@ async def test_run_open_dag_constructs_pipeline_with_session_state():
 
     outcome = await session.run_open_dag("test prompt")
 
-    # The composer was consulted.
-    assert _MockComposer.calls == 1
+    # The composer was consulted.  Phase B (8933d9c) wired a
+    # PIPELINE-level bounded self-correction loop: an ASSEMBLY_REFUSE
+    # (here: the mock BoundLeaf's tool_name="fake_tool" can't bind via
+    # the production resolver) triggers ONE reason-seeded re-compose, so
+    # the composer fires twice for this persistently-unresolvable golden.
+    # Assert at-least-once (the composer WAS consulted — the wiring
+    # works) rather than exactly-once, mirroring the child assertion
+    # below, so the test stays valid under the self-correction budget.
+    assert _MockComposer.calls >= 1
     # The right child's fill_leaf was called (sovereign_bonds — the
     # GOLDEN_TRANSFORM_ROLLING_ZSCORE leaf is hardcoded sovereign_bonds).
     sov_child = session._children[Domain.SOVEREIGN_BONDS]
@@ -296,3 +304,113 @@ def test_run_open_dag_does_not_call_template_path():
             f"PR-10A F1: run_open_dag references template-lane token "
             f"{needle!r} — that would break lane separation"
         )
+
+
+# ============================================================================
+# 5. OPTION A — execution_lane DISPATCH GATE (route-once-then-dispatch)
+# ============================================================================
+#
+# The session routes ONCE per turn, then dispatches by
+# ``RouteDecision.execution_lane``: ``open_dag`` (or null/unset) → the
+# open-DAG composer lane (run_open_dag, fed the SAME decision); an explicit
+# ``direct_fetch`` → the legacy supervisor/domain-agent path (which emits
+# ``workspace_context`` for the primitive UI).  These drive ``_run_turn``
+# on a bare (engine-less) session — the persistence preamble + workflow
+# pre-gate are all no-ops — and spy on ``run_open_dag``.
+
+
+def _bare_session_with_decision(decision):
+    """A fake-open, engine-less session whose supervisor returns
+    ``decision`` and whose ``run_open_dag`` is a recording spy."""
+    from orchestrator.session import CopilotSession
+
+    session = CopilotSession(thread_id="lane-test")
+    session._is_open = True
+    session._workflow_router = None  # skip the template pre-gate
+    session._children = {}           # legacy path → missing-domains short-circuit
+
+    class _FakeSup:
+        async def route(self, prompt):
+            return decision
+
+    session._supervisor = _FakeSup()
+
+    calls: list = []
+
+    async def _spy_run_open_dag(prompt, *, route_decision=None, **kw):
+        calls.append({"prompt": prompt, "route_decision": route_decision})
+        return SimpleNamespace(status="GATE_REFUSE", markdown="refused")
+
+    session.run_open_dag = _spy_run_open_dag  # shadow the bound method
+    return session, calls
+
+
+def _df_decision(lane):
+    return RouteDecision(
+        action=RouteAction.SINGLE_DOMAIN,
+        domains=[Domain.SOVEREIGN_BONDS],
+        rationale="r",
+        intent_tag=IntentTag.LOOKUP,
+        decomposition=[EconomicQuantity(
+            name="x", nl_description="x", domain_hint=Domain.SOVEREIGN_BONDS,
+        )],
+        expected_answer_shape=["scalar"],
+        execution_lane=lane,
+    )
+
+
+@pytest.mark.asyncio
+async def test_lane_gate_open_dag_calls_run_open_dag_with_decision():
+    """execution_lane=open_dag → the turn dispatches into run_open_dag,
+    and the SAME precomputed RouteDecision is threaded in (route-once)."""
+    decision = _df_decision(ExecutionLane.OPEN_DAG)
+    session, calls = _bare_session_with_decision(decision)
+
+    events: list = []
+
+    async def emit(ev):
+        events.append(ev)
+
+    await session._run_turn("average US 2s10s over 5y", "T", emit)
+
+    assert len(calls) == 1, "open_dag lane must call run_open_dag exactly once"
+    assert calls[0]["route_decision"] is decision, (
+        "route-once: the precomputed decision must be threaded into run_open_dag"
+    )
+
+
+@pytest.mark.asyncio
+async def test_lane_gate_direct_fetch_skips_open_dag():
+    """execution_lane=direct_fetch → run_open_dag is NOT called; the turn
+    takes the legacy path and emits a route_decision carrying the lane."""
+    decision = _df_decision(ExecutionLane.DIRECT_FETCH)
+    session, calls = _bare_session_with_decision(decision)
+
+    events: list = []
+
+    async def emit(ev):
+        events.append(ev)
+
+    await session._run_turn("current US 10Y yield", "T", emit)
+
+    assert calls == [], "direct_fetch must NOT enter the open-DAG lane"
+    # The legacy path emits a route_decision event surfacing the lane.
+    rd = [e for e in events if e.type == "route_decision"]
+    assert rd, "legacy/direct_fetch path must emit a route_decision event"
+    assert rd[0].data.get("execution_lane") == "direct_fetch"
+
+
+@pytest.mark.asyncio
+async def test_lane_gate_null_lane_defaults_to_open_dag():
+    """A null/unset execution_lane is the safe back-compat catch-all →
+    open-DAG lane (preserves pre-Option-A behaviour)."""
+    decision = _df_decision(None)  # router omitted the lane
+    session, calls = _bare_session_with_decision(decision)
+
+    async def emit(ev):
+        pass
+
+    await session._run_turn("anything", "T", emit)
+
+    assert len(calls) == 1, "null lane must default to the open-DAG lane"
+    assert calls[0]["route_decision"] is decision

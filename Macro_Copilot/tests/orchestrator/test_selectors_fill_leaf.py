@@ -32,6 +32,7 @@ import pytest
 from pydantic import BaseModel, ValidationError
 
 from orchestrator.contracts import Domain
+from shared.schemas.time_series import TimeSeries as _TimeSeriesWire
 from orchestrator.open_dag import (
     BoundLeaf,
     Frequency,
@@ -227,7 +228,13 @@ class TestRenderToolCatalogue:
             pass
 
         class _Out(BaseModel):
-            pass
+            # PR-11 Codex Round 5: the catalogue filter now requires
+            # the declared output_field to actually be typed as the
+            # canonical ``TimeSeries`` on the *Output schema (legacy
+            # ``List[TimeSeriesRow]`` shapes are filtered out so the
+            # LLM cannot pick them).  Declare the field explicitly
+            # so this fixture survives the filter.
+            time_series: _TimeSeriesWire
 
         spec = PrimitiveSpec(
             tool_name="silent_tool",
@@ -882,7 +889,8 @@ class TestNoPrimitiveExecution:
             pass
 
         class _Out(BaseModel):
-            pass
+            # PR-11 Codex Round 5: see note on the fixture at line ~230.
+            time_series: _TimeSeriesWire
 
         spec = PrimitiveSpec(
             tool_name="silent_primitive",
@@ -1307,7 +1315,8 @@ class TestFillLeafSessionLevel:
             pass
 
         class _Out(BaseModel):
-            pass
+            # PR-11 Codex Round 5: see note on the fixture at line ~230.
+            time_series: _TimeSeriesWire
 
         spec = PrimitiveSpec(
             tool_name="silent_tool",

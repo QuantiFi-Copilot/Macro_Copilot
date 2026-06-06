@@ -26,6 +26,7 @@ from pydantic import ValidationError
 from orchestrator.contracts import (
     Domain,
     EconomicQuantity,
+    ExecutionLane,
     IntentTag,
     RouteAction,
     RouteDecision,
@@ -431,6 +432,89 @@ class TestNormaliserBackwardCompat:
         assert out.domains == []
         assert out.decomposition == []
         assert out.intent_tag is None
+
+    # ------------------------------------------------------------------
+    # Option A (execution_lane) + Phase-C (expected_answer_shape) round-trip.
+    # ------------------------------------------------------------------
+    # ``_normalise_route_decision`` rebuilds RouteDecision field-by-field.
+    # Before the Option-A fix it omitted ``execution_lane`` AND
+    # ``expected_answer_shape`` from the reconstruction, so BOTH silently
+    # reverted to their defaults on EVERY real route() call — which would
+    # have defeated the lane gate entirely (every turn → open_dag) and had
+    # already been quietly dropping the Phase-C answer-shape contract in
+    # production.  These tests lock the round-trip in.
+
+    def test_normalise_carries_execution_lane_direct_fetch_through(self) -> None:
+        raw = RouteDecision(
+            action=RouteAction.SINGLE_DOMAIN,
+            domains=[Domain.SOVEREIGN_BONDS],
+            rationale="bare current level of a single curve spread",
+            intent_tag=IntentTag.LOOKUP,
+            decomposition=[
+                EconomicQuantity(
+                    name="us_2s10s", nl_description="UST 2Y-10Y",
+                    domain_hint=Domain.SOVEREIGN_BONDS,
+                ),
+            ],
+            expected_answer_shape=["scalar"],
+            execution_lane=ExecutionLane.DIRECT_FETCH,
+        )
+        out = _normalise_route_decision(raw)
+        assert out.execution_lane == ExecutionLane.DIRECT_FETCH
+        assert out.expected_answer_shape == ["scalar"]
+
+    def test_normalise_carries_execution_lane_open_dag_through(self) -> None:
+        raw = RouteDecision(
+            action=RouteAction.SINGLE_DOMAIN,
+            domains=[Domain.SOVEREIGN_BONDS],
+            rationale="single descriptive summary (the average) -> ONE number",
+            intent_tag=IntentTag.LOOKUP,
+            decomposition=[
+                EconomicQuantity(
+                    name="us_2s10s", nl_description="UST 2Y-10Y",
+                    domain_hint=Domain.SOVEREIGN_BONDS,
+                ),
+            ],
+            expected_answer_shape=["scalar"],
+            execution_lane=ExecutionLane.OPEN_DAG,
+        )
+        out = _normalise_route_decision(raw)
+        assert out.execution_lane == ExecutionLane.OPEN_DAG
+
+    def test_normalise_keeps_omitted_lane_as_none(self) -> None:
+        # A router that OMITS the lane (older prompt / parse miss) must
+        # survive as None, which the session gate treats as open_dag (the
+        # safe back-compat catch-all).
+        raw = RouteDecision(
+            action=RouteAction.SINGLE_DOMAIN,
+            domains=[Domain.SOVEREIGN_BONDS],
+            rationale="x",
+            intent_tag=IntentTag.LOOKUP,
+            decomposition=[
+                EconomicQuantity(
+                    name="x", nl_description="x",
+                    domain_hint=Domain.SOVEREIGN_BONDS,
+                ),
+            ],
+        )
+        out = _normalise_route_decision(raw)
+        assert out.execution_lane is None
+
+    def test_clarify_clears_execution_lane_and_shape(self) -> None:
+        raw = RouteDecision(
+            action=RouteAction.CLARIFY,
+            domains=[],
+            rationale="ambiguous",
+            clarification_question="Sovereign 10Y or SOFR 10Y?",
+            intent_tag=None,
+            decomposition=[],
+            expected_answer_shape=["scalar"],
+            execution_lane=ExecutionLane.DIRECT_FETCH,
+        )
+        out = _normalise_route_decision(raw)
+        # Lane + shape are unknown until the user disambiguates.
+        assert out.execution_lane is None
+        assert out.expected_answer_shape == []
 
 
 # ============================================================================

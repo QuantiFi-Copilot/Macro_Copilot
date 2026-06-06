@@ -203,6 +203,39 @@ open-ended or unsure → ``["any"]`` (never blocks).
 ``relationship``/``cointegration`` → ["scalar"]; ``transform`` → \
 ["series"]; ``regression`` → ["series"].  For ``clarify`` leave it empty.
 
+(D) Pick the ``execution_lane`` — WHICH lane builds the answer.  This is \
+ORTHOGONAL to intent_tag: it asks ONE question — does answering need an \
+OPERATOR (any math/stat/composition on top of the fetched data), or is the \
+fetched value ITSELF the answer?
+
+  - ``direct_fetch`` — the answer is ONE primitive fetched DIRECTLY, with NO \
+operator and NO composition.  A single domain specialist calls ONE tool and \
+the returned value IS the answer.  Use it for: a LEVEL ("where is US 10Y?"), \
+a SPREAD ("US 2s10s", "swap spread" — a curve / cross-market spread is a \
+domain PRIMITIVE, computed inside one tool, NOT an operator), a PRICE, the \
+CURRENT or LATEST value ("current 10Y yield", "latest 5Y breakeven", "where \
+is X now"), "SHOW ME X over time" (the raw series itself, plotted, no stat \
+on top), or market COLOR on a SINGLE instrument.
+  - ``open_dag`` — the answer needs an OPERATOR or a multi-step build: a \
+descriptive SUMMARY statistic over a period (average / mean / median / std / \
+dispersion / sum / count of X), a TRANSFORM (z-score / percentile / rolling \
+stat), a RELATIONSHIP (correlation), REGRESSION, COINTEGRATION, an EVENT \
+window, a BASIS, a PANEL, a SCAN, or a COMPOSITE noun (5y5y).  Anything that \
+is not a single bare fetch is ``open_dag``.
+
+  KEY TEST: could ONE specialist answer by calling ONE primitive and reading \
+the value straight off, with no math on top?  YES → ``direct_fetch``.  Does \
+it need a summary / transform / pair-stat / multi-leg composition?  → \
+``open_dag``.
+
+  WATCH the intent_tag contrast: a ``lookup`` of a BARE value ("current \
+2s10s", "where is 10Y") is ``direct_fetch``, but a ``lookup`` that is a \
+SUMMARY ("AVERAGE 2s10s over 5y", "median 10Y") is ``open_dag`` — the \
+summary needs the summarize operator even though it returns one scalar.  \
+Every non-``lookup`` intent (relationship / regression / cointegration / \
+transform / event_regime / scan / panel / basis) is ALWAYS ``open_dag``.  \
+For ``clarify`` leave ``execution_lane`` null.
+
 COMPOSITE NOUNS (the hardest case)
 
 When the user names a composite quantity built from two market-implied \
@@ -217,14 +250,29 @@ EXAMPLES
 User: "Where is US 10Y?"
 { "action": "single_domain", "domains": ["sovereign_bonds"],
   "intent_tag": "lookup", "expected_answer_shape": ["scalar"],
+  "execution_lane": "direct_fetch",
   "decomposition": [{"name": "us_10y_yield",
                      "nl_description": "UST 10Y benchmark yield level",
                      "domain_hint": "sovereign_bonds"}],
   "rationale": "single yield level on US 10Y" }
 
+User: "Current US 2s10s spread."
+(A bare level of a curve spread — the spread is computed inside ONE domain \
+primitive, no operator on top, so it is direct_fetch even though 2s10s is a \
+spread.  Contrast the NEXT example, where the AVERAGE of the same spread \
+needs the summarize operator.)
+{ "action": "single_domain", "domains": ["sovereign_bonds"],
+  "intent_tag": "lookup", "expected_answer_shape": ["scalar"],
+  "execution_lane": "direct_fetch",
+  "decomposition": [{"name": "us_2s10s",
+                     "nl_description": "UST curve spread, 2Y minus 10Y",
+                     "domain_hint": "sovereign_bonds"}],
+  "rationale": "bare current level of a single curve spread (a primitive)" }
+
 User: "Average US 2s10s over the last 5 years."
 { "action": "single_domain", "domains": ["sovereign_bonds"],
   "intent_tag": "lookup", "expected_answer_shape": ["scalar"],
+  "execution_lane": "open_dag",
   "decomposition": [{"name": "us_2s10s",
                      "nl_description": "UST curve spread, 2Y minus 10Y",
                      "domain_hint": "sovereign_bonds"}],
@@ -234,6 +282,7 @@ User: "Correlation between US 2s10s and 5Y breakeven over the last 5 years."
 { "action": "multi_domain",
   "domains": ["sovereign_bonds", "inflation_indexed_bonds"],
   "intent_tag": "relationship", "expected_answer_shape": ["scalar"],
+  "execution_lane": "open_dag",
   "decomposition": [
     {"name": "us_2s10s", "nl_description": "UST curve spread, 2Y minus 10Y",
      "domain_hint": "sovereign_bonds"},
@@ -250,6 +299,7 @@ decompose to a precomputed spread; that would hide the pair-stats \
 shape from the downstream verification step.)
 { "action": "single_domain", "domains": ["sovereign_bonds"],
   "intent_tag": "cointegration", "expected_answer_shape": ["scalar"],
+  "execution_lane": "open_dag",
   "decomposition": [
     {"name": "ust_5y_yield",
      "nl_description": "UST 5Y benchmark yield level",
@@ -266,6 +316,7 @@ output.  Never put the already-transformed quantity in decomposition \
 or the leaf would be a derived series.)
 { "action": "single_domain", "domains": ["ois"],
   "intent_tag": "transform", "expected_answer_shape": ["series"],
+  "execution_lane": "open_dag",
   "decomposition": [{"name": "sofr_5y_rate",
                      "nl_description": "SOFR OIS 5Y rate level",
                      "domain_hint": "ois"}],
@@ -274,6 +325,7 @@ or the leaf would be a derived series.)
 User: "Show the 5 biggest OIS dislocations today."
 { "action": "single_domain", "domains": ["ois"],
   "intent_tag": "scan", "expected_answer_shape": ["any"],
+  "execution_lane": "open_dag",
   "decomposition": [{"name": "ois_extremes_scan",
                      "nl_description": "Top-N extreme OIS instruments by \
 statistical dislocation",
@@ -283,6 +335,7 @@ statistical dislocation",
 User: "Build a panel of UST curve spreads today."
 { "action": "single_domain", "domains": ["sovereign_bonds"],
   "intent_tag": "panel", "expected_answer_shape": ["panel"],
+  "execution_lane": "open_dag",
   "decomposition": [{"name": "ust_curve_spread_panel",
                      "nl_description": "UST all-tenor curve-spread panel \
 snapshot",
@@ -293,6 +346,7 @@ User: "Basis between USD 5Y linker breakeven and 5Y inflation swap."
 { "action": "multi_domain",
   "domains": ["inflation_indexed_bonds", "inflation_swaps"],
   "intent_tag": "basis", "expected_answer_shape": ["series"],
+  "execution_lane": "open_dag",
   "decomposition": [
     {"name": "us_5y_linker_breakeven",
      "nl_description": "USD linker-implied 5Y breakeven from TIPS",
@@ -305,6 +359,7 @@ User: "Basis between USD 5Y linker breakeven and 5Y inflation swap."
 User: "Rolling 1y beta of BTP-Bund spread to Bund 10Y yield."
 { "action": "single_domain", "domains": ["sovereign_bonds"],
   "intent_tag": "regression", "expected_answer_shape": ["series"],
+  "execution_lane": "open_dag",
   "decomposition": [
     {"name": "btp_bund_spread",
      "nl_description": "BTP minus Bund cross-market yield spread",
@@ -317,6 +372,7 @@ User: "Rolling 1y beta of BTP-Bund spread to Bund 10Y yield."
 User: "UST 10Y move 5 days after each NFP surprise > 50K."
 { "action": "single_domain", "domains": ["sovereign_bonds"],
   "intent_tag": "event_regime", "expected_answer_shape": ["series"],
+  "execution_lane": "open_dag",
   "decomposition": [
     {"name": "nfp_surprise_events",
      "nl_description": "Dates with NFP surprise above 50K",
@@ -329,7 +385,8 @@ User: "UST 10Y move 5 days after each NFP surprise > 50K."
 User: "5y5y real yield"  (composite-noun example)
 { "action": "multi_domain",
   "domains": ["sovereign_bonds", "inflation_indexed_bonds"],
-  "intent_tag": "transform",
+  "intent_tag": "transform", "expected_answer_shape": ["series"],
+  "execution_lane": "open_dag",
   "decomposition": [
     {"name": "us_5y5y_nominal_forward",
      "nl_description": "5y-forward 5y nominal UST yield",
@@ -342,7 +399,7 @@ breakeven legs" }
 
 User: "swap or sovereign?"  (truly ambiguous example)
 { "action": "clarify", "domains": [], "intent_tag": null,
-  "decomposition": [],
+  "execution_lane": null, "decomposition": [],
   "clarification_question": "Sovereign 10Y or SOFR 10Y?",
   "rationale": "no tenor or curve identifier given" }
 """
