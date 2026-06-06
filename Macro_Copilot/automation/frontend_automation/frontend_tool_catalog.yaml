@@ -570,7 +570,7 @@ tools:
     reviewer_dispatched_at: "2026-06-06T22:56:00Z"
     reviewer_finished_at: "2026-06-06T23:01:00Z"
     committed_at: "2026-06-06T23:03:00Z"
-    commit_sha: pending-backfill
+    commit_sha: c9c3b1d
     build_order: 10
     backend_tool_name: get_ois_rate_level_tool
     instrument_family: ois
