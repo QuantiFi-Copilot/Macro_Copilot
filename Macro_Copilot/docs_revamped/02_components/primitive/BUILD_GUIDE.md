@@ -264,6 +264,16 @@ class <Tool>Output(BaseModel):
     time_series: List[<Tool>TimeSeriesRow]
     time_series_<name>: TimeSeries
     # ... add canonical TimeSeries variants per tool ...
+    # MULTI-OUTPUT primitives: every canonical TimeSeries field you add
+    # here is open-DAG-selectable via ``output_field`` once you list its
+    # key in ``output_field_units`` (a leaf binds e.g.
+    # ``output_field="time_series_residual"``).  A statistical FIT that
+    # emits one series per component as a ``List[TimeSeries]`` (e.g. PCA
+    # ``time_series_factors``) instead declares each COMPONENT key in
+    # ``output_field_units`` (``pc1`` / ``pc2`` / ...), resolved by the
+    # element's ``series_name`` — see the "Selectable output series"
+    # contract in README.md.  This is the single standardized path; no
+    # per-tool bridge code is needed.
 
 
 __all__ = [

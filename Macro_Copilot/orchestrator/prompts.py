@@ -208,33 +208,86 @@ ORTHOGONAL to intent_tag: it asks ONE question — does answering need an \
 OPERATOR (any math/stat/composition on top of the fetched data), or is the \
 fetched value ITSELF the answer?
 
-  - ``direct_fetch`` — the answer is ONE primitive fetched DIRECTLY, with NO \
-operator and NO composition.  A single domain specialist calls ONE tool and \
-the returned value IS the answer.  Use it for: a LEVEL ("where is US 10Y?"), \
-a SPREAD ("US 2s10s", "swap spread" — a curve / cross-market spread is a \
-domain PRIMITIVE, computed inside one tool, NOT an operator), a PRICE, the \
-CURRENT or LATEST value ("current 10Y yield", "latest 5Y breakeven", "where \
-is X now"), "SHOW ME X over time" (the raw series itself, plotted, no stat \
-on top), or market COLOR on a SINGLE instrument.
-  - ``open_dag`` — the answer needs an OPERATOR or a multi-step build: a \
-descriptive SUMMARY statistic over a period (average / mean / median / std / \
-dispersion / sum / count of X), a TRANSFORM (z-score / percentile / rolling \
-stat), a RELATIONSHIP (correlation), REGRESSION, COINTEGRATION, an EVENT \
-window, a BASIS, a PANEL, a SCAN, or a COMPOSITE noun (5y5y).  Anything that \
-is not a single bare fetch is ``open_dag``.
+  - ``direct_fetch`` — the answer IS the fetched data, with NO operator and \
+no statistic computed across it.  How MANY things are fetched does NOT matter \
+— what matters is that nothing is COMPUTED on top.  These qualify:
+    (a) a BARE value or a NAMED DESK STRUCTURE — a LEVEL ("where is US 10Y?"), \
+a PRICE, the CURRENT or LATEST value ("current 10Y yield", "where is X now"), \
+"SHOW ME X over time" (the raw series, plotted, no stat on top), market COLOR \
+on a single instrument; OR a STANDARD named fixed-income STRUCTURE that ONE \
+desk tool returns whole — a curve SPREAD ("US 2s10s"), a BUTTERFLY / fly \
+("2s5s10s"), a CROSS-MARKET spread ("UST vs Bund 10Y"), a SWAP SPREAD, a \
+BETA-ADJUSTED spread, a FORWARD rate / breakeven, a real-yield spread.  \
+CRITICAL: a named structure COMBINES its legs INSIDE the one primitive — do \
+NOT mistake it for a composition just because it names several tenors / legs.  \
+The desk has a one-click tool for it; that tool IS the answer; and
+    (b) a SELF-CONTAINED MODEL or SCANNER — a single specialist primitive that \
+runs a COMPLETE analytical computation internally and returns its result, with \
+NO separate quantity to fetch-and-combine.  This is a CLASS, not a list: a \
+curve DECOMPOSITION (e.g. PCA), a mean-reversion / HALF-LIFE estimate, a \
+model's own REGRESSION / beta (e.g. a beta-adjusted spread), a factor \
+ATTRIBUTION, or a SCANNER that ranks / snapshots a universe.  Analytical \
+complexity does NOT promote it to open_dag — A RICH PRIMITIVE IS STILL ONE \
+PRIMITIVE.  Hallmark: the user names a target (or a curve / universe) and ONE \
+operation a single specialist tool performs end-to-end.
+    (c) SEVERAL of the above shown TOGETHER, with NO operation across them — \
+"show me US 2s10s AND 5Y breakeven", "UST 10Y, Bund 10Y and Gilt 10Y", "the \
+2Y / 5Y / 10Y yields side by side", a plain LIST of instruments to display.  \
+Fetching N things and SHOWING them is STILL ``direct_fetch`` — the legacy lane \
+emits a multi-tool workspace_context the Build page renders as side-by-side \
+cards.  MULTI-INSTRUMENT ALONE DOES NOT MEAN open_dag; only a COMPUTATION \
+across the things does.
 
-  KEY TEST: could ONE specialist answer by calling ONE primitive and reading \
-the value straight off, with no math on top?  YES → ``direct_fetch``.  Does \
-it need a summary / transform / pair-stat / multi-leg composition?  → \
-``open_dag``.
+  THE DECIDING LINE: ``direct_fetch`` = SHOWING fetched data — one (or several) \
+NAMED instruments / structures / models / scanners the desk returns directly, \
+with NOTHING computed across them.  ``open_dag`` = an OPERATION you specify ON \
+the fetched data — a period SUMMARY, a z-score / percentile / rolling stat, a \
+correlation / cointegration / regression across series, an event window, a \
+multi-leg composite — a computation with no dedicated single primitive.  The \
+discriminator is the COMPUTATION, NEVER the instrument count.
+  - ``open_dag`` — the answer needs a GENERAL OPERATOR to COMBINE \
+SEPARATELY-FETCHED quantities, or to TRANSFORM / AGGREGATE a fetched series \
+in a way no single primitive returns.  Use it for: a descriptive SUMMARY \
+statistic over a period (average / mean / median / std / dispersion / sum / \
+count of X); a series TRANSFORM (z-score / percentile / rolling stat); a \
+RELATIONSHIP formed by COMPOSING two separately-named series (correlation); \
+COINTEGRATION between X and Y; an EVENT window; conditioned aggregates; or a \
+multi-leg COMPOSITE noun (5y5y).  Hallmark: the prompt names an OPERATION / \
+VERB OF COMPUTATION applied to the fetched data (average, z-score, correlate, \
+regress, cointegrate, …) — NOT merely "show several things".  The number of \
+inputs is irrelevant; the PRESENCE OF A COMPUTATION is the signal.
 
-  WATCH the intent_tag contrast: a ``lookup`` of a BARE value ("current \
-2s10s", "where is 10Y") is ``direct_fetch``, but a ``lookup`` that is a \
-SUMMARY ("AVERAGE 2s10s over 5y", "median 10Y") is ``open_dag`` — the \
-summary needs the summarize operator even though it returns one scalar.  \
-Every non-``lookup`` intent (relationship / regression / cointegration / \
-transform / event_regime / scan / panel / basis) is ALWAYS ``open_dag``.  \
-For ``clarify`` leave ``execution_lane`` null.
+  KEY TEST — ask: "is there MATH / a STATISTIC / a RELATIONSHIP computed \
+across the fetched data, or am I just SHOWING what was fetched?"
+    - Just SHOWING what was fetched — one thing, a named structure, a rich \
+self-contained model / scanner, OR several things side by side — → \
+``direct_fetch``.  The NUMBER of instruments is IRRELEVANT.
+    - COMPUTING something on / across the fetched data (a summary, a \
+transform, a correlation, a regression, a cointegration test, an \
+event-conditioned aggregate, a multi-leg composite) → ``open_dag``.
+
+  BIAS TOWARD ``open_dag`` WHEN UNSURE — it is the more reliable, verified \
+lane.  Pick ``direct_fetch`` for a MULTI-instrument prompt ONLY when it is \
+UNAMBIGUOUSLY a pure "show / display / list these things" request with no \
+computation.  A comparison-or-analysis verb whose intent is unclear — \
+"compare X and Y", "X vs Y", "X against Y", "how do X and Y relate" — is \
+``open_dag`` (it most likely wants a relationship).  Reserve ``direct_fetch`` \
+multi for an explicit, computation-free display.
+
+  WATCH the contrasts:
+    - intent_tag describes WHAT the query is; execution_lane describes HOW to \
+run it.  A ``scan`` or a rich model (PCA / half-life) is ``direct_fetch`` (one \
+terminal primitive) EVEN THOUGH its intent isn't ``lookup``.
+    - a ``lookup`` of a BARE value ("current 2s10s") is ``direct_fetch``, but \
+a ``lookup`` that is a SUMMARY ("average 2s10s over 5y") is ``open_dag``.
+    - "Run a PCA on the US curve" → ``direct_fetch`` (one PCA tool does it).  \
+"Correlation between US 2s10s and 5Y breakeven" → ``open_dag`` (fetch two \
+series, THEN correlate).
+    - "Show me US 2s10s AND 5Y breakeven" → ``direct_fetch`` (two fetches, \
+nothing computed across them).  "CORRELATION between US 2s10s and 5Y \
+breakeven" → ``open_dag`` (a computation across them).  "COMPARE US 2s10s and \
+5Y breakeven" → ``open_dag`` (ambiguous comparison → the reliable lane).
+  For ``clarify`` leave ``execution_lane`` null.
 
 COMPOSITE NOUNS (the hardest case)
 
@@ -291,6 +344,24 @@ User: "Correlation between US 2s10s and 5Y breakeven over the last 5 years."
      "domain_hint": "inflation_indexed_bonds"}],
   "rationale": "pair-stats over a 5y window across two named quantities" }
 
+User: "Show me US 2s10s and the 5Y breakeven."
+(MULTI-INSTRUMENT but NO operation across them — just display both.  Same two \
+quantities as the correlation example above, but here NOTHING is computed, so \
+the lane is ``direct_fetch`` (the legacy path emits a two-tool \
+workspace_context the Build page renders as side-by-side cards).  The count of \
+instruments does NOT force open_dag — only a computation would.)
+{ "action": "multi_domain",
+  "domains": ["sovereign_bonds", "inflation_indexed_bonds"],
+  "intent_tag": "lookup", "expected_answer_shape": ["series"],
+  "execution_lane": "direct_fetch",
+  "decomposition": [
+    {"name": "us_2s10s", "nl_description": "UST curve spread, 2Y minus 10Y",
+     "domain_hint": "sovereign_bonds"},
+    {"name": "us_5y_breakeven",
+     "nl_description": "USD breakeven at 5Y tenor from TIPS",
+     "domain_hint": "inflation_indexed_bonds"}],
+  "rationale": "show two named quantities side by side; no operator across them" }
+
 User: "Is the UST 5s30s spread stationary?"
 (Cointegration tests whether a linear combination of two series is \
 stationary.  Decompose into the TWO INPUT yields — L3 wires the \
@@ -323,14 +394,30 @@ or the leaf would be a derived series.)
   "rationale": "single-series transform (rolling z-score) on SOFR 5Y" }
 
 User: "Show the 5 biggest OIS dislocations today."
+(A SCANNER is a single terminal primitive — one tool ranks the universe \
+and returns the table.  intent_tag is ``scan`` but the lane is \
+``direct_fetch``: no operator composes it.)
 { "action": "single_domain", "domains": ["ois"],
   "intent_tag": "scan", "expected_answer_shape": ["any"],
-  "execution_lane": "open_dag",
+  "execution_lane": "direct_fetch",
   "decomposition": [{"name": "ois_extremes_scan",
                      "nl_description": "Top-N extreme OIS instruments by \
 statistical dislocation",
                      "domain_hint": "ois"}],
-  "rationale": "scan across the OIS universe" }
+  "rationale": "single scanner primitive across the OIS universe" }
+
+User: "Run a PCA on the US Treasury curve."
+(A RICH SINGLE-TOOL MODEL — one PCA primitive does the whole \
+eigendecomposition internally.  Analytically complex but NOT open_dag: \
+there is no separate quantity to fetch-and-combine, so it is direct_fetch.)
+{ "action": "single_domain", "domains": ["sovereign_bonds"],
+  "intent_tag": "transform", "expected_answer_shape": ["any"],
+  "execution_lane": "direct_fetch",
+  "decomposition": [{"name": "ust_yield_curve",
+                     "nl_description": "UST par yield curve across tenors \
+(PCA input panel)",
+                     "domain_hint": "sovereign_bonds"}],
+  "rationale": "direct single-tool PCA model run on the UST curve" }
 
 User: "Build a panel of UST curve spreads today."
 { "action": "single_domain", "domains": ["sovereign_bonds"],
@@ -484,9 +571,15 @@ honestly satisfies the LeafRequest.  Provide:
   - ``params``                — the input dict for that tool.  Use \
 the tool's docstring to choose values; never invent fields the tool's \
 schema would reject.
-  - ``chosen_output_field``   — which of the tool's declared \
-``time_series*`` fields the leaf should bind to.  Must be in the \
-catalogue entry's ``available_output_fields``.
+  - ``chosen_output_field``   — which of the tool's declared output \
+series the leaf should bind to.  Must be in the catalogue entry's \
+``available_output_fields``.  This INCLUDES the individual COMPONENTS of \
+a multi-component primitive when the catalogue lists them: a PCA \
+primitive exposes ``pc1`` / ``pc2`` / ``pc3`` (the per-component factor \
+scores), a rolling-regression primitive exposes ``time_series_betas`` / \
+``time_series_alpha`` / ``time_series_residual`` / ``time_series_r_squared``.  \
+Pick the exact component the LeafRequest asks for (e.g. ``pc1`` for "PC1 \
+of the curve", ``time_series_residual`` for "the regression residual").
   - ``declared_frequency``    — closed-family value (daily / weekly / \
 monthly) when known; null otherwise.
   - ``declared_semantic_role`` — your own short tag for the bound \
@@ -522,6 +615,15 @@ directly (the open-DAG composer will pick an operator chain instead \
 of a single primitive — your refusal is the signal to do that).
   - The request's required_artifact_type or expected_units have no \
 catalogue match.
+
+NOT a reason to refuse — a primitive's OWN NAMED COMPONENT.  If the \
+catalogue entry's ``available_output_fields`` lists the requested \
+component (e.g. ``pc1`` on a PCA primitive, ``time_series_residual`` on \
+a rolling-regression primitive), that component IS returned directly by \
+that single primitive — BIND it via ``chosen_output_field``.  Do NOT \
+refuse it as a "derived measure needing a downstream operator": the \
+extraction is already declared as a selectable output_field, so no \
+operator chain is needed.
 
 A refusal is honest evidence.  A nearest-binding is silent harm.
 
@@ -611,6 +713,30 @@ Output:
   "declared_output_meaning": "",
   "fit_confidence": 0.0,
   "refusal": "No primitive in this domain returns a rolling z-score directly.  The z-score is an operator (rolling_zscore) applied to an input Series; the Composer should request the underlying spread leaf (input Series) and wire rolling_zscore downstream.  Refusing per 'refuse rather than bind nearest'." }
+
+EXAMPLE 4 — Binding a multi-component primitive's COMPONENT (PCA factor)
+
+LeafRequest:
+  required_artifact_type: Series
+  semantic_role:          pca_factor_score
+  requested_output_meaning: PC1 factor-score series of the UST yield curve
+  nl_intent:              "PC1 of the US Treasury curve PCA"
+
+(Your catalogue has calculate_pca_yield_curve_tool whose \
+``available_output_fields`` are ["pc1", "pc2", "pc3"] — the per-component \
+factor scores.  CONTRAST with Example 3: a rolling z-score is an OPERATOR \
+output (refuse), but PC1 is a DIRECTLY SELECTABLE COMPONENT of this single \
+primitive — bind it, do not refuse.)
+
+Output:
+{ "chosen_mcp_tool_name": "calculate_pca_yield_curve_tool",
+  "params": {"curve_family": "UST", "n_components": 3},
+  "chosen_output_field": "pc1",
+  "declared_frequency": "daily",
+  "declared_semantic_role": "pca_factor_score",
+  "declared_output_meaning": "UST yield-curve PCA first principal component (PC1) factor-score series",
+  "fit_confidence": 0.92,
+  "refusal": null }
 """
 
 
@@ -925,6 +1051,23 @@ leaf_hole).
 catalogue produces what the prompt asks for, set ``refusal=<reason>`` \
 and leave the lists empty.  A refusal is honest evidence the \
 clarification path uses; a forced shape is silent harm.
+
+6. MULTI-COMPONENT PRIMITIVE OUTPUTS ARE LEAVES, NOT OPERATOR CHAINS.  \
+A model primitive that emits several NAMED series — a PCA's per-component \
+factor scores (PC1 / PC2 / PC3), a rolling-regression's beta / alpha / \
+residual / r_squared — exposes each named component as a DIRECTLY \
+selectable output.  When the prompt asks for ONE such component (e.g. \
+"PC1 of the UST curve", "correlate PC1 with 5Y breakeven", "the \
+regression residual"), declare a SINGLE ``LeafHole`` for that component \
+(a Series with the right ``semantic_role`` and an ``nl_intent`` naming \
+the component, e.g. "PC1 factor-score series of the UST yield curve"); \
+the Selector binds it to the model primitive via that component's \
+output_field.  Do NOT try to build a decomposition / factor-extraction / \
+component-extraction operator — there is NONE in the catalogue and none \
+is needed.  (Contrast a TRANSFORM such as a rolling z-score, which IS an \
+operator applied to an input leaf — see the rolling_zscore guidance.  \
+The discriminator: a named MODEL COMPONENT is a primitive OUTPUT → leaf; \
+a statistical TRANSFORM is an OPERATOR → leaf + operator node.)
 
 6. THE ``intent_tag`` IS A HINT, NOT A COMMAND — ANCHOR ON THE QUESTION \
 + THE ANSWER SHAPE.  The router's ``intent_tag`` and the question's \

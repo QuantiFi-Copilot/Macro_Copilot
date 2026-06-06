@@ -392,6 +392,37 @@ def _series_typed_fields(output_class) -> Tuple[str, ...]:
     return tuple(out)
 
 
+def _has_time_series_list_field(output_class) -> bool:
+    """True if the *Output class declares a ``List[TimeSeries]`` field —
+    the "multi-component fit" shape (e.g. PCA ``time_series_factors``
+    carries one factor-score ``TimeSeries`` per principal component).
+
+    When present, ``output_field_units`` keys that are NOT top-level
+    fields are treated as SELECTABLE COMPONENTS: the Series bridge
+    resolves them against each list element's ``series_name`` (see
+    ``shared.artifacts.adapters.from_time_series._resolve_list_component_series``).
+    This is what lets a leaf bind ``output_field='pc1'`` and get the PC1
+    factor-score Series — the standardized multi-component contract
+    (docs_revamped/02_components/primitive/README.md).
+    """
+    fields = getattr(output_class, "model_fields", None)
+    if not fields:
+        return False
+    for info in fields.values():
+        annotation = getattr(info, "annotation", None)
+        origin = typing.get_origin(annotation)
+        if origin in (list, set, tuple):
+            if any(a is TimeSeriesWire for a in typing.get_args(annotation)):
+                return True
+        elif origin is typing.Union:  # Optional[List[TimeSeries]] / Union[...]
+            for a in typing.get_args(annotation):
+                if typing.get_origin(a) in (list, set, tuple) and any(
+                    x is TimeSeriesWire for x in typing.get_args(a)
+                ):
+                    return True
+    return False
+
+
 def render_tool_catalogue(
     domain: Domain,
     mcp_tools: Sequence[Any],
@@ -511,9 +542,23 @@ def render_tool_catalogue(
             # classified them as BRIDGEABLE_SERIES but the schema
             # doesn't actually have a bridgeable Series field.
             canonical_series_fields = _series_typed_fields(spec.output_class)
+            # Multi-component contract: when the *Output class has a
+            # ``List[TimeSeries]`` fit field (e.g. PCA factors), declared
+            # output_field keys that are NOT top-level fields are SELECTABLE
+            # COMPONENTS the Series bridge resolves by ``series_name``
+            # (e.g. ``pc1``).  Keep them so the selector can bind a single
+            # component as a Series leaf — exactly what the user-visible
+            # "PC1 of the PCA" case needs.  Top-level TimeSeries fields are
+            # kept as before; everything else is still filtered out (the
+            # Codex Round-5 corrective for legacy List[TimeSeriesRow] fields).
+            has_list_ts = _has_time_series_list_field(spec.output_class)
+            top_level_fields = set(
+                getattr(spec.output_class, "model_fields", {}) or {}
+            )
             available = tuple(
                 f for f in decl.available_output_fields
                 if f in canonical_series_fields
+                or (has_list_ts and f not in top_level_fields)
             )
             if not available:
                 # Two sub-cases:

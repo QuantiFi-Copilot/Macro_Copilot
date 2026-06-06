@@ -11,7 +11,15 @@ This module classifies every primitive into one of four buckets:
 
   - ``BRIDGEABLE_SERIES``   — primitive declares ``output_artifact_type
     == "Series"`` AND ``output_field_units`` carries at least one
-    declared field.  L3 can use this primitive as a Series leaf.
+    declared field.  L3 can use this primitive as a Series leaf.  A
+    declared field may be a top-level ``TimeSeries`` field OR a named
+    COMPONENT of a ``List[TimeSeries]`` fit (e.g. PCA's ``pc1`` /
+    ``pc2`` / ``pc3`` factor scores) — the Series bridge resolves a
+    component ``output_field`` by token-matching the element's
+    ``series_name`` (see ``shared.artifacts.adapters.from_time_series.
+    _resolve_list_component_series`` and the multi-component contract in
+    ``docs_revamped/02_components/primitive/README.md``).  Either way the
+    leaf binds a single ``Series``.
   - ``BRIDGEABLE_PANEL``    — primitive declares
     ``output_artifact_type == "Panel"``.  L3 can use this primitive as
     a Panel leaf.  Per the executor's bridge contract, Panel

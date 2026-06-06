@@ -608,9 +608,21 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         input_class=PcaYieldCurveInput,
         output_class=PcaYieldCurveOutput,
         config_path=PCA_YIELD_CURVE_CONFIG_PATH,
+        # ``time_series_factors`` is a List[TimeSeries] (one factor-score
+        # series per principal component).  Per the standardized
+        # multi-component contract (docs_revamped/02_components/primitive/
+        # README.md §"selectable component series"), each selectable
+        # component is declared here by its ``output_field`` key and
+        # resolved by the Series bridge against the element's
+        # ``series_name`` ('<curve>_pc<k>_factor_<freq>').  Keys match the
+        # default n_components=3; a query fitting more components must
+        # declare the extra keys here — validator-gated, so an undeclared
+        # ``pc4`` refuses cleanly rather than mis-binding.
         output_field_units={
             # Factor scores are unitless eigen-coordinates.
-            "time_series_factors": "factor_level",
+            "pc1": "factor_level",
+            "pc2": "factor_level",
+            "pc3": "factor_level",
         },
     ),
     "calculate_yield_change_attribution_pca_tool": PrimitiveSpec(

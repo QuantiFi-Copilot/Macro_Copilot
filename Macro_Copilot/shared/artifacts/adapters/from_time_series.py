@@ -90,7 +90,9 @@ conversion concern across two namespaces.
 from __future__ import annotations
 
 import hashlib
-from typing import Any, Dict, List, Literal, Optional, Type
+import re
+import typing
+from typing import Any, Dict, List, Literal, Optional, Tuple, Type
 
 import numpy as np
 import pandas as pd
@@ -441,31 +443,50 @@ def tool_output_to_artifact_series(
     validated = output_class.model_validate(tool_output)
 
     # ------------------------------------------------------------------
-    # 2. Extract the requested field; verify it is a TimeSeries.
+    # 2. Resolve the requested field to a single TimeSeries.
+    #
+    #    (a) Direct top-level TimeSeries attribute — the 99% path
+    #        (``time_series``, ``time_series_spread``,
+    #        ``time_series_residual``, …).  Byte-identical to the
+    #        historical behaviour.
+    #    (b) Component of a ``List[TimeSeries]`` fit field — the
+    #        standardized "multi-component primitive → selectable
+    #        component series" path.  e.g. PCA ``time_series_factors``
+    #        exposes ``pc1`` / ``pc2`` / ``pc3`` (matched by the
+    #        element's ``series_name``).  This fires ONLY when (a)
+    #        misses, so existing valid output_fields are unaffected.
+    #        See docs_revamped/02_components/primitive/README.md.
     # ------------------------------------------------------------------
-    if not hasattr(validated, output_field):
-        # Build a list of the TimeSeries-typed fields on the schema
-        # so the error message names the legal options.  Inspect via
-        # model_fields rather than __fields__ (Pydantic v2 API).
+    ts_obj: Optional[TimeSeries] = None
+    if hasattr(validated, output_field):
+        candidate = getattr(validated, output_field)
+        if isinstance(candidate, TimeSeries):
+            ts_obj = candidate
+    if ts_obj is None:
+        resolved = _resolve_list_component_series(
+            validated, output_class, output_field,
+        )
+        if resolved is not None:
+            ts_obj = resolved[0]
+    if ts_obj is None:
+        # Neither a direct TimeSeries attribute nor a List[TimeSeries]
+        # component matched — name BOTH legal option sets in the error.
         ts_fields = [
             name for name, field in output_class.model_fields.items()
             if _is_time_series_type(field.annotation)
         ]
+        component_fields = [
+            name for name, field in output_class.model_fields.items()
+            if _is_time_series_list_type(field.annotation)
+        ]
         raise ValueError(
-            f"{_BRIDGE_NAME}: output_field={output_field!r} is not "
-            f"declared on {output_class.__name__}.  TimeSeries-typed "
-            f"fields available: {sorted(ts_fields) if ts_fields else 'none'}."
-        )
-
-    ts_obj = getattr(validated, output_field)
-    if not isinstance(ts_obj, TimeSeries):
-        raise ValueError(
-            f"{_BRIDGE_NAME}: output_field={output_field!r} on "
-            f"{output_class.__name__} is not a TimeSeries — got "
-            f"{type(ts_obj).__name__}.  The bridge only converts "
-            "canonical TimeSeries fields; bespoke wire-frozen "
-            "shapes (e.g. List[*TimeSeriesRow]) need their own "
-            "conversion path."
+            f"{_BRIDGE_NAME}: output_field={output_field!r} did not "
+            f"resolve on {output_class.__name__} — neither a TimeSeries "
+            f"field nor a token-match of a List[TimeSeries] component.  "
+            f"TimeSeries fields: "
+            f"{sorted(ts_fields) if ts_fields else 'none'}; "
+            f"List[TimeSeries] component fields: "
+            f"{sorted(component_fields) if component_fields else 'none'}."
         )
 
     # ------------------------------------------------------------------
@@ -867,6 +888,84 @@ def _is_panel_type(annotation: Any) -> bool:
     if args:
         return any(arg is Panel for arg in args)
     return False
+
+
+def _is_time_series_list_type(annotation: Any) -> bool:
+    """Best-effort check: does this annotation declare a
+    ``List[TimeSeries]`` (optionally ``Optional[List[TimeSeries]]``)?
+
+    This is the "multi-component fit" shape — one ``TimeSeries`` per
+    component (e.g. PCA ``time_series_factors`` carries one factor-score
+    series per principal component).  The bridge lets a caller select
+    ONE component as a ``Series`` via ``output_field`` (matched against
+    each element's ``series_name``); see ``_resolve_list_component_series``.
+    """
+    origin = typing.get_origin(annotation)
+    args = typing.get_args(annotation)
+    if origin in (list, set, tuple):
+        return any(a is TimeSeries for a in args)
+    if origin is typing.Union:  # Optional[List[TimeSeries]] / Union[...]
+        return any(_is_time_series_list_type(a) for a in args)
+    return False
+
+
+def _series_name_tokens(series_name: str) -> set:
+    """Split a ``series_name`` into lowercase alphanumeric tokens.
+
+    e.g. ``'UST_pc1_factor_daily'`` → ``{'ust', 'pc1', 'factor', 'daily'}``.
+    Used to match a component ``output_field`` (e.g. ``'pc1'``) against a
+    ``List[TimeSeries]`` element by EXACT token (so ``'pc1'`` does NOT
+    match ``'pc10'``).
+    """
+    return {t for t in re.split(r"[^0-9a-zA-Z]+", series_name.lower()) if t}
+
+
+def _resolve_list_component_series(
+    validated: BaseModel,
+    output_class: Type[BaseModel],
+    output_field: str,
+) -> Optional[Tuple[TimeSeries, str]]:
+    """Resolve ``output_field`` as a COMPONENT of a ``List[TimeSeries]``
+    field on the validated primitive output.
+
+    The standardized "multi-component primitive → selectable component
+    series" path (see ``docs_revamped/02_components/primitive/README.md``):
+    a fit primitive that emits ``List[TimeSeries]`` (one series per
+    component) declares each component's key in ``output_field_units``
+    (e.g. PCA → ``pc1`` / ``pc2`` / ``pc3``).  A leaf binds
+    ``output_field='pc1'`` and this resolver finds the element whose
+    ``series_name`` contains that token, returning it as a normal
+    ``TimeSeries`` so the rest of the Series bridge proceeds unchanged.
+
+    Returns ``(TimeSeries, source_field_name)`` on a UNIQUE match, or
+    ``None`` when no ``List[TimeSeries]`` element token-matches.  Raises
+    ``ValueError`` on an AMBIGUOUS match (>1 element) so the caller never
+    silently binds the wrong component.
+    """
+    token = output_field.strip().lower()
+    if not token:
+        return None
+    matches: list[Tuple[TimeSeries, str]] = []
+    for fname, field in output_class.model_fields.items():
+        if not _is_time_series_list_type(field.annotation):
+            continue
+        seq = getattr(validated, fname, None)
+        if not seq:
+            continue
+        for item in seq:
+            if isinstance(item, TimeSeries) and token in _series_name_tokens(item.series_name):
+                matches.append((item, fname))
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        names = [m[0].series_name for m in matches]
+        raise ValueError(
+            f"{_BRIDGE_NAME}: output_field={output_field!r} matched "
+            f"{len(matches)} component series ({names}) across "
+            f"List[TimeSeries] fields on {output_class.__name__}; the "
+            "token is ambiguous.  Use a more specific component key."
+        )
+    return None
 
 
 def _extract_as_of_date(validated_output: BaseModel) -> str:

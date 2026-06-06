@@ -780,6 +780,38 @@ class TestSupervisorPromptCarriesPR5Guidance:
         assert "SINGLE-DOMAIN" in msg or "SINGLE DOMAIN" in msg
         assert "STILL PRODUCE DECOMPOSITION" in SUPERVISOR_SYSTEM_PROMPT.upper()
 
+    def test_prompt_carries_execution_lane_principle(self) -> None:
+        # Ask→Build routing — the prompt MUST teach the OPERATION-BASED lane
+        # principle: just SHOWING fetched data (one thing, a named structure,
+        # a rich model/scanner, OR several things side by side) is
+        # ``direct_fetch``; COMPUTING something on/across the fetched data
+        # (summary, transform, correlation, regression, cointegration, …) is
+        # ``open_dag``.  The instrument COUNT is irrelevant.  This guards
+        # against (a) deleting the lane guidance, (b) the over-eager "any
+        # analytical query → open_dag" rule that wrongly refused PCA /
+        # butterfly / half-life, AND (c) the over-eager "multiple things →
+        # open_dag" rule that wrongly sent a pure multi-fetch to open_dag.
+        P = SUPERVISOR_SYSTEM_PROMPT
+        assert "execution_lane" in P
+        assert "direct_fetch" in P and "open_dag" in P
+        # The two direct_fetch generalisation anchors (named structures +
+        # self-contained models) — NOT a per-tool list.
+        assert "NAMED DESK STRUCTURE" in P
+        assert "SELF-CONTAINED MODEL" in P
+        # The anti-overfit invariant: a rich primitive is still one primitive.
+        assert "RICH PRIMITIVE IS STILL ONE PRIMITIVE" in P
+        # The discriminator is OPERATION-based, never count-based.
+        assert "THE DECIDING LINE" in P
+        # Multi-primitive-no-operator rule: fetching several things and
+        # SHOWING them (no computation) is still direct_fetch — the count
+        # of instruments must NOT force open_dag.
+        assert "MULTI-INSTRUMENT ALONE DOES NOT MEAN open_dag" in P
+        assert "discriminator is the COMPUTATION, NEVER the instrument count" in P
+        # The accuracy guard: bias to open_dag (the reliable lane) when an
+        # ambiguous comparison/relationship verb leaves intent unclear —
+        # so the multi-fetch carve-out does NOT loosen the prompt.
+        assert "BIAS TOWARD" in P and "WHEN UNSURE" in P
+
     def test_prompt_carries_decomposition_shape_rule(self) -> None:
         # PR-5A corrective per Codex finding #1: the prompt must teach
         # L1 to decompose to INPUT quantities (DAG leaves), not
