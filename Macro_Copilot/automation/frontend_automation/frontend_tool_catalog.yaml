@@ -614,7 +614,7 @@ tools:
     reviewer_dispatched_at: "2026-06-06T23:22:00Z"
     reviewer_finished_at: "2026-06-06T23:26:00Z"
     committed_at: "2026-06-06T23:30:00Z"
-    commit_sha: pending-backfill
+    commit_sha: b175421
     build_order: 11
     backend_tool_name: calculate_inflation_swap_rate_level_tool
     instrument_family: inflation_swaps
