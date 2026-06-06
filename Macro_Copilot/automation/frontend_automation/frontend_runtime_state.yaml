@@ -1,22 +1,22 @@
 version: '1.0'
 branch: frontend_automation
 backend: claude-cli
-orchestrator_status: catalog_exhausted
+orchestrator_status: processing
 current_tool: null
 current_tool_backend_name: null
-current_step: committed
-dispatch_round: null
-last_dispatch_at: '2026-05-30T01:23:00Z'
+current_step: ready_to_dispatch
+dispatch_round: 0
+last_dispatch_at: null
 last_successful_tool: policy_futures__futures_price_level
 last_successful_commit: d8e8233
 last_reviewer_heading: APPROVED
 last_gate_result: pass
-last_stop_reason: catalog_exhausted
+last_stop_reason: batch_2_queued_advance
 last_error: null
-last_updated: "2026-05-30T02:07:00Z"
+last_updated: "2026-05-30T03:30:00Z"
 done: 9
 blocked: 0
-remaining: 0
+remaining: 9
 quota_state: probe_unavailable
 quota_snapshot: null
 quota_snapshot_at: '2026-05-29T15:52:00Z'
@@ -37,7 +37,7 @@ reviewer_mode_history:
       and SINGLE_REVIEW_ROUND_POLICY.md.  Quota exhaustion on either
       dispatch triggers a clean waiting_quota stop; the next cron wake
       retries.
-catalog_exhausted_at: '2026-05-30T01:38:00Z'
+catalog_exhausted_at: null
 human_required: null
 status_notes:
   - at: '2026-05-30T02:07:00Z'
@@ -1824,3 +1824,28 @@ status_notes:
       Counters: done:7  blocked:1  remaining:1  ->  done:7  blocked:0  remaining:2
       Both tool 2 and tool 9 are now eligible for dispatch on next wake.
       Cron must be re-enabled to dispatch.
+
+  - at: "2026-05-30T03:30:00Z"
+    kind: batch_2_queued
+    text: |
+      Batch 2 queued: 9 new tool entries appended to catalog
+      (build_order 10-18).  Mockups intake committed separately;
+      9 stub migration files added under database/migrations/
+      to satisfy PRE_FLIGHT Check 3(b).
+
+      The 9 tools: get_ois_rate_level_tool,
+      calculate_inflation_swap_rate_level_tool,
+      calculate_ois_forward_rate_tool,
+      calculate_inflation_swap_curve_spread_tool,
+      calculate_ois_cross_market_spread_tool,
+      calculate_forward_breakeven_simple_tool,
+      scan_inflation_linkers_extremes_tool,
+      scan_bond_futures_extremes_tool,
+      get_scan_policy_futures_extremes_tool.
+
+      All structural twins are from Batch 1 or Phase-1 pilot.
+      Three tools carry catalog notes about backend_tool_name vs
+      mcp_tool_name vs frontend folder name divergences (per the
+      TS KNOWN_TOOL_ALIASES + workflow-registry naming history).
+
+      Counters: done:9 blocked:0 remaining:9.

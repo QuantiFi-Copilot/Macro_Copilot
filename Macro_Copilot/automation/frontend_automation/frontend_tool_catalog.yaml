@@ -557,3 +557,319 @@ tools:
         get_real_yield_level_tool/surfaces/BuildCompact.tsx:72-76 (correct
         pattern).  Avoiding this fixes review findings #1 + #2 from
         Dispatch 2 round 1.
+
+  - id: ois__rate_level
+    status: todo
+    human_action_required: false
+    last_review_heading: null
+    last_gate_result: not_run
+    build_order: 10
+    backend_tool_name: get_ois_rate_level_tool
+    instrument_family: ois
+    sub_agent: ois
+    tool_slug: rate_level
+    endpoint_slug: ois-rate-level
+    category: snapshot
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      Sovereign OIS overnight-index swap rate level (e.g. SOFR 2Y OIS) with daily change, 252d range/percentile, rolling z-score.
+    why_needs_frontend: |
+      Backend exists; no frontend module.  OIS rate level is a desk-canonical risk-neutral implied policy path read; needs Monitor tile + Build canvas.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/ois/tools/rate_level/
+      mcp_wrapper_in: rates_agent/ois/mcp_server.py
+      mcp_tool_name: calculate_ois_rate_level_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='calculate_ois_rate_level_tool'"
+      curated_migration_file: database/migrations/2026-05-30_phase1_calculate_ois_rate_level_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/get_ois_rate_level_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/get_ois_rate_level_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/get_real_yield_level_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/get_ois_rate_level_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "Mirror get_real_yield_level_tool snapshot shape (level + change + z-score + range strip)"
+      - "Standalone-bridge endpoint at /api/v1/rates/detail/ois-rate-level"
+      - "Frontend folder name = get_ois_rate_level_tool; MCP function + workflow registry use calculate_ois_rate_level_tool (TS aliaser bridges per src/lib/toolNames.ts KNOWN_TOOL_ALIASES)"
+      - "Methodology disclosure: SOFR/EFFR/SONIA/ESTR family is the risk-neutral implied policy path; cite Fed/BoE/ECB/Norges-style ON rate context"
+
+  - id: inflation_swaps__rate_level
+    status: todo
+    human_action_required: false
+    last_review_heading: null
+    last_gate_result: not_run
+    build_order: 11
+    backend_tool_name: calculate_inflation_swap_rate_level_tool
+    instrument_family: inflation_swaps
+    sub_agent: inflation_swaps
+    tool_slug: inflation_swap_rate_level
+    endpoint_slug: inflation-swap-rate-level
+    category: snapshot
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      Zero-coupon inflation swap (ZCIS) rate level at one tenor (e.g. US 5Y ZCIS) with daily change, 252d range/percentile, rolling z-score.  Pure inflation-compensation read, separate from bond-implied breakeven.
+    why_needs_frontend: |
+      Backend exists; no frontend module.  ZCIS rates are the cleanest market read on forward inflation expectations; needs Monitor tile + Build canvas.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/inflation_swaps/tools/inflation_swap_rate_level/
+      mcp_wrapper_in: rates_agent/inflation_swaps/mcp_server.py
+      mcp_tool_name: calculate_inflation_swap_rate_level_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='calculate_inflation_swap_rate_level_tool'"
+      curated_migration_file: database/migrations/2026-05-30_phase1_calculate_inflation_swap_rate_level_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_inflation_swap_rate_level_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_inflation_swap_rate_level_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/get_real_yield_level_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_inflation_swap_rate_level_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "Mirror get_real_yield_level_tool snapshot shape"
+      - "Standalone-bridge endpoint at /api/v1/rates/detail/inflation-swap-rate-level"
+      - "Methodology disclosure: ZCIS reference-index = HICPxT (EUR) / CPI-U NSA (USD) / RPI (GBP) / CPI (Canada); cite per-currency reference indices"
+
+  - id: ois__forward_rate
+    status: todo
+    human_action_required: false
+    last_review_heading: null
+    last_gate_result: not_run
+    build_order: 12
+    backend_tool_name: calculate_ois_forward_rate_tool
+    instrument_family: ois
+    sub_agent: ois
+    tool_slug: forward_rate
+    endpoint_slug: ois-forward-rate
+    category: forward_rate
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      OIS forward rate spanning two tenors (e.g. SOFR 1Y1Y, 2Y1Y).  Implied forward overnight rate path between two pillars on the OIS curve.
+    why_needs_frontend: |
+      Backend exists; no frontend module.  OIS forwards are the canonical risk-neutral term-structure read for policy-path nowcasting.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/ois/tools/forward_rate/
+      mcp_wrapper_in: rates_agent/ois/mcp_server.py
+      mcp_tool_name: calculate_ois_forward_rate_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='calculate_ois_forward_rate_tool'"
+      curated_migration_file: database/migrations/2026-05-30_phase1_calculate_ois_forward_rate_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_ois_forward_rate_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_ois_forward_rate_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/policy_futures_get_futures_price_level_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_ois_forward_rate_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "Mirror policy_futures_get_futures_price_level_tool snapshot/forward shape"
+      - "Standalone-bridge endpoint at /api/v1/rates/detail/ois-forward-rate"
+      - "Methodology disclosure: implied forward = compounded spot relationship; sign convention POSITIVE = forward sits above near pillar"
+
+  - id: inflation_swaps__curve_spread
+    status: todo
+    human_action_required: false
+    last_review_heading: null
+    last_gate_result: not_run
+    build_order: 13
+    backend_tool_name: calculate_inflation_swap_curve_spread_tool
+    instrument_family: inflation_swaps
+    sub_agent: inflation_swaps
+    tool_slug: inflation_swap_curve_spread
+    endpoint_slug: inflation-swap-curve-spread
+    category: cross_market_rv
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      Same-country ZCIS curve spread between two tenors (e.g. US 2s10s ZCIS).  Surfaces ZCIS-implied forward inflation curve shape.
+    why_needs_frontend: |
+      Backend exists; no frontend module.  ZCIS curve spreads are the canonical curve-shape read on forward inflation; complements bond-implied breakeven curve spread.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/inflation_swaps/tools/inflation_swap_curve_spread/
+      mcp_wrapper_in: rates_agent/inflation_swaps/mcp_server.py
+      mcp_tool_name: calculate_inflation_swap_curve_spread_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='calculate_inflation_swap_curve_spread_tool'"
+      curated_migration_file: database/migrations/2026-05-30_phase1_calculate_inflation_swap_curve_spread_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_inflation_swap_curve_spread_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_inflation_swap_curve_spread_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_breakeven_curve_spread_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_inflation_swap_curve_spread_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "Mirror calculate_breakeven_curve_spread_tool dual-view shape"
+      - "Standalone-bridge endpoint at /api/v1/rates/detail/inflation-swap-curve-spread"
+      - "Methodology disclosure: same-country reference-index curve shape; positive = upward-sloping forward inflation"
+
+  - id: ois__cross_market_spread
+    status: todo
+    human_action_required: false
+    last_review_heading: null
+    last_gate_result: not_run
+    build_order: 14
+    backend_tool_name: calculate_ois_cross_market_spread_tool
+    instrument_family: ois
+    sub_agent: ois
+    tool_slug: cross_market_spread
+    endpoint_slug: ois-cross-market-spread
+    category: cross_market_rv
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      Cross-market OIS spread between two markets at a common tenor (e.g. SOFR 2Y minus SONIA 2Y).  Surfaces cross-currency policy-path divergence.
+    why_needs_frontend: |
+      Backend exists; no frontend module.  Cross-market OIS is the canonical RV read on policy-path divergence between G4 central banks.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/ois/tools/cross_market_spread/
+      mcp_wrapper_in: rates_agent/ois/mcp_server.py
+      mcp_tool_name: calculate_ois_cross_market_spread_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='calculate_ois_cross_market_spread_tool'"
+      curated_migration_file: database/migrations/2026-05-30_phase1_calculate_ois_cross_market_spread_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_ois_cross_market_spread_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_ois_cross_market_spread_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_cross_market_inflation_swap_spread_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_ois_cross_market_spread_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "Mirror calculate_cross_market_inflation_swap_spread_tool dual-view shape"
+      - "Standalone-bridge endpoint at /api/v1/rates/detail/ois-cross-market-spread"
+      - "Methodology disclosure: cross-currency policy-path divergence; same-tenor; ON rate reference per currency"
+
+  - id: inflation_indexed_bonds__forward_breakeven
+    status: todo
+    human_action_required: false
+    last_review_heading: null
+    last_gate_result: not_run
+    build_order: 15
+    backend_tool_name: calculate_forward_breakeven_simple_tool
+    instrument_family: inflation_indexed_bonds
+    sub_agent: inflation_indexed_bonds
+    tool_slug: forward_breakeven_simple
+    endpoint_slug: forward-breakeven
+    category: forward_rate
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      Forward breakeven inflation between two tenors (e.g. US 5Y5Y).  Implied forward inflation-compensation rate spanning two breakeven pillars.
+    why_needs_frontend: |
+      Backend exists; no frontend module.  Forward breakeven is the canonical term-structure read on long-run inflation compensation; complements spot breakeven.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/inflation_indexed_bonds/tools/forward_breakeven_simple/
+      mcp_wrapper_in: rates_agent/inflation_indexed_bonds/mcp_server.py
+      mcp_tool_name: calculate_forward_breakeven_simple_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='calculate_forward_breakeven_simple_tool'"
+      curated_migration_file: database/migrations/2026-05-30_phase1_calculate_forward_breakeven_simple_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_forward_breakeven_simple_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_forward_breakeven_simple_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_breakeven_inflation_simple_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_forward_breakeven_simple_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "Mirror calculate_breakeven_inflation_simple_tool dual-view shape"
+      - "Standalone-bridge endpoint at /api/v1/rates/detail/forward-breakeven"
+      - "Methodology disclosure: forward = compounded spot relation between two breakeven pillars"
+
+  - id: inflation_indexed_bonds__scan_linkers_extremes
+    status: todo
+    human_action_required: false
+    last_review_heading: null
+    last_gate_result: not_run
+    build_order: 16
+    backend_tool_name: scan_inflation_linkers_extremes_tool
+    instrument_family: inflation_indexed_bonds
+    sub_agent: inflation_indexed_bonds
+    tool_slug: scan_inflation_linkers_extremes
+    endpoint_slug: linkers-scanner
+    category: scanner
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      Cross-country scanner over linker universe (real-yield + breakeven) - ranks per-instrument by z-score / percentile to surface extremes.
+    why_needs_frontend: |
+      Backend exists; no frontend module.  Scanner is desk-canonical morning view for spotting outliers in the linker universe; needs Monitor tile + Build canvas.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/inflation_indexed_bonds/tools/scan_inflation_linkers_extremes/
+      mcp_wrapper_in: rates_agent/inflation_indexed_bonds/mcp_server.py
+      mcp_tool_name: get_scan_inflation_linkers_extremes_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='get_scan_inflation_linkers_extremes_tool'"
+      curated_migration_file: database/migrations/2026-05-30_phase1_get_scan_inflation_linkers_extremes_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/scan_inflation_linkers_extremes_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/scan_inflation_linkers_extremes_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/scan_inflation_swaps_extremes_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/scan_inflation_linkers_extremes_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "Mirror scan_inflation_swaps_extremes_tool dual-view scanner shape (ranked list + sparklines + threshold strip)"
+      - "Standalone-bridge endpoint at /api/v1/rates/detail/linkers-scanner"
+      - "Frontend folder name = scan_inflation_linkers_extremes_tool; workflow registry + MCP function use get_scan_inflation_linkers_extremes_tool prefix"
+
+  - id: bond_futures__scan_extremes
+    status: todo
+    human_action_required: false
+    last_review_heading: null
+    last_gate_result: not_run
+    build_order: 17
+    backend_tool_name: scan_bond_futures_extremes_tool
+    instrument_family: bond_futures
+    sub_agent: bond_futures
+    tool_slug: scan_bond_futures_extremes
+    endpoint_slug: bond-futures-scanner
+    category: scanner
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      Cross-country scanner over bond futures universe - ranks by z-score / percentile to surface extremes.
+    why_needs_frontend: |
+      Backend exists; no frontend module.  Bond futures scanner is desk-canonical for spotting outliers across treasuries/gilts/bunds/jgb futures.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/bond_futures/tools/scan_bond_futures_extremes/
+      mcp_wrapper_in: rates_agent/bond_futures/mcp_server.py
+      mcp_tool_name: scan_bond_futures_extremes_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='scan_bond_futures_extremes_tool'"
+      curated_migration_file: database/migrations/2026-05-30_phase1_scan_bond_futures_extremes_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/scan_bond_futures_extremes_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/scan_bond_futures_extremes_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/scan_inflation_swaps_extremes_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/scan_bond_futures_extremes_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "Mirror scan_inflation_swaps_extremes_tool dual-view scanner shape"
+      - "Standalone-bridge endpoint at /api/v1/rates/detail/bond-futures-scanner"
+      - "Methodology disclosure: per-instrument family-level scanning; bond futures contract chain conventions per country"
+
+  - id: policy_futures__scan_extremes
+    status: todo
+    human_action_required: false
+    last_review_heading: null
+    last_gate_result: not_run
+    build_order: 18
+    backend_tool_name: get_scan_policy_futures_extremes_tool
+    instrument_family: policy_futures
+    sub_agent: policy_futures
+    tool_slug: scan_policy_futures_extremes
+    endpoint_slug: policy-futures-scanner
+    category: scanner
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      Cross-country scanner over policy / STIR futures universe - ranks by z-score / percentile to surface extremes on near-the-money STIR contracts.
+    why_needs_frontend: |
+      Backend exists; no frontend module.  STIR scanner is desk-canonical for spotting policy-path repricing outliers.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/policy_futures/tools/scan_policy_futures_extremes/
+      mcp_wrapper_in: rates_agent/policy_futures/mcp_server.py
+      mcp_tool_name: get_scan_policy_futures_extremes_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='policy_futures_get_scan_policy_futures_extremes_tool'"
+      curated_migration_file: database/migrations/2026-05-30_phase1_policy_futures_get_scan_policy_futures_extremes_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/get_scan_policy_futures_extremes_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/get_scan_policy_futures_extremes_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/scan_inflation_swaps_extremes_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/get_scan_policy_futures_extremes_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "Mirror scan_inflation_swaps_extremes_tool dual-view scanner shape"
+      - "Standalone-bridge endpoint at /api/v1/rates/detail/policy-futures-scanner"
+      - "Frontend folder + MCP function = get_scan_policy_futures_extremes_tool; workflow registry uses policy_futures_get_scan_policy_futures_extremes_tool prefix"
