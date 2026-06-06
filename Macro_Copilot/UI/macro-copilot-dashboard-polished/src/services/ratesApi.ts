@@ -24,6 +24,7 @@ import type {
   InflationSwapButterflyOutput,
   OisButterflyOutput,
   OisCurveSpreadOutput,
+  OisRateLevelOutput,
   ScanInflationSwapsExtremesOutput,
   PolicyFuturesPriceLevelOutput,
 } from '@/types/rates';
@@ -349,6 +350,31 @@ export function fetchDetailOisCurveSpread(
 ): Promise<OisCurveSpreadOutput> {
   return fetchJSON(
     `${RATES_PREFIX}/detail/ois-curve-spread${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/ois-rate-level  — single-tenor OIS par-swap-rate snapshot bridge
+// ---------------------------------------------------------------------------
+// Per-tenor OIS par-swap-rate snapshot (e.g. USD_SOFR_OIS 2Y, EUR_ESTR_OIS
+// 10Y, GBP_SONIA_OIS 5Y).  Own typed helper per the standalone-bridge
+// contract; consumed by BOTH Build views and the Monitor tile.  Rolling-
+// z-score conventions are YAML-locked on this primitive (no input-layer
+// overrides — mirrors the sibling OIS curve_spread / butterfly bridges);
+// ``field_name`` + ``lookback_days`` remain exposed.
+
+export type OisRateLevelDetailParams = {
+  curve_family: string;
+  tenor: string;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailOisRateLevel(
+  params: OisRateLevelDetailParams,
+): Promise<OisRateLevelOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/ois-rate-level${buildQuery(params)}`,
   );
 }
 

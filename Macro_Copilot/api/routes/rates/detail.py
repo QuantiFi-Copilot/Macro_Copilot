@@ -186,6 +186,22 @@ from rates_agent.ois.tools.curve_spread import (
     OISCurveSpreadOutput,
     calculate_ois_curve_spread,
 )
+# Standalone-bridge endpoint for the single-tenor OIS par-swap-rate-level
+# primitive (e.g. USD_SOFR_OIS 2Y, EUR_ESTR_OIS 10Y, GBP_SONIA_OIS 5Y).
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` every new tool
+# ships its OWN typed-detail endpoint consumed by both the extended and
+# compact Build views (rendering_density dual-view) + the Monitor tile.
+# Risk-neutral implied policy path caveat (SOFR / EFFR / SONIA / ESTR
+# family is the desk-canonical OIS implied policy expectation) surfaces on
+# the methodology card.  Rolling-z-score conventions are YAML-locked on
+# this primitive — only ``lookback_days`` + ``field_name`` are exposed at
+# the input layer (mirrors the OIS curve_spread / butterfly siblings).
+from rates_agent.ois.tools.rate_level import (
+    CONFIG_PATH as OIS_RATE_LEVEL_CONFIG_PATH,
+    OISRateLevelInput,
+    OISRateLevelOutput,
+    get_ois_rate_level,
+)
 # Standalone-bridge endpoint for the policy_futures strip-position price level
 # primitive (SFR1 / SFR2 / ER1 / SFI1 / ... — STIR strip slots on
 # SOFR_FUT / EUR_SHORT_RATE_FUT / SONIA_FUT).  Keyed by
@@ -1199,6 +1215,95 @@ def ois_curve_spread_detail(
     _tool_result_or_raise(
         result,
         f"OIS curve spread for {curve_family} {short_tenor}/{long_tenor}",
+    )
+    return result
+
+
+# ============================================================================
+# /detail/ois-rate-level  — single-tenor OIS par-swap-rate snapshot bridge
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the OIS
+# rate-level primitive ships its OWN typed-detail endpoint.  Same payload
+# feeds BOTH the extended Build view (mounted for single-tool queries) and
+# the compact Build view (mounted as a node body inside multi-tool DAGs) +
+# the Monitor tile per rendering_density.md §10.  Rolling-z-score conventions
+# are YAML-locked on this primitive (no input-layer overrides — mirrors the
+# sibling OIS curve_spread / butterfly bridges); only ``lookback_days`` +
+# ``field_name`` are exposed at the API layer.  Risk-neutral implied policy
+# path caveat is the desk-canonical methodology disclosure (SOFR / EFFR /
+# SONIA / ESTR / TONA / AONIA / CORRA family is the OIS implied policy
+# expectation).
+# ============================================================================
+@router.get(
+    "/detail/ois-rate-level",
+    response_model=OISRateLevelOutput,
+    summary="OIS Rate Level Detail (standalone bridge)",
+)
+def ois_rate_level_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family: str = Query(
+        ...,
+        description=(
+            "OIS curve family identifier.  Examples: 'USD_SOFR_OIS', "
+            "'EUR_ESTR_OIS', 'GBP_SONIA_OIS', 'JPY_OIS', 'AUD_OIS', "
+            "'CAD_OIS'."
+        ),
+    ),
+    tenor: str = Query(
+        ...,
+        description=(
+            "Tenor point on the OIS curve.  OIS curves have a dense "
+            "short-end grid: '1W', '1M', '2M', '3M', '6M', '9M', '1Y', "
+            "'2Y', '3Y', '5Y', '10Y', '20Y', '30Y'."
+        ),
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic.  Omit (None) to use the tool's "
+            "bundled ``default_swap_rate_field`` convention from "
+            "rate_level/config.yaml (currently 'PX_LAST' — the OIS "
+            "Bloomberg mid-rate field, NOT the sovereign 'YLD_YTM_MID' "
+            "yield-to-maturity field)."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the frontend
+    module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
+    AND the Monitor widget per the rendering-density dual-view + monitor
+    contract.
+
+    The OIS rate-level primitive intentionally does NOT expose the z-score
+    conventions at its Input layer — its rolling-z-score conventions are
+    sourced from the YAML at compute() time only.  Mirrors the sibling OIS
+    curve_spread / butterfly bridges.
+    """
+    try:
+        params = OISRateLevelInput(
+            curve_family=curve_family,
+            tenor=tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        rl_config = load_tool_config(OIS_RATE_LEVEL_CONFIG_PATH)
+        result = get_ois_rate_level(
+            engine=engine, params=params, config=rl_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/ois-rate-level: tool failed for %s %s",
+            curve_family, tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"OIS rate level for {curve_family} {tenor}",
     )
     return result
 

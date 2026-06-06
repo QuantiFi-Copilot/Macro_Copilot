@@ -199,6 +199,56 @@ export type YieldLevelOutput = {
   time_series?: TimeSeries;
 };
 
+// --- /detail/ois-rate-level (standalone bridge) ---
+//
+// Mirrors rates_agent/ois/tools/rate_level/schemas.py.  Per the
+// methodology-exposure standalone-bridge contract
+// (docs_revamped/03_standards/methodology_exposure.md §5) the OIS
+// rate-level primitive ships its own typed-detail endpoint at
+// /api/v1/rates/detail/ois-rate-level and its OWN frontend type — no
+// reuse of the sovereign YieldLevelOutput type (the underlying
+// instrument family is different: OIS par-swap rate, NOT a bond yield,
+// no coupon / accrued / principal).  The wire field is named
+// ``current_rate_pct`` rather than ``current_yield_pct`` so downstream
+// operator panels cannot silently mix OIS par-swap rates with nominal
+// sovereign yields.
+
+export type OisRateLevelMetrics = {
+  as_of_date: string;
+  curve_family: string;
+  tenor: string;
+  /** Current par swap rate in percent.  Distinct from the nominal-
+   *  sovereign ``current_yield_pct`` field — units agree (percent) but
+   *  the underlying observation is the OIS par swap rate, not a bond
+   *  yield-to-maturity. */
+  current_rate_pct: number;
+  daily_change_bps: number | null;
+  weekly_change_bps: number | null;
+  monthly_change_bps: number | null;
+  /** Rolling 252-trading-day z-score; conventions YAML-locked on this
+   *  primitive (no input-layer overrides — mirrors the OIS curve_spread
+   *  / butterfly siblings). */
+  z_score: number | null;
+  high_252d_pct: number | null;
+  low_252d_pct: number | null;
+  percentile_252d: number | null;
+  observation_count: number;
+};
+
+export type OisRateLevelOutput = {
+  current_metrics: OisRateLevelMetrics;
+  /** Historical OIS par-swap-rate levels.  Closed-enum
+   *  ``TimeSeriesUnits.PERCENT`` units; series_name follows
+   *  ``<curve_family_lower>_<tenor_lower>_ois_rate`` so downstream
+   *  operator panels cannot silently mix with nominal sovereign yield
+   *  series (suffix is the load-bearing distinction).  Each row
+   *  rounded with the same ``yield_round_decimals`` convention the
+   *  snapshot uses so the latest row matches
+   *  ``current_metrics.current_rate_pct`` STRICTLY (pinned by
+   *  rates_agent/ois/tools/rate_level/compute.py). */
+  time_series?: TimeSeries;
+};
+
 // --- /detail/real_yield (Phase-1 pilot, standalone bridge) ---
 //
 // Mirrors rates_agent/inflation_indexed_bonds/tools/real_yield_level/schemas.py.

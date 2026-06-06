@@ -2,21 +2,21 @@ version: '1.0'
 branch: frontend_automation
 backend: claude-cli
 orchestrator_status: processing
-current_tool: null
-current_tool_backend_name: null
-current_step: ready_to_dispatch
-dispatch_round: 0
-last_dispatch_at: null
-last_successful_tool: policy_futures__futures_price_level
-last_successful_commit: d8e8233
+current_tool: ois__rate_level
+current_tool_backend_name: get_ois_rate_level_tool
+current_step: committed
+dispatch_round: 2
+last_dispatch_at: "2026-06-06T22:56:00Z"
+last_successful_tool: ois__rate_level
+last_successful_commit: pending-backfill
 last_reviewer_heading: APPROVED
 last_gate_result: pass
-last_stop_reason: batch_2_queued_advance
+last_stop_reason: null
 last_error: null
-last_updated: "2026-05-30T03:30:00Z"
-done: 9
+last_updated: "2026-06-06T23:03:00Z"
+done: 10
 blocked: 0
-remaining: 9
+remaining: 8
 quota_state: probe_unavailable
 quota_snapshot: null
 quota_snapshot_at: '2026-05-29T15:52:00Z'
@@ -40,6 +40,129 @@ reviewer_mode_history:
 catalog_exhausted_at: null
 human_required: null
 status_notes:
+  - at: '2026-06-06T23:03:00Z'
+    kind: tool_10_shipped_batch_2_advancing
+    text: |
+      Cron-fired wake at 22:52 UTC on 2026-06-06 (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784).  On entry, the prior
+      wake's builder for tool 10 (`ois__rate_level`) was still
+      running (PID 3617629, started 22:41).  Waited for builder to
+      exit (22:55, ~14m runtime, exit 0; 3.5KB BUILDER REPORT;
+      builder-side self-tests green).
+
+      Builder produced module.ts + THESIS.md + __tests__/module.spec.ts
+      overwrites + 4 new surface files
+      (BuildExtended.tsx 291L / BuildCompact.tsx 96L /
+       oisRateLevelShared.ts 568L / monitor/OisRateLevelWidget.tsx 207L)
+      + types/rates.ts + services/ratesApi.ts + api/routes/rates/detail.py
+      additions.  No edit to src/modules/index.ts or
+      src/lib/toolNames.ts (loader entry + alias already present).
+
+      Reviewer dispatched 22:56 via run_claude_reviewer.sh
+      (background id b6s9v2h61).  Prompt at
+      /tmp/reviewer_prompt_ois__rate_level_round2.md (1856 lines —
+      catalog entry + mockup paths + 1775-line diff bundle).
+      Reviewer log /tmp/claude_frontend_reviewer_run_ois__rate_level_round2.log
+      finalized 23:01 (~5m, 3480 bytes).  parse_reviewer_log.py
+      returned {"ok": true, "heading": "APPROVED",
+      "environment_failure": false, "reviewer_quota_exhausted":
+      false} — Case C.  Reviewer cited zero blocking findings;
+      confirmed dual-view contract, standalone bridge,
+      FM1-FM12, mockup conformance (Compact 3 KPIs + extended
+      9-cell strip + per-family caveat), and OIS sub-domain
+      methodology-label carve-out (TODO(PR10) anchored to
+      FAMILY_REGISTRY, matching OIS curve_spread / butterfly
+      siblings).
+
+      Pre-commit gate (orchestrator-run from
+      UI/macro-copilot-dashboard-polished/):
+        npm run test:modules    `get_ois_rate_level_tool: 9 passed,
+                                  0 failed`; all 58+ modules +
+                                  registry pass
+        npm run test:build      all build-folder tests pass
+                                  (routing 48 / dashboard 11 /
+                                   registry 18 / artifacts 28
+                                   etc.)
+        npm run typecheck       clean (tsc -p tsconfig.app.json
+                                  --noEmit exit 0)
+
+      Mirrors:
+        surface_contract.md §4.2 row updated:
+          build_archetype: generic-builder → typed-result-renderer
+          build_status:    scaffolded      → dual-view-built
+          monitor_status:  deferred        → built (OisRateLevel widget)
+          (monitor_elig already `required`)
+        surface_contract.md §11 added v18 entry covering this ship.
+        §10 not edited (pilot-pinned).
+        `graphify update` — skipped, not on PATH on this VM
+        (recorded per ORCHESTRATOR_PROMPT Mirrors §2 fallback;
+         same precedent as v17, v16, v15, v14, v13, etc.).
+
+      Commit on `frontend_automation` per template; catalog tool 10
+      flipped → `status: done`, `last_review_heading: APPROVED`,
+      `last_gate_result: pass`, `active_step: committed`.
+      commit_sha: pending-backfill (a separate 2nd small commit
+      will land the actual SHA after the work commit, mirroring
+      the tool 7 / tool 8 / tool 9 backfill pattern).
+
+      Counts on exit (post-commit, after backfill): done=10 /
+      blocked=0 / remaining=8.  orchestrator_status stays
+      `processing` and advances to the next eligible
+      tool in the same wake (tool 11 `inflation_swaps__rate_level`,
+      build_order 11).
+
+      Quota: still in runtime-enforced mode per
+      QUOTA_AND_RESUME_POLICY.md §3 (claude /status not
+      available non-interactively).  No quota signal from the
+      reviewer log.  Will continue advancing until the actual
+      provider returns a real quota signal.
+
+  - at: '2026-06-06T22:40:00Z'
+    kind: wake_start_batch_2_tool_10_dispatched
+    text: |
+      Cron-fired wake at 22:39 UTC on 2026-06-06 (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784).  Read ORCHESTRATOR_PROMPT.md
+      + the full automation package + frontend_tool_catalog.yaml +
+      frontend_runtime_state.yaml.  Branch check passed (on
+      `frontend_automation`, HEAD 2b76b5e "feat(factory-batch-2):
+      queue 9 new tools for frontend factory").  Tree clean on entry.
+
+      Catalog state on entry:
+        done=9, blocked=0, remaining=9 — batch-2 queued by the user
+        with 9 new `todo` entries (build_order 10-18).  No
+        in_progress / changes_required / waiting_quota entries.
+        Selection order picks first todo by build_order ⇒ tool 10
+        (`ois__rate_level`).
+
+      Pre-flight backend audit for tool 10 (read-only):
+        Check 1  rates_agent/ois/tools/rate_level/ 4-file shape   PASS
+        Check 2  rates_agent/ois/mcp_server.py:217
+                 `def calculate_ois_rate_level_tool(...)`         PASS
+        Check 3a docker exec macro-tsdb psql tool_metadata row    N/A
+                 (relation macro_data.tool_metadata does not exist
+                 on this VM's local Postgres — DB schema not
+                 migrated; per PRE_FLIGHT_BACKEND_AUDIT.md §2 the
+                 OR-clause path b satisfies the gate)
+        Check 3b database/migrations/2026-05-30_phase1_calculate_ois_rate_level_curated.sql
+                 (2024 bytes)                                     PASS
+        Check 4  mockups Compact.png (1398102 B) + Extended.png
+                 (1598127 B) at
+                 UI/macro-copilot-dashboard-polished/src/modules/primitives/get_ois_rate_level_tool/mockups/
+                                                                  PASS
+
+      Builder dispatched at 22:40 UTC via run_claude_builder.sh with
+      prompt /tmp/builder_prompt_ois__rate_level_round1.md, log
+      /tmp/claude_frontend_builder_run_ois__rate_level_round1.log.
+      Background pid tracked by OpenClaw exec (background id
+      b4fghoasm).  Runtime state: current_tool=ois__rate_level,
+      current_step=builder_dispatched, dispatch_round=1.
+
+      Quota: claude /status path not usable from non-interactive
+      automation (same as prior wakes); proceeding in
+      runtime-enforced quota mode per QUOTA_AND_RESUME_POLICY.md §3.
+      Will detect quota exhaustion via parse_reviewer_log.py's
+      reviewer_quota_exhausted signal.
+
   - at: '2026-05-30T02:07:00Z'
     kind: cron_wake_noop_catalog_exhausted
     text: |
