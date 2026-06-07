@@ -1,22 +1,22 @@
 version: '1.0'
 branch: frontend_automation
 backend: claude-cli
-orchestrator_status: processing
-current_tool: policy_futures__scan_extremes
-current_tool_backend_name: get_scan_policy_futures_extremes_tool
-current_step: builder_dispatched
-dispatch_round: 1
-last_dispatch_at: "2026-06-07T10:13:00Z"
-last_successful_tool: bond_futures__scan_extremes
-last_successful_commit: 3cb47ac
-last_reviewer_heading: APPROVED
+orchestrator_status: catalog_exhausted
+current_tool: null
+current_tool_backend_name: null
+current_step: null
+dispatch_round: null
+last_dispatch_at: "2026-06-07T14:38:00Z"
+last_successful_tool: policy_futures__scan_extremes
+last_successful_commit: ba01354
+last_reviewer_heading: APPROVED-AFTER-FIX
 last_gate_result: pass
-last_stop_reason: null
+last_stop_reason: catalog_exhausted
 last_error: null
-last_updated: "2026-06-07T10:14:00Z"
-done: 17
+last_updated: "2026-06-07T14:53:00Z"
+done: 18
 blocked: 0
-remaining: 1
+remaining: 0
 quota_state: probe_unavailable
 quota_snapshot: null
 quota_snapshot_at: '2026-05-29T15:52:00Z'
@@ -37,9 +37,258 @@ reviewer_mode_history:
       and SINGLE_REVIEW_ROUND_POLICY.md.  Quota exhaustion on either
       dispatch triggers a clean waiting_quota stop; the next cron wake
       retries.
-catalog_exhausted_at: null
+catalog_exhausted_at: "2026-06-07T14:53:00Z"
 human_required: null
 status_notes:
+  - at: "2026-06-07T14:53:00Z"
+    kind: tool_18_round3_approved_after_fix_committed_catalog_exhausted
+    text: |
+      Cron-fired wake at 14:37 UTC on 2026-06-07 (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784) finished the round-3
+      fix-pass shipping path on tool 18
+      (`policy_futures__scan_extremes` /
+      `get_scan_policy_futures_extremes_tool`) and exhausted the
+      initial 18-tool catalog.
+
+      Round 3 fix-pass builder (PID 3924326, dispatched 14:38 UTC
+      via run_claude_builder.sh) finished at 14:43 UTC (~5m for a
+      single-file targeted fix).  Log:
+      /tmp/claude_frontend_builder_run_policy_futures__scan_extremes_round3.log
+      (2990 bytes).  BUILDER REPORT confirmed:
+        - Files updated: surfaces/BuildCompact.tsx ONLY.
+        - Compact header grid widened 6 → 7 columns
+          (`grid-cols-[20px_1fr_auto_auto_auto_auto] →
+           grid-cols-[20px_1fr_auto_auto_auto_auto_auto]`) at
+          header (lines 151-160), data-row (lines 174-230), and
+          CompactSkeleton (lines 325-343).
+        - Dedicated `1D Δ` cell inserted between Value and Z
+          with per-metric rendering rules:
+            * OI rows: `${oneDay} ${narrative}` (delta + narrative).
+            * VOL rows where backend exposes no 1d Δ: narrative alone.
+            * IR rows: bp delta with narrative qualifier.
+        - Inline concat stripped from Value sub-line; Value cell
+          now renders nativeValue over nativeUnits cleanly.
+        - Files NOT touched (per "Apply these findings; do NOT
+          redesign" instruction): module.ts, BuildExtended.tsx,
+          surfaces/monitor/*, policyFuturesScannerShared.ts,
+          types/rates.ts, services/ratesApi.ts, detail.py,
+          THESIS.md, __tests__/module.spec.ts.
+        - Two observation-only notes from the reviewer (IR+Δ+V+O
+          literal kicker; Monitor widget helper duplication) left
+          intact per explicit "do NOT dispatch a fix".
+
+      Pre-commit gate re-run in orchestrator session (Case D
+      step 5; gate is the ONLY safety net per
+      SINGLE_REVIEW_ROUND_POLICY.md §3 — no re-review, no
+      Dispatch 4):
+        - `npm run test:modules` ✓ exit 0
+          (`get_scan_policy_futures_extremes_tool: 7 passed, 0
+          failed`; all module + registry tests passed).
+        - `npm run test:build` ✓ exit 0
+          (all build-folder tests passed).
+        - `npm run typecheck` ✓ exit 0
+          (`tsc -p tsconfig.app.json --noEmit` clean).
+
+      Mirrors update (Case D step 6 / ORCHESTRATOR_PROMPT
+      Mirrors+commit §1-2):
+        - surface_contract.md §4.5 row 248 updated:
+          `output_kind: scanner-result → scanner-rankedlist`,
+          `build_archetype: generic-builder → typed-result-renderer`,
+          `build_status: scaffolded → dual-view-built`,
+          `monitor_status: deferred → built (PolicyFuturesScanner widget)`.
+        - surface_contract.md §11 changelog v26 entry appended
+          (catalog-exhaustion + reviewer trail).
+        - §10 untouched (Phase-1 pilot rows only; scanner tools
+          not part of pilot per §10.2 policy).
+        - `graphify update .` skipped: not on PATH on this VM;
+          recorded per ORCHESTRATOR_PROMPT Mirrors §2 fallback.
+
+      Commit (ba01354) landed on frontend_automation at 14:53 UTC
+      with the `frontend(scan_policy_futures_extremes)` template
+      message + `Reviewer: APPROVED-AFTER-FIX` disclosure (honest
+      acknowledgment that Dispatch 3 bypassed re-review per
+      SINGLE_REVIEW_ROUND_POLICY.md).  Commit includes module +
+      mockups + surfaces + tests + THESIS + module.ts + types +
+      service helper + typed-detail endpoint + surface_contract.md
+      mirrors.  Automation YAMLs (catalog + runtime) deliberately
+      excluded from this commit; backfilled in a follow-up
+      `automation: backfill` commit per the established
+      tool-13..17 pattern.
+
+      Catalog state: 18 done / 0 blocked / 0 remaining.
+      Per ORCHESTRATOR_PROMPT.md Catalog-exhaustion rule:
+        - orchestrator_status → catalog_exhausted.
+        - last_stop_reason → catalog_exhausted.
+        - catalog_exhausted_at → 2026-06-07T14:53:00Z.
+        - current_* nulled (no active tool).
+        - last_successful_tool / last_successful_commit advanced
+          to tool 18 / ba01354.
+        - last_reviewer_heading → APPROVED-AFTER-FIX.
+        - last_gate_result → pass.
+      Next cron wake will hit the entry-point guard
+      (BACKGROUND_EXECUTION_POLICY §8) and exit without invoking
+      the orchestrator until the catalog is extended.
+
+  - at: '2026-06-07T14:38:00Z'
+    kind: tool_18_round2_changes_required_round3_fix_dispatched
+    text: |
+      Cron-fired wake at 14:37 UTC on 2026-06-07 (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784).  On entry, tool 18
+      (`policy_futures__scan_extremes`) was in_progress with
+      current_step: reviewer_dispatched / dispatch_round: 2 from the
+      14:28 UTC reviewer dispatch earlier this wake-window.  No live
+      claude builder/reviewer process; reviewer log
+      `/tmp/claude_frontend_reviewer_run_policy_futures__scan_extremes_round2.log`
+      complete (3886 bytes; mtime 14:35 UTC).
+
+      parse_reviewer_log.py returned
+      {"ok": true, "heading": "CHANGES REQUIRED",
+       "environment_failure": false,
+       "reviewer_quota_exhausted": false} — Case D.
+
+      Reviewer adjudication per SINGLE_REVIEW_ROUND_POLICY.md §3 +
+      ORCHESTRATOR_PROMPT.md Case D step 1:
+
+        Finding 1 (CONCRETE) — surfaces/BuildCompact.tsx:152-159 +
+          174-229 + 325-343 — Compact mockup is 7 columns
+          (`# | CONTRACT | PACK | SCOPE | VALUE (NATIVE) | 1D Δ |
+          Z-SCORE (252D)`) but implementation collapses `1D Δ` +
+          narrative into a sub-line of the Value cell producing a
+          6-column grid.  Reviewer specifies exact grid template
+          delta (`grid-cols-[20px_1fr_auto_auto_auto_auto]` →
+          `grid-cols-[20px_1fr_auto_auto_auto_auto_auto]`), new
+          column header insert location, where to remove the
+          inline concat from the Value sub-line, the per-metric
+          rendering rules for OI rows (narrative rides delta) +
+          VOL rows (narrative alone when delta is em-dash), and
+          requires the CompactSkeleton to be mirrored.  Rule
+          violated: rendering_density.md §2.2 + mockup conformance.
+
+        Reviewer also surfaced TWO observation-only notes
+        (IR+Δ+V+O hardcoded literal; Monitor widget re-implements
+        the data-fetch boilerplate) with explicit "do NOT dispatch
+        a fix" — preserved as-is per reviewer intent.
+
+      Finding hygiene check (all pass):
+        - No STRUCTURAL: prefix.
+        - No vague language ("consider"/"could be cleaner"/
+          "perhaps"/"refactor"); exact code change shown.
+        - Single file inside the module folder (well under the
+          4-file blast-radius rule).
+        - Does NOT contradict the mockup — finding IS to bring
+          the implementation back into mockup conformance.
+        - References real files only (BuildCompact.tsx exists at
+          the cited path; lines exist).
+
+      All checks pass → proceed to Dispatch 3 (fix pass) per
+      ORCHESTRATOR_PROMPT.md Case D step 2-4.
+
+      Fix-pass prompt assembled at
+      /tmp/builder_prompt_policy_futures__scan_extremes_round3.md
+      (round 1 prompt seed + verbatim CONCRETE finding + explicit
+      "do NOT redesign / do NOT touch other surfaces / do NOT
+      address the observation-only notes" instruction).
+
+      Builder re-dispatched at 14:38 UTC via
+        `nohup bash automation/frontend_automation/run_claude_builder.sh
+           /tmp/builder_prompt_policy_futures__scan_extremes_round3.md
+           /tmp/claude_frontend_builder_run_policy_futures__scan_extremes_round3.log`
+        (PID 3924326).
+
+      Plan for the rest of this wake:
+        - Monitor fix-pass builder to completion (typical
+          ~3-10m runtime for a single-file targeted fix).
+        - Run pre-commit gate (npm run test:modules +
+          test:build + typecheck) — ONLY safety net per
+          SINGLE_REVIEW_ROUND_POLICY.md §3 (NO re-review,
+          NO Dispatch 4).
+        - On gate green: update surface_contract.md mirrors
+          (§4 row + §10 status flip + §11 changelog) + run
+          `graphify update .` + commit on frontend_automation
+          with `last_reviewer_heading: APPROVED-AFTER-FIX`
+          honest disclosure.
+        - On gate red: mark `human_required` reason
+          `pre_commit_gate_failed_after_fix`, capture gate
+          output, DO NOT commit.
+        - Catalog post-tool-18 (success path): done=18 /
+          blocked=0 / remaining=0 → flip orchestrator_status
+          to `catalog_exhausted` per ORCHESTRATOR_PROMPT.md
+          §Catalog-exhaustion rule.
+
+  - at: '2026-06-07T14:10:00Z'
+    kind: tool_18_builder_redispatched_after_quota_reset
+    text: |
+      Cron-fired wake at 14:07 UTC on 2026-06-07 (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784).  On entry, tool 18
+      (`policy_futures__scan_extremes`) was in_progress with
+      current_step: builder_dispatched from the 10:13 UTC dispatch
+      earlier this morning.
+
+      Inspected the prior builder log
+      (/tmp/claude_frontend_builder_run_policy_futures__scan_extremes_round1.log;
+      45 bytes; mtime 10:15 UTC).  Content: a single line
+      `You've hit your limit · resets 1:30pm (UTC)` — Claude
+      runtime quota signal.  Per QUOTA_AND_RESUME_POLICY.md §3 +
+      §6 the appropriate action is to retry the builder dispatch
+      once quota has recovered (the prior wake should have set
+      `waiting_quota` and stopped cleanly, but did not flip the
+      flag — runtime state stayed as `processing /
+      builder_dispatched`).  Reset time was 13:30 UTC; current
+      wake at 14:07 UTC is past reset.
+
+      Pre-flight backend audit re-run for tool 18 — ALL PASS
+      (same as the 10:13 UTC dispatch):
+        Check 1 (backend folder): rates_agent/policy_futures/tools/
+          scan_policy_futures_extremes/ (4-file shape; __init__.py
+          2293B + compute.py 47574B + config.yaml 29664B +
+          schemas.py 32816B; unchanged).
+        Check 2 (MCP wrapper): registered at
+          rates_agent/policy_futures/mcp_server.py:1669
+          (`def get_scan_policy_futures_extremes_tool`).
+        Check 3b (curated migration): present at
+          database/migrations/2026-05-30_phase1_policy_futures_
+          get_scan_policy_futures_extremes_curated.sql (2242B).
+        Check 4 (mockups): both Compact.png (1256102B) +
+          Extended.png (1687731B) present at the target module's
+          mockups/ folder.
+
+      Working tree clean on entry; HEAD at 06f7fdf (tool 17/18
+      catalog backfill commit).  Branch gate green
+      (`check_branch.sh` OK on frontend_automation).
+
+      Builder re-dispatched at 14:09 UTC via
+        `nohup bash automation/frontend_automation/run_claude_builder.sh
+           /tmp/builder_prompt_policy_futures__scan_extremes_round1.md
+           /tmp/claude_frontend_builder_run_policy_futures__scan_extremes_round1.log`
+        (wrapper PID 3912940; claude child PID 3912947).
+      Builder prompt unchanged from the 10:12 UTC author — same
+      20427-byte prompt (catalog entry verbatim + resolved mockup
+      paths + reference module note + scanner-shape siblings
+      `scan_inflation_swaps_extremes_tool` + `scan_inflation_linkers_extremes_tool`
+      + `scan_bond_futures_extremes_tool` + tool-name aliaser
+      note + pre-flight audit output).
+
+      Quota: prior 10:15 UTC builder hit `You've hit your limit ·
+      resets 1:30pm (UTC)` runtime signal — confirmed
+      `quota_state: exhausted` retroactively for the prior wake.
+      Reset window passed at 13:30 UTC.  This wake operates in
+      runtime-enforced mode again per §3 (claude /status still
+      unavailable non-interactively); will stop cleanly if a
+      fresh quota signal returns from the builder or reviewer
+      log this wake.
+
+      Plan for this wake:
+        - Monitor builder to completion (typical ~10-15m
+          runtime for a scanner-shape build).
+        - Dispatch reviewer (round 2).
+        - parse_reviewer_log.py → Case C/D/E branching.
+        - Pre-commit gate on Case C / D Dispatch-3 success.
+        - Mirrors + commit + catalog flip → done if APPROVED.
+        - Catalog post-tool-18 will have done=18 / blocked=0 /
+          remaining=0 → flip orchestrator_status to
+          `catalog_exhausted` per ORCHESTRATOR_PROMPT.md
+          §Catalog-exhaustion rule.
+
   - at: '2026-06-07T10:14:00Z'
     kind: tool_17_shipped_batch_2_advancing
     text: |

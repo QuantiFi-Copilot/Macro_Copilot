@@ -902,13 +902,30 @@ tools:
       - "Methodology disclosure: per-instrument family-level scanning; bond futures contract chain conventions per country"
 
   - id: policy_futures__scan_extremes
-    status: in_progress
+    status: done
     human_action_required: false
-    last_review_heading: null
-    last_gate_result: not_run
-    dispatch_round: 1
-    active_step: builder_dispatched
-    dispatched_at: "2026-06-07T10:13:00Z"
+    last_review_heading: APPROVED-AFTER-FIX
+    last_gate_result: pass
+    dispatch_round: 3
+    active_step: committed
+    dispatched_at: "2026-06-07T14:38:00Z"
+    previous_dispatched_at: "2026-06-07T10:13:00Z"
+    round2_reviewer_finished_at: "2026-06-07T14:35:00Z"
+    round3_builder_finished_at: "2026-06-07T14:43:00Z"
+    committed_at: "2026-06-07T14:53:00Z"
+    commit_sha: ba01354
+    round2_reviewer_finding_summary: |
+      ONE concrete bounded finding (no STRUCTURAL: prefix; single
+      file in module folder; mockup-aligned).  Reviewer asks the
+      Compact view grid to be widened from 6 → 7 columns
+      (`# | CONTRACT | PACK | SCOPE | VALUE (NATIVE) | 1D Δ |
+      Z-SCORE (252D)`) so `1D Δ` is its own scannable column
+      (matches `mockups/Compact.png`).  Exact grid-template diff,
+      header insert location, per-metric rendering rules for OI +
+      VOL rows, and CompactSkeleton mirror requirement all
+      specified.  Two observation-only notes preserved per
+      reviewer's explicit "do NOT dispatch a fix".  Adjudication
+      → Dispatch 3 (fix pass).
     build_order: 18
     backend_tool_name: get_scan_policy_futures_extremes_tool
     instrument_family: policy_futures
