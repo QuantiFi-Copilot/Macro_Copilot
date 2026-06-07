@@ -31,6 +31,7 @@ import type {
   InflationSwapRateLevelOutput,
   InflationSwapCurveSpreadOutput,
   ScanInflationSwapsExtremesOutput,
+  ScanInflationLinkersExtremesOutput,
   PolicyFuturesPriceLevelOutput,
 } from '@/types/rates';
 
@@ -560,6 +561,36 @@ export function fetchDetailZcisScanner(
 ): Promise<ScanInflationSwapsExtremesOutput> {
   return fetchJSON(
     `${RATES_PREFIX}/detail/zcis-scanner${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/linkers-scanner  — universe-wide linker REAL-YIELD extremes bridge
+// ---------------------------------------------------------------------------
+// SCANNER-shape primitive under the standalone-bridge contract.  Wire
+// returns a ranked LIST of extremes — the per-tool BuildCompact renders a
+// top-N table (NOT a sparkline), the BuildExtended renders the universe
+// scan + full ranked detail.  Rolling-z-score conventions are YAML-locked
+// on this primitive; only scope / threshold / anchor inputs are exposed.
+
+export type LinkersScannerDetailParams = {
+  /** Comma-separated list of linker curve families (e.g.
+   *  "USD_TIPS,GBP_LINKER"). Omit for the full universe. */
+  curve_families?: string;
+  /** Number of extreme stems to return; omit for the YAML default. */
+  top_n?: number;
+  /** Minimum absolute z-score threshold; omit for the YAML default. */
+  min_abs_z_score?: number;
+  /** ISO-format date (YYYY-MM-DD) anchoring the scan; omit for the
+   *  most-recent shared trading day in the DB. */
+  as_of_date?: string;
+};
+
+export function fetchDetailLinkersScanner(
+  params: LinkersScannerDetailParams,
+): Promise<ScanInflationLinkersExtremesOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/linkers-scanner${buildQuery(params)}`,
   );
 }
 

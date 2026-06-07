@@ -1,49 +1,79 @@
 # THESIS — `scan_inflation_linkers_extremes_tool`
 
-> Module shipped with runtime tier only (Stage 3 / Stage 4c-derived).  Capability surfaces are added by Stages 5+ as the desk earns them.
+> Universe-wide linker REAL-YIELD extremes scanner under the dual-view + standalone-bridge contract.  The wire returns a ranked LIST of (curve_family, tenor) extremes ranked by |z| of the 252d-rolling real-yield LEVEL z-score, NOT a single time series — so this module's compact view is a top-N TABLE and its extended view is a universe-scan canvas (distribution histogram + ranked detail table), mirroring the sibling `scan_inflation_swaps_extremes_tool` shape but indexed on the linker curve-family registry (USD_TIPS / GBP_LINKER / EUR_FR_LINKER / CAD_RRB).
 
-**Version:** v2 (Stage 4f — post-runner-fix rewrite)
+**Version:** v3 (initial SCANNER build — replaces the Stage 4f runtime-only scaffold)
 **Module spec:** [`module.ts`](module.ts)
 **Backend artifact:** `scan_inflation_linkers_extremes_tool` (generic_runnable)
-**Tier set:** `[generic_runnable]`
+**Bridge endpoint:** `/api/v1/rates/detail/linkers-scanner`
+**Tier set:** `[generic_runnable, custom_build_surface, monitor_surface]`
 **Category:** `scanners`
 
 ---
 
 ## 1. What surfaces does this module ship?
 
-- **`generic_runnable`** — runtime-status tier.  Backend ships this primitive in `_PRIMITIVE_SPECS`; the generic schema-driven builder (`GenericPrimitiveBuilder`) configures + runs + renders it via `POST /api/v1/tools/{name}/run`.  No bespoke per-tool Build / Preview / Monitor / Ask surface today — Stage 5+ adds capability tiers as the desk earns them.
+- **`generic_runnable`** — runtime-status tier.  Backend ships this primitive in `_PRIMITIVE_SPECS`; falls back to `GenericPrimitiveBuilder` if the user reaches it via a non-canonical Library "Open in Build" path that bypasses the typed-detail endpoint.
+- **`custom_build_surface` → extended** (`surfaces/BuildExtended.tsx`).  Universe-scan canvas: identity row + scan-summary top-right cards (flagged-count, distribution, index-family caveat) + controls strip (linker scope / threshold / top-N) + z-score distribution histogram + scan-summary callouts + ranked detail table with per-row "Open in Build" deep-link to the per-bond `get_real_yield_level_tool` + methodology card sourced from the wire's `methodology_disclosure` + lineage footer.
+- **`custom_build_surface` → compact** (`surfaces/BuildCompact.tsx`).  Grid card with the top-5 ranked rows in a (rank / instrument / real yield / z-score) table — NOT a sparkline.  Tone-cued z-scores (|z| ≥ 1.5 amber, |z| ≥ 2.0 coral/mint by direction).  "MOST EXTREME" highlight row below the table.  Footer caveat + "View all N" expand affordance.
+- **`monitor_surface` → `LinkerScannerWidget`** (`surfaces/monitor/LinkerScannerWidget.tsx`).  Catalog tile parameterised on (scope, top_n, min_abs_z_score).  Surfaces the flagged-count chip + the top-3 ranked rows + the load-bearing INDEX-FAMILY + MARKET-STRUCTURE caveat.
 
 ## 2. What does the user read off each surface?
 
-**Build (generic builder).** The schema-driven `GenericPrimitiveBuilder` mounts when the user opens this tool from Library / Ask handoff.  Controls rail is generated from the backend `ToolCard.input_fields`; the output canvas renders via `AutoRenderer` (Series → SeriesWidget, Panel → PanelWidget, etc.).
+**Extended (single-tool query).** A PM opens the canvas with one question — *"where is the linker curve stretched today, across the whole universe?"*.  The scan-summary card answers it in one number ("7 of 22 stems flagged at |z| ≥ 1.5σ").  The distribution histogram shows whether the flagged extremes lean rich (low real yields) or cheap (high real yields), and how many sit beyond the 2σ envelope.  The ranked table is the action layer — every flagged pillar is a candidate for a deeper read; clicking "Open in Build" on a row routes to the per-bond `get_real_yield_level_tool` with the (curve_family, tenor) bound.  The methodology card surfaces the wire's full disclosure verbatim — the 252d window, the INDEX-FAMILY heterogeneity caveat (CPI-U / RPI / HICP / CAN CPI), the MARKET-STRUCTURE caveat (liquidity premium / benchmark availability / on-the-run dynamics), and the morning-screen scope statement.
+
+**Compact (multi-tool DAG node).** A PM running a multi-tool query like *"compare linker extremes vs sovereign extremes vs ZCIS extremes"* sees three scanner cards side-by-side.  The linker card's three things the PM reads in 2 seconds: (1) WHICH instrument tops the ranking ("USD 5Y CPI-U"), (2) at WHAT |z| ("+2.7σ" — coral, so real yield cheap), (3) how many other stems are flagged ("8 Flagged at |z| ≥ 1.5σ").  The expand affordance opens the full extended canvas in a modal with the multi-tool DAG behind it; the "View all N" footer link is a secondary entry to the same modal.
+
+**Monitor.** Inherently compact (bento-grid constraint).  Surfaces the flagged-count headline + the top-3 ranked rows; the threshold chip tells the PM at a glance whether anything is at 2σ extremity right now.  The catalog form lets the desk pin one tile per scope (e.g. one All-Linkers tile, one USD_TIPS-only tile) without per-tile JSX changes.
 
 ## 3. Why these surfaces and not others?
 
-Generic-only today because the tool's output shape is well-served by `AutoRenderer` and the input fields are well-served by the schema-driven form.  Bespoke surfaces (typed view, Monitor tile, Ask card) land in Stage 5+ if the desk's read pattern justifies them.
+**Why a custom compact view (top-N table) rather than `AutoRenderer` or the standard `BuildCompactShell`?**
+The standard `BuildCompactShell` is LEVEL-shape oriented — three KPI cells + sparkline + footer.  The scanner's headline data is a ranked LIST of extremes, not a single number with a chart.  A literal 3-KPI mapping would surface only ONE row (rank 1) and would drop the comparative context (the rest of the top-N + the flagged count) that IS the scanner's point.  This module honours the SEMANTIC contract of rendering_density.md §2.2 (identity / headline data / methodology / expand / tone cues) with a scanner-shaped layout, reusing the shared `FreshnessPill` + `toneTextClass` + format helpers so visual treatment matches the rest of the compact catalogue.  Mirrors the `scan_inflation_swaps_extremes_tool` sibling precedent.
+
+**Why a custom extended view rather than `BuildExtendedShell`?**
+The extended shell is chart-centric (chartPoints + reference bands + KPI strip).  The scanner needs a distribution histogram + a ranked-detail table.  The shared shell's `ControlsStrip` + `MethodologyCard` + `LineageFooter` ARE finance-blind enough to drop in directly; this module composes them inside a scanner-shaped layout rather than fight the chart-centric main-canvas.
+
+**Why claim `monitor_surface` (vs FM4 parsimony)?**
+The desk's morning ritual is the universe-wide linker sweep — this is exactly the use case FM4's exception #2 enumerates ("the desk reads this primitive at a glance every day").  Without the Monitor tile, a PM has to open the full Build canvas every morning; with it, the bento grid renders the flagged count + top-3 rows alongside the sibling rates / ZCIS / sovereign scanners.
+
+**Why a single-metric scan and not per-tenor sub-scans or RY+BE composite?**
+The backend wire is single-metric — `z_score_real_yield` per the catalog's literal wording ("ranked by absolute 252-day z-score of real yields").  Breakevens are owned by the sibling `breakeven_inflation_simple` family; nominal-yield extremes are owned by the sovereign `scan_extremes_tool`.  The frontend mirrors the wire — no synthetic multi-metric overlay.  See §4 below for the mockup-vs-backend reconciliation note.
+
+**Why not `ask_surface`?**
+The chat dispatcher's generic `AssistantResearchCard` handles the "give me the linker extremes" Ask response perfectly today — the response shape (top-N rows) reads naturally as a chat bubble.  A bespoke Ask card would be incremental at best; deferred per FM4.
+
+**Why not `custom_preview_widget`?**
+Persisted-artifact preview cards (the per-tool node renderer in the workspace DAG) for scanners are well-served by the artifact-type generic registry; the scanner doesn't carry a domain-specific preview need beyond what the workspace's node renderer already does.
 
 ## 4. What would change the design?
 
-- Frequent desk read at a glance → claim `monitor_surface` and add `surfaces/monitor/<Name>.tsx` + a `MODULE.monitorWidgets` entry.
-- Output shape gains rich structure that AutoRenderer can't honour → claim `custom_build_surface` and ship `surfaces/BuildSurface.tsx`.
-- Persisted-artifact preview needs per-tool framing → claim `custom_preview_widget` and add `surfaces/PreviewWidget.tsx` + a `MODULE.modelAdapter` block.
-- Chat-result framing the generic `AssistantResearchCard` can't carry → claim `ask_surface` and ship `surfaces/AskCard.tsx`.
+- **Mockup RY+BE scope adoption.** The committed `mockups/Compact.png` + `mockups/Extended.png` envision a composite RY (real yield) + BE (breakeven) scanner with a per-row SCOPE column tagging each row.  The current backend is single-metric (real-yield z-score only); the frontend honours the backend rather than inventing breakeven rankings.  A future enhancement adds the BE leg once the backend extends `required_metrics` from `[yield_mid]` to include a breakeven metric (the linker tool's `planned_extensions` mentions a multi-metric expansion contingent on a catalog amendment).  Surfaced honestly in the BUILDER REPORT.
+- **Wire-level pre-bucketed distribution.** Today the histogram is synthesised on the FRONTEND from the returned top-N (labelled "of the flagged extremes" so the desk reader doesn't mistake it for the full-universe distribution).  If compute() ever ships a `universe_distribution_bins` field on the response, the histogram would become the full-universe distribution and the surface label updates accordingly.
+- **Per-row sparkline.** A future enhancement (deferred) is adding a 60d sparkline of each ranked bond's real yield to the extended view's table — would require a second wire field (or N second-tier fetches) and is non-blocking today.
+- **Workflow-template surface.** When the universe-scan flow is wrapped in a workflow template (e.g. "morning sweep → deep-dive top-3 → assemble research note"), the workflow's results dashboard would mount this module's compact view in its DAG node body per rendering_density.md §4's provisional rule — no module-level change required.
 
 ## 5. Which backend doctrine does this module operationalise?
 
-- **FM1** (module identity) — folder name equals backend `tool_name` exactly.
-- **FM3** (surface-tier capability declaration) — claims `generic_runnable`; no capability tiers.
-- **FM7** (pure-spec assembly) — `module.ts` exports a pure value.
-- **FM6** (unsupported-reason gating) — N/A (generic_runnable; no reason field).
+- **FM1** (module identity) — folder name equals backend `tool_name` exactly (note the MCP-wrapper alias `get_scan_inflation_linkers_extremes_tool`; the frontend uses the canonical `scan_inflation_linkers_extremes_tool` everywhere).
+- **FM3** (surface-tier capability declaration) — claims `[generic_runnable, custom_build_surface, monitor_surface]`; both Build files exist; the Monitor catalog entry references the single-component shape.
+- **FM4** (tier parsimony) — Monitor claim justified per Exception #2; dual-view mandate per the override in §1.2 of rendering_density.md.
+- **FM5** (display-metadata sourcing) — `oneLineSummary` paraphrases the backend's tool description; `defaultParams` map onto the Pydantic Input.
+- **FM7** (pure-spec assembly) — `module.ts` exports a pure value with no side effects.
+- **FM8** (surface-file contract) — `surfaces/BuildExtended.tsx`, `surfaces/BuildCompact.tsx`, and `surfaces/monitor/LinkerScannerWidget.tsx` are present and referenced exactly once each.
+- **FM9** (routing-claim disclosure) — `typedView: null` + `richModel: false` per the standalone-bridge contract.
 - **FM10** (THESIS discipline) — this file.
 - **FM11** (round-trip test) — `__tests__/module.spec.ts` calls `assertStandardModuleInvariants`.
 - **FM12** (loader presence) — module imported in `src/modules/index.ts`.
+- **rendering_density.md §1 / §2.2** (dual-view mandate) — extended + compact both populated; compact is a top-N TABLE per the SCANNER-shape guardrail; methodology is reachable via the footer caveat (full wire disclosure surfaces on hover via `title=`).
+- **methodology_exposure.md §5** (standalone-bridge contract) — own `/api/v1/rates/detail/linkers-scanner` endpoint + own `fetchDetailLinkersScanner` helper + own `ScanInflationLinkersExtremesOutput` TS type mirror; no shared `typedView` reuse.
+- **PR10 / P5** (wire-honesty disclosure) — `methodology_disclosure` is consumed VERBATIM from `data.methodology_disclosure` on both the extended methodology card and the compact footer tooltip; the per-tool `LINKER_SCANNER_COMPACT_CAVEAT` constant is the desk-canonical SHORT rendering of that wire disclosure (mirrors the ZCIS scanner pattern).
 
 ---
 
 ## One-line summary
 
-Universe-wide linker real-yield sweep — ranks every.
+Universe-wide linker REAL-YIELD level sweep — ranks every (USD_TIPS / GBP_LINKER / EUR_FR_LINKER / CAD_RRB, tenor) pillar by absolute 252-day rolling z-score; top-5 table compact view, distribution + ranked detail extended view, Monitor bento tile.
 
 ---
 
@@ -51,5 +81,6 @@ Universe-wide linker real-yield sweep — ranks every.
 
 | Version | Date | Change |
 |---|---|---|
-| v2 | 2026-05-26 | Stage 4f — rewrote the body to drop stale "Stage 3 scaffold" framing and answer Q2–Q5 for real. |
-| v1 | 2026-05-25 | Stage 3 scaffold — runtime tier only, no surfaces. |
+| v3 | 2026-06-07 | Initial SCANNER build — dual-view + standalone-bridge + monitor.  Top-N table compact + universe-scan extended + Monitor tile.  Mirrors the `scan_inflation_swaps_extremes_tool` precedent. |
+| v2 | 2026-05-26 | Stage 4f scaffold rewrite — runtime-only tier, no surfaces. |
+| v1 | 2026-05-25 | Stage 3 scaffold — runtime tier only. |

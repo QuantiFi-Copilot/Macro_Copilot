@@ -1294,6 +1294,51 @@ export type ScanInflationSwapsExtremesOutput = {
   methodology_disclosure: string;
 };
 
+// --- /detail/linkers-scanner ---
+// Standalone-bridge type for the universe-wide linker REAL-YIELD extremes
+// scanner.  SCANNER shape — the wire returns a ranked LIST of
+// (curve_family, tenor) extremes ordered by |z| of the 252d-rolling
+// REAL-YIELD LEVEL z-score, NOT a single time series.  Mirrors
+// ``ScanInflationLinkersExtremesOutput`` from
+// rates_agent/inflation_indexed_bonds/tools/scan_inflation_linkers_extremes/
+// schemas.py exactly (snake_case wire fields preserved).
+
+/** One ranked extreme on the linker REAL-YIELD universe scan.  Mirrors
+ *  ``ScanInflationLinkersExtremesResultRow``. */
+export type ScanInflationLinkersExtremesResultRow = {
+  rank: number;
+  curve_family: string;
+  tenor: string;
+  as_of_date: string;
+  real_yield_pct: number | null;
+  daily_change_bps: number | null;
+  monthly_change_bps: number | null;
+  z_score_real_yield: number | null;
+  /** Closed enum derived from z-score sign on rows that pass the
+   *  ``min_abs_z_score`` filter. */
+  signal: 'EXTREME_HIGH' | 'EXTREME_LOW';
+  maturity_date: string | null;
+  country: string | null;
+  vendor_ticker: string | null;
+  /** P5 / catalog-guardrail disclosure — REQUIRED on every row (not just
+   *  on the response).  Includes the universe-wide linker real-yield
+   *  level label, the explicit z-score lookback window, the INDEX-FAMILY
+   *  + MARKET-STRUCTURE caveats, and the morning-screen scope statement. */
+  methodology_disclosure: string;
+};
+
+export type ScanInflationLinkersExtremesOutput = {
+  /** Human-readable one-line summary (e.g. "Scanned 24 linker stems (22
+   *  scoreable). Stems with |z| >= 1.5: 7. Showing top 5 by absolute
+   *  real-yield z-score. as_of_dates span 2026-04-07 to 2026-04-08."). */
+  scan_summary: string;
+  results: ScanInflationLinkersExtremesResultRow[];
+  /** Response-level methodology disclosure — full multi-line caveat
+   *  flowing through from compute() (NOT a hardcoded TS literal).
+   *  Surfaced on the extended view's methodology card. */
+  methodology_disclosure: string;
+};
+
 // --- /detail/real_yield_curve_spread ---
 // Standalone-bridge type for the same-country linker real-yield curve-spread
 // primitive.  Own type — the object is the term structure of REAL YIELDS
