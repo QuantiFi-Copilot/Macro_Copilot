@@ -8,7 +8,7 @@ current_step: committed
 dispatch_round: 2
 last_dispatch_at: "2026-06-07T05:59:00Z"
 last_successful_tool: inflation_swaps__curve_spread
-last_successful_commit: pending-backfill
+last_successful_commit: e2a935d
 last_reviewer_heading: APPROVED
 last_gate_result: pass
 last_stop_reason: null
