@@ -1289,3 +1289,41 @@ tools:
       - "Standalone-bridge endpoint at /api/v1/rates/detail/financing-rate"
       - "Methodology disclosure: OIS proxy approximation; do NOT reflect specials/scarcity premia at the per-bond level"
       - "Per Option (c) precedent: keep shell-standard density on Compact; document any deviation in THESIS"
+
+  - id: ois__swap_spread
+    status: todo
+    human_action_required: false
+    last_review_heading: null
+    last_gate_result: not_run
+    build_order: 28
+    backend_tool_name: calculate_swap_spread_tool
+    instrument_family: ois
+    sub_agent: ois
+    tool_slug: swap_spread
+    endpoint_slug: swap-spread
+    category: cross_market_rv
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      Treasury yield minus OIS rate at common tenor (e.g. UST 10Y yield minus SOFR 10Y OIS).  Canonical RV read on fixed-income vs swap-market basis ("Treasuries cheap" = positive spread).
+    why_needs_frontend: |
+      Backend exists; no frontend module.  Swap spread is the desk-canonical RV read between treasuries and OIS curve; complements breakeven and ZCIS reads.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/ois/tools/swap_spread/
+      mcp_wrapper_in: rates_agent/ois/mcp_server.py
+      mcp_tool_name: calculate_swap_spread_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='calculate_swap_spread_tool'"
+      curated_migration_file: database/migrations/2026-06-07_phase1_calculate_swap_spread_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_swap_spread_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_swap_spread_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_breakeven_inflation_simple_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_swap_spread_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "Mirror calculate_breakeven_inflation_simple_tool dual-view shape (Phase-1 pilot single-spread BPS)"
+      - "Standalone-bridge endpoint at /api/v1/rates/detail/swap-spread (distinct from sovereign /detail/spread)"
+      - "Methodology disclosure: PAR-LEG OIS approximation, NOT per-bond ASW; sign convention POSITIVE = treasuries cheap (UST yield above OIS)"
+      - "Per Option (c) precedent (Batch 1 fdac7d2, Batch 2 cbd5613): keep shell-standard density on Compact (3 KPIs, single identity); the mockup has a 6-KPI secondary strip — accept deviation and add Mockup conformance subsection to THESIS"
+      - "Deferred from Batch 3 main commit af62a74 due to byte-identical Compact + Extended bug; Extended re-authored 2026-06-07 with distinct content (sha256 8cd57fe0...)"
+

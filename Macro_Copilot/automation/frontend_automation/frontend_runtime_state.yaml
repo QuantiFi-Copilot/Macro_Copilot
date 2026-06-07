@@ -4,19 +4,19 @@ backend: claude-cli
 orchestrator_status: processing
 current_tool: policy_futures__calendar_spread
 current_tool_backend_name: policy_futures_get_futures_calendar_spread_tool
-current_step: pre_flight
-dispatch_round: 0
-last_dispatch_at: "2026-06-07T19:55:00Z"
+current_step: builder_dispatched
+dispatch_round: 1
+last_dispatch_at: "2026-06-07T19:56:00Z"
 last_successful_tool: policy_futures__futures_butterfly
 last_successful_commit: fcc5381
 last_reviewer_heading: APPROVED
 last_gate_result: pass
-last_stop_reason: tool_19_shipped_advancing_to_tool_20
+last_stop_reason: batch_3_addendum_swap_spread_unblocked
 last_error: null
-last_updated: "2026-06-07T19:55:00Z"
+last_updated: "2026-06-07T16:50:00Z"
 done: 19
 blocked: 0
-remaining: 8
+remaining: 10
 quota_state: probe_unavailable
 quota_snapshot: null
 quota_snapshot_at: '2026-05-29T15:52:00Z'
@@ -40,6 +40,68 @@ reviewer_mode_history:
 catalog_exhausted_at: null
 human_required: null
 status_notes:
+  - at: "2026-06-07T19:56:00Z"
+    kind: tool_20_round1_builder_dispatched
+    text: |
+      Tool 19 (`policy_futures__futures_butterfly`) shipped at fcc5381
+      (+ automation backfill 39958bd) at 19:55 UTC.  Catalog state:
+      19 done / 0 blocked / 8 remaining.
+
+      Advanced to next eligible tool per selection-order rule:
+      build_order 20 `policy_futures__calendar_spread` (no in_progress
+      / changes_required / waiting_quota entries ahead).
+
+      Tool: `policy_futures__calendar_spread`
+        - backend_tool_name: `policy_futures_get_futures_calendar_spread_tool`
+        - MCP function: `get_futures_calendar_spread_tool` (unprefixed)
+        - endpoint_slug: `policy-futures-calendar`
+        - reference: `calculate_ois_curve_spread_tool` (same 2-leg
+          spread KPI shape; different curve family)
+        - STIR calendar spread between two quarterly contracts (e.g.
+          SFR1-SFR2), surfacing front-end policy-path slope
+
+      Pre-flight backend audit — ALL PASS:
+        - backend folder: rates_agent/policy_futures/tools/futures_calendar_spread/
+          (canonical 4-file shape, __init__/compute/config/schemas).
+        - MCP wrapper: get_futures_calendar_spread_tool defined at
+          rates_agent/policy_futures/mcp_server.py:577.
+        - curated migration: 2026-06-07_phase1_policy_futures_get_futures_calendar_spread_curated.sql
+          present (2206B).  DB probe path not run under runtime-enforced
+          quota mode; migration file satisfies the OR condition per
+          PRE_FLIGHT_BACKEND_AUDIT.md.
+        - mockups: Compact.png (1313733B) + Extended.png (1720704B)
+          present at the canonical primitives/<tool>/mockups/ path.
+
+      Notable wire-shape detail captured in builder prompt:
+        - Backend Output ships `methodology_disclosure: str` field on
+          `FuturesCalendarSpreadOutput` (NOT `methodology_label` — same
+          sibling pattern as tool 19's `FuturesButterflySimpleOutput`).
+          Builder instructed to source disclosure from
+          `data.methodology_disclosure` directly (no TS literal).
+
+      Builder prompt written to
+      `/tmp/builder_prompt_policy_futures__calendar_spread_round1.md`
+      (full catalog entry + pre-flight + mockup paths + reference module
+      + sibling policy-futures naming-divergence note + methodology
+      disclosure threading note + Option (c) shell-density precedent).
+
+      Builder dispatched at 19:56 UTC via
+        `nohup bash automation/frontend_automation/run_claude_builder.sh
+           /tmp/builder_prompt_policy_futures__calendar_spread_round1.md
+           /tmp/claude_frontend_builder_run_policy_futures__calendar_spread_round1.log`
+        (PID 4027472).
+
+      Plan for the rest of this wake:
+        - Wait for builder to complete (~10-20 min typical).
+        - Dispatch reviewer (round 2) via run_claude_reviewer.sh.
+        - parse_reviewer_log.py → adjudicate per Case A-F.
+        - On APPROVED/APPROVED-AFTER-FIX: pre-commit gate +
+          mirrors update + commit + automation backfill.
+        - Advance to next eligible tool (build_order 21:
+          policy_futures__cross_market_spread).
+        - Repeat until quota signal, blocker, or catalog
+          exhaustion.
+
   - at: "2026-06-07T19:55:00Z"
     kind: tool_19_approved_gate_passed_committed
     text: |
@@ -3053,3 +3115,17 @@ status_notes:
       get_futures_<thing>_tool — same pattern as Batch 1 d8e8233).
 
       Counters: done:18 blocked:0 remaining:9.
+
+  - at: "2026-06-07T16:50:00Z"
+    kind: batch_3_addendum_swap_spread_added
+    text: |
+      calculate_swap_spread_tool added to catalog as build_order 28
+      (the 10th tool from the Batch 3 recommendation, originally
+      deferred because Compact.png and Extended.png were byte-
+      identical at sha256 87437a22...).  Human re-authored Extended.png
+      with distinct content (now sha256 8cd57fe0...); mockups landed
+      on VM and committed alongside the catalog entry.
+
+      Counters: done:18 blocked:0 remaining: 9 -> 10.  Orchestrator
+      will pick this up AFTER tools 19-27 ship (build_order 28 is
+      lowest priority among current todos).
