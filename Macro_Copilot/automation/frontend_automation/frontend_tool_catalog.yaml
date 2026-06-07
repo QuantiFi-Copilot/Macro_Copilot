@@ -827,7 +827,7 @@ tools:
     dispatch_round: 2
     active_step: committed
     dispatched_at: "2026-06-07T09:24:00Z"
-    commit_sha: pending-backfill
+    commit_sha: 378a8b7
     build_order: 16
     backend_tool_name: scan_inflation_linkers_extremes_tool
     instrument_family: inflation_indexed_bonds

@@ -8,12 +8,12 @@ current_step: committed
 dispatch_round: 2
 last_dispatch_at: "2026-06-07T09:24:00Z"
 last_successful_tool: inflation_indexed_bonds__scan_linkers_extremes
-last_successful_commit: pending-backfill
+last_successful_commit: 378a8b7
 last_reviewer_heading: APPROVED
 last_gate_result: pass
 last_stop_reason: null
 last_error: null
-last_updated: "2026-06-07T09:31:00Z"
+last_updated: "2026-06-07T09:32:00Z"
 done: 16
 blocked: 0
 remaining: 2
@@ -40,6 +40,109 @@ reviewer_mode_history:
 catalog_exhausted_at: null
 human_required: null
 status_notes:
+  - at: '2026-06-07T09:32:00Z'
+    kind: tool_16_shipped_batch_2_advancing
+    text: |
+      Cron-fired wake at 09:22 UTC on 2026-06-07 (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784).  On entry, the prior wake's
+      builder for tool 16 (`inflation_indexed_bonds__scan_linkers_extremes`)
+      was still in flight (PID 3818120; dispatch started 09:08 UTC; ~14m
+      elapsed at wake start; in post-build self-test phase running
+      `npm run test:modules`).  The orchestrator monitored to completion:
+      builder finalised 09:23 UTC (~15m runtime).  BUILDER REPORT clean —
+      4 new surface files (BuildExtended.tsx + BuildCompact.tsx +
+      scanInflationLinkersExtremesShared.ts + monitor/LinkerScannerWidget.tsx)
+      + 3 overwrites in target module folder (module.ts + THESIS.md +
+      __tests__/module.spec.ts) + types/rates.ts +
+      services/ratesApi.ts + api/routes/rates/detail.py; self-tests green:
+      test:modules + test:build + typecheck all exit 0.  Loader entry at
+      src/modules/index.ts line 94 already present from prior Stage 3
+      scaffold (alphabetical between calculate_ois_cross_market_spread_tool
+      and scan_inflation_swaps_extremes_tool); FM12 satisfied without
+      additional edit.
+
+      Builder documented one honest deviation: committed mockups envision
+      a composite RY + BE (real-yield + breakeven) scanner with a per-row
+      SCOPE column tagging each row; the current backend
+      (schemas.py:ScanInflationLinkersExtremesOutput) is single-metric —
+      ranks only on z_score_real_yield per the catalog's literal wording.
+      The backend's config.yaml planned_extensions block notes that a
+      multi-metric (RY + BE) ranking is contingent on a catalog amendment.
+      Builder built faithful to the backend wire (single-metric RY scan)
+      rather than invent breakeven rankings the wire doesn't produce.  The
+      mockup's VALUE column with mixed bp/% units (implying BE deltas vs
+      RY levels) is rendered as Real Yield (%) uniformly, and the SCOPE
+      column is omitted.  THESIS §4 documents this as future-state design.
+
+      Reviewer dispatched 09:25 UTC via run_claude_reviewer.sh
+      (PID 3824225).  Reviewer log finalised 09:29 UTC (~4m, 3510 bytes).
+      parse_reviewer_log.py returned
+      {"ok": true, "heading": "APPROVED", "environment_failure": false,
+       "reviewer_quota_exhausted": false} — Case C.
+
+      Reviewer verdict: bare `APPROVED` last token of the response;
+      verification scorecard green across dual-view contract
+      (rendering_density.md §1 + §2.1 + §2.2), mockup conformance (judged
+      against backend-wire shape per the reviewer policy — deviation
+      explicitly judged honest: "the FM contract / dual-view / bridge
+      contracts are satisfied for the as-built single-metric scanner"),
+      standalone bridge contract (methodology_exposure.md §5; endpoint at
+      /api/v1/rates/detail/linkers-scanner; typedView=null;
+      ScanInflationLinkersExtremesOutput + ResultRow mirror types exact
+      field-by-field with backend Pydantic schemas — snake_case preserved,
+      signal Literal enum closed identically, methodology_disclosure
+      required at both row and response level, nullable maturity_date /
+      country / vendor_ticker), FM1–FM12 (FM10 Q1/Q2/Q3/Q5 per-surface
+      specific with FM ID cites; FM12 alphabetical loader at index.ts:94
+      between calculate_ois_cross_market_spread_tool and
+      scan_inflation_swaps_extremes_tool — correct ASCII position),
+      methodology honesty (data.methodology_disclosure threaded into
+      Extended methodology card's "Disclosure" row via buildMethodologyRows;
+      Compact footer + Monitor widget surface the same wire field as the
+      title= tooltip; LINKER_SCANNER_COMPACT_CAVEAT is desk-canonical
+      visible text — no TSX literal replaces the wire string), shared
+      scanInflationLinkersExtremesShared.ts helper consolidation
+      (useLinkersScanner co-located across all three surfaces; format
+      helpers, instrument label/flag, scan-summary parser, histogram
+      builder, methodology rows; no duplicated logic), and per-row drill-
+      down from the Extended ranked table to get_real_yield_level_tool
+      matching THESIS Q2's deep-link claim.
+
+      Pre-commit gate (orchestrator-run from
+      UI/macro-copilot-dashboard-polished/):
+        npm run test:modules    `scan_inflation_linkers_extremes_tool:
+                                 7 passed, 0 failed`; all module +
+                                 registry tests passed.
+        npm run test:build      all build-folder tests pass.
+        npm run typecheck       clean (tsc -p tsconfig.app.json
+                                 --noEmit exit 0).
+
+      Mirrors:
+        surface_contract.md §4.7 row updated:
+          output_kind:     scanner-result   → scanner-rankedlist
+          build_archetype: generic-builder  → typed-result-renderer
+          build_status:    scaffolded       → dual-view-built
+          monitor_status:  deferred         → built (LinkerScanner widget)
+          (monitor_elig already `required`)
+        surface_contract.md §11 added v24 entry covering this ship.
+        §10 not edited (pilot-pinned).
+        `graphify update` — skipped, not on PATH on this VM
+        (recorded per ORCHESTRATOR_PROMPT Mirrors §2 fallback;
+         same precedent as v17–v23).
+
+      Commit on `frontend_automation` per template; catalog tool 16
+      flipped → `status: done`, `last_review_heading: APPROVED`,
+      `last_gate_result: pass`, `active_step: committed`.
+      commit_sha: 378a8b7.
+
+      Counts post-commit: done=16 / blocked=0 / remaining=2.
+      orchestrator_status stays `processing`.
+
+      Same-wake advance to tool 17 (`bond_futures__scan_extremes`,
+      build_order 17) per ORCHESTRATOR_PROMPT.md catalog-processing
+      rule ("Do not intentionally stop after a single completed tool
+      if more eligible catalog work remains").
+
   - at: '2026-06-07T09:15:00Z'
     kind: tool_15_shipped_batch_2_advancing
     text: |
