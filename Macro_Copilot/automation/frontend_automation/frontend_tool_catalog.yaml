@@ -957,10 +957,18 @@ tools:
       - "Frontend folder + MCP function = get_scan_policy_futures_extremes_tool; workflow registry uses policy_futures_get_scan_policy_futures_extremes_tool prefix"
 
   - id: policy_futures__futures_butterfly
-    status: todo
+    status: done
     human_action_required: false
-    last_review_heading: null
-    last_gate_result: not_run
+    last_review_heading: APPROVED
+    last_gate_result: pass
+    commit_sha: fcc5381
+    dispatch_round: 2
+    active_step: committed
+    dispatched_at: "2026-06-07T19:26:00Z"
+    builder_finished_at: "2026-06-07T19:42:00Z"
+    reviewer_dispatched_at: "2026-06-07T19:44:00Z"
+    reviewer_finished_at: "2026-06-07T19:48:00Z"
+    committed_at: "2026-06-07T19:55:00Z"
     build_order: 19
     backend_tool_name: policy_futures_get_futures_butterfly_simple_tool
     instrument_family: policy_futures

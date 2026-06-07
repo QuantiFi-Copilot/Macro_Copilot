@@ -2,21 +2,21 @@ version: '1.0'
 branch: frontend_automation
 backend: claude-cli
 orchestrator_status: processing
-current_tool: null
-current_tool_backend_name: null
-current_step: ready_to_dispatch
+current_tool: policy_futures__calendar_spread
+current_tool_backend_name: policy_futures_get_futures_calendar_spread_tool
+current_step: pre_flight
 dispatch_round: 0
-last_dispatch_at: null
-last_successful_tool: policy_futures__scan_extremes
-last_successful_commit: ba01354
-last_reviewer_heading: APPROVED-AFTER-FIX
+last_dispatch_at: "2026-06-07T19:55:00Z"
+last_successful_tool: policy_futures__futures_butterfly
+last_successful_commit: fcc5381
+last_reviewer_heading: APPROVED
 last_gate_result: pass
-last_stop_reason: batch_3_queued_advance
+last_stop_reason: tool_19_shipped_advancing_to_tool_20
 last_error: null
-last_updated: "2026-06-07T15:30:00Z"
-done: 18
+last_updated: "2026-06-07T19:55:00Z"
+done: 19
 blocked: 0
-remaining: 9
+remaining: 8
 quota_state: probe_unavailable
 quota_snapshot: null
 quota_snapshot_at: '2026-05-29T15:52:00Z'
@@ -40,6 +40,180 @@ reviewer_mode_history:
 catalog_exhausted_at: null
 human_required: null
 status_notes:
+  - at: "2026-06-07T19:55:00Z"
+    kind: tool_19_approved_gate_passed_committed
+    text: |
+      Cron-fired wake at 19:52 UTC on 2026-06-07 (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784) resumed tool 19
+      (`policy_futures__futures_butterfly` /
+      `get_futures_butterfly_simple_tool`).  On entry, the round-2
+      reviewer log
+      `/tmp/claude_frontend_reviewer_run_policy_futures__futures_butterfly_round2.log`
+      was complete (5598 bytes, mtime 19:48 UTC) but unparsed.  No
+      live claude builder/reviewer subprocess.
+
+      `parse_reviewer_log.py` returned `{ok: true, heading:
+      APPROVED, environment_failure: false,
+      reviewer_quota_exhausted: false}` — Case C clean path
+      (no fix-pass needed; SINGLE_REVIEW_ROUND_POLICY.md §3
+      one-round contract satisfied).  Reviewer's verification
+      scorecard (verbatim from log) was green across:
+        - Verification ledger: test:modules / test:build /
+          typecheck all PASS (reviewer ran in its own sandbox).
+        - A) Dual-view contract — module.ts:50 declares all 3
+          tiers; module.ts:71-75 populates both buildExtended +
+          buildCompact; both surface files exist; Compact has no
+          controls strip + calls onExpand + methodology disclosure
+          + tone cues + size prop; Extended has full canvas +
+          controls + KPI strip + methodology card + lineage.
+        - B) Mockup conformance — Compact matches tightly (SFR
+          1-2-3 WHITES identity, USA flag, STIR pill, SOFR Strip
+          Butterfly subtitle, FLY/1D/Z KPI order, sparkline with
+          z-bands, caveat footer); Extended matches structurally
+          with two documented honest deviations (FOMC card →
+          STRIP CONTEXT card because backend lacks FOMC metadata;
+          5D / 1M change cells absent because backend lacks
+          weekly/monthly change wire fields — both noted in
+          THESIS §4).
+        - C) Standalone bridge contract — module.ts:69
+          typedView=null; endpoint mounted at
+          /api/v1/rates/detail/policy-futures-butterfly
+          (api/routes/rates/detail.py:2989); service helper
+          fetchDetailPolicyFuturesButterfly added to
+          services/ratesApi.ts:802; type mirror
+          FuturesButterflySimpleOutput (+ Current + TimeSeriesRow)
+          added to types/rates.ts:1768-1862; all three surfaces
+          consume usePolicyFuturesButterfly →
+          fetchDetailPolicyFuturesButterfly.
+        - D) FM1/FM3/FM7/FM8/FM10/FM11/FM12 all check.
+        - E) Methodology honesty (PR10 / P5) —
+          buildMethodologyRows in futuresButterflySimpleShared.ts
+          consumes `data.methodology_disclosure || '—'`
+          (wire-sourced, not a TSX literal; grep confirms no
+          TSX literal of the disclosure prose).
+        - F) Shared cross-surface helper —
+          surfaces/futuresButterflySimpleShared.ts holds
+          CURVE_REGISTRY / BUTTERFLY_TRIPLETS_BY_CURVE /
+          usePolicyFuturesButterfly / KPI builders /
+          buildMethodologyRows / sanitiseButterflySeries /
+          buildReferenceBands / pctToBps; consumed by Extended +
+          Compact + Monitor widget; pctToBps is the SINGLE
+          PERCENT-POINTS → bps conversion point across the three
+          surfaces (no drift risk).
+        - G) Naming-divergence alias — lib/toolNames.ts:79-89
+          adds `get_futures_butterfly_simple_tool →
+          policy_futures_get_futures_butterfly_simple_tool`,
+          mirroring the policy_futures_get_futures_price_level_tool
+          precedent.
+
+      Pre-commit gate re-run in orchestrator session (per
+      ORCHESTRATOR_PROMPT.md Case C; the gate is the ONLY safety
+      net after Dispatch 1 in the no-fix path):
+        - `npm run test:modules` ✓ exit 0
+          (`policy_futures_get_futures_butterfly_simple_tool:
+          8 passed, 0 failed`; all 60-module registry pass).
+        - `npm run test:build` ✓ exit 0 (all build-folder
+          tests passed including dashboard contract / registry /
+          resolveWorkflowArtifacts / artifact-payload / persisted
+          adapters / RichModelWidget / widget contract / widget
+          format).
+        - `npm run typecheck` ✓ exit 0
+          (`tsc -p tsconfig.app.json --noEmit` clean).
+
+      Mirrors update (Case C step / ORCHESTRATOR_PROMPT
+      Mirrors+commit §1-2):
+        - surface_contract.md §4.5 row 246 updated:
+          `output_kind: single-series-bps` (unchanged)
+          `build_archetype: generic-builder → typed-result-renderer`
+          `build_status: scaffolded → dual-view-built`
+          `monitor_elig: not-required → required`
+          `monitor_status: n/a → built (PolicyFuturesButterfly widget)`.
+        - surface_contract.md §11 changelog v27 entry appended
+          (full reviewer scorecard + deviation rationale +
+          alias-bridge + shared-helper note + gate proof).
+        - §10 untouched (Phase-1 pilot rows only; policy-futures
+          butterfly is not part of pilot per §10.2 policy).
+        - `graphify update .` skipped: not on PATH on this VM
+          (recorded per ORCHESTRATOR_PROMPT Mirrors §2 fallback;
+          no API cost, AST-only — will catch up on a future wake
+          if a human installs it).
+
+      Commit pending on frontend_automation with the
+      `frontend(futures_butterfly_simple)` template message +
+      `Reviewer: APPROVED` disclosure.  Commit includes module +
+      surfaces (BuildExtended + BuildCompact + Shared +
+      monitor/PolicyFuturesButterflyWidget) + tests + THESIS +
+      module.ts + types + service helper + typed-detail endpoint
+      + toolNames alias + surface_contract.md mirrors.
+      Automation YAMLs (catalog + runtime) deliberately excluded
+      from this commit; backfilled in a follow-up
+      `automation: backfill` commit per the established
+      tool-13..18 pattern.
+
+      Catalog state after commit: 19 done / 0 blocked / 8 remaining.
+      Next eligible tool per selection-order rule: build_order 20
+      `policy_futures__calendar_spread` (no in_progress /
+      changes_required / waiting_quota entries ahead of it).
+      Orchestrator continues into pre-flight for tool 20.
+
+  - at: "2026-06-07T19:26:00Z"
+    kind: tool_19_round1_builder_dispatched
+    text: |
+      Cron-fired wake at 19:22 UTC on 2026-06-07 (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784).  Catalog had been
+      extended from the original 18-tool batch with 9 additional
+      todo tools (build_order 19-27) sometime after the 14:53 UTC
+      catalog-exhausted note; entry-point did not gate this wake,
+      so orchestrator picked up the first todo per selection-order
+      rule.
+
+      Selected tool: `policy_futures__futures_butterfly` (build_order
+      19, backend_tool_name `policy_futures_get_futures_butterfly_simple_tool`,
+      MCP function `get_futures_butterfly_simple_tool`).  STIR
+      3-point butterfly between three quarterly policy-futures
+      contracts (e.g. SFR 1-2-3 OIS Butterfly); surfaces curvature
+      of the policy-futures strip.  Reference frontend:
+      `calculate_ois_butterfly_tool` (OIS butterfly cousin, same
+      KPI shape).
+
+      Pre-flight backend audit — ALL PASS:
+        - backend folder: rates_agent/policy_futures/tools/futures_butterfly_simple/
+          (canonical 4-file shape, __init__/compute/config/schemas).
+        - MCP wrapper: get_futures_butterfly_simple_tool defined at
+          rates_agent/policy_futures/mcp_server.py:795.
+        - curated migration: 2026-06-07_phase1_policy_futures_get_futures_butterfly_simple_curated.sql
+          present (2212B).  DB probe path returned auth artifact
+          `role "root" does not exist` from non-interactive
+          automation — this is the runtime-enforced-quota
+          companion artifact, NOT a missing-artifact signal.
+          Migration file satisfies the OR condition per
+          PRE_FLIGHT_BACKEND_AUDIT.md.
+        - mockups: Compact.png (1306999B) + Extended.png (1726281B)
+          present at the canonical primitives/<tool>/mockups/ path.
+
+      Builder prompt at /tmp/builder_prompt_policy_futures__futures_butterfly_round1.md
+      (236 lines, assembled by an earlier wake on 2026-06-07 at
+      15:35 UTC but not dispatched then; content verified to target
+      the correct tool with full catalog entry + pre-flight + mockup
+      paths + reference module reference).
+
+      Builder dispatched at 19:26 UTC via
+        `nohup bash automation/frontend_automation/run_claude_builder.sh
+           /tmp/builder_prompt_policy_futures__futures_butterfly_round1.md
+           /tmp/claude_frontend_builder_run_policy_futures__futures_butterfly_round1.log`
+        (PID 4014137).
+
+      Plan for the rest of this wake:
+        - Wait for builder to complete (~10-20 min typical).
+        - Dispatch reviewer (round 2) via run_claude_reviewer.sh.
+        - parse_reviewer_log.py → adjudicate per Case A-F.
+        - On APPROVED/APPROVED-AFTER-FIX: run pre-commit gate +
+          mirrors update + commit.
+        - Advance to next eligible tool (build_order 20:
+          policy_futures__calendar_spread).
+        - Repeat until quota signal, blocker, or catalog
+          re-exhaustion.
+
   - at: "2026-06-07T14:53:00Z"
     kind: tool_18_round3_approved_after_fix_committed_catalog_exhausted
     text: |
