@@ -33,6 +33,7 @@ import type {
   ScanInflationSwapsExtremesOutput,
   ScanInflationLinkersExtremesOutput,
   ScanBondFuturesExtremesOutput,
+  ScanPolicyFuturesExtremesOutput,
   PolicyFuturesPriceLevelOutput,
 } from '@/types/rates';
 
@@ -625,6 +626,42 @@ export function fetchDetailBondFuturesScanner(
 ): Promise<ScanBondFuturesExtremesOutput> {
   return fetchJSON(
     `${RATES_PREFIX}/detail/bond-futures-scanner${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/policy-futures-scanner — universe-wide STIR extremes bridge
+// ---------------------------------------------------------------------------
+// SCANNER-shape primitive under the standalone-bridge contract.  Wire
+// returns a MULTI-METRIC ranked LIST (top-N per metric across implied-rate
+// LEVEL, 1-day implied-rate CHANGE in bps, volume LEVEL, open-interest
+// LEVEL — each ranked by absolute 252d-rolling z-score) — the per-tool
+// BuildCompact renders a top-N table (NOT a sparkline), the BuildExtended
+// renders the universe scan + full multi-metric ranked detail.  Rolling-
+// z-score conventions are YAML-locked on this primitive; only scope /
+// threshold / anchor / metric-subset inputs are exposed.
+
+export type PolicyFuturesScannerDetailParams = {
+  /** Comma-separated list of policy-futures curve families (e.g.
+   *  "SOFR_FUT,EUR_SHORT_RATE_FUT"). Omit for the full universe. */
+  curve_families?: string;
+  /** Number of extreme stems to return PER METRIC; omit for the YAML default. */
+  top_n?: number;
+  /** Minimum absolute z-score threshold; omit for the YAML default. */
+  min_abs_z_score?: number;
+  /** Comma-separated subset of the four metrics to rank (e.g.
+   *  "implied_rate_level,volume_level"). Omit to rank all four. */
+  metrics?: string;
+  /** ISO-format date (YYYY-MM-DD) anchoring the scan; omit for the
+   *  most-recent shared trading day in the DB. */
+  as_of_date?: string;
+};
+
+export function fetchDetailPolicyFuturesScanner(
+  params: PolicyFuturesScannerDetailParams,
+): Promise<ScanPolicyFuturesExtremesOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/policy-futures-scanner${buildQuery(params)}`,
   );
 }
 

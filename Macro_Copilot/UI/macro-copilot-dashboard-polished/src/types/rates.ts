@@ -1410,6 +1410,109 @@ export type ScanBondFuturesExtremesOutput = {
   methodology_disclosure: string;
 };
 
+// --- /detail/policy-futures-scanner ---
+// Standalone-bridge type for the universe-wide policy-futures (STIR) extremes
+// scanner.  SCANNER shape — the wire returns a MULTI-METRIC ranked LIST of
+// (curve_family, strip_position, contract_code) extremes across four metrics
+// (implied-rate LEVEL, 1-day implied-rate CHANGE in bps, volume LEVEL, end-of-
+// day open-interest LEVEL) ordered by |z| of the 252d-rolling z-score on each
+// metric independently, NOT a single time series.  Mirrors
+// ``ScanPolicyFuturesExtremesOutput`` from
+// rates_agent/policy_futures/tools/scan_policy_futures_extremes/schemas.py
+// exactly (snake_case wire fields preserved).
+
+/** Closed enum of the four metrics the policy-futures (STIR) universe
+ *  scanner ranks across — mirrors the backend ``ScanMetric`` ``Literal[...]``. */
+export type ScanPolicyFuturesMetric =
+  | 'implied_rate_level'
+  | 'implied_rate_change'
+  | 'volume_level'
+  | 'open_interest_level';
+
+/** Closed enum of the policy-futures curve families admitted by the V1
+ *  scanner (ADR 0013) — mirrors the backend
+ *  ``PolicyFuturesScanCurveFamily`` ``Literal[...]``. */
+export type PolicyFuturesScanCurveFamily =
+  | 'SOFR_FUT'
+  | 'EUR_SHORT_RATE_FUT'
+  | 'SONIA_FUT';
+
+/** One ranked extreme on the policy-futures (STIR) universe scan.  Mirrors
+ *  ``ScanPolicyFuturesExtremesResultRow``.  Each row's ``rank`` is WITHIN
+ *  its metric's top-N (1 = most extreme by absolute z-score for THIS
+ *  metric); ``z_score`` is the z-score of THIS row's metric. */
+export type ScanPolicyFuturesExtremesResultRow = {
+  rank: number;
+  /** Which of the four metrics this row is ranked on (closed enum). */
+  metric: ScanPolicyFuturesMetric;
+  /** Policy-futures curve family (SOFR_FUT / EUR_SHORT_RATE_FUT /
+   *  SONIA_FUT). */
+  curve_family: PolicyFuturesScanCurveFamily;
+  /** 1-based strip position (1 = front contract; 2..8 = quarterly forwards).
+   *  The canonical disambiguator for the policy-futures universe — together
+   *  with curve_family it uniquely identifies one stem. */
+  strip_position: number;
+  /** Master rolling-generic stem from instrument_master (e.g. 'SFR1' /
+   *  'ER1' / 'SFI1' / 'SFR2' / ...). */
+  contract_code: string;
+  /** Current-front underlying contract code (e.g. 'SFRH6 COMB').  May be
+   *  null when the SCD2 history has no row for this stem on the anchor. */
+  underlying_contract_code: string | null;
+  security_name: string | null;
+  expiry_date: string | null;
+  contract_size: number | null;
+  /** Per-stem inverse-pricing flag from ``instrument_master.attributes``. */
+  inverse_priced: boolean;
+  /** Per-row short-rate regime disclosure (ADR 0013): 'RFR' for SOFR /
+   *  SONIA futures; 'IBOR' for EUR_SHORT_RATE_FUT (Euribor). */
+  short_rate_regime: 'RFR' | 'IBOR';
+  /** Quoted-units disclosure for the raw_price axis on this row
+   *  ('100 - rate' for inverse-priced strips; 'rate (%)' for direct). */
+  quote_units: string;
+  /** Most recent trading date with aligned price + volume + OI for this
+   *  stem (YYYY-MM-DD). */
+  as_of_date: string;
+  /** Latest cleaned, ffilled raw price in the contract's native quote
+   *  space (e.g. 100 - rate for SOFR_FUT). */
+  current_raw_price: number | null;
+  /** Latest implied rate in PERCENT, derived from current_raw_price per
+   *  the per-stem inverse_priced flag. */
+  implied_rate_pct: number | null;
+  /** 1-trading-day change on the implied-rate axis in BPS (Δ × 100). */
+  daily_change_implied_rate_bps: number | null;
+  /** Latest daily traded volume in CONTRACTS (NOT notional). */
+  current_volume: number | null;
+  /** Latest end-of-day open interest in CONTRACTS (NOT notional). */
+  current_open_interest: number | null;
+  /** 1-trading-day raw OI change (whole contracts; NOT *100). */
+  delta_open_interest_1d: number | null;
+  /** Rolling 252-trading-day z-score of THIS row's ``metric``. */
+  z_score: number | null;
+  /** Closed enum derived from z-score sign on rows that pass the
+   *  ``min_abs_z_score`` filter. */
+  signal: 'EXTREME_HIGH' | 'EXTREME_LOW';
+  /** P5 / ADR 0013 / catalog-guardrail disclosure — REQUIRED on every
+   *  row (not just on the response).  Includes the universe-wide strip-
+   *  scan label, the explicit z-score lookback window, the per-row RFR-
+   *  vs-IBOR regime caveat, the inverse-pricing rule, and the rolling-
+   *  generic strip caveat. */
+  methodology_disclosure: string;
+};
+
+export type ScanPolicyFuturesExtremesOutput = {
+  /** Human-readable one-line summary (e.g. "Scanned 24 policy-futures
+   *  stems (24 scoreable). Stems with |z| >= 1.5 per metric:
+   *  implied_rate_level=4, implied_rate_change=3, volume_level=2,
+   *  open_interest_level=5. Showing top 5 per metric (14 rows). as_of
+   *  2026-04-08."). */
+  scan_summary: string;
+  results: ScanPolicyFuturesExtremesResultRow[];
+  /** Response-level methodology disclosure — full multi-line caveat
+   *  flowing through from compute() (NOT a hardcoded TS literal).
+   *  Surfaced on the extended view's methodology card. */
+  methodology_disclosure: string;
+};
+
 // --- /detail/real_yield_curve_spread ---
 // Standalone-bridge type for the same-country linker real-yield curve-spread
 // primitive.  Own type — the object is the term structure of REAL YIELDS
