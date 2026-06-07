@@ -32,6 +32,7 @@ import type {
   InflationSwapCurveSpreadOutput,
   ScanInflationSwapsExtremesOutput,
   ScanInflationLinkersExtremesOutput,
+  ScanBondFuturesExtremesOutput,
   PolicyFuturesPriceLevelOutput,
 } from '@/types/rates';
 
@@ -591,6 +592,39 @@ export function fetchDetailLinkersScanner(
 ): Promise<ScanInflationLinkersExtremesOutput> {
   return fetchJSON(
     `${RATES_PREFIX}/detail/linkers-scanner${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/bond-futures-scanner — universe-wide bond-futures extremes bridge
+// ---------------------------------------------------------------------------
+// SCANNER-shape primitive under the standalone-bridge contract.  Wire
+// returns a MULTI-METRIC ranked LIST (top-N per metric across price LEVEL,
+// 1-day price CHANGE, volume LEVEL, open-interest LEVEL — each ranked by
+// absolute 252d-rolling z-score) — the per-tool BuildCompact renders a top-N
+// table (NOT a sparkline), the BuildExtended renders the universe scan +
+// full multi-metric ranked detail.  Rolling-z-score conventions are YAML-
+// locked on this primitive; only scope / threshold / anchor inputs are
+// exposed.
+
+export type BondFuturesScannerDetailParams = {
+  /** Comma-separated list of bond-futures curve families (e.g.
+   *  "UST_FUT,DE_FUT"). Omit for the full universe. */
+  curve_families?: string;
+  /** Number of extreme stems to return PER METRIC; omit for the YAML default. */
+  top_n?: number;
+  /** Minimum absolute z-score threshold; omit for the YAML default. */
+  min_abs_z_score?: number;
+  /** ISO-format date (YYYY-MM-DD) anchoring the scan; omit for the
+   *  most-recent shared trading day in the DB. */
+  as_of_date?: string;
+};
+
+export function fetchDetailBondFuturesScanner(
+  params: BondFuturesScannerDetailParams,
+): Promise<ScanBondFuturesExtremesOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/bond-futures-scanner${buildQuery(params)}`,
   );
 }
 

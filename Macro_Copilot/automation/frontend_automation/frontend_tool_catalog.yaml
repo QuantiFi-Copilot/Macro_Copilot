@@ -859,10 +859,17 @@ tools:
       - "Frontend folder name = scan_inflation_linkers_extremes_tool; workflow registry + MCP function use get_scan_inflation_linkers_extremes_tool prefix"
 
   - id: bond_futures__scan_extremes
-    status: todo
+    status: done
     human_action_required: false
-    last_review_heading: null
-    last_gate_result: not_run
+    last_review_heading: APPROVED
+    last_gate_result: pass
+    dispatch_round: 2
+    active_step: committed
+    dispatched_at: "2026-06-07T09:33:00Z"
+    builder_finished_at: "2026-06-07T09:50:00Z"
+    reviewer_dispatched_at: "2026-06-07T09:55:00Z"
+    reviewer_finished_at: "2026-06-07T09:57:00Z"
+    committed_at: "2026-06-07T10:10:00Z"
     build_order: 17
     backend_tool_name: scan_bond_futures_extremes_tool
     instrument_family: bond_futures

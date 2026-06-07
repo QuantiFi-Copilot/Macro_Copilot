@@ -187,6 +187,20 @@ from rates_agent.inflation_indexed_bonds.tools.scan_inflation_linkers_extremes i
     ScanInflationLinkersExtremesOutput,
     calculate_scan_inflation_linkers_extremes,
 )
+# Standalone-bridge endpoint for the universe-wide bond-futures extremes
+# scanner.  SCANNER-shape primitive under the dual-view contract — the wire
+# returns a ranked LIST of (curve_family, contract_code) extremes across
+# four metrics (price LEVEL, 1-day price CHANGE, volume LEVEL, open-interest
+# LEVEL) rather than a single time series, so this endpoint feeds the per-
+# tool BuildCompact (top-N table) + BuildExtended (universe scan + ranked
+# detail) + Monitor tile per ``rendering_density.md §10`` + the standalone-
+# bridge contract (``methodology_exposure.md §5``).
+from rates_agent.bond_futures.tools.scan_bond_futures_extremes import (
+    CONFIG_PATH as SCAN_BOND_FUTURES_EXTREMES_CONFIG_PATH,
+    ScanBondFuturesExtremesInput,
+    ScanBondFuturesExtremesOutput,
+    calculate_scan_bond_futures_extremes,
+)
 # Standalone-bridge endpoint for the same-curve OIS butterfly primitive (3-point
 # curvature on ONE OIS par-swap curve family — e.g. USD_SOFR_OIS 2s5s10s).
 # Per ``docs_revamped/03_standards/methodology_exposure.md §5`` every new tool
@@ -2133,6 +2147,125 @@ def linkers_scanner_detail(
     _tool_result_or_raise(
         result,
         f"Linker universe scan ({', '.join(parsed_families) if parsed_families else 'full universe'})",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/bond-futures-scanner — universe-wide bond-futures extremes bridge
+# ----------------------------------------------------------------------------
+# SCANNER-shape primitive under the standalone-bridge contract.  Wire shape
+# is a MULTI-METRIC ranked LIST (top-N rows per metric across price LEVEL,
+# 1-day price CHANGE, volume LEVEL, open-interest LEVEL — each ranked by
+# absolute 252d-rolling z-score) rather than a single time series.  The
+# BuildCompact view renders this as a top-N table (NOT a sparkline) and the
+# BuildExtended view renders the same payload as a universe scan + full
+# multi-metric ranked detail.  The rolling-z-score conventions are YAML-
+# locked on this primitive (mirrors the sibling ZCIS / linker scanners);
+# ``curve_families`` / ``top_n`` / ``min_abs_z_score`` / ``as_of_date``
+# remain exposed.
+# ============================================================================
+@router.get(
+    "/detail/bond-futures-scanner",
+    response_model=ScanBondFuturesExtremesOutput,
+    summary="Bond Futures Universe Extremes Scan (standalone bridge)",
+)
+def bond_futures_scanner_detail(
+    engine: Engine = Depends(get_engine),
+    curve_families: Optional[str] = Query(
+        default=None,
+        description=(
+            "Comma-separated list of bond-futures curve families to scan. "
+            "Omit (None) for the full universe (UST_FUT / DE_FUT / UK_FUT / "
+            "JP_FUT / FR_FUT / IT_FUT / ES_FUT / CA_FUT / AU_FUT).  Pass a "
+            "CSV to narrow (e.g. 'UST_FUT,DE_FUT').  Policy-futures families "
+            "(SOFR_FUT / SONIA_FUT / EUR_SHORT_RATE_FUT) are refused at "
+            "schema-validation time."
+        ),
+    ),
+    top_n: Optional[int] = Query(
+        default=None,
+        ge=1,
+        le=50,
+        description=(
+            "Number of extreme stems to return PER METRIC.  Omit (None) to "
+            "fall through to the YAML default (currently 5)."
+        ),
+    ),
+    min_abs_z_score: Optional[float] = Query(
+        default=None,
+        ge=0.0,
+        description=(
+            "Minimum absolute z-score threshold for inclusion.  Omit (None) "
+            "to fall through to the YAML default (currently 1.5)."
+        ),
+    ),
+    as_of_date: Optional[str] = Query(
+        default=None,
+        description=(
+            "ISO-format date (YYYY-MM-DD) anchoring the scan.  Omit (None) "
+            "to anchor to the most-recent shared trading day in the DB "
+            "across the universe."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the frontend
+    module's ``surfaces/BuildExtended.tsx`` (universe scan + ranked detail)
+    AND ``surfaces/BuildCompact.tsx`` (top-N table) per the rendering-
+    density dual-view contract + the Monitor widget per the standalone-
+    bridge contract.
+
+    The rolling-z-score conventions are YAML-locked on this primitive —
+    only scope / threshold / anchor inputs are exposed at the API layer.
+    """
+    parsed_families: Optional[List[str]] = None
+    if curve_families and curve_families.strip():
+        parsed_families = [
+            cf.strip() for cf in curve_families.split(",") if cf.strip()
+        ]
+
+    as_of_arg: Optional[date]
+    if as_of_date and as_of_date.strip():
+        try:
+            as_of_arg = date.fromisoformat(as_of_date.strip())
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Invalid as_of_date {as_of_date!r}: must be ISO "
+                    f"YYYY-MM-DD (e.g. '2026-04-08'). Detail: {exc}"
+                ),
+            )
+    else:
+        as_of_arg = None
+
+    try:
+        params = ScanBondFuturesExtremesInput(
+            curve_families=parsed_families,
+            top_n=top_n,
+            min_abs_z_score=min_abs_z_score,
+            as_of_date=as_of_arg,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        scan_config = load_tool_config(
+            SCAN_BOND_FUTURES_EXTREMES_CONFIG_PATH,
+        )
+        result = calculate_scan_bond_futures_extremes(
+            engine=engine, params=params, config=scan_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/bond-futures-scanner: tool failed for curve_families=%s",
+            parsed_families,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Bond futures universe scan ({', '.join(parsed_families) if parsed_families else 'full universe'})",
     )
     return result
 

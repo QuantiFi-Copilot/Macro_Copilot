@@ -1339,6 +1339,77 @@ export type ScanInflationLinkersExtremesOutput = {
   methodology_disclosure: string;
 };
 
+// --- /detail/bond-futures-scanner ---
+// Standalone-bridge type for the universe-wide bond-futures extremes
+// scanner.  SCANNER shape — the wire returns a MULTI-METRIC ranked LIST of
+// (curve_family, contract_code) extremes across four metrics (price LEVEL,
+// 1-day price CHANGE, volume LEVEL, open-interest LEVEL) ordered by |z| of
+// the 252d-rolling z-score on each metric independently, NOT a single time
+// series.  Mirrors ``ScanBondFuturesExtremesOutput`` from
+// rates_agent/bond_futures/tools/scan_bond_futures_extremes/schemas.py
+// exactly (snake_case wire fields preserved).
+
+/** Closed enum of the four metrics the bond-futures universe scanner
+ *  ranks across — mirrors the backend ``ScanMetric`` ``Literal[...]``. */
+export type ScanBondFuturesMetric =
+  | 'price'
+  | 'price_change'
+  | 'volume'
+  | 'open_interest';
+
+/** One ranked extreme on the bond-futures universe scan.  Mirrors
+ *  ``ScanBondFuturesExtremesResultRow``.  Each row's ``rank`` is WITHIN
+ *  its metric's top-N (1 = most extreme by absolute z-score for THIS
+ *  metric); ``z_score`` is the z-score of THIS row's metric. */
+export type ScanBondFuturesExtremesResultRow = {
+  rank: number;
+  /** Which of the four metrics this row is ranked on (closed enum). */
+  metric: ScanBondFuturesMetric;
+  curve_family: string;
+  /** Rolling-generic stem (TY1 / UXY1 / RX1 / JB1 / ...) — the canonical
+   *  disambiguator per TD#11.  (curve_family, tenor) alone is ambiguous
+   *  for TY1/UXY1 (both UST_FUT 10Y) and US1/WN1 (both UST_FUT 30Y). */
+  contract_code: string;
+  tenor: string;
+  as_of_date: string;
+  /** Latest cleaned price in the contract's native quote_units (NOT a
+   *  yield).  See methodology_disclosure for the rolling-generic-price
+   *  caveat. */
+  current_price: number | null;
+  /** 1-trading-day raw price change in native quote_units (NOT *100, NOT
+   *  bps). */
+  daily_price_change: number | null;
+  /** Latest daily traded volume in CONTRACTS (NOT notional). */
+  current_volume: number | null;
+  /** Latest end-of-day open interest in CONTRACTS (NOT notional). */
+  current_open_interest: number | null;
+  /** 1-trading-day raw OI change (NOT *100, NOT bps). */
+  delta_open_interest_1d: number | null;
+  /** Rolling 252-trading-day z-score of THIS row's ``metric``. */
+  z_score: number | null;
+  /** Closed enum derived from z-score sign on rows that pass the
+   *  ``min_abs_z_score`` filter. */
+  signal: 'EXTREME_HIGH' | 'EXTREME_LOW';
+  /** P5 / ADR 0013 / catalog-guardrail disclosure — REQUIRED on every
+   *  row (not just on the response).  Includes the universe-wide front-
+   *  month sweep label, the explicit z-score lookback window, and the
+   *  rolling-generic-price / non-DV01-spread caveats. */
+  methodology_disclosure: string;
+};
+
+export type ScanBondFuturesExtremesOutput = {
+  /** Human-readable one-line summary (e.g. "Scanned 19 bond-futures
+   *  stems (17 scoreable). Stems with |z| >= 1.5 per metric: price=4,
+   *  price_change=3, volume=2, open_interest=5. Showing top 5 per metric
+   *  (14 rows). as_of dates span 2026-05-20 to 2026-05-22."). */
+  scan_summary: string;
+  results: ScanBondFuturesExtremesResultRow[];
+  /** Response-level methodology disclosure — full multi-line caveat
+   *  flowing through from compute() (NOT a hardcoded TS literal).
+   *  Surfaced on the extended view's methodology card. */
+  methodology_disclosure: string;
+};
+
 // --- /detail/real_yield_curve_spread ---
 // Standalone-bridge type for the same-country linker real-yield curve-spread
 // primitive.  Own type — the object is the term structure of REAL YIELDS
