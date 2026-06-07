@@ -343,6 +343,24 @@ from rates_agent.policy_futures.tools.futures_price_level import (
     FuturesPriceLevelOutput,
     calculate_futures_price_level,
 )
+# Standalone-bridge endpoint for the policy_futures same-curve simple-butterfly
+# primitive (e.g. SOFR_FUT SFR1-SFR2-SFR3 front-pack curvature,
+# EUR_SHORT_RATE_FUT ER1-ER2-ER4 whites/reds curvature).  Keyed by
+# ``(curve_family, strip_position_wing_short, strip_position_body,
+# strip_position_wing_long)`` per ADR 0013 — same strip-position-keying as
+# the futures_price_level sibling.  Same standalone-bridge contract as the
+# other rates primitives: own typed-detail endpoint consumed by both the
+# extended and compact Build views (rendering_density dual-view) + the
+# Monitor tile.  Methodology disclosure flows verbatim from compute()'s
+# ``methodology_disclosure`` string (NOT a hardcoded TS literal).  The
+# schema layer rejects unordered / duplicate orderings via the
+# ``_strip_positions_must_be_ordered`` validator.
+from rates_agent.policy_futures.tools.futures_butterfly_simple import (
+    CONFIG_PATH as POLICY_FUTURES_BUTTERFLY_SIMPLE_CONFIG_PATH,
+    FuturesButterflySimpleInput,
+    FuturesButterflySimpleOutput,
+    calculate_futures_butterfly_simple,
+)
 from rates_agent.sovereign_bonds.tools.zscore_custom import (
     CONFIG_PATH as ZSCORE_CUSTOM_CONFIG_PATH,
     ZscoreCustomInput,
@@ -2952,5 +2970,139 @@ def policy_futures_price_detail(
     _tool_result_or_raise(
         result,
         f"Policy futures price level for {curve_family} strip={strip_position}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/policy-futures-butterfly  — policy_futures same-curve simple butterfly
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# ``policy_futures_get_futures_butterfly_simple_tool`` primitive ships its OWN
+# typed-detail endpoint.  Keyed by ``(curve_family, strip_position_wing_short,
+# strip_position_body, strip_position_wing_long)`` per ADR 0013 — strip-
+# position-keyed monitors.  Conventions are YAML-locked in V1; only the
+# structural strip-position keys plus ``lookback_days`` / ``as_of_date`` /
+# ``field_name`` are exposed (mirrors the MCP wrapper's input surface).
+# Butterfly value lives on the implied-rate axis in PERCENT POINTS on the
+# wire (the policy-futures sub-domain convention); the frontend display
+# layer multiplies by 100 to render bps for the desk-recognised headline.
+@router.get(
+    "/detail/policy-futures-butterfly",
+    response_model=FuturesButterflySimpleOutput,
+    summary="Policy Futures Same-Curve Simple Butterfly Detail (standalone bridge)",
+)
+def policy_futures_butterfly_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family: str = Query(
+        ...,
+        description=(
+            "Policy-futures curve family — 'SOFR_FUT' (US RFR), "
+            "'EUR_SHORT_RATE_FUT' (Euribor IBOR), 'SONIA_FUT' (UK RFR)."
+        ),
+    ),
+    strip_position_wing_short: int = Query(
+        ...,
+        ge=1,
+        le=12,
+        description=(
+            "1-based strip position of the SHORT wing (fronter wing). "
+            "Must satisfy strip_position_wing_short < strip_position_body "
+            "(enforced by Pydantic validator)."
+        ),
+    ),
+    strip_position_body: int = Query(
+        ...,
+        ge=1,
+        le=12,
+        description=(
+            "1-based strip position of the BODY (belly).  Must satisfy "
+            "strip_position_wing_short < strip_position_body < "
+            "strip_position_wing_long (enforced by Pydantic validator)."
+        ),
+    ),
+    strip_position_wing_long: int = Query(
+        ...,
+        ge=1,
+        le=12,
+        description=(
+            "1-based strip position of the LONG wing (backer wing).  Must "
+            "satisfy strip_position_body < strip_position_wing_long "
+            "(enforced by Pydantic validator)."
+        ),
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    as_of_date: Optional[str] = Query(
+        default=None,
+        description=(
+            "ISO-format date (YYYY-MM-DD) anchoring the snapshot.  Omit "
+            "to anchor at the universe's last observed ``trade_date`` "
+            "for the requested legs (post-fetch data-max anchor on the "
+            "intersection of all three legs).  A date BEYOND the "
+            "universe's last observed ``trade_date`` for ANY leg "
+            "returns the documented controlled-error envelope."
+        ),
+    ),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg observation field mnemonic.  Omit (None) to use "
+            "the tool's bundled ``default_price_field`` convention from "
+            "futures_butterfly_simple/config.yaml (currently 'PX_LAST')."
+        ),
+    ),
+):
+    """Same payload + sentinel semantics as the MCP wrapper.  Consumed by
+    ``surfaces/BuildExtended.tsx`` AND ``surfaces/BuildCompact.tsx`` per
+    the rendering-density dual-view contract, plus the Monitor tile.
+    None-sentinels on ``field_name`` / ``as_of_date`` fall through to the
+    YAML default / data-max anchor via compute() — same shadowing fix
+    pattern as policy_futures_price_detail / sovereign get_yield_levels /
+    linker real_yield_level.
+    """
+    parsed_as_of: Optional[date] = None
+    if as_of_date and as_of_date.strip():
+        try:
+            parsed_as_of = date.fromisoformat(as_of_date.strip())
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid as_of_date {as_of_date!r}: {exc}",
+            )
+
+    try:
+        params = FuturesButterflySimpleInput(
+            curve_family=curve_family,
+            strip_position_wing_short=strip_position_wing_short,
+            strip_position_body=strip_position_body,
+            strip_position_wing_long=strip_position_wing_long,
+            lookback_days=lookback_days,
+            as_of_date=parsed_as_of,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        pf_config = load_tool_config(POLICY_FUTURES_BUTTERFLY_SIMPLE_CONFIG_PATH)
+        result = calculate_futures_butterfly_simple(
+            engine=engine, params=params, config=pf_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/policy-futures-butterfly: tool failed for %s "
+            "%d-%d-%d",
+            curve_family,
+            strip_position_wing_short,
+            strip_position_body,
+            strip_position_wing_long,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Policy futures butterfly for {curve_family} "
+        f"{strip_position_wing_short}-{strip_position_body}-"
+        f"{strip_position_wing_long}",
     )
     return result

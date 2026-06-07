@@ -2,10 +2,11 @@
 // ============================================================================
 // src/modules/primitives/policy_futures_get_futures_butterfly_simple_tool/__tests__/module.spec.ts
 // ----------------------------------------------------------------------------
-// Stage 3 per-module round-trip — calls assertStandardModuleInvariants
-// from src/modules/__test-utils.ts.  Catches FM11 invariants 1-8 in
-// one check.  Identical boilerplate across every module; per-module
-// customisation belongs in additional ``check(...)`` blocks below.
+// Dispatch-1 round-trip — calls assertStandardModuleInvariants from
+// src/modules/__test-utils.ts (FM11 invariants 1-8) plus the dual-view
+// rendering-density contract checks (rendering_density.md §1).  Mirrors the
+// sibling policy_futures_get_futures_price_level_tool module test shape
+// adapted for the butterfly's tier-set + Monitor widget id.
 // ============================================================================
 
 import { assertStandardModuleInvariants } from '../../../__test-utils';
@@ -32,6 +33,85 @@ check('module satisfies the standard invariants', async () => {
     folderName: FOLDER,
     moduleFolderPath: `${cwd()}/src/modules/primitives/${FOLDER}`,
   });
+});
+
+// ----------------------------------------------------------------------------
+// Dual-view rendering-density contract (per rendering_density.md §1):
+// every new primitive MUST ship BOTH surfaces.buildExtended AND
+// surfaces.buildCompact.
+// ----------------------------------------------------------------------------
+
+check('claims custom_build_surface tier', () => {
+  if (!MODULE.tiers.includes('custom_build_surface')) {
+    throw new Error(
+      `tiers missing 'custom_build_surface'; dual-view contract requires it per rendering_density.md.  Got tiers=${JSON.stringify(MODULE.tiers)}`,
+    );
+  }
+});
+
+check('claims monitor_surface tier', () => {
+  if (!MODULE.tiers.includes('monitor_surface')) {
+    throw new Error(
+      `tiers missing 'monitor_surface'; catalog entry required_tiers includes monitor_surface per the desk-canonical STIR-curvature eligibility.  Got tiers=${JSON.stringify(MODULE.tiers)}`,
+    );
+  }
+});
+
+check('surfaces.buildExtended is populated', () => {
+  if (!MODULE.surfaces?.buildExtended) {
+    throw new Error(
+      'surfaces.buildExtended is missing.  Dual-view contract requires both buildExtended + buildCompact for every primitive claiming custom_build_surface.',
+    );
+  }
+});
+
+check('surfaces.buildCompact is populated', () => {
+  if (!MODULE.surfaces?.buildCompact) {
+    throw new Error(
+      'surfaces.buildCompact is missing.  Dual-view contract requires both buildExtended + buildCompact for every primitive claiming custom_build_surface.',
+    );
+  }
+});
+
+check('typedView is null (standalone-bridge contract)', () => {
+  if (MODULE.typedView != null) {
+    throw new Error(
+      `typedView must be null for modules under the standalone-bridge contract; got '${MODULE.typedView}'.  See methodology_exposure.md §5.`,
+    );
+  }
+});
+
+check('monitorWidgets carries the Policy Futures Butterfly tile', () => {
+  const widgets = MODULE.monitorWidgets ?? [];
+  if (widgets.length === 0) {
+    throw new Error(
+      'monitorWidgets is empty; module claims monitor_surface and must populate the Monitor tile via the monitorWidgets array (Stage 4d multi-variant shape).',
+    );
+  }
+  const ids = widgets.map((w) => w.id);
+  if (!ids.includes('policy_futures_butterfly')) {
+    throw new Error(
+      `monitorWidgets missing the 'policy_futures_butterfly' entry; got ids=${JSON.stringify(ids)}.`,
+    );
+  }
+});
+
+check('mockups folder exists alongside the module', async () => {
+  try {
+    const fs = await import('node:fs/promises');
+    const path = `${cwd()}/src/modules/primitives/${FOLDER}/mockups`;
+    const entries = await fs.readdir(path);
+    const required = ['Compact.png', 'Extended.png'];
+    const missing = required.filter((r) => !entries.includes(r));
+    if (missing.length > 0) {
+      throw new Error(`mockups/ missing required PNGs: ${missing.join(', ')}`);
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ERR_MODULE_NOT_FOUND') {
+      return;
+    }
+    throw err;
+  }
 });
 
 export async function runAllModuleSpecTests(): Promise<void> {

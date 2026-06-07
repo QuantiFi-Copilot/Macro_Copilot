@@ -76,6 +76,17 @@ const KNOWN_TOOL_ALIASES: Record<string, string> = {
   // it's a snapshot-only primitive (no compute).  Both forms resolve
   // to the backend's canonical name.
   calculate_ois_rate_level_tool: 'get_ois_rate_level_tool',
+  // policy_futures naming divergence: the MCP function inside
+  // rates_agent/policy_futures/mcp_server.py is exposed as
+  // ``get_futures_butterfly_simple_tool`` (unprefixed) while the
+  // workflow registry + tool_metadata DB row + frontend module folder
+  // use the ``policy_futures_`` prefixed form (collision-avoidance
+  // because the bond_futures domain may add its own butterfly_simple
+  // primitive in the future).  LLM-side calls that arrive via the
+  // unprefixed MCP name route through this alias to reach the
+  // prefixed frontend module / typed-detail endpoint.
+  get_futures_butterfly_simple_tool:
+    'policy_futures_get_futures_butterfly_simple_tool',
 };
 
 /** Normalise a tool name to the backend-canonical form.

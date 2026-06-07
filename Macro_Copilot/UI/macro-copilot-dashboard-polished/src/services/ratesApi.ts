@@ -35,6 +35,7 @@ import type {
   ScanBondFuturesExtremesOutput,
   ScanPolicyFuturesExtremesOutput,
   PolicyFuturesPriceLevelOutput,
+  FuturesButterflySimpleOutput,
 } from '@/types/rates';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
@@ -765,6 +766,41 @@ export function fetchDetailPolicyFuturesPrice(
 ): Promise<PolicyFuturesPriceLevelOutput> {
   return fetchJSON(
     `${RATES_PREFIX}/detail/policy-futures-price${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/policy-futures-butterfly  — policy_futures same-curve simple butterfly
+// ---------------------------------------------------------------------------
+// Three-strip-slot curvature on a SINGLE policy-futures curve family (e.g.
+// SOFR_FUT SFR1-SFR2-SFR3 front-pack curvature, EUR_SHORT_RATE_FUT
+// ER1-ER2-ER4 whites/reds curvature).  Own typed helper per the standalone-
+// bridge contract; consumed by BOTH Build views and the Monitor tile.
+// Rolling-z-score conventions are YAML-locked on this primitive (mirrors the
+// sovereign / OIS / linker / ZCIS butterfly bridges); only the structural
+// strip-position keys plus ``lookback_days`` / ``as_of_date`` / ``field_name``
+// are exposed at the API layer.  The schema layer enforces
+// ``strip_position_wing_short < strip_position_body < strip_position_wing_long``
+// so the desk-recognised positive-butterfly direction (belly cheap) is
+// unambiguous on the wire.
+
+export type FuturesButterflySimpleDetailParams = {
+  curve_family: string;
+  strip_position_wing_short: number;
+  strip_position_body: number;
+  strip_position_wing_long: number;
+  lookback_days?: number;
+  /** YYYY-MM-DD; omit to anchor at the universe's last observed trade_date
+   *  on the intersection of the three legs (post-fetch data-max anchor). */
+  as_of_date?: string;
+  field_name?: string;
+};
+
+export function fetchDetailPolicyFuturesButterfly(
+  params: FuturesButterflySimpleDetailParams,
+): Promise<FuturesButterflySimpleOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/policy-futures-butterfly${buildQuery(params)}`,
   );
 }
 

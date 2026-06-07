@@ -1765,3 +1765,100 @@ export type PolicyFuturesPriceLevelOutput = {
   methodology_disclosure: string;
 };
 
+// --- /detail/policy-futures-butterfly ---
+// Standalone-bridge type for the policy_futures same-curve 3-leg simple-
+// butterfly primitive (e.g. SOFR_FUT SFR1-SFR2-SFR3, EUR_SHORT_RATE_FUT
+// ER1-ER2-ER4, SONIA_FUT SFI1-SFI2-SFI3).  Mirrors
+// ``FuturesButterflySimpleOutput`` from rates_agent/policy_futures/tools/
+// futures_butterfly_simple/schemas.py byte-for-byte (snake_case wire fields
+// preserved).  Butterfly is on the IMPLIED-RATE axis in PERCENT POINTS
+// (NOT bps — the policy-futures sub-domain stays in PERCENT POINTS on
+// implied-rate-derived objects; the sovereign / OIS butterfly ``_bps``
+// convention does NOT apply here).  Sign convention:
+//   ``butterfly_value_pct = rate_body − 0.5 * (rate_wing_short +
+//     rate_wing_long)``
+// where rate_* is the per-leg implied rate in PERCENT (derived from
+// the leg's raw_price via the per-strip ``inverse_pricing`` flag).
+// POSITIVE ⇒ belly CHEAP (body rate above wing average); NEGATIVE ⇒
+// belly RICH.  Per-leg disclosure block carries the strip-slot master
+// stems (stable across rolls) + current-front underlying contracts
+// (rotate at roll) + per-leg SCD2 metadata.
+
+export type FuturesButterflySimpleTimeSeriesRow = {
+  date: string;
+  butterfly_value_pct: number;
+  z_score: number | null;
+};
+
+export type FuturesButterflySimpleCurrentMetrics = {
+  as_of_date: string;
+  curve_family: string;
+  strip_position_wing_short: number;
+  strip_position_body: number;
+  strip_position_wing_long: number;
+  /** Human-readable label for the butterfly triple, e.g. "SFR1-SFR2-SFR3". */
+  butterfly_label: string;
+  /** Strip-slot master stem of the short wing (stable across rolls). */
+  contract_code_wing_short: string;
+  /** Strip-slot master stem of the body leg. */
+  contract_code_body: string;
+  /** Strip-slot master stem of the long wing. */
+  contract_code_wing_long: string;
+  /** Current-front underlying the short wing resolves to as of as_of_date. */
+  underlying_contract_code_wing_short: string | null;
+  underlying_contract_code_body: string | null;
+  underlying_contract_code_wing_long: string | null;
+  security_name_wing_short: string | null;
+  security_name_body: string | null;
+  security_name_wing_long: string | null;
+  expiry_date_wing_short: string | null;
+  expiry_date_body: string | null;
+  expiry_date_wing_long: string | null;
+  /** Inverse-pricing flag — when true (SFR / ER / SFI in V1),
+   *  implied_rate_pct = 100 − raw_price per leg. */
+  inverse_priced: boolean;
+  /** 'RFR' (SOFR / SONIA) or 'IBOR' (Euribor) — methodology disclosure label. */
+  short_rate_regime: string;
+  /** Latest per-leg implied rates in PERCENT. */
+  implied_rate_pct_wing_short: number;
+  implied_rate_pct_body: number;
+  implied_rate_pct_wing_long: number;
+  /** Latest butterfly value in PERCENT POINTS:
+   *  ``rate_body − 0.5 * (rate_wing_short + rate_wing_long)``.  Positive ⇒
+   *  belly CHEAP in rate space.  NOT bps — the policy-futures sub-domain's
+   *  unit convention. */
+  butterfly_value_pct: number;
+  /** 1-trading-day change in butterfly_value_pct (raw subtraction in PERCENT
+   *  POINTS; multiply by 100 to render in bps). */
+  daily_change_butterfly_value_pct: number | null;
+  /** Rolling 252-trading-day z-score of the butterfly series. */
+  z_score_butterfly: number | null;
+  /** Trailing 252-trading-day range on the butterfly series, PERCENT POINTS. */
+  high_252d_butterfly_value_pct: number | null;
+  low_252d_butterfly_value_pct: number | null;
+  mid_252d_butterfly_value_pct: number | null;
+  /** Percentile rank of butterfly_value_pct within the trailing 252-day
+   *  butterfly range (0-100). */
+  percentile_252d: number | null;
+  rolling_window_days: number;
+  observation_count: number;
+};
+
+export type FuturesButterflySimpleOutput = {
+  current_metrics: FuturesButterflySimpleCurrentMetrics;
+  /** Bespoke wire-frozen per-row shape — butterfly value + z-score per row. */
+  time_series: FuturesButterflySimpleTimeSeriesRow[];
+  /** Canonical TimeSeriesUnits.PERCENT series of the butterfly value. */
+  time_series_butterfly: TimeSeries;
+  /** Canonical TimeSeriesUnits.Z_SCORE series of the rolling z-score. */
+  time_series_zscore: TimeSeries;
+  /** P5 / ADR 0013 caveat composed at runtime by compute() — includes the
+   *  sign convention, fixed 50-50 simple-butterfly weighting, inverse-pricing
+   *  rule, per-curve_family regime (RFR vs IBOR), z-score lookback window,
+   *  trailing-range window, strip-position keying, and the explicit refusal
+   *  of meeting-by-meeting policy-path framing + DV01-neutral / regression-
+   *  fitted butterfly variants.  Surfaced verbatim on the extended view's
+   *  methodology card (NOT a hardcoded TS literal). */
+  methodology_disclosure: string;
+};
+
