@@ -745,7 +745,7 @@ tools:
     reviewer_dispatched_at: "2026-06-07T07:25:00Z"
     reviewer_finished_at: "2026-06-07T07:30:00Z"
     committed_at: "2026-06-07T08:42:00Z"
-    commit_sha: pending-backfill
+    commit_sha: 7ca1a92
     build_order: 14
     backend_tool_name: calculate_ois_cross_market_spread_tool
     instrument_family: ois

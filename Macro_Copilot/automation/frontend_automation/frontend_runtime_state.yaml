@@ -8,7 +8,7 @@ current_step: committed
 dispatch_round: 2
 last_dispatch_at: "2026-06-07T07:25:00Z"
 last_successful_tool: ois__cross_market_spread
-last_successful_commit: pending-backfill
+last_successful_commit: 7ca1a92
 last_reviewer_heading: APPROVED
 last_gate_result: pass
 last_stop_reason: null
