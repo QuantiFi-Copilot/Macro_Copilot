@@ -1117,6 +1117,77 @@ export type OisCurveSpreadOutput = {
   time_series_zscore: TimeSeries;
 };
 
+// --- /detail/ois-cross-market-spread ---
+// Standalone-bridge type for the same-tenor cross-market OIS spread primitive
+// (e.g. SOFR 2Y minus ESTR 2Y).  Two distinct OIS curve families at a shared
+// pillar.  The two legs reference DIFFERENT overnight rate indices (SOFR /
+// ESTR / SONIA / TONA / AONIA / CORRA — risk-neutral expected-policy-path
+// objects priced under each currency's own central-bank reaction function), so
+// the spread captures cross-currency POLICY-PATH divergence — the canonical
+// G4 read on relative central-bank stance.  Wire field names use "rate"
+// terminology (curve_family_1_rate / curve_family_2_rate) because OIS quotes
+// are par swap rates, NOT bond yields.  Wire is LEAN compared to the linker
+// cross-market ZCIS sibling: NO ``methodology_label``, NO ``observation_count``,
+// NO ``leg_a_*`` / ``leg_b_*`` index-family metadata (OIS has a single overnight
+// index per curve, surfaced via the per-tool curve-family registry).  Spread
+// reported in BPS directly on the wire (the OIS sub-domain BPS convention).
+// Sign convention: spread = curve_family_1 - curve_family_2 (left minus right).
+
+export type OisCrossMarketSpreadCurrentMetrics = {
+  as_of_date: string;
+  curve_family_1: string;
+  curve_family_2: string;
+  tenor: string;
+  /** Human-readable label, e.g. "USD_SOFR_OIS-EUR_ESTR_OIS 2Y". */
+  spread_label: string;
+  /** Current OIS cross-market spread in BASIS POINTS
+   *  ((curve_family_1_rate_pct - curve_family_2_rate_pct) * 100).  Already
+   *  bps on the wire — no unit conversion needed at the display layer.  Can
+   *  be negative (curve_family_2's central bank pricing more hawkish than
+   *  curve_family_1's). */
+  current_spread_bps: number;
+  /** 1-day change in the spread (BPS). */
+  daily_change_bps: number | null;
+  /** 5-trading-day change in the spread (BPS, ~1 calendar week). */
+  weekly_change_bps: number | null;
+  /** 22-trading-day change in the spread (BPS, ~1 calendar month). */
+  monthly_change_bps: number | null;
+  /** Rolling 252-trading-day z-score of the bps spread.  Z-score conventions
+   *  are YAML-locked on this primitive — no input-layer overrides
+   *  (z_score_window_days / z_score_min_periods / z_score_ddof live in
+   *  config.yaml). */
+  current_z_score: number | null;
+  rolling_window_days: number;
+  high_252d_bps: number | null;
+  low_252d_bps: number | null;
+  percentile_252d: number | null;
+  /** Latest par swap rate on curve_family_1 (PERCENT — natural rate unit for
+   *  an OIS par-swap rate).  Used for the per-leg decomposition row. */
+  curve_family_1_rate: number | null;
+  /** Latest par swap rate on curve_family_2 (PERCENT). */
+  curve_family_2_rate: number | null;
+};
+
+/** Bespoke per-row shape (spread bps + z-score in one row).  Wire-frozen for
+ *  backward-compat with the legacy single-file OIS cross_market_spread tool. */
+export type OisCrossMarketSpreadTimeSeriesRow = {
+  date: string;
+  spread_bps: number;
+  z_score: number | null;
+};
+
+export type OisCrossMarketSpreadOutput = {
+  current_metrics: OisCrossMarketSpreadCurrentMetrics;
+  /** Bespoke wire-frozen shape — spread (bps) + z-score per row. */
+  time_series: OisCrossMarketSpreadTimeSeriesRow[];
+  /** Canonical TimeSeriesUnits.BPS series of the OIS cross-market spread.
+   *  Required — mirrors the Pydantic Output where the field is non-optional. */
+  time_series_spread: TimeSeries;
+  /** Canonical TimeSeriesUnits.Z_SCORE series of the rolling z-score.
+   *  Required — mirrors the Pydantic Output where the field is non-optional. */
+  time_series_zscore: TimeSeries;
+};
+
 // --- /detail/zcis-scanner ---
 // Standalone-bridge type for the universe-wide ZCIS rate-extremes scanner.
 // SCANNER shape — the wire returns a ranked LIST of (curve_family, tenor)

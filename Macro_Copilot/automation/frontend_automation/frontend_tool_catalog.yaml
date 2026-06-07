@@ -734,10 +734,18 @@ tools:
       - "Methodology disclosure: same-country reference-index curve shape; positive = upward-sloping forward inflation"
 
   - id: ois__cross_market_spread
-    status: todo
+    status: done
     human_action_required: false
-    last_review_heading: null
-    last_gate_result: not_run
+    last_review_heading: APPROVED
+    last_gate_result: pass
+    dispatch_round: 2
+    active_step: committed
+    dispatched_at: "2026-06-07T06:12:00Z"
+    builder_finished_at: "2026-06-07T06:27:00Z"
+    reviewer_dispatched_at: "2026-06-07T07:25:00Z"
+    reviewer_finished_at: "2026-06-07T07:30:00Z"
+    committed_at: "2026-06-07T08:42:00Z"
+    commit_sha: pending-backfill
     build_order: 14
     backend_tool_name: calculate_ois_cross_market_spread_tool
     instrument_family: ois

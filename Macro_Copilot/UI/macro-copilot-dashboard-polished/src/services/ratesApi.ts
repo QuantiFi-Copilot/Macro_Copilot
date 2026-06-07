@@ -23,6 +23,7 @@ import type {
   CrossMarketInflationSwapSpreadOutput,
   InflationSwapButterflyOutput,
   OisButterflyOutput,
+  OisCrossMarketSpreadOutput,
   OisCurveSpreadOutput,
   OisRateLevelOutput,
   OisForwardRateOutput,
@@ -353,6 +354,33 @@ export function fetchDetailOisCurveSpread(
 ): Promise<OisCurveSpreadOutput> {
   return fetchJSON(
     `${RATES_PREFIX}/detail/ois-curve-spread${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/ois-cross-market-spread  — same-tenor cross-market OIS spread bridge
+// ---------------------------------------------------------------------------
+// Two-curve, single-tenor primitive (e.g. SOFR 2Y minus ESTR 2Y).  Own typed
+// helper per the standalone-bridge contract; consumed by BOTH Build views and
+// the Monitor tile.  Rolling-z-score conventions are YAML-locked on this
+// primitive (no input-layer overrides — mirrors the sibling OIS curve_spread
+// / butterfly bridges); ``lookback_days`` + ``field_name`` remain exposed.
+// The schema layer rejects ``curve_family_1 == curve_family_2`` (same-curve
+// tenor spreads belong to ``/detail/ois-curve-spread``).
+
+export type OisCrossMarketSpreadDetailParams = {
+  curve_family_1: string;
+  curve_family_2: string;
+  tenor: string;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailOisCrossMarketSpread(
+  params: OisCrossMarketSpreadDetailParams,
+): Promise<OisCrossMarketSpreadOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/ois-cross-market-spread${buildQuery(params)}`,
   );
 }
 
