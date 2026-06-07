@@ -18,6 +18,7 @@ import type {
   BreakevenInflationSimpleOutput,
   BreakevenButterflyOutput,
   BreakevenCurveSpreadOutput,
+  ForwardBreakevenSimpleOutput,
   RealYieldButterflyOutput,
   RealYieldCurveSpreadOutput,
   CrossMarketInflationSwapSpreadOutput,
@@ -169,6 +170,38 @@ export function fetchDetailBreakeven(
   params: BreakevenDetailParams,
 ): Promise<BreakevenInflationSimpleOutput> {
   return fetchJSON(`${RATES_PREFIX}/detail/breakeven${buildQuery(params)}`);
+}
+
+// ---------------------------------------------------------------------------
+// /detail/forward-breakeven  — same-country forward bond-implied breakeven bridge
+// ---------------------------------------------------------------------------
+// Year-weighted linear forward bond-implied breakeven inflation between two
+// same-country curve points (e.g. UST/USD_TIPS 5Y5Y, FR_OAT/EUR_FR_LINKER
+// 5Y10Y).  Own typed helper per the standalone-bridge contract; consumed by
+// BOTH Build views and the Monitor tile.  Rolling-z-score conventions are
+// YAML-locked on this primitive — only ``lookback_days`` + ``field_name`` are
+// exposed at the API layer (mirrors the sibling breakeven-curve-spread /
+// breakeven-butterfly bridges).  Same-country invariant inherited
+// transitively from the spot breakeven primitive.
+
+export type ForwardBreakevenDetailParams = {
+  nominal_curve_family: string;
+  linker_curve_family: string;
+  /** Start tenor of the forward window (e.g. '5Y' for 5Y5Y). */
+  start_tenor: string;
+  /** End tenor of the forward window (e.g. '10Y' for 5Y5Y) — must be strictly
+   *  longer than start_tenor. */
+  end_tenor: string;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailForwardBreakeven(
+  params: ForwardBreakevenDetailParams,
+): Promise<ForwardBreakevenSimpleOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/forward-breakeven${buildQuery(params)}`,
+  );
 }
 
 // ---------------------------------------------------------------------------

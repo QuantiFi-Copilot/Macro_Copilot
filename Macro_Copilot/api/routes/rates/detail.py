@@ -103,6 +103,23 @@ from rates_agent.inflation_indexed_bonds.tools.breakeven_curve_spread import (
     BreakevenCurveSpreadOutput,
     calculate_breakeven_curve_spread,
 )
+# Standalone-bridge endpoint for the same-country FORWARD bond-implied
+# breakeven inflation primitive (year-weighted linear forward between two
+# spot breakeven pillars — e.g. UST/USD_TIPS 5Y5Y, FR_OAT/EUR_FR_LINKER
+# 5Y10Y).  Per ``docs_revamped/03_standards/methodology_exposure.md §5``
+# every new tool ships its OWN typed-detail endpoint consumed by both the
+# extended and compact Build views (rendering_density dual-view) + the
+# Monitor tile.  Same-country invariant inherited transitively from the spot
+# breakeven primitive's ``_enforce_same_country_invariant`` guard.  Rolling-
+# z-score conventions are YAML-locked on this primitive — only
+# ``lookback_days`` + ``field_name`` are exposed at the API layer (mirrors
+# the sibling breakeven-curve-spread / breakeven-butterfly bridges).
+from rates_agent.inflation_indexed_bonds.tools.forward_breakeven_simple import (
+    CONFIG_PATH as FORWARD_BREAKEVEN_SIMPLE_CONFIG_PATH,
+    ForwardBreakevenSimpleInput,
+    ForwardBreakevenSimpleOutput,
+    calculate_forward_breakeven_simple,
+)
 # Standalone-bridge endpoint for the same-country linker real-yield
 # butterfly primitive (3-point curvature on a SINGLE linker curve — no
 # nominal pair).  Per ``docs_revamped/03_standards/methodology_exposure.md
@@ -875,6 +892,88 @@ def breakeven_curve_spread_detail(
         result,
         f"Breakeven curve spread for {nominal_curve_family} vs "
         f"{linker_curve_family} {short_tenor}/{long_tenor}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/forward-breakeven  — same-country forward bond-implied breakeven bridge
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# forward_breakeven_simple primitive ships its OWN typed-detail endpoint.
+# Year-weighted linear forward between two spot breakeven pillars on a
+# single same-country nominal/linker pair (e.g. UST/USD_TIPS 5Y5Y,
+# FR_OAT/EUR_FR_LINKER 5Y10Y).  The same payload feeds BOTH the extended
+# and compact Build views and the Monitor tile (rendering_density.md §10).
+# The rolling-z-score conventions are YAML-locked on this primitive — no
+# input-layer overrides for window / min-periods / ddof (mirrors the
+# sibling breakeven-curve-spread / breakeven-butterfly bridges).  Same-
+# country invariant inherited transitively from the spot breakeven
+# primitive's ``_enforce_same_country_invariant`` guard (fires BEFORE any
+# market-data SELECT on either endpoint).
+# ============================================================================
+@router.get(
+    "/detail/forward-breakeven",
+    response_model=ForwardBreakevenSimpleOutput,
+    summary="Forward Bond-Implied Breakeven Inflation Detail (standalone bridge)",
+)
+def forward_breakeven_detail(
+    engine: Engine = Depends(get_engine),
+    nominal_curve_family: str = Query(..., description="Nominal sovereign curve family — UST / UK_GILT / FR_OAT / CANADA_GOVT"),
+    linker_curve_family: str = Query(..., description="Linker curve family — USD_TIPS / GBP_LINKER / EUR_FR_LINKER / CAD_RRB"),
+    start_tenor: str = Query(..., description="Start tenor of the forward window (e.g. '5Y' for 5Y5Y)"),
+    end_tenor: str = Query(..., description="End tenor of the forward window (e.g. '10Y' for 5Y5Y) — must be strictly longer than start_tenor"),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic for ALL FOUR underlying series "
+            "(nominal + linker at each endpoint tenor).  Omit (None) to "
+            "use the tool's bundled ``default_field_name`` convention "
+            "(currently 'YLD_YTM_MID')."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the
+    frontend module's ``surfaces/BuildExtended.tsx``,
+    ``surfaces/BuildCompact.tsx``, AND the Monitor widget per the
+    rendering-density dual-view + monitor contract.
+
+    The forward-breakeven primitive intentionally does NOT expose the
+    Phase-1 z-score overrides at its Input layer — its rolling-z-score
+    conventions are sourced from the YAML at compute() time only
+    (mirrors the sibling breakeven-curve-spread / breakeven-butterfly
+    primitives).
+    """
+    try:
+        params = ForwardBreakevenSimpleInput(
+            nominal_curve_family=nominal_curve_family,
+            linker_curve_family=linker_curve_family,
+            start_tenor=start_tenor,
+            end_tenor=end_tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        fbs_config = load_tool_config(FORWARD_BREAKEVEN_SIMPLE_CONFIG_PATH)
+        result = calculate_forward_breakeven_simple(
+            engine=engine, params=params, config=fbs_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/forward-breakeven: tool failed for %s vs %s %s/%s",
+            nominal_curve_family, linker_curve_family,
+            start_tenor, end_tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Forward breakeven inflation for {nominal_curve_family} vs "
+        f"{linker_curve_family} {start_tenor}/{end_tenor}",
     )
     return result
 

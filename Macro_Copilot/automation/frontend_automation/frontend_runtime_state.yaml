@@ -4,19 +4,19 @@ backend: claude-cli
 orchestrator_status: processing
 current_tool: inflation_indexed_bonds__forward_breakeven
 current_tool_backend_name: calculate_forward_breakeven_simple_tool
-current_step: builder_dispatched
-dispatch_round: 1
-last_dispatch_at: "2026-06-07T08:45:00Z"
-last_successful_tool: ois__cross_market_spread
-last_successful_commit: 7ca1a92
+current_step: committed
+dispatch_round: 2
+last_dispatch_at: "2026-06-07T08:59:00Z"
+last_successful_tool: inflation_indexed_bonds__forward_breakeven
+last_successful_commit: pending-backfill
 last_reviewer_heading: APPROVED
 last_gate_result: pass
 last_stop_reason: null
 last_error: null
-last_updated: "2026-06-07T08:45:00Z"
-done: 14
+last_updated: "2026-06-07T09:15:00Z"
+done: 15
 blocked: 0
-remaining: 4
+remaining: 3
 quota_state: probe_unavailable
 quota_snapshot: null
 quota_snapshot_at: '2026-05-29T15:52:00Z'
@@ -40,6 +40,96 @@ reviewer_mode_history:
 catalog_exhausted_at: null
 human_required: null
 status_notes:
+  - at: '2026-06-07T09:15:00Z'
+    kind: tool_15_shipped_batch_2_advancing
+    text: |
+      Cron-fired wake at 08:52 UTC on 2026-06-07 (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784).  On entry, the prior wake's
+      builder for tool 15 (`inflation_indexed_bonds__forward_breakeven`)
+      was still in flight (PID 3807861, ~9m elapsed at wake start).  The
+      orchestrator monitored to completion: builder finalised 08:58 UTC
+      (~13m runtime; BUILDER REPORT clean — all 4 new surface files +
+      3 overwrites in target module folder + types/rates.ts +
+      services/ratesApi.ts + api/routes/rates/detail.py; self-tests
+      green: test:modules + test:build + typecheck all exit 0).  Loader
+      entry at src/modules/index.ts:55 already present (no edit needed).
+
+      Reviewer dispatched 08:59 via run_claude_reviewer.sh (PID 3814625).
+      Reviewer log finalised 09:03 (~4m, 4487 bytes).
+      parse_reviewer_log.py returned
+      {"ok": true, "heading": "APPROVED", "environment_failure": false,
+       "reviewer_quota_exhausted": false} — Case C.
+
+      Reviewer verdict: bare `APPROVED` last token of the response;
+      verification scorecard green across dual-view contract
+      (rendering_density.md §1 + §2.1 + §2.2), mockup conformance
+      (Compact + Extended both match Compact.png / Extended.png —
+      US · 5Y5Y FORWARD BREAKEVEN identity, 9-cell bps KPI strip,
+      forward chart with z-score bands, methodology card, compact
+      3-KPI strip with sparkline + caveat footer + expand affordance),
+      standalone bridge contract (methodology_exposure.md §5; endpoint
+      at /api/v1/rates/detail/forward-breakeven; typedView=null;
+      ForwardBreakevenSimpleOutput mirror type exact field-by-field
+      with backend Pydantic schemas), FM1–FM12 (FM10 Q1/Q2/Q3/Q5 per-
+      surface specific with FM ID cites; FM12 alphabetical loader at
+      index.ts:55 between calculate_curve_spread_tool and
+      calculate_half_life_tool — correct ASCII position), methodology
+      honesty (current_metrics.methodology_label sourced via
+      buildMethodologyRows in forwardBreakevenShared.ts:437 — no TSX
+      literal; honest fallback string only fires when backend returns
+      empty), shared forwardBreakevenShared.ts helper consolidation
+      (both Build views consume useForwardBreakeven, compactKPIs/
+      extendedKPIs, pairForLinker/forwardPairFor/forwardPairOptions
+      ForLinker, buildReferenceBands, buildMethodologyRows,
+      sanitiseForwardBreakevenSeries, FORWARD_BREAKEVEN_COMPACT_CAVEAT;
+      Monitor widget uses local fetcher matching the reference
+      BreakevenInflationWidget paramsKey de-dup pattern — explicitly
+      acceptable per reviewer's non-blocking observation), and Pair/
+      forward-pair model (single Country-Pair linker-keyed dropdown +
+      same-country invariant + per-pair forward-pair filtering against
+      BREAKEVEN_TENORS_BY_PAIR; defaultParams forward_pair: '5Y5Y' /
+      start_tenor: '5Y' / end_tenor: '10Y' satisfies backend's
+      _start_must_precede_end validator on first render).  Two non-
+      blocking observations noted: (a) Extended "Inflation compensation"
+      top-right card uses the longer compact caveat ("Inflation
+      compensation, not expected inflation. Compounds × 2 pillars +
+      forward.") while mockup small-print reads "Forward inflation
+      compensation, not expected inflation" — implementation is
+      strictly more informative; (b) widget local fetcher rather than
+      reusing useForwardBreakeven — identical pattern to reference
+      BreakevenInflationWidget.
+
+      Pre-commit gate (orchestrator-run from
+      UI/macro-copilot-dashboard-polished/):
+        npm run test:modules    `calculate_forward_breakeven_simple_tool:
+                                 10 passed, 0 failed`; all module +
+                                 registry tests passed.
+        npm run test:build      all build-folder tests pass.
+        npm run typecheck       clean (tsc -p tsconfig.app.json
+                                 --noEmit exit 0).
+
+      Mirrors:
+        surface_contract.md §4.3 row updated:
+          build_archetype: generic-builder → typed-result-renderer
+          build_status:    scaffolded     → dual-view-built
+          monitor_status:  deferred       → built (ForwardBreakeven widget)
+          (monitor_elig already `required`)
+        surface_contract.md §11 added v23 entry covering this ship.
+        §10 not edited (pilot-pinned).
+        `graphify update` — skipped, not on PATH on this VM
+        (recorded per ORCHESTRATOR_PROMPT Mirrors §2 fallback;
+         same precedent as v17–v22).
+
+      Commit on `frontend_automation` per template; catalog tool 15
+      flipped → `status: done`, `last_review_heading: APPROVED`,
+      `last_gate_result: pass`, `active_step: committed`.
+      commit_sha: pending-backfill (a separate small commit will land
+      the actual SHA after the work commit, mirroring the tool
+      7/8/9/10/11/12/13/14 backfill pattern).
+
+      Counts post-commit, after backfill: done=15 / blocked=0 /
+      remaining=3.  orchestrator_status stays `processing`.
+
   - at: '2026-06-07T08:42:00Z'
     kind: tool_14_shipped_batch_2_advancing
     text: |

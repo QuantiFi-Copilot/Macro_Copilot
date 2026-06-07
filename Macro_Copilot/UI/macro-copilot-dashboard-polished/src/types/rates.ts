@@ -618,6 +618,69 @@ export type BreakevenInflationSimpleOutput = {
   time_series_zscore?: TimeSeries;
 };
 
+// --- /detail/forward-breakeven ---
+// Standalone-bridge type for the same-country forward bond-implied breakeven
+// inflation primitive (e.g. UST/USD_TIPS 5Y5Y, FR_OAT/EUR_FR_LINKER 5Y10Y).
+// Year-weighted linear forward of two spot breakeven pillars; inherits the
+// spot primitive's same-country invariant.  Inflation-compensation FORWARD —
+// NOT a clean forward expected-inflation read; the underlying differential
+// at each pillar carries IRP + liquidity premia.  Units: BPS (snapshot in
+// PCT too) + the two endpoint spot breakevens for decomposition audit.
+
+export type ForwardBreakevenSimpleCurrentMetrics = {
+  as_of_date: string;
+  nominal_curve_family: string;
+  linker_curve_family: string;
+  start_tenor: string;
+  end_tenor: string;
+  /** Human-readable label, e.g. "UST/USD_TIPS 5Y5Y" or "FR_OAT/EUR_FR_LINKER 5Y10Y". */
+  forward_window_label: string;
+  /** Current forward breakeven inflation in percent. */
+  forward_breakeven_pct: number | null;
+  /** Current forward breakeven in basis points (year-weighted differential
+   *  of the two endpoint breakevens). */
+  forward_breakeven_bps: number | null;
+  daily_change_bps: number | null;
+  weekly_change_bps: number | null;
+  monthly_change_bps: number | null;
+  /** Rolling 252-trading-day z-score (YAML-locked window). */
+  current_z_score: number | null;
+  rolling_window_days: number;
+  high_252d_bps: number | null;
+  low_252d_bps: number | null;
+  percentile_252d: number | null;
+  /** Latest spot bond-implied breakeven (bps) at start_tenor — exposed so the
+   *  desk can audit the year-weighted decomposition. */
+  start_breakeven_bps: number | null;
+  /** Latest spot bond-implied breakeven (bps) at end_tenor. */
+  end_breakeven_bps: number | null;
+  start_years: number;
+  end_years: number;
+  /** Wire-honesty disclosure threaded from config.yaml:methodology.what_it_does.
+   *  Carries the explicit year-weighted-linear forward formula AND the
+   *  "forward inflation compensation; not a clean forward expected-inflation
+   *  read" caveat. */
+  methodology_label: string;
+};
+
+/** Bespoke per-row shape (forward breakeven bps + z-score in one row). */
+export type ForwardBreakevenSimpleTimeSeriesRow = {
+  date: string;
+  forward_breakeven_bps: number;
+  z_score: number | null;
+};
+
+export type ForwardBreakevenSimpleOutput = {
+  current_metrics: ForwardBreakevenSimpleCurrentMetrics;
+  /** Bespoke wire-frozen shape — forward breakeven (bps) + z-score per row. */
+  time_series: ForwardBreakevenSimpleTimeSeriesRow[];
+  /** Canonical TimeSeriesUnits.BPS series of the forward breakeven over the
+   *  displayed window. */
+  time_series_forward: TimeSeries;
+  /** Canonical TimeSeriesUnits.Z_SCORE series of the rolling z-score. */
+  time_series_zscore: TimeSeries;
+};
+
 // --- /detail/breakeven-butterfly ---
 // Standalone-bridge type for the same-country bond-implied breakeven butterfly
 // primitive (3-point curvature on a single nominal/linker pair).  Own type —
