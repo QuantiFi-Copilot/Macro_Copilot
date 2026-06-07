@@ -1862,3 +1862,106 @@ export type FuturesButterflySimpleOutput = {
   methodology_disclosure: string;
 };
 
+// --- /detail/policy-futures-calendar ---
+// Standalone-bridge type for the policy_futures same-curve calendar-spread
+// primitive (e.g. SOFR_FUT SFR1-SFR2, EUR_SHORT_RATE_FUT ER1-ER4,
+// SONIA_FUT SFI1-SFI3).  Mirrors ``FuturesCalendarSpreadOutput`` from
+// rates_agent/policy_futures/tools/futures_calendar_spread/schemas.py
+// byte-for-byte (snake_case wire fields preserved).
+//
+// Wire sign convention (frozen):
+//   ``spread_implied_rate_pct = rate_short − rate_long
+//                             = rate_front − rate_back``
+// in PERCENT POINTS (NOT bps — the policy-futures sub-domain stays in
+// PERCENT POINTS on implied-rate-derived objects; the sovereign / OIS
+// curve-spread ``_bps`` convention does NOT apply here).  Display
+// convention (in surfaces) is BACK − FRONT in bps — sign-flipped from
+// the wire so positive bps = back rate above front rate = steeper
+// policy path.  The flip lives in ``wirePctToDisplayBps`` in the
+// per-tool shared helper.  Per-leg disclosure block carries the
+// strip-slot master stems (stable across rolls) + current-front
+// underlying contracts (rotate at roll) + per-leg SCD2 metadata.
+
+export type FuturesCalendarSpreadTimeSeriesRow = {
+  date: string;
+  /** Calendar spread in the contract's native price space:
+   *  ``raw_price(short_leg) - raw_price(long_leg)``.  For inverse-priced
+   *  strips this equals ``-spread_implied_rate_pct``. */
+  raw_price_spread: number;
+  /** Calendar spread in implied-rate space, in PERCENT POINTS:
+   *  ``implied_rate_pct(short_leg) - implied_rate_pct(long_leg)``. */
+  spread_implied_rate_pct: number;
+};
+
+export type FuturesCalendarSpreadCurrentMetrics = {
+  as_of_date: string;
+  curve_family: string;
+  strip_position_short: number;
+  strip_position_long: number;
+  /** Human-readable label for the calendar pair, e.g. "SFR1-SFR2". */
+  spread_label: string;
+  /** Strip-slot master stem of the short (fronter) leg. */
+  contract_code_short: string;
+  /** Strip-slot master stem of the long (backer) leg. */
+  contract_code_long: string;
+  /** Current-front underlying contract the short leg resolves to. */
+  underlying_contract_code_short: string | null;
+  /** Current-front underlying contract the long leg resolves to. */
+  underlying_contract_code_long: string | null;
+  security_name_short: string | null;
+  security_name_long: string | null;
+  expiry_date_short: string | null;
+  expiry_date_long: string | null;
+  /** Inverse-pricing flag — when true (SFR / ER / SFI in V1),
+   *  implied_rate_pct = 100 − raw_price per leg. */
+  inverse_priced: boolean;
+  /** 'RFR' (SOFR / SONIA) or 'IBOR' (Euribor) — methodology disclosure label. */
+  short_rate_regime: string;
+  /** Latest calendar spread in the contract's native price space:
+   *  ``raw_price(short_leg) - raw_price(long_leg)``. */
+  raw_price_spread: number;
+  /** Latest calendar spread in implied-rate space, in PERCENT POINTS:
+   *  ``rate_short - rate_long = rate_front - rate_back``.  POSITIVE wire =
+   *  INVERTED strip; NEGATIVE wire = STEEPER strip.  Display layer flips
+   *  the sign so positive display bps = steeper policy path. */
+  spread_implied_rate_pct: number;
+  /** 1-trading-day raw subtraction in the contract's native price space. */
+  daily_change_raw_price_spread: number | null;
+  /** 1-trading-day raw subtraction in PERCENT POINTS (NOT multiplied
+   *  by 100 to bps). */
+  daily_change_spread_implied_rate_pct: number | null;
+  /** Rolling 252-trading-day z-score of the IMPLIED-RATE spread series
+   *  (wire convention: FRONT − BACK).  Display layer flips the sign so
+   *  the regime tone tracks the back-minus-front display convention. */
+  z_score_spread_implied_rate: number | null;
+  /** Trailing 252-trading-day range on the implied-rate spread series,
+   *  PERCENT POINTS, wire convention. */
+  high_252d_spread_implied_rate_pct: number | null;
+  low_252d_spread_implied_rate_pct: number | null;
+  mid_252d_spread_implied_rate_pct: number | null;
+  /** Percentile rank of spread_implied_rate_pct within the trailing
+   *  252-day range (0-100), wire convention.  Display layer subtracts
+   *  from 100 to re-orient under the back-minus-front display sign. */
+  percentile_252d: number | null;
+  rolling_window_days: number;
+  observation_count: number;
+};
+
+export type FuturesCalendarSpreadOutput = {
+  current_metrics: FuturesCalendarSpreadCurrentMetrics;
+  /** Bespoke wire-frozen per-row shape — raw_price_spread +
+   *  spread_implied_rate_pct per trade date.  Carries both unit spaces
+   *  side-by-side because TimeSeriesUnits has no PRICE member in V1
+   *  (ADR-gated extension). */
+  time_series: FuturesCalendarSpreadTimeSeriesRow[];
+  /** P5 / ADR 0013 caveat composed at runtime by compute() — includes
+   *  the sign convention (front − back wire, back − front display), the
+   *  per-curve_family regime label (RFR vs IBOR), the inverse-pricing
+   *  rule, the z-score lookback window, the trailing-range window, the
+   *  strip-position keying, and the rolling-generic-strip-spread
+   *  scope-limit caveat.  Surfaced verbatim on the extended view's
+   *  methodology card + the Monitor widget's title= tooltip (NOT a
+   *  hardcoded TS literal). */
+  methodology_disclosure: string;
+};
+

@@ -36,6 +36,7 @@ import type {
   ScanPolicyFuturesExtremesOutput,
   PolicyFuturesPriceLevelOutput,
   FuturesButterflySimpleOutput,
+  FuturesCalendarSpreadOutput,
 } from '@/types/rates';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
@@ -801,6 +802,41 @@ export function fetchDetailPolicyFuturesButterfly(
 ): Promise<FuturesButterflySimpleOutput> {
   return fetchJSON(
     `${RATES_PREFIX}/detail/policy-futures-butterfly${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/policy-futures-calendar — policy_futures same-curve calendar spread
+// ---------------------------------------------------------------------------
+// Two-strip-slot calendar spread on a SINGLE policy-futures curve family
+// (e.g. SOFR_FUT SFR1-SFR2 front-pack slope, EUR_SHORT_RATE_FUT ER1-ER4
+// whites slope).  Own typed helper per the standalone-bridge contract;
+// consumed by BOTH Build views and the Monitor tile.  Rolling-z-score
+// conventions are YAML-locked on this primitive (mirrors the sibling
+// sovereign / OIS / linker / ZCIS curve-spread bridges); only the
+// structural strip-position keys plus ``lookback_days`` / ``as_of_date`` /
+// ``field_name`` are exposed at the API layer.  The schema layer enforces
+// ``strip_position_short < strip_position_long`` so the desk-recognised
+// sign convention is unambiguous on the wire (FRONT − BACK in PERCENT
+// POINTS).  The frontend display layer flips the sign to BACK − FRONT in
+// bps so a positive display value reads as steeper policy path.
+
+export type FuturesCalendarSpreadDetailParams = {
+  curve_family: string;
+  strip_position_short: number;
+  strip_position_long: number;
+  lookback_days?: number;
+  /** YYYY-MM-DD; omit to anchor at the universe's last observed trade_date
+   *  on the intersection of both legs (post-fetch data-max anchor). */
+  as_of_date?: string;
+  field_name?: string;
+};
+
+export function fetchDetailPolicyFuturesCalendar(
+  params: FuturesCalendarSpreadDetailParams,
+): Promise<FuturesCalendarSpreadOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/policy-futures-calendar${buildQuery(params)}`,
   );
 }
 

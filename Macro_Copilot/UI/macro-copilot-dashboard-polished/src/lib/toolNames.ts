@@ -87,6 +87,15 @@ const KNOWN_TOOL_ALIASES: Record<string, string> = {
   // prefixed frontend module / typed-detail endpoint.
   get_futures_butterfly_simple_tool:
     'policy_futures_get_futures_butterfly_simple_tool',
+  // Same divergence for the policy_futures calendar-spread tool — the
+  // MCP function inside rates_agent/policy_futures/mcp_server.py is
+  // ``get_futures_calendar_spread_tool`` (unprefixed); workflow registry
+  // + tool_metadata DB row + frontend module folder use the
+  // ``policy_futures_`` prefix.  LLM-side calls that arrive via the
+  // unprefixed MCP name route through this alias to reach the prefixed
+  // frontend module / typed-detail endpoint.
+  get_futures_calendar_spread_tool:
+    'policy_futures_get_futures_calendar_spread_tool',
 };
 
 /** Normalise a tool name to the backend-canonical form.
