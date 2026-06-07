@@ -2,18 +2,18 @@ version: '1.0'
 branch: frontend_automation
 backend: claude-cli
 orchestrator_status: processing
-current_tool: ois__cross_market_spread
-current_tool_backend_name: calculate_ois_cross_market_spread_tool
-current_step: committed
-dispatch_round: 2
-last_dispatch_at: "2026-06-07T07:25:00Z"
+current_tool: inflation_indexed_bonds__forward_breakeven
+current_tool_backend_name: calculate_forward_breakeven_simple_tool
+current_step: builder_dispatched
+dispatch_round: 1
+last_dispatch_at: "2026-06-07T08:45:00Z"
 last_successful_tool: ois__cross_market_spread
 last_successful_commit: 7ca1a92
 last_reviewer_heading: APPROVED
 last_gate_result: pass
 last_stop_reason: null
 last_error: null
-last_updated: "2026-06-07T08:42:00Z"
+last_updated: "2026-06-07T08:45:00Z"
 done: 14
 blocked: 0
 remaining: 4
@@ -95,13 +95,67 @@ status_notes:
       land the actual SHA after the work commit, mirroring the
       tool 7/8/9/10/11/12/13 backfill pattern).
 
-      Counts on exit (post-commit, after backfill): done=14 /
-      blocked=0 / remaining=4.  orchestrator_status stays
-      `processing` and the wake exits cleanly here to let the
-      next cron fire pick up the next eligible tool — tool 15
-      `inflation_indexed_bonds__forward_breakeven`,
-      build_order 15, status `todo`.  Quota note unchanged: still
-      in runtime-enforced mode per QUOTA_AND_RESUME_POLICY.md §3.
+      Counts post-commit, after backfill: done=14 / blocked=0 /
+      remaining=4.  orchestrator_status stays `processing`.
+
+      Same-wake advance to tool 15
+      (`inflation_indexed_bonds__forward_breakeven`, build_order
+      15) per ORCHESTRATOR_PROMPT.md catalog-processing rule
+      ("Do not intentionally stop after a single completed tool
+      if more eligible catalog work remains"):
+
+        Pre-flight backend audit for tool 15: ALL PASS
+          Check 1 (backend folder): canonical 4-file shape at
+            rates_agent/inflation_indexed_bonds/tools/forward_breakeven_simple/
+            (__init__.py + compute.py + config.yaml + schemas.py).
+          Check 2 (MCP wrapper): registered at
+            rates_agent/inflation_indexed_bonds/mcp_server.py:632
+            (def calculate_forward_breakeven_simple_tool).
+          Check 3b (curated migration): present at
+            database/migrations/2026-05-30_phase1_calculate_forward_breakeven_simple_curated.sql
+            (2224 bytes; DB schema not migrated on this VM so 3b
+            is the active gate per PRE_FLIGHT_BACKEND_AUDIT.md §2).
+          Check 4 (mockups): both Compact.png (1292075 bytes) +
+            Extended.png (1720640 bytes) present at the target
+            module's mockups/ folder (intake commit pre-dating
+            this wake; folder mtime 2026-06-06T22:31Z).
+
+        Builder dispatched at 08:45 UTC via
+          `bash automation/frontend_automation/run_claude_builder.sh
+             /tmp/builder_prompt_inflation_indexed_bonds__forward_breakeven_round1.md
+             /tmp/claude_frontend_builder_run_inflation_indexed_bonds__forward_breakeven_round1.log`
+          (PID 3807861, nohup, &; check_branch.sh green
+          at dispatch).  Prompt at /tmp/builder_prompt_*_round1.md
+          (~7KB; catalog entry verbatim + resolved mockup paths
+          + reference module note + pre-flight audit output +
+          no-alias-bridge note).
+
+        Reference frontend module: Phase-1 pilot
+        `calculate_breakeven_inflation_simple_tool` (breakeven
+        family pattern).  Closest shape sibling for forward
+        two-pillar implied:  `calculate_ois_forward_rate_tool`
+        (commit 031f71d) — its v20 deviation-handling pattern is
+        precedent for wire-vs-mockup gaps on the forward KPI strip.
+
+        Wake exits cleanly here with the builder in flight; the
+        next cron fire will:
+          (a) poll builder to completion (per prior wake patterns
+              for tool 11/12/13/14 the builder typically takes
+              10-20m to complete);
+          (b) dispatch the reviewer (round 2) via
+              run_claude_reviewer.sh with a fresh-context prompt
+              wrapping CLAUDE_REVIEWER_PROMPT.md + the catalog
+              entry + the resolved mockup paths + the builder's
+              `git diff` and newly-untracked surface files;
+          (c) parse the reviewer log via parse_reviewer_log.py
+              and apply the Case A–F adjudication;
+          (d) on Case C: run the pre-commit gate + mirrors +
+              commit.
+
+        Quota: still in runtime-enforced mode per
+        QUOTA_AND_RESUME_POLICY.md §3 (claude /status not
+        available non-interactively).  No quota signal from
+        any dispatch this wake.
 
   - at: '2026-06-07T06:10:00Z'
     kind: tool_13_shipped_batch_2_advancing

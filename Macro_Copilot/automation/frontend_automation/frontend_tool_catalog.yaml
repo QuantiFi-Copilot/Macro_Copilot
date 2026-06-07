@@ -777,10 +777,13 @@ tools:
       - "Methodology disclosure: cross-currency policy-path divergence; same-tenor; ON rate reference per currency"
 
   - id: inflation_indexed_bonds__forward_breakeven
-    status: todo
+    status: in_progress
     human_action_required: false
     last_review_heading: null
     last_gate_result: not_run
+    dispatch_round: 1
+    active_step: builder_dispatched
+    dispatched_at: "2026-06-07T08:45:00Z"
     build_order: 15
     backend_tool_name: calculate_forward_breakeven_simple_tool
     instrument_family: inflation_indexed_bonds
