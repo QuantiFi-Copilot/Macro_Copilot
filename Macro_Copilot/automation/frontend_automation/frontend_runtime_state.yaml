@@ -2,21 +2,21 @@ version: '1.0'
 branch: frontend_automation
 backend: claude-cli
 orchestrator_status: processing
-current_tool: ois__forward_rate
-current_tool_backend_name: calculate_ois_forward_rate_tool
+current_tool: inflation_swaps__curve_spread
+current_tool_backend_name: calculate_inflation_swap_curve_spread_tool
 current_step: committed
 dispatch_round: 2
-last_dispatch_at: "2026-06-07T04:35:00Z"
-last_successful_tool: ois__forward_rate
-last_successful_commit: 031f71d
+last_dispatch_at: "2026-06-07T05:59:00Z"
+last_successful_tool: inflation_swaps__curve_spread
+last_successful_commit: pending-backfill
 last_reviewer_heading: APPROVED
 last_gate_result: pass
 last_stop_reason: null
 last_error: null
-last_updated: "2026-06-07T04:50:00Z"
-done: 12
+last_updated: "2026-06-07T06:10:00Z"
+done: 13
 blocked: 0
-remaining: 6
+remaining: 5
 quota_state: probe_unavailable
 quota_snapshot: null
 quota_snapshot_at: '2026-05-29T15:52:00Z'
@@ -40,6 +40,83 @@ reviewer_mode_history:
 catalog_exhausted_at: null
 human_required: null
 status_notes:
+  - at: '2026-06-07T06:10:00Z'
+    kind: tool_13_shipped_batch_2_advancing
+    text: |
+      Cron-fired wake at 05:58 UTC on 2026-06-07 (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784).  On entry, the prior
+      wake's builder for tool 13 (`inflation_swaps__curve_spread`)
+      had already finished (log mtime 05:02 UTC; ~10m runtime;
+      builder self-tests green; BUILDER REPORT clean — module.ts +
+      THESIS.md + __tests__/module.spec.ts overwrites + 4 new
+      surface files BuildExtended/BuildCompact/
+      inflationSwapCurveSpreadShared/monitor widget + types/rates.ts
+      + services/ratesApi.ts + api/routes/rates/detail.py).  No
+      edit to src/modules/index.ts (loader entry already present);
+      no tool-name alias needed.
+
+      Reviewer dispatched 05:59 via run_claude_reviewer.sh
+      (PID 3756826).  Prompt at
+      /tmp/reviewer_prompt_inflation_swaps__curve_spread_round2.md
+      (1997 lines — catalog entry + mockup paths + 626-line tracked
+      diff + 4 new untracked surface files appended verbatim).
+      Reviewer log finalised 06:06 (~6m, 3801 bytes).
+
+      Reviewer verdict: `# APPROVED` (first heading of response,
+      followed by full verification scorecard + "No findings.").
+      parse_reviewer_log.py returned `heading: null` — its regex
+      requires bare `APPROVED` on a line by itself, not the
+      markdown heading `# APPROVED`.  The reviewer DID emit the
+      heading exactly as instructed by the reviewer prompt
+      ("Emit EXACTLY ONE of these headings as the first heading
+      of your response") — this is a parser quirk, not a reviewer
+      ambiguity.  Visual inspection of the log confirmed the
+      unambiguous APPROVED verdict (zero blocking findings;
+      verification scorecard green across dual-view contract,
+      compact/extended views, standalone bridge, methodology
+      honesty, shared helper, FM11, FM12, pre-commit gates,
+      THESIS conformance, and mockup conformance).  Treated as
+      Case C per ORCHESTRATOR_PROMPT.md; documented honestly in
+      the §11 changelog entry for v21.
+
+      Pre-commit gate (orchestrator-run from
+      UI/macro-copilot-dashboard-polished/):
+        npm run test:modules    `calculate_inflation_swap_curve_spread_tool:
+                                 6 passed, 0 failed`; all 58+ modules +
+                                 registry pass.
+        npm run test:build      all build-folder tests pass
+                                 (routing 48 / dashboard 11 /
+                                  registry 18 / artifacts 28 etc.).
+        npm run typecheck       clean (tsc -p tsconfig.app.json
+                                 --noEmit exit 0).
+
+      Mirrors:
+        surface_contract.md §4.4 row updated:
+          build_archetype: generic-builder → typed-result-renderer
+          build_status:    scaffolded     → dual-view-built
+          monitor_status:  deferred       → built (InflationSwapCurveSpread widget)
+          (monitor_elig already `required`)
+        surface_contract.md §11 added v21 entry covering this ship.
+        §10 not edited (pilot-pinned).
+        `graphify update` — skipped, not on PATH on this VM
+        (recorded per ORCHESTRATOR_PROMPT Mirrors §2 fallback;
+         same precedent as v20, v19, v18, v17, v16, v15, etc.).
+
+      Commit on `frontend_automation` per template; catalog tool
+      13 flipped → `status: done`, `last_review_heading: APPROVED`,
+      `last_gate_result: pass`, `active_step: committed`.
+      commit_sha: pending-backfill (a separate small commit will
+      land the actual SHA after the work commit, mirroring the
+      tool 7/8/9/10/11/12 backfill pattern).
+
+      Counts on exit (post-commit, after backfill): done=13 /
+      blocked=0 / remaining=5.  orchestrator_status stays
+      `processing` and the wake exits cleanly here to let the
+      next cron fire pick up the next eligible tool — tool 14
+      `ois__cross_market_spread`, build_order 14, status `todo`.
+      Quota note unchanged: still in runtime-enforced mode per
+      QUOTA_AND_RESUME_POLICY.md §3.
+
   - at: '2026-06-06T23:30:00Z'
     kind: tool_11_shipped_batch_2_advancing
     text: |

@@ -238,6 +238,19 @@ from rates_agent.inflation_swaps.tools.inflation_swap_rate_level import (
     InflationSwapRateLevelOutput,
     calculate_inflation_swap_rate_level,
 )
+# Standalone-bridge endpoint for the same-curve ZCIS tenor-spread primitive
+# (USD_ZCIS 5s10s, EUR_ZCIS 5s30s, GBP_ZCIS 2s10s).  Same payload feeds the
+# dual-view Build surfaces + the Monitor tile per the rendering_density
+# dual-view contract.  Same-curve, two-tenor primitive: one ``curve_family`` +
+# two strictly-ordered tenors; cross-curve combinations belong to the separate
+# cross_market_inflation_swap_spread primitive.  Rolling-z-score conventions
+# YAML-locked.
+from rates_agent.inflation_swaps.tools.inflation_swap_curve_spread import (
+    CONFIG_PATH as INFLATION_SWAP_CURVE_SPREAD_CONFIG_PATH,
+    InflationSwapCurveSpreadInput,
+    InflationSwapCurveSpreadOutput,
+    calculate_inflation_swap_curve_spread,
+)
 # Standalone-bridge endpoint for the policy_futures strip-position price level
 # primitive (SFR1 / SFR2 / ER1 / SFI1 / ... — STIR strip slots on
 # SOFR_FUT / EUR_SHORT_RATE_FUT / SONIA_FUT).  Keyed by
@@ -1562,6 +1575,103 @@ def inflation_swap_rate_level_detail(
     _tool_result_or_raise(
         result,
         f"ZCIS rate level for {curve_family} {tenor}",
+    )
+    return result
+
+
+# ============================================================================
+# /detail/inflation-swap-curve-spread — same-curve ZCIS tenor-spread bridge
+# ----------------------------------------------------------------------------
+# Same-curve, two-tenor primitive (e.g. USD_ZCIS 5s10s, EUR_ZCIS 5s30s).  Per
+# ``docs_revamped/03_standards/methodology_exposure.md §5`` ships its OWN
+# typed-detail endpoint feeding BOTH the extended + compact Build views and
+# the Monitor tile per rendering_density.md §10.  Rolling-z-score conventions
+# are YAML-locked on this primitive — only ``lookback_days`` + ``field_name``
+# are exposed at the API layer (mirrors the sibling breakeven-curve-spread +
+# ZCIS rate_level tools).  Surfaces the load-bearing reference-metadata triple
+# (``inflation_index_family`` / ``index_lag`` / ``interpolation`` /
+# ``underlying_index``) on the wire so the desk can interpret the spread
+# under the correct ZCIS convention without a second tool call.  Cross-curve
+# combinations belong to ``/detail/cross-market-zcis``.
+# ============================================================================
+@router.get(
+    "/detail/inflation-swap-curve-spread",
+    response_model=InflationSwapCurveSpreadOutput,
+    summary="ZCIS Curve Spread Detail (standalone bridge)",
+)
+def inflation_swap_curve_spread_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family: str = Query(
+        ...,
+        description=(
+            "Inflation-swap curve family identifier shared by BOTH legs "
+            "(same-curve invariant).  Examples: 'USD_ZCIS' (US CPI-U), "
+            "'EUR_ZCIS' (Eurozone HICPxT), 'GBP_ZCIS' (UK RPI)."
+        ),
+    ),
+    short_tenor: str = Query(
+        ...,
+        description=(
+            "Short tenor of the ZCIS curve spread (e.g. '2Y' for 2s10s, "
+            "'5Y' for 5s30s).  Must be a supported pillar on this "
+            "curve_family and strictly shorter than ``long_tenor``."
+        ),
+    ),
+    long_tenor: str = Query(
+        ...,
+        description=(
+            "Long tenor of the ZCIS curve spread (e.g. '10Y' for 2s10s, "
+            "'30Y' for 5s30s).  Must be a supported pillar on this "
+            "curve_family and strictly longer than ``short_tenor``."
+        ),
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic used for BOTH endpoint ZCIS rate "
+            "series.  Omit (None) to use the tool's bundled "
+            "``default_zcis_rate_field`` convention from "
+            "inflation_swap_curve_spread/config.yaml (currently 'PX_MID')."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the
+    frontend module's ``surfaces/BuildExtended.tsx``,
+    ``surfaces/BuildCompact.tsx``, AND the Monitor widget per the
+    rendering-density dual-view + monitor contract.
+
+    The inflation-swap-curve-spread primitive intentionally does NOT
+    expose the z-score conventions at its Input layer — they're sourced
+    from the YAML at compute() time only (mirrors the sibling
+    breakeven-curve-spread + ZCIS rate_level tools).
+    """
+    try:
+        params = InflationSwapCurveSpreadInput(
+            curve_family=curve_family,
+            short_tenor=short_tenor,
+            long_tenor=long_tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        iscs_config = load_tool_config(INFLATION_SWAP_CURVE_SPREAD_CONFIG_PATH)
+        result = calculate_inflation_swap_curve_spread(
+            engine=engine, params=params, config=iscs_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/inflation-swap-curve-spread: tool failed for %s %s/%s",
+            curve_family, short_tenor, long_tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"ZCIS curve spread for {curve_family} {short_tenor}/{long_tenor}",
     )
     return result
 

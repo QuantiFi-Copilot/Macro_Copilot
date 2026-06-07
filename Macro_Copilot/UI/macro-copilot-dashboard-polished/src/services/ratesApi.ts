@@ -27,6 +27,7 @@ import type {
   OisRateLevelOutput,
   OisForwardRateOutput,
   InflationSwapRateLevelOutput,
+  InflationSwapCurveSpreadOutput,
   ScanInflationSwapsExtremesOutput,
   PolicyFuturesPriceLevelOutput,
 } from '@/types/rates';
@@ -441,6 +442,33 @@ export function fetchDetailInflationSwapRateLevel(
 ): Promise<InflationSwapRateLevelOutput> {
   return fetchJSON(
     `${RATES_PREFIX}/detail/inflation-swap-rate-level${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/inflation-swap-curve-spread  — same-curve ZCIS tenor spread bridge
+// ---------------------------------------------------------------------------
+// Same-curve, two-tenor ZCIS spread (e.g. USD_ZCIS 5s10s, EUR_ZCIS 5s30s).  Own
+// typed helper per the standalone-bridge contract; consumed by BOTH Build
+// views and the Monitor tile.  Rolling-z-score conventions are YAML-locked on
+// this primitive (no input-layer overrides — mirrors the sibling ZCIS
+// rate_level + breakeven_curve_spread tools); only ``lookback_days`` +
+// ``field_name`` are exposed.  Cross-curve combinations belong to the
+// separate cross-market-zcis primitive.
+
+export type InflationSwapCurveSpreadDetailParams = {
+  curve_family: string;
+  short_tenor: string;
+  long_tenor: string;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailInflationSwapCurveSpread(
+  params: InflationSwapCurveSpreadDetailParams,
+): Promise<InflationSwapCurveSpreadOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/inflation-swap-curve-spread${buildQuery(params)}`,
   );
 }
 

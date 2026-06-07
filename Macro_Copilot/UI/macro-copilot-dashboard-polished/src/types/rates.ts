@@ -286,6 +286,86 @@ export type InflationSwapRateLevelOutput = {
   time_series?: TimeSeries;
 };
 
+// --- /detail/inflation-swap-curve-spread (standalone bridge) ---
+//
+// Mirrors rates_agent/inflation_swaps/tools/inflation_swap_curve_spread/schemas.py
+// (InflationSwapCurveSpreadOutput / InflationSwapCurveSpreadCurrentMetrics /
+// InflationSwapCurveSpreadTimeSeriesRow).  Per the methodology-exposure
+// standalone-bridge contract (docs_revamped/03_standards/methodology_exposure.md
+// §5) the ZCIS curve-spread primitive ships its own typed-detail endpoint at
+// /api/v1/rates/detail/inflation-swap-curve-spread and its OWN frontend type —
+// no reuse of BreakevenCurveSpreadOutput (that's bond-implied breakeven curve
+// shape; this is OTC inflation-swap curve shape; the underlying instrument
+// families are distinct).  Same-curve, two-tenor primitive: a single
+// ``curve_family`` (USD_ZCIS / EUR_ZCIS / GBP_ZCIS) + two strictly-ordered
+// tenors.  Cross-curve combinations are a separate primitive
+// (CrossMarketInflationSwapSpread).  Units: BPS.
+
+export type InflationSwapCurveSpreadCurrentMetrics = {
+  as_of_date: string;
+  curve_family: string;
+  short_tenor: string;
+  long_tenor: string;
+  /** Human-readable label, e.g. "USD_ZCIS 5s10s". */
+  spread_label: string;
+  /** Current ZCIS curve spread in BPS.  Computed as
+   *  ``(long_zcis_pct - short_zcis_pct) * 100``.  POSITIVE = upward-
+   *  sloping forward inflation (long-tenor implied inflation higher
+   *  than short-tenor); NEGATIVE = inverted. */
+  spread_bps: number;
+  change_1d_bps: number | null;
+  change_1w_bps: number | null;
+  change_1m_bps: number | null;
+  /** Rolling 252-trading-day z-score of the spread (bps); conventions
+   *  YAML-locked on this primitive (no input-layer overrides — mirrors
+   *  the sibling level + curve-spread tools). */
+  z_score_252d: number | null;
+  high_252d_bps: number | null;
+  low_252d_bps: number | null;
+  percentile_252d: number | null;
+  /** Endpoint ZCIS rates used to form the spread (PERCENT). */
+  short_zcis_rate_pct: number | null;
+  long_zcis_rate_pct: number | null;
+  short_years: number;
+  long_years: number;
+  observation_count: number;
+  /** Inflation index family the ZCIS curve references (shared by BOTH
+   *  legs by the same-curve invariant).  Examples: 'US_CPI_URBAN'
+   *  (USD_ZCIS), 'EU_HICP' (EUR_ZCIS), 'UK_RPI' (GBP_ZCIS).  Load-
+   *  bearing — surfaced so the desk can interpret the spread honestly. */
+  inflation_index_family: string;
+  /** Indexation lag shared by both legs.  Examples: '3M' (USD_ZCIS,
+   *  EUR_ZCIS), '2M' (GBP_ZCIS). */
+  index_lag: string;
+  /** Index-fixing interpolation convention shared by both legs.  Examples:
+   *  'Daily' (USD_ZCIS), 'Monthly' (EUR_ZCIS, GBP_ZCIS). */
+  interpolation: string;
+  /** Underlying inflation index Bloomberg ticker shared by both legs. */
+  underlying_index: string | null;
+  /** Wire-honesty disclosure threaded from the YAML's
+   *  ``methodology.what_it_does``.  NOT a hardcoded TS literal. */
+  methodology_label: string;
+};
+
+/** Bespoke per-row shape (spread bps + z-score in one row). */
+export type InflationSwapCurveSpreadTimeSeriesRow = {
+  date: string;
+  spread_bps: number;
+  z_score: number | null;
+};
+
+export type InflationSwapCurveSpreadOutput = {
+  current_metrics: InflationSwapCurveSpreadCurrentMetrics;
+  /** Bespoke wire-frozen shape — spread (bps) + z-score per row. */
+  time_series: InflationSwapCurveSpreadTimeSeriesRow[];
+  /** Canonical TimeSeriesUnits.BPS series of the spread.  Required —
+   *  mirrors the Pydantic Output where the field is non-optional. */
+  time_series_spread: TimeSeries;
+  /** Canonical TimeSeriesUnits.Z_SCORE series of the rolling z-score.
+   *  Required — mirrors the Pydantic Output where the field is non-optional. */
+  time_series_zscore: TimeSeries;
+};
+
 // --- /detail/ois-rate-level (standalone bridge) ---
 //
 // Mirrors rates_agent/ois/tools/rate_level/schemas.py.  Per the
