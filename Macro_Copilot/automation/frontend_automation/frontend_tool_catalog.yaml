@@ -870,6 +870,7 @@ tools:
     reviewer_dispatched_at: "2026-06-07T09:55:00Z"
     reviewer_finished_at: "2026-06-07T09:57:00Z"
     committed_at: "2026-06-07T10:10:00Z"
+    commit_sha: 3cb47ac
     build_order: 17
     backend_tool_name: scan_bond_futures_extremes_tool
     instrument_family: bond_futures
@@ -901,10 +902,13 @@ tools:
       - "Methodology disclosure: per-instrument family-level scanning; bond futures contract chain conventions per country"
 
   - id: policy_futures__scan_extremes
-    status: todo
+    status: in_progress
     human_action_required: false
     last_review_heading: null
     last_gate_result: not_run
+    dispatch_round: 1
+    active_step: builder_dispatched
+    dispatched_at: "2026-06-07T10:13:00Z"
     build_order: 18
     backend_tool_name: get_scan_policy_futures_extremes_tool
     instrument_family: policy_futures

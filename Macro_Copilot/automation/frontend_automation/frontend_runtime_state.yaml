@@ -2,18 +2,18 @@ version: '1.0'
 branch: frontend_automation
 backend: claude-cli
 orchestrator_status: processing
-current_tool: bond_futures__scan_extremes
-current_tool_backend_name: scan_bond_futures_extremes_tool
-current_step: committed
-dispatch_round: 2
-last_dispatch_at: "2026-06-07T09:55:00Z"
+current_tool: policy_futures__scan_extremes
+current_tool_backend_name: get_scan_policy_futures_extremes_tool
+current_step: builder_dispatched
+dispatch_round: 1
+last_dispatch_at: "2026-06-07T10:13:00Z"
 last_successful_tool: bond_futures__scan_extremes
-last_successful_commit: pending-backfill
+last_successful_commit: 3cb47ac
 last_reviewer_heading: APPROVED
 last_gate_result: pass
 last_stop_reason: null
 last_error: null
-last_updated: "2026-06-07T10:10:00Z"
+last_updated: "2026-06-07T10:14:00Z"
 done: 17
 blocked: 0
 remaining: 1
@@ -40,6 +40,179 @@ reviewer_mode_history:
 catalog_exhausted_at: null
 human_required: null
 status_notes:
+  - at: '2026-06-07T10:14:00Z'
+    kind: tool_17_shipped_batch_2_advancing
+    text: |
+      Cron-fired wake at 10:07 UTC on 2026-06-07 (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784).  On entry, the prior wake's
+      reviewer for tool 17 (`bond_futures__scan_extremes`) had already
+      finished (reviewer log mtime 09:57 UTC; ~2m runtime; 4375 bytes).
+      Builder log mtime 09:50 UTC.  No live builder/reviewer processes
+      on entry.
+
+      parse_reviewer_log.py returned
+      {"ok": true, "heading": "APPROVED", "environment_failure": false,
+       "reviewer_quota_exhausted": false} — Case C.
+
+      Reviewer verdict: bare `APPROVED` last token of the response;
+      verification scorecard green across:
+        - Dual-view contract (rendering_density.md §2.1/§2.2):
+          `module.ts` tiers=[generic_runnable, custom_build_surface,
+          monitor_surface]; both `surfaces.buildExtended` +
+          `surfaces.buildCompact` populated; Compact has no controls
+          strip, calls `onExpand`, methodology reachable via footer +
+          `title=` hover; Extended has ControlsStrip + 3 summary cards +
+          z-score distribution histogram + ranked detail table +
+          MethodologyCard + LineageFooter.
+        - Mockup conformance (both PNGs match):
+          Compact — BOND FUTURES EXTREMES header, |z|/flagged/P+Δ+V+O
+          kicker, 4 ranked rows with SCOPE chips (PRICE/OI/VOL/PRICE for
+          TY1/RX1/JB1/G1 sequence reproducible from sorted-by-|z|),
+          value-with-narrative dual-line cell, MOST EXTREME highlight
+          row, "V1 monitors-only. CTD analytics not in scan." footer,
+          "View all N" expand + Fresh + As of date.
+          Extended — kicker, "Front-Month Bond Futures · Extremes (252d
+          Z-Score)" title, three top-right cards (SCAN SUMMARY /
+          DISTRIBUTION ALL METRICS / VS V1 LIMITATIONS), controls strip,
+          z-score distribution histogram, three summary callouts, ranked
+          detail table with documented columns + "Open in Build"
+          deep-link to `futures_price_level_tool`, methodology card +
+          lineage footer.
+        - Standalone bridge contract (methodology_exposure.md §5):
+          `MODULE.typedView: null`; `richModel: false`; endpoint at
+          `/api/v1/rates/detail/bond-futures-scanner` with
+          `response_model=ScanBondFuturesExtremesOutput`;
+          `fetchDetailBondFuturesScanner` helper added to
+          `ratesApi.ts`; `ScanBondFuturesExtremesOutput` +
+          `ScanBondFuturesExtremesResultRow` + `ScanBondFuturesMetric`
+          mirror types snake_case-preserved in `types/rates.ts`.
+          All three surfaces (Build + Monitor) consume the same
+          endpoint via the shared `useBondFuturesScanner` hook.
+        - FM1–FM12: FM1 folder name = `scan_bond_futures_extremes_tool`
+          exactly; FM7 pure value export; FM8 all three claimed surfaces
+          exist at canonical paths; FM10 THESIS Q1–Q5 substantive with
+          per-surface specifics + FM ID cites + ADR 0013;
+          FM11 test calls `assertStandardModuleInvariants` AND adds
+          dual-view/typedView-null/monitor/mockups checks; FM12
+          alphabetical position correct at `src/modules/index.ts:92`
+          (between `policy_futures_get_volume_open_interest_snapshot_tool`
+          and `scan_inflation_linkers_extremes_tool`).
+        - Methodology honesty: `MethodologyCard` rows include
+          `data.methodology_disclosure` verbatim (not a TS literal);
+          `BOND_FUTURES_SCANNER_COMPACT_CAVEAT` is the short-form
+          per-tool caveat used in the compact footer ONLY; full
+          disclosure remains the wire value via `title=`.  Matches
+          the ZCIS/linker sibling pattern.
+        - Shared cross-surface helper:
+          `surfaces/bondFuturesScannerShared.ts` houses the curve-family
+          registry, metric registry, `useBondFuturesScanner` hook,
+          format helpers, scan-summary parser, histogram builder,
+          methodology row builder, and reference chips.  All three
+          surfaces import from it; no logic duplication.
+
+      One non-blocking observation (kept as code-hygiene note, not a
+      fix-pass round): `instrumentCountry` is imported in
+      `BuildExtended.tsx:39` but never used (the table uses
+      `meta?.countryLabel ?? row.curve_family` directly inline). The
+      export exists in the shared file for parity with the per-row
+      identity helper triple, so this is a tiny dead import rather
+      than a contract violation. Typecheck passes; not worth a fix.
+
+      Pre-commit gate (orchestrator-run from
+      UI/macro-copilot-dashboard-polished/):
+        npm run test:modules    `scan_bond_futures_extremes_tool:
+                                 7 passed, 0 failed`; all module +
+                                 registry tests passed.
+        npm run test:build      all build-folder tests pass
+                                 (routing 48 / dashboard 11 /
+                                  registry 18 / artifacts 28
+                                  widget-format 53 etc.).
+        npm run typecheck       clean (tsc -p tsconfig.app.json
+                                 --noEmit exit 0).
+
+      Mirrors:
+        surface_contract.md §4.6 row updated:
+          output_kind:     scanner-result   → scanner-rankedlist
+          build_archetype: generic-builder  → typed-result-renderer
+          build_status:    scaffolded       → dual-view-built
+          monitor_status:  deferred         → built (BondFuturesScanner widget)
+          (monitor_elig already `required`)
+        surface_contract.md §11 added v25 entry covering this ship.
+        §10 not edited (pilot-pinned).
+        `graphify update` — skipped, not on PATH on this VM
+        (recorded per ORCHESTRATOR_PROMPT Mirrors §2 fallback;
+         same precedent as v17–v24).
+
+      Commit on `frontend_automation` per template; catalog tool 17
+      flipped → `status: done`, `last_review_heading: APPROVED`,
+      `last_gate_result: pass`, `active_step: committed`.
+      commit_sha: 3cb47ac (work commit; SHA backfilled in a follow-up
+      catalog/runtime/note commit, mirroring the tool 7-16 pattern).
+
+      Counts post-commit: done=17 / blocked=0 / remaining=1.
+      orchestrator_status stays `processing`.
+
+      Same-wake advance to tool 18 (`policy_futures__scan_extremes`,
+      build_order 18) per ORCHESTRATOR_PROMPT.md catalog-processing
+      rule ("Do not intentionally stop after a single completed tool
+      if more eligible catalog work remains"):
+
+        Pre-flight backend audit for tool 18: ALL PASS
+          Check 1 (backend folder): canonical 4-file shape at
+            rates_agent/policy_futures/tools/scan_policy_futures_extremes/
+            (__init__.py 2293B + compute.py 47574B +
+             config.yaml 29664B + schemas.py 32816B).
+          Check 2 (MCP wrapper): registered at
+            rates_agent/policy_futures/mcp_server.py:1669
+            (def get_scan_policy_futures_extremes_tool).
+          Check 3b (curated migration): present at
+            database/migrations/2026-05-30_phase1_policy_futures_get_scan_policy_futures_extremes_curated.sql
+            (2242 bytes; DB schema not migrated on this VM so 3b
+            is the active gate per PRE_FLIGHT_BACKEND_AUDIT.md §2).
+          Check 4 (mockups): both Compact.png (1256102 bytes) +
+            Extended.png (1687731 bytes) present at the target
+            module's mockups/ folder (intake commit pre-dating
+            this wake; folder mtime 2026-06-06T22:31Z).
+
+        Builder dispatched at 10:13 UTC via
+          `nohup bash automation/frontend_automation/run_claude_builder.sh
+             /tmp/builder_prompt_policy_futures__scan_extremes_round1.md
+             /tmp/claude_frontend_builder_run_policy_futures__scan_extremes_round1.log`
+          (child claude PID 3842862; wrapper 3842855;
+          check_branch.sh green at dispatch).  Prompt at
+          /tmp/builder_prompt_*_round1.md (295 lines; catalog
+          entry verbatim + resolved mockup paths + reference module
+          note + scanner-shape siblings (scan_inflation_linkers /
+          scan_bond_futures) + tool-name aliaser note + pre-flight
+          audit output).
+
+        Reference frontend module: `scan_inflation_swaps_extremes_tool`
+        (commit 07372db) — Phase-1 scanner-shape pattern.  Two
+        sibling scanner-shape modules also available as second/third
+        references: `scan_inflation_linkers_extremes_tool`
+        (commit 378a8b7) + `scan_bond_futures_extremes_tool`
+        (commit 3cb47ac just-shipped).
+
+        Tool-name alias note: frontend folder + MCP function =
+        `get_scan_policy_futures_extremes_tool`; workflow registry
+        uses `policy_futures_get_scan_policy_futures_extremes_tool`
+        prefix (mirrors the `policy_futures_get_futures_price_level_tool`
+        precedent).  TS aliaser at `src/lib/toolNames.ts` may need
+        a KNOWN_TOOL_ALIASES entry — builder advised to check the
+        existing pattern.
+
+        Wake exits cleanly here with the builder in flight; the
+        orchestrator will poll the builder to completion this same
+        wake, dispatch the reviewer (round 2), parse the reviewer
+        log, run the pre-commit gate on Case C, and commit.  If the
+        builder runs long, the next cron wake will resume per
+        QUOTA_AND_RESUME_POLICY.md §3.
+
+        Quota: still in runtime-enforced mode per
+        QUOTA_AND_RESUME_POLICY.md §3 (claude /status not
+        available non-interactively).  No quota signal from
+        any dispatch this wake.
+
   - at: '2026-06-07T09:32:00Z'
     kind: tool_16_shipped_batch_2_advancing
     text: |
