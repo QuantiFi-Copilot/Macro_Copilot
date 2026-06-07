@@ -25,6 +25,7 @@ import type {
   OisButterflyOutput,
   OisCurveSpreadOutput,
   OisRateLevelOutput,
+  OisForwardRateOutput,
   InflationSwapRateLevelOutput,
   ScanInflationSwapsExtremesOutput,
   PolicyFuturesPriceLevelOutput,
@@ -376,6 +377,45 @@ export function fetchDetailOisRateLevel(
 ): Promise<OisRateLevelOutput> {
   return fetchJSON(
     `${RATES_PREFIX}/detail/ois-rate-level${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/ois-forward-rate  — implied OIS forward-rate snapshot bridge
+// ---------------------------------------------------------------------------
+// Implied forward rate spanning a (start, end) window on one OIS curve
+// (e.g. SOFR 1Y1Y, 5Y5Y ESTR, 2Y1Y SONIA).  Own typed helper per the
+// standalone-bridge contract; consumed by BOTH Build views and the
+// Monitor tile.  Two equivalent input modes — tenor-pair (start_tenor +
+// end_tenor) OR date-pair (start_date + end_date); supply exactly ONE.
+// Rolling-z-score conventions are YAML-locked on this primitive (no
+// input-layer overrides — mirrors the OIS rate_level / curve_spread /
+// butterfly siblings); only ``lookback_days`` + ``field_name`` are
+// exposed at the API layer.
+
+export type OisForwardRateDetailParams = {
+  curve_family: string;
+  /** Start tenor of the forward window (e.g. '1Y' for 1Y1Y).  Mutually
+   *  exclusive with start_date. */
+  start_tenor?: string;
+  /** End tenor of the forward window (e.g. '2Y' for 1Y1Y).  Mutually
+   *  exclusive with end_date. */
+  end_tenor?: string;
+  /** Start date of the forward window (YYYY-MM-DD).  Mutually exclusive
+   *  with start_tenor. */
+  start_date?: string;
+  /** End date of the forward window (YYYY-MM-DD).  Mutually exclusive
+   *  with end_tenor. */
+  end_date?: string;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailOisForwardRate(
+  params: OisForwardRateDetailParams,
+): Promise<OisForwardRateOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/ois-forward-rate${buildQuery(params)}`,
   );
 }
 

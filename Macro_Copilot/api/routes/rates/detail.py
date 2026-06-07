@@ -202,6 +202,25 @@ from rates_agent.ois.tools.rate_level import (
     OISRateLevelOutput,
     get_ois_rate_level,
 )
+# Standalone-bridge endpoint for the implied OIS forward-rate primitive
+# (e.g. SOFR 1Y1Y, 5Y5Y ESTR, 2Y1Y SONIA, ad-hoc date-window forwards).
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` every new tool
+# ships its OWN typed-detail endpoint consumed by both the extended and
+# compact Build views (rendering_density dual-view) + the Monitor tile.
+# Risk-neutral implied policy path caveat (forwards on OIS curves price the
+# expected policy path, not realised central-bank decisions) surfaces on
+# the methodology card.  Two equivalent input modes — tenor-pair OR
+# date-pair — supply exactly ONE; the schema layer rejects partial /
+# both modes at construction time.  Rolling-z-score conventions are
+# YAML-locked on this primitive — only ``lookback_days`` + ``field_name``
+# are exposed at the input layer (mirrors the OIS rate_level /
+# curve_spread / butterfly siblings).
+from rates_agent.ois.tools.forward_rate import (
+    CONFIG_PATH as OIS_FORWARD_RATE_CONFIG_PATH,
+    OISForwardRateInput,
+    OISForwardRateOutput,
+    calculate_ois_forward_rate,
+)
 # Standalone-bridge endpoint for the single-pillar zero-coupon inflation swap
 # (ZCIS) rate-level primitive (e.g. USD_ZCIS 5Y, EUR_ZCIS 10Y, GBP_ZCIS 2Y).
 # Per ``docs_revamped/03_standards/methodology_exposure.md §5`` every new tool
@@ -1321,6 +1340,135 @@ def ois_rate_level_detail(
     _tool_result_or_raise(
         result,
         f"OIS rate level for {curve_family} {tenor}",
+    )
+    return result
+
+
+# ============================================================================
+# /detail/ois-forward-rate  — implied OIS forward-rate snapshot bridge
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the OIS
+# forward-rate primitive ships its OWN typed-detail endpoint.  Same payload
+# feeds BOTH the extended Build view (mounted for single-tool queries) and
+# the compact Build view (mounted as a node body inside multi-tool DAGs) +
+# the Monitor tile per rendering_density.md §10.  Two equivalent input
+# modes — tenor-pair (start_tenor + end_tenor) OR date-pair (start_date +
+# end_date); supply exactly ONE.  Rolling-z-score conventions are
+# YAML-locked on this primitive (no input-layer overrides — mirrors the
+# OIS rate_level / curve_spread / butterfly siblings); only
+# ``lookback_days`` + ``field_name`` are exposed at the API layer.  Sign
+# convention surfaced on the methodology card: forward_rate_pct is the
+# absolute implied forward rate; daily_change_bps POSITIVE = the forward
+# repriced HIGHER (hawkish implied-policy-path stretch).  Risk-neutral
+# implied policy path caveat (OIS forwards price the EXPECTED policy
+# path, not realised central-bank decisions) is the desk-canonical
+# methodology disclosure.
+# ============================================================================
+@router.get(
+    "/detail/ois-forward-rate",
+    response_model=OISForwardRateOutput,
+    summary="OIS Forward Rate Detail (standalone bridge)",
+)
+def ois_forward_rate_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family: str = Query(
+        ...,
+        description=(
+            "OIS curve family identifier.  Examples: 'USD_SOFR_OIS', "
+            "'EUR_ESTR_OIS', 'GBP_SONIA_OIS', 'JPY_OIS', 'AUD_OIS', "
+            "'CAD_OIS'."
+        ),
+    ),
+    start_tenor: Optional[str] = Query(
+        default=None,
+        description=(
+            "Start tenor of the forward window.  For '1Y1Y' use '1Y'; "
+            "for '5Y5Y' use '5Y'; for '2Y1Y' use '2Y'.  Must be present "
+            "on the curve.  Mutually exclusive with start_date."
+        ),
+    ),
+    end_tenor: Optional[str] = Query(
+        default=None,
+        description=(
+            "End tenor of the forward window.  For '1Y1Y' use '2Y' "
+            "(start=1Y + forward=1Y); for '5Y5Y' use '10Y'; for '2Y1Y' "
+            "use '3Y'.  Must be present on the curve.  Mutually "
+            "exclusive with end_date."
+        ),
+    ),
+    start_date: Optional[str] = Query(
+        default=None,
+        description=(
+            "Start date of the forward window (YYYY-MM-DD).  Mutually "
+            "exclusive with start_tenor.  Must be on or after the "
+            "curve's as-of date."
+        ),
+    ),
+    end_date: Optional[str] = Query(
+        default=None,
+        description=(
+            "End date of the forward window (YYYY-MM-DD).  Must be "
+            "strictly after start_date.  Mutually exclusive with "
+            "end_tenor."
+        ),
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic.  Omit (None) to use the tool's "
+            "bundled ``default_swap_rate_field`` convention from "
+            "forward_rate/config.yaml (currently 'PX_LAST' — the OIS "
+            "Bloomberg mid-rate field, NOT the sovereign 'YLD_YTM_MID' "
+            "yield-to-maturity field)."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the frontend
+    module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
+    AND the Monitor widget per the rendering-density dual-view + monitor
+    contract.
+
+    Supply exactly ONE of (start_tenor + end_tenor) or (start_date +
+    end_date) — the schema layer rejects partial / both modes at
+    construction time.  The OIS forward-rate primitive intentionally
+    does NOT expose the z-score conventions at its Input layer — its
+    rolling-z-score conventions are sourced from the YAML at compute()
+    time only.  Mirrors the sibling OIS rate_level / curve_spread /
+    butterfly bridges.
+    """
+    try:
+        params = OISForwardRateInput(
+            curve_family=curve_family,
+            start_tenor=start_tenor,
+            end_tenor=end_tenor,
+            start_date=start_date,
+            end_date=end_date,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        fr_config = load_tool_config(OIS_FORWARD_RATE_CONFIG_PATH)
+        result = calculate_ois_forward_rate(
+            engine=engine, params=params, config=fr_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/ois-forward-rate: tool failed for %s tenor=(%s,%s) date=(%s,%s)",
+            curve_family, start_tenor, end_tenor, start_date, end_date,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    window_label = (
+        f"{start_tenor}/{end_tenor}" if start_tenor and end_tenor
+        else f"{start_date} to {end_date}"
+    )
+    _tool_result_or_raise(
+        result,
+        f"OIS forward rate for {curve_family} {window_label}",
     )
     return result
 

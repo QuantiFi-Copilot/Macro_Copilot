@@ -336,6 +336,101 @@ export type OisRateLevelOutput = {
   time_series?: TimeSeries;
 };
 
+// --- /detail/ois-forward-rate (standalone bridge) ---
+//
+// Mirrors rates_agent/ois/tools/forward_rate/schemas.py
+// (OISForwardRateOutput / OISForwardRateCurrentMetrics).  Per the
+// methodology-exposure standalone-bridge contract
+// (docs_revamped/03_standards/methodology_exposure.md §5) the OIS
+// forward-rate primitive ships its own typed-detail endpoint at
+// /api/v1/rates/detail/ois-forward-rate and its OWN frontend type — no
+// reuse of the OIS rate-level type.  The underlying observation is an
+// IMPLIED forward rate spanning a (start, end) window on the OIS
+// par-swap curve, NOT a single-pillar level read.  The wire field is
+// ``forward_rate_pct`` rather than ``current_rate_pct`` so downstream
+// operator panels cannot silently mix forward observations with
+// single-pillar level observations.  Sign convention: forward_rate_pct
+// is the absolute implied forward rate; daily_change_bps POSITIVE = the
+// forward repriced HIGHER (hawkish implied-policy-path stretch).
+
+export type OisForwardRateMetrics = {
+  as_of_date: string;
+  curve_family: string;
+  /** Human-readable label for the forward window — e.g. "SOFR 5Y5Y",
+   *  "SOFR 3M/6M", "SOFR 2026-12-01 to 2027-06-01".  Composed by the
+   *  backend's ``_WindowResolver.label()`` from the input mode (tenor-
+   *  pair vs date-pair) and curve_family. */
+  forward_label: string;
+  /** Start of the forward window in years from the curve's as-of date.
+   *  Constant for tenor-mode inputs; re-anchors per trade date for
+   *  date-mode inputs. */
+  start_years: number;
+  /** End of the forward window in years from the curve's as-of date. */
+  end_years: number;
+  /** Implied forward rate in PERCENT (e.g. 2.745 = 2.745%).  Null when
+   *  the curve grid for the latest trade date doesn't allow
+   *  interpolation across the window. */
+  forward_rate_pct: number | null;
+  /** 1-day change in the forward rate in BPS (e.g. -3.7 = forward fell
+   *  3.7 bps day-over-day).  POSITIVE = hawkish implied-policy-path
+   *  repricing (forward sits ABOVE near pillar of yesterday). */
+  daily_change_bps: number | null;
+  /** Rolling 252-trading-day z-score of the forward rate; conventions
+   *  YAML-locked on this primitive (no input-layer overrides — mirrors
+   *  the OIS rate_level / curve_spread / butterfly siblings).  Field
+   *  name on the wire is ``current_z_score`` per the bespoke legacy
+   *  wire-frozen schema. */
+  current_z_score: number | null;
+  /** Length of the rolling-z-score window in TRADING days (always
+   *  252 in V1). */
+  rolling_window_days: number;
+  /** Trailing 252-day high of the forward rate (percent). */
+  high_252d_pct: number | null;
+  /** Trailing 252-day low of the forward rate (percent). */
+  low_252d_pct: number | null;
+  /** Percentile rank of the current forward rate within the trailing
+   *  252-day range (0-100). */
+  percentile_252d: number | null;
+  /** Interpolated par OIS rate at ``start_years`` on the latest curve.
+   *  Provides context: the forward rate is the bootstrap-implied rate
+   *  that ties the (start, end) DF pair together. */
+  start_spot_rate_pct: number | null;
+  /** Interpolated par OIS rate at ``end_years`` on the latest curve. */
+  end_spot_rate_pct: number | null;
+};
+
+/** Bespoke wire-frozen forward-rate time-series row (preserved for
+ *  backward-compat with the legacy single-file tool).  The canonical
+ *  ``time_series_forward`` (PERCENT) and ``time_series_zscore``
+ *  (Z_SCORE) payloads carry the same data in the closed-enum
+ *  ``TimeSeries`` shape; both are emitted alongside this bespoke
+ *  list — they cannot drift (per compute.py per-day double-write). */
+export type OisForwardRateTimeSeriesRow = {
+  date: string;
+  forward_rate_pct: number;
+  z_score: number | null;
+};
+
+export type OisForwardRateOutput = {
+  current_metrics: OisForwardRateMetrics;
+  /** Bespoke wire-frozen forward-rate history.  Preserved for backward-
+   *  compat with the legacy single-file tool's output shape. */
+  time_series: OisForwardRateTimeSeriesRow[];
+  /** Canonical historical forward-rate series.  Closed-enum
+   *  ``TimeSeriesUnits.PERCENT``; series_name carries an OIS-specific
+   *  ``_ois_forward`` suffix derived from the forward_label slug so
+   *  downstream operator panels cannot silently mix forward series
+   *  with single-pillar level series.  Values match
+   *  ``time_series[i].forward_rate_pct`` 1-to-1. */
+  time_series_forward?: TimeSeries;
+  /** Canonical historical rolling z-score series.  Closed-enum
+   *  ``TimeSeriesUnits.Z_SCORE``; series_name carries an OIS-specific
+   *  ``_ois_forward_zscore`` suffix.  Values match
+   *  ``time_series[i].z_score`` 1-to-1 (None for rows in the rolling-
+   *  window warmup). */
+  time_series_zscore?: TimeSeries;
+};
+
 // --- /detail/real_yield (Phase-1 pilot, standalone bridge) ---
 //
 // Mirrors rates_agent/inflation_indexed_bonds/tools/real_yield_level/schemas.py.
