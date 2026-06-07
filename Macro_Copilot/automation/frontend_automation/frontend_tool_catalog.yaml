@@ -955,3 +955,329 @@ tools:
       - "Mirror scan_inflation_swaps_extremes_tool dual-view scanner shape"
       - "Standalone-bridge endpoint at /api/v1/rates/detail/policy-futures-scanner"
       - "Frontend folder + MCP function = get_scan_policy_futures_extremes_tool; workflow registry uses policy_futures_get_scan_policy_futures_extremes_tool prefix"
+
+  - id: policy_futures__futures_butterfly
+    status: todo
+    human_action_required: false
+    last_review_heading: null
+    last_gate_result: not_run
+    build_order: 19
+    backend_tool_name: policy_futures_get_futures_butterfly_simple_tool
+    instrument_family: policy_futures
+    sub_agent: policy_futures
+    tool_slug: futures_butterfly_simple
+    endpoint_slug: policy-futures-butterfly
+    category: curvature
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      STIR (policy futures) 3-point butterfly between three quarterly contracts (e.g. SFR 1-2-3 OIS Butterfly).  Surfaces curvature of the policy-futures strip.
+    why_needs_frontend: |
+      Backend exists; no frontend module.  STIR butterfly is desk-canonical for spotting front-end policy-path curvature anomalies.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/policy_futures/tools/futures_butterfly_simple/
+      mcp_wrapper_in: rates_agent/policy_futures/mcp_server.py
+      mcp_tool_name: get_futures_butterfly_simple_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='policy_futures_get_futures_butterfly_simple_tool'"
+      curated_migration_file: database/migrations/2026-06-07_phase1_policy_futures_get_futures_butterfly_simple_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/policy_futures_get_futures_butterfly_simple_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/policy_futures_get_futures_butterfly_simple_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_ois_butterfly_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/policy_futures_get_futures_butterfly_simple_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "Mirror calculate_ois_butterfly_tool dual-view shape (butterfly KPI, sparkline with z-score bands, sign convention belly cheap/rich)"
+      - "Standalone-bridge endpoint at /api/v1/rates/detail/policy-futures-butterfly"
+      - "Frontend folder = workflow registry = policy_futures_get_futures_butterfly_simple_tool; MCP function (no prefix) = get_futures_butterfly_simple_tool"
+      - "Quote convention: 100-minus-rate; UP price = DOWN implied rate (dovish).  Butterfly is in BPS"
+      - "Per Option (c) precedent (Batch 1 fdac7d2 + policy_futures_get_futures_price_level_tool d8e8233): keep shell-standard density on Compact (3 KPIs, single identity); add a Mockup conformance subsection to THESIS if mockup density exceeds shell"
+
+  - id: policy_futures__calendar_spread
+    status: todo
+    human_action_required: false
+    last_review_heading: null
+    last_gate_result: not_run
+    build_order: 20
+    backend_tool_name: policy_futures_get_futures_calendar_spread_tool
+    instrument_family: policy_futures
+    sub_agent: policy_futures
+    tool_slug: futures_calendar_spread
+    endpoint_slug: policy-futures-calendar
+    category: curve_shape
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      STIR (policy futures) calendar spread between two quarterly contracts (e.g. SFR1-SFR2).  Surfaces front-end policy-path slope.
+    why_needs_frontend: |
+      Backend exists; no frontend module.  STIR calendar spread is the canonical front-end slope read for policy path nowcasting.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/policy_futures/tools/futures_calendar_spread/
+      mcp_wrapper_in: rates_agent/policy_futures/mcp_server.py
+      mcp_tool_name: get_futures_calendar_spread_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='policy_futures_get_futures_calendar_spread_tool'"
+      curated_migration_file: database/migrations/2026-06-07_phase1_policy_futures_get_futures_calendar_spread_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/policy_futures_get_futures_calendar_spread_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/policy_futures_get_futures_calendar_spread_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_ois_curve_spread_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/policy_futures_get_futures_calendar_spread_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "Mirror calculate_ois_curve_spread_tool dual-view shape"
+      - "Standalone-bridge endpoint at /api/v1/rates/detail/policy-futures-calendar"
+      - "Frontend folder = workflow registry = policy_futures_get_futures_calendar_spread_tool; MCP function (no prefix) = get_futures_calendar_spread_tool"
+      - "Quote convention: 100-minus-rate; positive spread = back contract HIGHER yield (steeper policy path)"
+      - "Per Option (c) precedent: keep shell-standard density on Compact; document any density deviation in THESIS"
+
+  - id: policy_futures__cross_market_spread
+    status: todo
+    human_action_required: false
+    last_review_heading: null
+    last_gate_result: not_run
+    build_order: 21
+    backend_tool_name: policy_futures_get_futures_cross_market_spread_tool
+    instrument_family: policy_futures
+    sub_agent: policy_futures
+    tool_slug: futures_cross_market_spread
+    endpoint_slug: policy-futures-cross-market
+    category: cross_market_rv
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      Cross-market STIR spread between two policy futures markets at common expiry (e.g. SFR1 minus SONIA equivalent).  Surfaces cross-currency policy-path divergence on front-end STIR strip.
+    why_needs_frontend: |
+      Backend exists; no frontend module.  Cross-market STIR is desk-canonical for G4 policy-divergence trades.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/policy_futures/tools/futures_cross_market_spread/
+      mcp_wrapper_in: rates_agent/policy_futures/mcp_server.py
+      mcp_tool_name: get_futures_cross_market_spread_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='policy_futures_get_futures_cross_market_spread_tool'"
+      curated_migration_file: database/migrations/2026-06-07_phase1_policy_futures_get_futures_cross_market_spread_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/policy_futures_get_futures_cross_market_spread_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/policy_futures_get_futures_cross_market_spread_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_cross_market_inflation_swap_spread_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/policy_futures_get_futures_cross_market_spread_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "Mirror calculate_cross_market_inflation_swap_spread_tool dual-view shape"
+      - "Standalone-bridge endpoint at /api/v1/rates/detail/policy-futures-cross-market"
+      - "Frontend folder = workflow registry = policy_futures_get_futures_cross_market_spread_tool; MCP function (no prefix) = get_futures_cross_market_spread_tool"
+      - "Per Option (c) precedent: keep shell-standard density on Compact; document any density deviation in THESIS"
+
+  - id: policy_futures__pack_average
+    status: todo
+    human_action_required: false
+    last_review_heading: null
+    last_gate_result: not_run
+    build_order: 22
+    backend_tool_name: policy_futures_get_futures_pack_average_simple_tool
+    instrument_family: policy_futures
+    sub_agent: policy_futures
+    tool_slug: futures_pack_average_simple
+    endpoint_slug: policy-futures-pack-average
+    category: snapshot
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      Pack average across 4 consecutive quarterly STIR contracts (Whites=Y1, Reds=Y2, Greens=Y3, Blues=Y4) for a single market.  Smooths quarter-by-quarter noise into a year-anchored read.
+    why_needs_frontend: |
+      Backend exists; no frontend module.  STIR pack averages are desk-canonical for tracking policy path over 1-4Y horizons.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/policy_futures/tools/futures_pack_average_simple/
+      mcp_wrapper_in: rates_agent/policy_futures/mcp_server.py
+      mcp_tool_name: get_futures_pack_average_simple_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='policy_futures_get_futures_pack_average_simple_tool'"
+      curated_migration_file: database/migrations/2026-06-07_phase1_policy_futures_get_futures_pack_average_simple_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/policy_futures_get_futures_pack_average_simple_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/policy_futures_get_futures_pack_average_simple_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_ois_forward_rate_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/policy_futures_get_futures_pack_average_simple_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "Mirror calculate_ois_forward_rate_tool snapshot/forward shape"
+      - "Standalone-bridge endpoint at /api/v1/rates/detail/policy-futures-pack-average"
+      - "Frontend folder = workflow registry = policy_futures_get_futures_pack_average_simple_tool; MCP function (no prefix) = get_futures_pack_average_simple_tool"
+      - "Quote convention: 100-minus-rate; pack types Whites/Reds/Greens/Blues"
+      - "Per Option (c) precedent: keep shell-standard density on Compact; document any density deviation in THESIS"
+
+  - id: bond_futures__price_level
+    status: todo
+    human_action_required: false
+    last_review_heading: null
+    last_gate_result: not_run
+    build_order: 23
+    backend_tool_name: get_futures_price_level_tool
+    instrument_family: bond_futures
+    sub_agent: bond_futures
+    tool_slug: futures_price_level
+    endpoint_slug: bond-futures-price
+    category: snapshot
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      Bond futures front contract price level (e.g. TY, RX, G, JB) with daily change, 252d range/percentile, rolling z-score.  Counterpart to policy_futures_get_futures_price_level but for treasuries/gilts/bunds/JGB.
+    why_needs_frontend: |
+      Backend exists; no frontend module.  Bond futures price level is desk-canonical morning read for sovereign rates.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/bond_futures/tools/futures_price_level/
+      mcp_wrapper_in: rates_agent/bond_futures/mcp_server.py
+      mcp_tool_name: get_futures_price_level_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='get_futures_price_level_tool'"
+      curated_migration_file: database/migrations/2026-06-07_phase1_get_futures_price_level_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/get_futures_price_level_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/get_futures_price_level_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/policy_futures_get_futures_price_level_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/get_futures_price_level_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "Mirror policy_futures_get_futures_price_level_tool dual-view shape (just shipped Batch 1 d8e8233)"
+      - "Standalone-bridge endpoint at /api/v1/rates/detail/bond-futures-price"
+      - "bond_futures domain — distinct from policy_futures (treasuries vs STIR); MCP function name is the same (get_futures_price_level_tool) but registered in a different MCP server; workflow registry disambiguates by domain prefix elsewhere"
+      - "Per Option (c) precedent (d8e8233): keep shell-standard density on Compact (3 KPIs, single identity); add Mockup conformance subsection to THESIS if mockup density exceeds shell"
+
+  - id: inflation_swaps__forward
+    status: todo
+    human_action_required: false
+    last_review_heading: null
+    last_gate_result: not_run
+    build_order: 24
+    backend_tool_name: calculate_inflation_swap_forward_tool
+    instrument_family: inflation_swaps
+    sub_agent: inflation_swaps
+    tool_slug: inflation_swap_forward
+    endpoint_slug: inflation-swap-forward
+    category: forward_rate
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      ZCIS forward rate spanning two tenors (e.g. US 5Y5Y ZCIS).  Implied forward inflation-swap rate between two pillars — pure inflation-compensation forward, distinct from bond-implied forward breakeven.
+    why_needs_frontend: |
+      Backend exists; no frontend module.  ZCIS forwards are the canonical long-run market read on forward inflation compensation.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/inflation_swaps/tools/inflation_swap_forward/
+      mcp_wrapper_in: rates_agent/inflation_swaps/mcp_server.py
+      mcp_tool_name: calculate_inflation_swap_forward_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='calculate_inflation_swap_forward_tool'"
+      curated_migration_file: database/migrations/2026-06-07_phase1_calculate_inflation_swap_forward_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_inflation_swap_forward_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_inflation_swap_forward_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_ois_forward_rate_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_inflation_swap_forward_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "Mirror calculate_ois_forward_rate_tool dual-view shape (Batch 2)"
+      - "Standalone-bridge endpoint at /api/v1/rates/detail/inflation-swap-forward"
+      - "Per Option (c) precedent: keep shell-standard density on Compact; document any deviation in THESIS"
+
+  - id: inflation_swaps__swap_breakeven_basis
+    status: todo
+    human_action_required: false
+    last_review_heading: null
+    last_gate_result: not_run
+    build_order: 25
+    backend_tool_name: calculate_swap_breakeven_basis_simple_tool
+    instrument_family: inflation_swaps
+    sub_agent: inflation_swaps
+    tool_slug: swap_breakeven_basis_simple
+    endpoint_slug: swap-breakeven-basis
+    category: cross_market_rv
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      Swap-breakeven basis at a single tenor: ZCIS rate minus bond-implied breakeven inflation (e.g. US 10Y ZCIS minus US 10Y BE).  Surfaces the liquidity/risk premium between swap-market and bond-market inflation pricing.
+    why_needs_frontend: |
+      Backend exists; no frontend module.  Swap-breakeven basis is the desk-canonical RV read on inflation-market dislocations.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/inflation_swaps/tools/swap_breakeven_basis_simple/
+      mcp_wrapper_in: rates_agent/inflation_swaps/mcp_server.py
+      mcp_tool_name: calculate_swap_breakeven_basis_simple_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='calculate_swap_breakeven_basis_simple_tool'"
+      curated_migration_file: database/migrations/2026-06-07_phase1_calculate_swap_breakeven_basis_simple_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_swap_breakeven_basis_simple_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_swap_breakeven_basis_simple_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_breakeven_inflation_simple_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_swap_breakeven_basis_simple_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "Mirror calculate_breakeven_inflation_simple_tool dual-view shape (Phase-1 pilot)"
+      - "Standalone-bridge endpoint at /api/v1/rates/detail/swap-breakeven-basis"
+      - "Methodology disclosure: ZCIS reference index vs bond-implied; sign convention POSITIVE = ZCIS rich vs bond breakeven"
+      - "Per Option (c) precedent: keep shell-standard density on Compact; document any deviation in THESIS"
+
+  - id: inflation_indexed_bonds__cross_country_breakeven_spread
+    status: todo
+    human_action_required: false
+    last_review_heading: null
+    last_gate_result: not_run
+    build_order: 26
+    backend_tool_name: calculate_cross_country_breakeven_spread_simple_tool
+    instrument_family: inflation_indexed_bonds
+    sub_agent: inflation_indexed_bonds
+    tool_slug: cross_country_breakeven_spread_simple
+    endpoint_slug: cross-country-breakeven-spread
+    category: cross_market_rv
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      Cross-country breakeven inflation spread at common tenor (e.g. UK 10Y BE minus US 10Y BE).  Surfaces cross-country inflation-compensation differential — RPI vs CPI-U vs HICPxT vs Canadian CPI.
+    why_needs_frontend: |
+      Backend exists; no frontend module.  Cross-country breakeven is desk-canonical for spotting cross-currency inflation expectations divergences.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/inflation_indexed_bonds/tools/cross_country_breakeven_spread_simple/
+      mcp_wrapper_in: rates_agent/inflation_indexed_bonds/mcp_server.py
+      mcp_tool_name: calculate_cross_country_breakeven_spread_simple_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='calculate_cross_country_breakeven_spread_simple_tool'"
+      curated_migration_file: database/migrations/2026-06-07_phase1_calculate_cross_country_breakeven_spread_simple_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_cross_country_breakeven_spread_simple_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_cross_country_breakeven_spread_simple_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_cross_market_inflation_swap_spread_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_cross_country_breakeven_spread_simple_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "Mirror calculate_cross_market_inflation_swap_spread_tool dual-view shape (Batch 1 302a388)"
+      - "Standalone-bridge endpoint at /api/v1/rates/detail/cross-country-breakeven-spread"
+      - "Methodology disclosure: per-currency reference indices (RPI/CPI-U NSA/HICPxT/Canadian CPI); same-tenor differential"
+      - "Per Option (c) precedent: keep shell-standard density on Compact; document any deviation in THESIS"
+
+  - id: ois__financing_rate
+    status: todo
+    human_action_required: false
+    last_review_heading: null
+    last_gate_result: not_run
+    build_order: 27
+    backend_tool_name: compute_financing_rate_tool
+    instrument_family: ois
+    sub_agent: ois
+    tool_slug: financing_rate
+    endpoint_slug: financing-rate
+    category: snapshot
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      Repo / specials financing rate at one tenor (e.g. UST 10Y financing).  OIS-implied proxy for the per-bond financing rate; does NOT reflect specials/scarcity premia for individual issues.
+    why_needs_frontend: |
+      Backend exists; no frontend module.  Financing rate is desk-canonical for understanding repo-market dislocations and bond-specific scarcity drift.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/ois/tools/financing_rate/
+      mcp_wrapper_in: rates_agent/ois/mcp_server.py
+      mcp_tool_name: compute_financing_rate_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='compute_financing_rate_tool'"
+      curated_migration_file: database/migrations/2026-06-07_phase1_compute_financing_rate_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/compute_financing_rate_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/compute_financing_rate_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/get_real_yield_level_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/compute_financing_rate_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "Mirror get_real_yield_level_tool snapshot shape (Phase-1 pilot)"
+      - "Standalone-bridge endpoint at /api/v1/rates/detail/financing-rate"
+      - "Methodology disclosure: OIS proxy approximation; do NOT reflect specials/scarcity premia at the per-bond level"
+      - "Per Option (c) precedent: keep shell-standard density on Compact; document any deviation in THESIS"

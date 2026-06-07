@@ -1,22 +1,22 @@
 version: '1.0'
 branch: frontend_automation
 backend: claude-cli
-orchestrator_status: catalog_exhausted
+orchestrator_status: processing
 current_tool: null
 current_tool_backend_name: null
-current_step: null
-dispatch_round: null
-last_dispatch_at: "2026-06-07T14:38:00Z"
+current_step: ready_to_dispatch
+dispatch_round: 0
+last_dispatch_at: null
 last_successful_tool: policy_futures__scan_extremes
 last_successful_commit: ba01354
 last_reviewer_heading: APPROVED-AFTER-FIX
 last_gate_result: pass
-last_stop_reason: catalog_exhausted
+last_stop_reason: batch_3_queued_advance
 last_error: null
-last_updated: "2026-06-07T14:53:00Z"
+last_updated: "2026-06-07T15:30:00Z"
 done: 18
 blocked: 0
-remaining: 0
+remaining: 9
 quota_state: probe_unavailable
 quota_snapshot: null
 quota_snapshot_at: '2026-05-29T15:52:00Z'
@@ -37,7 +37,7 @@ reviewer_mode_history:
       and SINGLE_REVIEW_ROUND_POLICY.md.  Quota exhaustion on either
       dispatch triggers a clean waiting_quota stop; the next cron wake
       retries.
-catalog_exhausted_at: "2026-06-07T14:53:00Z"
+catalog_exhausted_at: null
 human_required: null
 status_notes:
   - at: "2026-06-07T14:53:00Z"
@@ -2853,3 +2853,29 @@ status_notes:
       TS KNOWN_TOOL_ALIASES + workflow-registry naming history).
 
       Counters: done:9 blocked:0 remaining:9.
+
+  - at: "2026-06-07T15:30:00Z"
+    kind: batch_3_queued
+    text: |
+      Batch 3 queued: 9 new tool entries appended (build_order
+      19-27).  9 of the 10 originally recommended — calculate_swap_spread_tool
+      DEFERRED because its Compact.png and Extended.png mockups
+      are byte-identical (sha256 87437a22... for both); user must
+      author the missing view before this tool can be queued.
+
+      The 9 shipped: policy_futures_get_futures_butterfly_simple_tool,
+      policy_futures_get_futures_calendar_spread_tool,
+      policy_futures_get_futures_cross_market_spread_tool,
+      policy_futures_get_futures_pack_average_simple_tool,
+      get_futures_price_level_tool (bond_futures domain),
+      calculate_inflation_swap_forward_tool,
+      calculate_swap_breakeven_basis_simple_tool,
+      calculate_cross_country_breakeven_spread_simple_tool,
+      compute_financing_rate_tool.
+
+      4 policy_futures tools carry name-divergence guardrails
+      (frontend folder + workflow registry use policy_futures_ prefix;
+      MCP function inside policy_futures/mcp_server.py uses unprefixed
+      get_futures_<thing>_tool — same pattern as Batch 1 d8e8233).
+
+      Counters: done:18 blocked:0 remaining:9.
