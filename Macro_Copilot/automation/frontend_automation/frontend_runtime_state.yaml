@@ -2,18 +2,18 @@ version: '1.0'
 branch: frontend_automation
 backend: claude-cli
 orchestrator_status: processing
-current_tool: inflation_swaps__swap_breakeven_basis
-current_tool_backend_name: calculate_swap_breakeven_basis_simple_tool
-current_step: committed
-dispatch_round: 2
-last_dispatch_at: "2026-06-08T03:19:00Z"
+current_tool: inflation_indexed_bonds__cross_country_breakeven_spread
+current_tool_backend_name: calculate_cross_country_breakeven_spread_simple_tool
+current_step: builder_dispatched
+dispatch_round: 1
+last_dispatch_at: "2026-06-08T03:34:00Z"
 last_successful_tool: inflation_swaps__swap_breakeven_basis
 last_successful_commit: e72e8a0
 last_reviewer_heading: APPROVED
 last_gate_result: pass
-last_stop_reason: tool_25_committed_dispatching_tool_26_builder_next_wake
+last_stop_reason: tool_25_committed_dispatching_tool_26_builder
 last_error: null
-last_updated: "2026-06-08T03:27:00Z"
+last_updated: "2026-06-08T03:34:00Z"
 done: 25
 blocked: 0
 remaining: 3
@@ -41,6 +41,95 @@ reviewer_mode_history:
 catalog_exhausted_at: null
 human_required: null
 status_notes:
+  - at: "2026-06-08T03:34:00Z"
+    kind: tool_25_committed_tool_26_pre_flight_pass_builder_round1_dispatched
+    text: |
+      Same wake (cron id 450aa21c-625d-4ad7-b3da-ef39a6ba7784,
+      entered at 2026-06-08T03:07:00Z) continued past the tool-25
+      feature commit (e72e8a0) + bookkeeping commit (d1e988f) per
+      `BACKGROUND_EXECUTION_POLICY §2` (process as much catalog as
+      one wake can honestly handle).
+
+      Tool 26 pre-flight backend audit (read-only, per
+      `PRE_FLIGHT_BACKEND_AUDIT.md`):
+        - backend folder
+          `rates_agent/inflation_indexed_bonds/tools/cross_country_breakeven_spread_simple/`
+          PRESENT (canonical 4-file shape: `__init__.py` 3197B,
+          `schemas.py` 17454B, `compute.py` 29497B, `config.yaml`
+          27036B).
+        - MCP wrapper `calculate_cross_country_breakeven_spread_simple_tool`
+          registered in `rates_agent/inflation_indexed_bonds/mcp_server.py`
+          at line 1036 (verified via grep).
+        - Curated migration
+          `database/migrations/2026-06-07_phase1_calculate_cross_country_breakeven_spread_simple_curated.sql`
+          PRESENT (2331B) — satisfies the OR condition per
+          `PRE_FLIGHT_BACKEND_AUDIT.md` (DB probe unavailable from
+          non-interactive automation, so migration file presence
+          is the alternate accepted artifact).
+        - Mockups: BOTH PNGs PRESENT at
+          `UI/.../calculate_cross_country_breakeven_spread_simple_tool/mockups/`
+          (`Compact.png` 1398898B + `Extended.png` 1732595B).
+        - Loader entry already present at `src/modules/index.ts:50`
+          (import) + `:123` (array) — alphabetical position
+          retained; no edit required, the overwritten `module.ts`
+          is what the loader picks up.
+        - KNOWN_TOOL_ALIASES already present at
+          `src/lib/toolNames.ts:226` + `:328`.
+        - Pre-flight checks PASS — proceed to builder Round 1
+          dispatch.
+
+      Runtime head advanced for the builder dispatch:
+        orchestrator_status: processing
+        current_tool: inflation_indexed_bonds__cross_country_breakeven_spread
+        current_tool_backend_name: calculate_cross_country_breakeven_spread_simple_tool
+        current_step: builder_dispatched
+        dispatch_round: 1
+        last_dispatch_at: 2026-06-08T03:34:00Z
+        last_successful_tool: inflation_swaps__swap_breakeven_basis
+        last_successful_commit: e72e8a0
+        last_reviewer_heading: APPROVED
+        last_gate_result: pass
+        last_stop_reason: tool_25_committed_dispatching_tool_26_builder
+        done: 25  (was 24)
+        blocked: 0
+        remaining: 3  (build_orders 26-28)
+        quota_state: live
+        quota_snapshot_fresh: true (no provider refusal observed
+          this wake; tool 25 builder + reviewer + gate completed
+          normally; no quota signal in either log)
+
+      Builder Round 1 prompt written to
+      `/tmp/builder_prompt_inflation_indexed_bonds__cross_country_breakeven_spread_round1.md`
+      (CLAUDE_BUILDER_PROMPT.md body + catalog entry verbatim +
+      pre-flight audit output + resolved reference module
+      `calculate_cross_market_inflation_swap_spread_tool` shape
+      file-for-file + sibling-tool shipping precedents incl. tool
+      25 commit e72e8a0 + backend schema verbatim from `schemas.py:244-431`
+      + single-round factory reminder).  Prompt explicitly flags
+      the LOAD-BEARING `methodology_label` index-family-mismatch
+      caveat (cross-country variant nearly ALWAYS has mismatched
+      indices — CPI-U vs HICP vs RPI vs Canadian CPI — so the
+      disclosure surfaces on BOTH views + Monitor widget) and the
+      spread-NOT-level convention (canonical historical series
+      ships in BPS not PERCENT).  Dispatched via
+      `automation/frontend_automation/run_claude_builder.sh` in
+      the background (wrapper PID 4193404, claude --print PID
+      4193412) → log
+      `/tmp/claude_frontend_builder_run_inflation_indexed_bonds__cross_country_breakeven_spread_round1.log`.
+      Background dispatch (not synchronous) because synchronous
+      Bash invocation would exceed the 10-min tool timeout (Round
+      1 builders typically run 10-15+ min; tool 25 Round 1 took
+      15:43).
+
+      Single-engine factory (`DESIGN_PRINCIPLES.md §10`): no
+      fallback; on reviewer quota refusal in the upcoming Round 2
+      the parser will set `reviewer_quota_exhausted: true` and the
+      next cron wake retries.  This wake stops cleanly here after
+      the bookkeeping commit + background builder dispatch; the
+      next cron wake will observe the builder log on disk and
+      dispatch the reviewer per the canonical
+      `ORCHESTRATOR_PROMPT` step-6/step-7 sequence.
+
   - at: "2026-06-08T03:27:00Z"
     kind: tool_25_committed_dispatching_tool_26_builder_next_wake
     text: |
