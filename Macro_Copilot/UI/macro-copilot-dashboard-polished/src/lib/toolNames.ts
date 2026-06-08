@@ -76,6 +76,46 @@ const KNOWN_TOOL_ALIASES: Record<string, string> = {
   // it's a snapshot-only primitive (no compute).  Both forms resolve
   // to the backend's canonical name.
   calculate_ois_rate_level_tool: 'get_ois_rate_level_tool',
+  // policy_futures naming divergence: the MCP function inside
+  // rates_agent/policy_futures/mcp_server.py is exposed as
+  // ``get_futures_butterfly_simple_tool`` (unprefixed) while the
+  // workflow registry + tool_metadata DB row + frontend module folder
+  // use the ``policy_futures_`` prefixed form (collision-avoidance
+  // because the bond_futures domain may add its own butterfly_simple
+  // primitive in the future).  LLM-side calls that arrive via the
+  // unprefixed MCP name route through this alias to reach the
+  // prefixed frontend module / typed-detail endpoint.
+  get_futures_butterfly_simple_tool:
+    'policy_futures_get_futures_butterfly_simple_tool',
+  // Same divergence for the policy_futures calendar-spread tool — the
+  // MCP function inside rates_agent/policy_futures/mcp_server.py is
+  // ``get_futures_calendar_spread_tool`` (unprefixed); workflow registry
+  // + tool_metadata DB row + frontend module folder use the
+  // ``policy_futures_`` prefix.  LLM-side calls that arrive via the
+  // unprefixed MCP name route through this alias to reach the prefixed
+  // frontend module / typed-detail endpoint.
+  get_futures_calendar_spread_tool:
+    'policy_futures_get_futures_calendar_spread_tool',
+  // Same divergence for the policy_futures cross-market spread tool —
+  // the MCP function inside rates_agent/policy_futures/mcp_server.py is
+  // ``get_futures_cross_market_spread_tool`` (unprefixed); workflow
+  // registry + tool_metadata DB row + frontend module folder use the
+  // ``policy_futures_`` prefix (collision-avoidance with the sovereign
+  // cross_market_spread sibling on the bond-yields side).  LLM-side
+  // calls that arrive via the unprefixed MCP name route through this
+  // alias to reach the prefixed frontend module / typed-detail
+  // endpoint.
+  get_futures_cross_market_spread_tool:
+    'policy_futures_get_futures_cross_market_spread_tool',
+  // Same divergence for the policy_futures pack-average tool — the MCP
+  // function inside rates_agent/policy_futures/mcp_server.py is
+  // ``get_futures_pack_average_simple_tool`` (unprefixed); the workflow
+  // registry + tool_metadata DB row + frontend module folder use the
+  // ``policy_futures_`` prefix.  LLM-side calls that arrive via the
+  // unprefixed MCP name route through this alias to reach the prefixed
+  // frontend module / typed-detail endpoint.
+  get_futures_pack_average_simple_tool:
+    'policy_futures_get_futures_pack_average_simple_tool',
 };
 
 /** Normalise a tool name to the backend-canonical form.

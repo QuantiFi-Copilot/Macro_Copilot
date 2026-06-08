@@ -2,10 +2,13 @@
 // ============================================================================
 // src/modules/primitives/scan_bond_futures_extremes_tool/__tests__/module.spec.ts
 // ----------------------------------------------------------------------------
-// Stage 3 per-module round-trip — calls assertStandardModuleInvariants
-// from src/modules/__test-utils.ts.  Catches FM11 invariants 1-8 in
-// one check.  Identical boilerplate across every module; per-module
-// customisation belongs in additional ``check(...)`` blocks below.
+// SCANNER-shape primitive module test under the dual-view contract.  Calls
+// assertStandardModuleInvariants for FM11 invariants 1-8 then adds the
+// rendering_density.md §11 dual-view checks (both buildExtended +
+// buildCompact populated) + the standalone-bridge contract checks
+// (typedView === null + mockups present + monitor surface).  Identical
+// boilerplate shape to the scan_inflation_swaps_extremes_tool /
+// scan_inflation_linkers_extremes_tool siblings.
 // ============================================================================
 
 import { assertStandardModuleInvariants } from '../../../__test-utils';
@@ -32,6 +35,75 @@ check('module satisfies the standard invariants', async () => {
     folderName: FOLDER,
     moduleFolderPath: `${cwd()}/src/modules/primitives/${FOLDER}`,
   });
+});
+
+// ----------------------------------------------------------------------------
+// Dual-view rendering-density contract (rendering_density.md §11): every
+// new primitive claiming custom_build_surface MUST ship BOTH
+// surfaces.buildExtended AND surfaces.buildCompact.
+// ----------------------------------------------------------------------------
+
+check('claims custom_build_surface tier', () => {
+  if (!MODULE.tiers.includes('custom_build_surface')) {
+    throw new Error(
+      `tiers missing 'custom_build_surface'; this module ships a bespoke scanner-shape Build surface per the catalog guardrail.  Got tiers=${JSON.stringify(MODULE.tiers)}`,
+    );
+  }
+});
+
+check('surfaces.buildExtended is populated', () => {
+  if (!MODULE.surfaces?.buildExtended) {
+    throw new Error(
+      'surfaces.buildExtended is missing.  Dual-view contract requires both buildExtended + buildCompact for every primitive claiming custom_build_surface.',
+    );
+  }
+});
+
+check('surfaces.buildCompact is populated', () => {
+  if (!MODULE.surfaces?.buildCompact) {
+    throw new Error(
+      'surfaces.buildCompact is missing.  Dual-view contract requires both buildExtended + buildCompact for every primitive claiming custom_build_surface.',
+    );
+  }
+});
+
+check('typedView is null (standalone-module pattern)', () => {
+  if (MODULE.typedView != null) {
+    throw new Error(
+      `typedView must be null for new modules under the standalone-bridge contract; got '${MODULE.typedView}'.  See methodology_exposure.md §5.`,
+    );
+  }
+});
+
+check('claims monitor_surface tier + has monitorWidgets entry', () => {
+  if (!MODULE.tiers.includes('monitor_surface')) {
+    throw new Error(
+      `tiers missing 'monitor_surface'; this module ships a Monitor tile per the catalog.`,
+    );
+  }
+  if (!MODULE.monitorWidgets || MODULE.monitorWidgets.length === 0) {
+    throw new Error(
+      'monitor_surface tier claimed but monitorWidgets is empty; per FM8 the multi-variant shape requires at least one entry.',
+    );
+  }
+});
+
+check('mockups folder exists alongside the module', async () => {
+  try {
+    const fs = await import('node:fs/promises');
+    const path = `${cwd()}/src/modules/primitives/${FOLDER}/mockups`;
+    const entries = await fs.readdir(path);
+    const required = ['Compact.png', 'Extended.png'];
+    const missing = required.filter((r) => !entries.includes(r));
+    if (missing.length > 0) {
+      throw new Error(`mockups/ missing required PNGs: ${missing.join(', ')}`);
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ERR_MODULE_NOT_FOUND') {
+      return;
+    }
+    throw err;
+  }
 });
 
 export async function runAllModuleSpecTests(): Promise<void> {
