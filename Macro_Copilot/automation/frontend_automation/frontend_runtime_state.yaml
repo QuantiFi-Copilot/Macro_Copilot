@@ -8,12 +8,12 @@ current_step: committed
 dispatch_round: 2
 last_dispatch_at: "2026-06-08T18:15:00Z"
 last_successful_tool: ois__swap_spread
-last_successful_commit: pending_this_wake
+last_successful_commit: d78fffa
 last_reviewer_heading: APPROVED
 last_gate_result: pass
 last_stop_reason: catalog_exhausted
 last_error: null
-last_updated: "2026-06-08T18:20:00Z"
+last_updated: "2026-06-08T18:37:00Z"
 done: 28
 blocked: 0
 remaining: 0
@@ -46,6 +46,60 @@ reviewer_mode_history:
       dispatch triggers a clean waiting_quota stop; the next cron wake
       retries.
 status_notes:
+  - at: "2026-06-08T18:37:00Z"
+    kind: wake_catalog_exhausted_clean_short_circuit_28th_fire
+    text: |
+      Twenty-eighth cron fire of cron id 450aa21c-625d-4ad7-b3da-ef39a6ba7784
+      (wake entry at 2026-06-08T18:37Z, 17 min after the prior wake
+      committed d78fffa and flipped orchestrator_status to
+      catalog_exhausted).  Wake entry checks:
+        - automation/frontend_automation/check_branch.sh: PASS (on
+          frontend_automation branch)
+        - frontend_runtime_state.yaml head: orchestrator_status =
+          catalog_exhausted; last_stop_reason = catalog_exhausted;
+          catalog_exhausted_at = 2026-06-08T18:20:00Z; done = 28;
+          blocked = 0; remaining = 0
+        - frontend_tool_catalog.yaml: all 28 entries in terminal state
+          (28 status: done, 0 blocked, 0 non-terminal — confirmed by
+          `grep -cE` head count)
+        - git working tree: clean
+        - git HEAD: d78fffa frontend(swap_spread): add dual-view module
+          per BUILD_GUIDE Stages 4-6 (the prior wake's commit; tree
+          ahead of origin by 2 commits — d78fffa + e63a31a, neither
+          pushed because push is a human action)
+
+      Per BACKGROUND_EXECUTION_POLICY.md §8.2 the cron entry-point
+      script SHOULD have short-circuited this wake with
+      `catalog exhausted at 2026-06-08T18:20:00Z; skipping wake`
+      and exited 0 without invoking the orchestrator prompt.  That
+      did not happen here: the cron fired the orchestrator prompt
+      directly, so the orchestrator itself observed catalog exhaustion
+      and is now stopping cleanly.  Zero Claude builder/reviewer
+      dispatches issued this wake; only orchestrator-prompt context
+      consumed.  (If the entry-point script for cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784 lacks the §8.2 short-circuit
+      branch, a human should add it to stop this small recurring
+      orchestrator-prompt spend; that is the only outstanding follow-up.)
+
+      Housekeeping fixes applied this wake to the runtime head (the
+      only mutations of the wake):
+        - last_successful_commit: pending_this_wake → d78fffa
+          (the prior wake's actual commit sha; correction for honesty
+          per the runtime state rule in ORCHESTRATOR_PROMPT.md)
+        - last_updated: 2026-06-08T18:20:00Z → 2026-06-08T18:37:00Z
+
+      orchestrator_status remains catalog_exhausted.  No tools were
+      dispatched.  No catalog mutations.  Stopping cleanly per the
+      Catalog-exhaustion rule.
+
+      Discord `main` agent answer set (unchanged from 18:20Z):
+        "28/28 done — frontend factory catalog exhausted.  Last
+         shipped: ois__swap_spread (commit d78fffa, APPROVED, gate
+         pass).  Factory remains in catalog_exhausted state; human
+         re-arm required (append new catalog entry OR set
+         orchestrator_status: idle) before the factory will dispatch
+         again."
+
   - at: "2026-06-08T18:20:00Z"
     kind: wake_tool_28_swap_spread_approved_committed_catalog_exhausted
     text: |
