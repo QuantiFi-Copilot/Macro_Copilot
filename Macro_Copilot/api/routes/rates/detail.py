@@ -343,6 +343,22 @@ from rates_agent.policy_futures.tools.futures_price_level import (
     FuturesPriceLevelOutput,
     calculate_futures_price_level,
 )
+# Catalog tool-23 — bond_futures front-month rolling-generic price level
+# (TY1 / UXY1 / RX1 / G1 / JB1 / OAT1 / IK1 / KOA1 / CN1 / YM1 / XM1 / ...).
+# Same MCP function NAME as the policy_futures sibling
+# (``get_futures_price_level_tool``) but registered in a DIFFERENT MCP server
+# (``rates_agent.bond_futures.mcp_server``) and backed by a DIFFERENT
+# sub-package + a DIFFERENT Pydantic schema (price space, not implied-rate
+# space; bespoke ``{date, price}`` time_series rows in per-contract
+# ``quote_units`` rather than implied-rate PERCENT).  Disambiguated here
+# via an import alias so the standalone-bridge response_model name does
+# not collide with the policy_futures cousin.
+from rates_agent.bond_futures.tools.futures_price_level import (
+    CONFIG_PATH as BOND_FUTURES_PRICE_LEVEL_CONFIG_PATH,
+    FuturesPriceLevelInput as BondFuturesPriceLevelInput,
+    FuturesPriceLevelOutput as BondFuturesPriceLevelOutput,
+    calculate_futures_price_level as calculate_bond_futures_price_level,
+)
 # Standalone-bridge endpoint for the policy_futures same-curve simple-butterfly
 # primitive (e.g. SOFR_FUT SFR1-SFR2-SFR3 front-pack curvature,
 # EUR_SHORT_RATE_FUT ER1-ER2-ER4 whites/reds curvature).  Keyed by
@@ -3517,5 +3533,95 @@ def policy_futures_pack_average_detail(
     _tool_result_or_raise(
         result,
         f"Policy futures pack average for {curve_family} {pack}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/bond-futures-price  — bond_futures rolling-generic price level
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# ``get_futures_price_level_tool`` primitive in the ``bond_futures`` sub-
+# package ships its OWN typed-detail endpoint.  Keyed by
+# ``(curve_family, contract_code)`` per TD#11 — the rolling-generic stem
+# is the canonical disambiguator (TY1 vs UXY1 are both UST_FUT 10Y; US1
+# vs WN1 both UST_FUT 30Y).  Conventions are YAML-locked in V1; only
+# the structural keys plus ``lookback_days`` / ``field_name`` are
+# exposed.  The bond_futures ``FuturesPriceLevelInput`` does NOT accept
+# ``as_of_date`` (unlike the policy_futures sibling) — the backend
+# anchors at the universe's last observed trade_date.
+@router.get(
+    "/detail/bond-futures-price",
+    response_model=BondFuturesPriceLevelOutput,
+    summary="Bond Futures Rolling-Generic Price Level Detail (standalone bridge)",
+)
+def bond_futures_price_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family: str = Query(
+        ...,
+        description=(
+            "Bond-futures curve family — 'UST_FUT' (TY1 / UXY1 / US1 / "
+            "WN1 / TU1 / FV1), 'DE_FUT' (RX1 / UB1 / DU1 / OE1), "
+            "'UK_FUT' (G1), 'JP_FUT' (JB1), 'FR_FUT' (OAT1), 'IT_FUT' "
+            "(IK1 / BTS1), 'ES_FUT' (KOA1), 'CA_FUT' (CN1), 'AU_FUT' "
+            "(YM1 / XM1).  Do NOT pass policy-futures curves "
+            "(SOFR_FUT / EUR_SHORT_RATE_FUT / SONIA_FUT) — those route "
+            "to the policy_futures agent's /detail/policy-futures-price."
+        ),
+    ),
+    contract_code: str = Query(
+        ...,
+        description=(
+            "Rolling-generic stem from the bond_futures playbook universe "
+            "(TD#11 disambiguator).  Examples: 'TY1', 'UXY1', 'US1', "
+            "'WN1', 'TU1', 'FV1', 'RX1', 'UB1', 'DU1', 'OE1', 'G1', "
+            "'JB1', 'OAT1', 'IK1', 'BTS1', 'KOA1', 'CN1', 'YM1', 'XM1'.  "
+            "Required because (curve_family, tenor) alone is ambiguous "
+            "for several universes."
+        ),
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg observation field mnemonic.  Omit (None) to use "
+            "the tool's bundled ``default_price_field`` convention from "
+            "bond_futures/futures_price_level/config.yaml (currently "
+            "'PX_LAST').  Per config.yaml:default_price_field."
+        ),
+    ),
+):
+    """Same payload + sentinel semantics as the MCP wrapper.  Consumed by
+    ``surfaces/BuildExtended.tsx`` AND ``surfaces/BuildCompact.tsx`` per
+    the rendering-density dual-view contract, plus the Monitor tile.
+    None-sentinel on ``field_name`` falls through to the YAML default
+    via compute() — same shadowing fix pattern as the policy_futures
+    cousin and sovereign get_yield_levels.
+    """
+    try:
+        params = BondFuturesPriceLevelInput(
+            curve_family=curve_family,
+            contract_code=contract_code,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        bf_config = load_tool_config(BOND_FUTURES_PRICE_LEVEL_CONFIG_PATH)
+        result = calculate_bond_futures_price_level(
+            engine=engine, params=params, config=bf_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/bond-futures-price: tool failed for %s contract=%s",
+            curve_family, contract_code,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Bond futures price level for {curve_family} {contract_code}",
     )
     return result

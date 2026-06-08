@@ -1765,6 +1765,89 @@ export type PolicyFuturesPriceLevelOutput = {
   methodology_disclosure: string;
 };
 
+// --- /detail/bond-futures-price ---
+// Standalone-bridge type for the BOND_FUTURES front-month rolling-generic
+// price-level primitive (TY1 / UXY1 / US1 / WN1 / TU1 / FV1 / RX1 / UB1 /
+// DU1 / OE1 / G1 / JB1 / OAT1 / IK1 / BTS1 / KOA1 / CN1 / YM1 / XM1).
+// Mirrors ``FuturesPriceLevelOutput`` from
+// ``rates_agent/bond_futures/tools/futures_price_level/schemas.py``
+// byte-for-byte — DISTINCT from the policy_futures cousin above (same
+// Pydantic class name in a sibling sub-package; namespaced here as
+// ``BondFutures…`` per the catalog-23 naming-collision watch).
+//
+// Wire-honesty quirks vs. the policy_futures cousin:
+//   - ``quote_units`` is a STRING (not an enum) and varies per contract
+//     ('points' / '% of par value' / '100 - yield' / 'GBP'); KPI
+//     formatters MUST honour it (e.g. '100 - yield' annotates
+//     '(yield = 100 − price)').
+//   - ``daily_change_price`` / ``weekly_change_price`` / ``monthly_change_price``
+//     are RAW SUBTRACTIONS in ``quote_units`` (NOT bps; NOT *100).
+//   - ``time_series`` is bespoke ``{date, price}`` (NOT canonical
+//     ``shared.schemas.TimeSeries`` — ADR-gated PRICE-unit extension
+//     deferred in V1; see schemas.py module docstring).
+//   - ``methodology_disclosure`` carries the full P5 / ADR 0013 caveat
+//     including the "rolling-generic price; CTD-implied yield NOT a
+//     primitive in V1" line — surfaced verbatim on the extended
+//     methodology card (NOT a hardcoded TS literal).
+
+export type BondFuturesPriceLevelTimeSeriesRow = {
+  date: string;
+  /** Observation price in the contract's native ``quote_units``
+   *  (carried on the snapshot — e.g. 'points' for TY1, '% of par
+   *  value' for RX1, '100 - yield' for YM1, 'GBP' for G1). */
+  price: number;
+};
+
+export type BondFuturesPriceLevelCurrentMetrics = {
+  as_of_date: string;
+  /** Bond-futures curve family (e.g. 'UST_FUT', 'DE_FUT', 'UK_FUT', 'JP_FUT'). */
+  curve_family: string;
+  /** Rolling-generic stem (TY1 / UXY1 / US1 / WN1 / TU1 / FV1 / RX1 / ...). */
+  contract_code: string;
+  /** Tenor label on the rolling-generic (e.g. '10Y' for TY1). */
+  tenor: string;
+  /** Bloomberg QUOTE_UNITS for this rolling-generic — 'points' / '% of par
+   *  value' / '100 - yield' / 'GBP'.  Varies per contract; per-contract
+   *  decimals + suffix live in the per-tool CURVE_REGISTRY. */
+  quote_units: string | null;
+  /** Bloomberg FUT_CONT_SIZE — notional per contract in the curve's home
+   *  currency. */
+  contract_size: number | null;
+  /** Latest-effective LAST_TRADEABLE_DT (front contract's expiry as_of). */
+  expiry_date: string | null;
+  /** Latest-effective SECURITY_DES (e.g. 'TYZ6 COMB'). */
+  security_name: string | null;
+  /** Latest cleaned, ffilled price in ``quote_units`` (NOT a yield). */
+  current_price: number;
+  /** 1-trading-day change in ``quote_units`` (raw subtraction; NOT *100). */
+  daily_change_price: number | null;
+  /** 5-trading-day change in ``quote_units`` (raw subtraction). */
+  weekly_change_price: number | null;
+  /** 22-trading-day change in ``quote_units`` (raw subtraction). */
+  monthly_change_price: number | null;
+  /** Rolling 252-trading-day z-score of the PRICE level. */
+  z_score: number | null;
+  high_252d_price: number | null;
+  low_252d_price: number | null;
+  /** Percentile rank of ``current_price`` within trailing 252d (0-100). */
+  percentile_252d: number | null;
+  /** Number of trading days within the ``lookback_days`` window. */
+  observation_count: number;
+};
+
+export type BondFuturesPriceLevelOutput = {
+  current_metrics: BondFuturesPriceLevelCurrentMetrics;
+  /** Bespoke wire shape — each row carries ``price`` in the snapshot's
+   *  ``quote_units`` (TimeSeriesUnits has no PRICE member in V1; ADR-
+   *  gated extension per P8). */
+  time_series: BondFuturesPriceLevelTimeSeriesRow[];
+  /** P5 / ADR 0013 caveat carried verbatim — includes the rolling-
+   *  generic price reading + the "CTD-implied yield NOT a primitive in
+   *  V1" caveat.  Surfaced on the extended view's methodology card
+   *  (NOT a hardcoded TS literal). */
+  methodology_disclosure: string;
+};
+
 // --- /detail/policy-futures-butterfly ---
 // Standalone-bridge type for the policy_futures same-curve 3-leg simple-
 // butterfly primitive (e.g. SOFR_FUT SFR1-SFR2-SFR3, EUR_SHORT_RATE_FUT

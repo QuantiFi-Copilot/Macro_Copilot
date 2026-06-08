@@ -35,6 +35,7 @@ import type {
   ScanBondFuturesExtremesOutput,
   ScanPolicyFuturesExtremesOutput,
   PolicyFuturesPriceLevelOutput,
+  BondFuturesPriceLevelOutput,
   FuturesButterflySimpleOutput,
   FuturesCalendarSpreadOutput,
   FuturesCrossMarketSpreadOutput,
@@ -769,6 +770,41 @@ export function fetchDetailPolicyFuturesPrice(
 ): Promise<PolicyFuturesPriceLevelOutput> {
   return fetchJSON(
     `${RATES_PREFIX}/detail/policy-futures-price${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/bond-futures-price  — bond_futures rolling-generic price level
+// ---------------------------------------------------------------------------
+// Standalone bridge for the bond_futures futures_price_level primitive
+// (TY1 / UXY1 / US1 / WN1 / TU1 / FV1 on UST_FUT; RX1 / UB1 / DU1 / OE1
+// on DE_FUT; G1 on UK_FUT; JB1 on JP_FUT; OAT1 on FR_FUT; IK1 / BTS1 on
+// IT_FUT; KOA1 on ES_FUT; CN1 on CA_FUT; YM1 / XM1 on AU_FUT).  Keyed
+// by ``(curve_family, contract_code)`` per TD#11 — the rolling-generic
+// stem is the canonical disambiguator (TY1 vs UXY1 are both UST_FUT 10Y;
+// US1 vs WN1 both UST_FUT 30Y).  DISTINCT from the policy_futures cousin
+// above (same MCP function NAME ``get_futures_price_level_tool`` registered
+// in a different MCP server; different sub-package; different schema).
+//
+// Per ADR 0013 V1 there are no LLM-facing override paths for conventions
+// (z_score_window_days etc. are YAML-locked); only the structural
+// ``(curve_family, contract_code)`` keys plus ``lookback_days`` /
+// ``field_name`` are exposed.  No ``as_of_date`` — the bond_futures
+// Pydantic Input does NOT accept that parameter (unlike the policy_futures
+// sibling); the backend anchors at the universe's last observed trade_date.
+
+export type BondFuturesPriceDetailParams = {
+  curve_family: string;
+  contract_code: string;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailBondFuturesPrice(
+  params: BondFuturesPriceDetailParams,
+): Promise<BondFuturesPriceLevelOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/bond-futures-price${buildQuery(params)}`,
   );
 }
 
