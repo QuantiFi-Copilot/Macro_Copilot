@@ -1149,12 +1149,13 @@ tools:
       - "Standalone-bridge endpoint at /api/v1/rates/detail/bond-futures-price"
       - "bond_futures domain — distinct from policy_futures (treasuries vs STIR); MCP function name is the same (get_futures_price_level_tool) but registered in a different MCP server; workflow registry disambiguates by domain prefix elsewhere"
       - "Per Option (c) precedent (d8e8233): keep shell-standard density on Compact (3 KPIs, single identity); add Mockup conformance subsection to THESIS if mockup density exceeds shell"
+    commit_sha: 8b4e53d
 
   - id: inflation_swaps__forward
-    status: todo
+    status: done
     human_action_required: false
-    last_review_heading: null
-    last_gate_result: not_run
+    last_review_heading: APPROVED-AFTER-FIX
+    last_gate_result: pass
     build_order: 24
     backend_tool_name: calculate_inflation_swap_forward_tool
     instrument_family: inflation_swaps

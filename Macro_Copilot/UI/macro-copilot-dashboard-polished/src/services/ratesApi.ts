@@ -28,6 +28,7 @@ import type {
   OisCurveSpreadOutput,
   OisRateLevelOutput,
   OisForwardRateOutput,
+  InflationSwapForwardOutput,
   InflationSwapRateLevelOutput,
   InflationSwapCurveSpreadOutput,
   ScanInflationSwapsExtremesOutput,
@@ -486,6 +487,40 @@ export function fetchDetailOisForwardRate(
 ): Promise<OisForwardRateOutput> {
   return fetchJSON(
     `${RATES_PREFIX}/detail/ois-forward-rate${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/inflation-swap-forward  — same-curve ZCIS forward rate snapshot bridge
+// ---------------------------------------------------------------------------
+// Forward inflation-swap rate between two pillars on the SAME ZCIS curve
+// family (USD_ZCIS / EUR_ZCIS / GBP_ZCIS) — e.g. USD_ZCIS 5Y5Y, EUR_ZCIS
+// 5Y5Y, GBP_ZCIS 2Y3Y.  Own typed helper per the standalone-bridge contract;
+// consumed by BOTH Build views and the Monitor tile.  Same-curve invariant
+// is enforced by the input layer (single ``curve_family`` field) — cross-
+// curve forward combinations are NOT in scope and belong to a separate
+// primitive.  Rolling-z-score conventions are YAML-locked on this primitive
+// (no input-layer overrides — mirrors the OIS forward_rate / ZCIS rate_level
+// / curve_spread siblings); only ``lookback_days`` + ``field_name`` are
+// exposed.
+
+export type InflationSwapForwardDetailParams = {
+  curve_family: string;
+  /** Start tenor of the forward window (e.g. '5Y' for 5Y5Y).  Must be a
+   *  supported pillar on this curve_family. */
+  start_tenor: string;
+  /** End tenor of the forward window (e.g. '10Y' for 5Y5Y).  Must map to
+   *  a strictly larger year fraction than start_tenor. */
+  end_tenor: string;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailInflationSwapForward(
+  params: InflationSwapForwardDetailParams,
+): Promise<InflationSwapForwardOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/inflation-swap-forward${buildQuery(params)}`,
   );
 }
 

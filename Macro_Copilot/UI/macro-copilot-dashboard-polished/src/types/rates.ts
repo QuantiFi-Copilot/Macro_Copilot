@@ -511,6 +511,125 @@ export type OisForwardRateOutput = {
   time_series_zscore?: TimeSeries;
 };
 
+// --- /detail/inflation-swap-forward (standalone bridge) ---
+//
+// Mirrors rates_agent/inflation_swaps/tools/inflation_swap_forward/schemas.py
+// (InflationSwapForwardOutput / InflationSwapForwardCurrentMetrics /
+// InflationSwapForwardTimeSeriesRow).  Per the methodology-exposure
+// standalone-bridge contract (docs_revamped/03_standards/methodology_exposure.md
+// §5) the ZCIS forward-rate primitive ships its OWN typed-detail endpoint at
+// /api/v1/rates/detail/inflation-swap-forward and its OWN frontend type — no
+// reuse of OisForwardRateOutput (that's nominal OIS implied policy path;
+// this is forward INFLATION COMPENSATION; the underlying instrument families
+// are distinct and the rates are NOT comparable cross-family).  Same-curve,
+// two-tenor primitive: a single ``curve_family`` (USD_ZCIS / EUR_ZCIS /
+// GBP_ZCIS) + (start_tenor, end_tenor) on the same ZCIS curve.  Output is
+// FORWARD INFLATION COMPENSATION — not a clean forward expected-inflation
+// read; the wire-honesty caveat lives in ``methodology_label`` and is sourced
+// from the YAML at runtime (NOT hardcoded).  Carries the load-bearing
+// reference metadata (``inflation_index_family`` / ``index_lag`` /
+// ``interpolation`` / ``underlying_index``) on the wire so the desk can
+// interpret the forward honestly under the per-curve index-family quirks
+// (US CPI-U NSA, EU HICPxT, UK RPI).
+
+export type InflationSwapForwardMetrics = {
+  as_of_date: string;
+  curve_family: string;
+  start_tenor: string;
+  end_tenor: string;
+  /** Desk-friendly identifier composed by the backend (e.g.
+   *  ``'USD_ZCIS 5Y5Y'``, ``'EUR_ZCIS 5Y5Y'``, ``'GBP_ZCIS 2Y3Y'``). */
+  forward_window_label: string;
+  /** Current forward ZCIS rate in PERCENT (e.g. 2.382 = 2.382%).  Forward
+   *  inflation compensation, NOT pure forward expected inflation — see
+   *  ``methodology_label``. */
+  forward_zcis_pct: number;
+  /** Current forward ZCIS rate in BASIS POINTS (= forward_zcis_pct * 100).
+   *  The desk's headline display unit on the wire matches the sibling
+   *  inflation_swaps shape. */
+  forward_zcis_bps: number;
+  /** 1-trading-day change in the forward ZCIS rate (bps). */
+  change_1d_bps: number | null;
+  /** 5-trading-day change in the forward ZCIS rate (bps). */
+  change_1w_bps: number | null;
+  /** ~22-trading-day (~1 month) change in the forward ZCIS rate (bps). */
+  change_1m_bps: number | null;
+  /** Rolling 252-trading-day z-score of the forward ZCIS rate (in bps).
+   *  Conventions YAML-locked on this primitive (no input-layer overrides
+   *  — mirrors the OIS forward_rate / ZCIS rate_level / curve_spread
+   *  siblings). */
+  z_score_252d: number | null;
+  /** Highest forward ZCIS rate over trailing 252 trading days (bps). */
+  high_252d_bps: number | null;
+  /** Lowest forward ZCIS rate over trailing 252 trading days (bps). */
+  low_252d_bps: number | null;
+  /** Percentile rank within the trailing 252-day range (0-100). */
+  percentile_252d: number | null;
+  /** Latest start-tenor ZCIS rate in percent — surfaced so the desk can
+   *  audit the dual-compounding decomposition end-to-end. */
+  start_zcis_pct: number | null;
+  /** Latest end-tenor ZCIS rate in percent — audit companion to
+   *  ``start_zcis_pct``. */
+  end_zcis_pct: number | null;
+  /** Year fraction of ``start_tenor`` (e.g. 5.0 for '5Y'). */
+  start_years: number;
+  /** Year fraction of ``end_tenor`` (e.g. 10.0 for '10Y'). */
+  end_years: number;
+  /** Number of trading days in the displayed lookback window after
+   *  inner-join alignment. */
+  observation_count: number;
+  /** Inflation index family the ZCIS curve references (shared by both
+   *  legs by the same-curve invariant).  Examples: 'US_CPI_URBAN'
+   *  (USD_ZCIS), 'EU_HICP' (EUR_ZCIS), 'UK_RPI' (GBP_ZCIS).  Load-bearing:
+   *  surfaced on the wire so a desk reader can interpret the forward
+   *  honestly under the per-curve index-family quirks. */
+  inflation_index_family: string;
+  /** Indexation lag the ZCIS curve references.  Examples: '3M' (USD_ZCIS,
+   *  EUR_ZCIS), '2M' (GBP_ZCIS). */
+  index_lag: string;
+  /** Index-fixing interpolation convention.  Examples: 'Daily' (USD_ZCIS),
+   *  'Monthly' (EUR_ZCIS, GBP_ZCIS). */
+  interpolation: string;
+  /** Underlying inflation index Bloomberg ticker (shared by both legs).
+   *  Examples: 'CPURNSA Index' (USD_ZCIS), 'CPTFEMU Index' (EUR_ZCIS),
+   *  'UKRPI Index' (GBP_ZCIS).  Optional defensively; present on the
+   *  live wire. */
+  underlying_index: string | null;
+  /** Wire-honesty disclosure threaded from the YAML's
+   *  ``methodology.what_it_does``.  Spells out the dual-compounding
+   *  geometric forward formula AND the "forward inflation compensation;
+   *  not a clean forward expected-inflation read" caveat.  NOT a
+   *  hardcoded TS literal — a YAML edit flows through to runtime. */
+  methodology_label: string;
+};
+
+/** Bespoke wire-frozen forward ZCIS time-series row.  The canonical
+ *  ``time_series_forward`` (PERCENT) and ``time_series_zscore``
+ *  (Z_SCORE) payloads carry the same data in the closed-enum
+ *  ``TimeSeries`` shape; both are emitted alongside this bespoke list
+ *  — they cannot drift (per compute.py per-day double-write). */
+export type InflationSwapForwardTimeSeriesRow = {
+  date: string;
+  forward_zcis_pct: number;
+  forward_zcis_bps: number;
+  z_score: number | null;
+};
+
+export type InflationSwapForwardOutput = {
+  current_metrics: InflationSwapForwardMetrics;
+  /** Bespoke wire-frozen forward-rate history (preserved for callers
+   *  that want forward + z-score in one row). */
+  time_series: InflationSwapForwardTimeSeriesRow[];
+  /** Canonical historical forward ZCIS series.  Closed-enum
+   *  ``TimeSeriesUnits.PERCENT``; series_name pattern
+   *  ``<curve_family_lower>_<start_tenor_lower>_<end_tenor_lower>_zcis_forward``. */
+  time_series_forward?: TimeSeries;
+  /** Canonical historical rolling z-score series.  Closed-enum
+   *  ``TimeSeriesUnits.Z_SCORE``; series_name carries the
+   *  ``_zcis_forward_zscore`` suffix. */
+  time_series_zscore?: TimeSeries;
+};
+
 // --- /detail/real_yield (Phase-1 pilot, standalone bridge) ---
 //
 // Mirrors rates_agent/inflation_indexed_bonds/tools/real_yield_level/schemas.py.

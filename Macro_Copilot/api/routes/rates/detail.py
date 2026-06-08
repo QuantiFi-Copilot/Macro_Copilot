@@ -316,6 +316,28 @@ from rates_agent.inflation_swaps.tools.inflation_swap_rate_level import (
     InflationSwapRateLevelOutput,
     calculate_inflation_swap_rate_level,
 )
+# Standalone-bridge endpoint for the same-curve ZCIS forward-rate primitive
+# (USD_ZCIS 5Y5Y, EUR_ZCIS 5Y5Y, GBP_ZCIS 2Y3Y).  Per
+# ``docs_revamped/03_standards/methodology_exposure.md §5`` every new tool
+# ships its OWN typed-detail endpoint consumed by both the extended and
+# compact Build views (rendering_density dual-view) + the Monitor tile.
+# Output is FORWARD INFLATION COMPENSATION — not a clean forward expected-
+# inflation read; the wire-honesty caveat lives in ``methodology_label`` and
+# is sourced from the YAML at runtime (NOT a hardcoded Python literal).
+# Surfaces the load-bearing reference-metadata (``inflation_index_family``,
+# ``index_lag``, ``interpolation``, ``underlying_index``) on the wire so the
+# desk can interpret the forward honestly under the per-curve index-family
+# quirks (US CPI-U NSA, EU HICPxT, UK RPI).  Same-curve invariant enforced
+# by the input layer — cross-curve forwards belong to a separate primitive.
+# Rolling-z-score conventions are YAML-locked — only ``lookback_days`` +
+# ``field_name`` are exposed (mirrors the OIS forward_rate / ZCIS rate_level
+# siblings).
+from rates_agent.inflation_swaps.tools.inflation_swap_forward import (
+    CONFIG_PATH as INFLATION_SWAP_FORWARD_CONFIG_PATH,
+    InflationSwapForwardInput,
+    InflationSwapForwardOutput,
+    calculate_inflation_swap_forward,
+)
 # Standalone-bridge endpoint for the same-curve ZCIS tenor-spread primitive
 # (USD_ZCIS 5s10s, EUR_ZCIS 5s30s, GBP_ZCIS 2s10s).  Same payload feeds the
 # dual-view Build surfaces + the Monitor tile per the rendering_density
@@ -1818,6 +1840,114 @@ def ois_forward_rate_detail(
     _tool_result_or_raise(
         result,
         f"OIS forward rate for {curve_family} {window_label}",
+    )
+    return result
+
+
+# ============================================================================
+# /detail/inflation-swap-forward  — same-curve ZCIS forward rate bridge
+# ----------------------------------------------------------------------------
+# Forward inflation-swap rate between two pillars on the SAME ZCIS curve
+# family (e.g. USD_ZCIS 5Y5Y, EUR_ZCIS 5Y5Y, GBP_ZCIS 2Y3Y).  Per
+# ``docs_revamped/03_standards/methodology_exposure.md §5`` the ZCIS
+# forward-rate primitive ships its OWN typed-detail endpoint.  Same payload
+# feeds BOTH the extended Build view + the compact Build view + the Monitor
+# tile per rendering_density.md §10.  Output is FORWARD INFLATION
+# COMPENSATION — not a clean forward expected-inflation read; the wire-
+# honesty caveat lives in ``current_metrics.methodology_label`` and is
+# sourced from the YAML at runtime (NOT a hardcoded Python literal).
+# Rolling-z-score conventions are YAML-locked on this primitive (no input-
+# layer overrides — mirrors the OIS forward_rate / ZCIS rate_level /
+# curve_spread siblings); only ``lookback_days`` + ``field_name`` are
+# exposed at the API layer.  Same-curve invariant enforced by the input
+# layer — cross-curve forward combinations are NOT in scope and belong to
+# a separate primitive.
+# ============================================================================
+@router.get(
+    "/detail/inflation-swap-forward",
+    response_model=InflationSwapForwardOutput,
+    summary="ZCIS Forward Rate Detail (standalone bridge)",
+)
+def inflation_swap_forward_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family: str = Query(
+        ...,
+        description=(
+            "Inflation-swap curve family identifier shared by BOTH legs "
+            "(same-curve invariant).  Examples: 'USD_ZCIS' (US CPI-U), "
+            "'EUR_ZCIS' (Eurozone HICPxT), 'GBP_ZCIS' (UK RPI).  See "
+            "rates_agent/playbooks/inflation_swaps.yml for the ingested "
+            "universe."
+        ),
+    ),
+    start_tenor: str = Query(
+        ...,
+        description=(
+            "Start tenor of the forward window.  For 5Y5Y use '5Y'; for "
+            "5Y10Y use '5Y'; for 2Y3Y use '2Y'.  Must be a supported "
+            "pillar on this ``curve_family`` (current ingested grid is "
+            "1Y / 2Y / 3Y / 5Y / 10Y / 20Y / 30Y on each of USD_ZCIS / "
+            "EUR_ZCIS / GBP_ZCIS).  Must map to a strictly smaller year "
+            "fraction than ``end_tenor``."
+        ),
+    ),
+    end_tenor: str = Query(
+        ...,
+        description=(
+            "End tenor of the forward window.  For 5Y5Y use '10Y' "
+            "(start=5Y + forward=5Y); for 5Y10Y use '15Y'; for 2Y3Y use "
+            "'5Y'.  Must be a supported pillar on this ``curve_family`` "
+            "and must map to a strictly larger year fraction than "
+            "``start_tenor``."
+        ),
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic used for BOTH endpoint ZCIS rate "
+            "series.  Omit (None) to use the tool's bundled "
+            "``default_zcis_rate_field`` convention from "
+            "inflation_swap_forward/config.yaml (currently 'PX_MID')."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the frontend
+    module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
+    AND the Monitor widget per the rendering-density dual-view + monitor
+    contract.
+
+    The ZCIS forward-rate primitive intentionally does NOT expose the
+    z-score conventions at its Input layer — they're sourced from the YAML
+    at compute() time only.  Mirrors the OIS forward_rate + sibling ZCIS
+    tools.
+    """
+    try:
+        params = InflationSwapForwardInput(
+            curve_family=curve_family,
+            start_tenor=start_tenor,
+            end_tenor=end_tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        isf_config = load_tool_config(INFLATION_SWAP_FORWARD_CONFIG_PATH)
+        result = calculate_inflation_swap_forward(
+            engine=engine, params=params, config=isf_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/inflation-swap-forward: tool failed for %s %s/%s",
+            curve_family, start_tenor, end_tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"ZCIS forward rate for {curve_family} {start_tenor}/{end_tenor}",
     )
     return result
 
