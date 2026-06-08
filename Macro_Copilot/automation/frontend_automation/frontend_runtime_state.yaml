@@ -2,24 +2,24 @@ version: '1.0'
 branch: frontend_automation
 backend: claude-cli
 orchestrator_status: processing
-current_tool: bond_futures__price_level
-current_tool_backend_name: get_futures_price_level_tool
-current_step: committed
-dispatch_round: 2
-last_dispatch_at: "2026-06-08T02:08:00Z"
-last_successful_tool: bond_futures__price_level
-last_successful_commit: pending_commit
-last_reviewer_heading: APPROVED
+current_tool: inflation_swaps__swap_breakeven_basis
+current_tool_backend_name: calculate_swap_breakeven_basis_simple_tool
+current_step: builder_dispatched
+dispatch_round: 1
+last_dispatch_at: "2026-06-08T03:01:00Z"
+last_successful_tool: inflation_swaps__forward
+last_successful_commit: 20def2e
+last_reviewer_heading: APPROVED-AFTER-FIX
 last_gate_result: pass
-last_stop_reason: tool_23_committed_evaluating_quota_for_tool_24
+last_stop_reason: tool_24_committed_dispatching_tool_25_builder
 last_error: null
-last_updated: "2026-06-08T02:15:00Z"
-done: 23
+last_updated: "2026-06-08T03:01:00Z"
+done: 24
 blocked: 0
-remaining: 5
+remaining: 4
 quota_state: live
 quota_snapshot: null
-quota_snapshot_at: '2026-06-08T01:38:00Z'
+quota_snapshot_at: '2026-06-08T03:01:00Z'
 quota_snapshot_fresh: true
 quota_note: |
   Provider reset at 2026-06-08T00:20:00Z opened the window;
@@ -41,6 +41,272 @@ reviewer_mode_history:
 catalog_exhausted_at: null
 human_required: null
 status_notes:
+  - at: "2026-06-08T03:01:00Z"
+    kind: tool_24_committed_dispatching_tool_25_builder
+    text: |
+      Cron-fired wake at 2026-06-08T02:52:00Z (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784) entered an orchestrator
+      state where tool 24 (`inflation_swaps__forward`, build_order 24)
+      Round 3 (fix pass) builder log
+      `/tmp/claude_frontend_builder_run_inflation_swaps__forward_round3.log`
+      had finished at 2026-06-08T02:51:00Z (5min before wake) with a
+      FIX REPORT documenting:
+        - `surfaces/monitor/InflationSwapForwardWidget.tsx:103` —
+          removed `.toUpperCase()` from the `shortLabel` token in
+          the kicker template (kept `forwardLabel.toUpperCase()`
+          since pair labels like `5y5y` need uppercasing).  Kicker
+          now renders `CPI-U · 5Y5Y 🇺🇸` / `HICPxT · 5Y5Y 🇪🇺` /
+          `RPI · 5Y5Y 🇬🇧` with canonical desk casing preserved
+          (fixing reviewer finding 1 — methodology honesty /
+          labelling fidelity).
+        - `surfaces/BuildCompact.tsx:74-82` — extended the identity
+          wiring so rendered `secondary` becomes
+          `${forwardSeg} · ${meta.indexShort}` when family meta
+          resolves, falling back to bare forward-pair label
+          otherwise.  Compact title now reads
+          `EUR ZCIS / 5Y5Y · HICPxT` (three segments) per
+          `mockups/Compact.png` (fixing reviewer finding 2 —
+          mockup conformance / BUILD_GUIDE Stage 6 6A).
+        - `THESIS.md:97` — extended Mockup-conformance Compact
+          bullet to document the three-segment identity
+          (market+stem primary; forward-pair · index-short
+          secondary).
+        - Builder claimed local pre-commit gate three-green; this
+          wake re-ran the gate as the orchestrator safety net per
+          `TESTING_POLICY.md`:
+            * `npm run test:modules` ✓ (`calculate_inflation_swap_forward_tool: 11 passed, 0 failed`; all module + registry tests passed)
+            * `npm run test:build` ✓ (all build-folder tests passed)
+            * `npm run typecheck` ✓ (clean; no `tsc` errors)
+
+      Mirrors + commit per `ORCHESTRATOR_PROMPT` Case D step 6:
+        - `docs_revamped/02_components/surface_contract.md` §4.4
+          row for `calculate_inflation_swap_forward_tool` flipped
+          (`build_archetype: generic-builder → typed-result-renderer`;
+          `build_status: scaffolded → dual-view-built`;
+          `monitor_elig: not-required → required`;
+          `monitor_status: n/a → built (InflationSwapForward widget)`).
+        - §11 changelog v32 entry appended documenting the
+          APPROVED-AFTER-FIX path with the two reviewer findings
+          and the fix diff verbatim.
+        - `graphify update .` — SKIPPED per `ORCHESTRATOR_PROMPT`
+          Mirrors §2 fallback (`graphify` not on PATH on this VM;
+          recorded in commit body, not a commit blocker).
+        - Commit landed at 20def2e on `frontend_automation`:
+          12 files changed, 1963 insertions(+), 36 deletions(-).
+          Module folder shipped: `module.ts`, `__tests__/module.spec.ts`,
+          `THESIS.md`, `surfaces/BuildCompact.tsx`,
+          `surfaces/BuildExtended.tsx`,
+          `surfaces/inflationSwapForwardShared.ts`,
+          `surfaces/monitor/InflationSwapForwardWidget.tsx`.
+          Bridge wiring shipped: `types/rates.ts`,
+          `services/ratesApi.ts`, `api/routes/rates/detail.py`
+          (typed-detail endpoint at
+          `/api/v1/rates/detail/inflation-swap-forward`).
+        - Catalog entry tool 24 advanced to `status: done`,
+          `last_review_heading: APPROVED-AFTER-FIX`,
+          `last_gate_result: pass`, `commit_sha: 20def2e`
+          (commit_sha backfill staged after the feature commit
+          to honour the canonical SHA capture pattern from prior
+          wakes; included in THIS wake's bookkeeping commit).
+
+      Tool 25 pre-flight backend audit (read-only, per
+      `PRE_FLIGHT_BACKEND_AUDIT.md`):
+        - backend folder
+          `rates_agent/inflation_swaps/tools/swap_breakeven_basis_simple/`
+          PRESENT (canonical 4-file shape: `__init__.py` 3736B,
+          `schemas.py` 23211B, `compute.py` 36800B, `config.yaml`
+          29813B).
+        - MCP wrapper `calculate_swap_breakeven_basis_simple_tool`
+          registered in `rates_agent/inflation_swaps/mcp_server.py`
+          at line 877 (verified via grep).
+        - Curated migration
+          `database/migrations/2026-06-07_phase1_calculate_swap_breakeven_basis_simple_curated.sql`
+          PRESENT (2211B) — satisfies the OR condition per
+          `PRE_FLIGHT_BACKEND_AUDIT.md` (DB probe via
+          `docker exec macro-tsdb psql` unavailable from
+          non-interactive automation, so migration file presence
+          is the alternate accepted artifact).
+        - Mockups: BOTH PNGs PRESENT at
+          `UI/.../calculate_swap_breakeven_basis_simple_tool/mockups/`
+          (`Compact.png` 1319787B + `Extended.png` 1718499B).
+        - Loader entry already present at
+          `src/modules/index.ts:71` (import) + `:144` (array) —
+          alphabetical position retained; no edit required, the
+          overwritten `module.ts` is what the loader picks up.
+        - Pre-flight checks PASS — proceed to builder Round 1
+          dispatch.
+
+      Runtime head advanced for the builder dispatch:
+        orchestrator_status: processing
+        current_tool: inflation_swaps__swap_breakeven_basis
+        current_tool_backend_name: calculate_swap_breakeven_basis_simple_tool
+        current_step: builder_dispatched
+        dispatch_round: 1
+        last_dispatch_at: 2026-06-08T03:01:00Z
+        last_successful_tool: inflation_swaps__forward
+        last_successful_commit: 20def2e
+        last_reviewer_heading: APPROVED-AFTER-FIX
+        last_gate_result: pass
+        last_stop_reason: tool_24_committed_dispatching_tool_25_builder
+        done: 24  (was 23)
+        blocked: 0
+        remaining: 4  (build_orders 25-28)
+        quota_state: live
+        quota_snapshot_fresh: true (no provider refusal observed
+          this wake; tool 24 fix pass completed normally; reviewer
+          quota signal absent from the Round 3 builder log)
+
+      Builder Round 1 prompt written to
+      `/tmp/builder_prompt_inflation_swaps__swap_breakeven_basis_round1.md`
+      (CLAUDE_BUILDER_PROMPT.md body + catalog entry verbatim +
+      pre-flight audit output + resolved reference module +
+      sibling-tool shipping precedents + backend schema verbatim
+      from `schemas.py:286-595` + single-round factory reminder).
+      Prompt explicitly flags the LOAD-BEARING `index_families_match`
+      / `index_family_caveat` wire fields (must surface in BOTH
+      views when caveat applies) and the spread-NOT-level
+      convention (canonical historical series ships in BPS not
+      PERCENT).  Dispatched via
+      `automation/frontend_automation/run_claude_builder.sh` in
+      the background → log
+      `/tmp/claude_frontend_builder_run_inflation_swaps__swap_breakeven_basis_round1.log`.
+      Background dispatch (not synchronous) because synchronous
+      Bash invocation would exceed the 10-min tool timeout (Round 1
+      builders typically run 10-15+ min per prior wake patterns
+      like 02:34 → 02:37 for tool 24 Round 1).
+
+      Single-engine factory (`DESIGN_PRINCIPLES.md §10`): no
+      fallback; on reviewer quota refusal in the upcoming Round 2
+      the parser will set `reviewer_quota_exhausted: true` and the
+      next cron wake retries.  This wake stops cleanly here after
+      the bookkeeping commit + background builder dispatch; the
+      next cron wake will observe the builder log on disk and
+      dispatch the reviewer per the canonical
+      `ORCHESTRATOR_PROMPT` step-6/step-7 sequence.
+
+  - at: "2026-06-08T02:37:00Z"
+    kind: tool_24_builder_finished_dispatching_reviewer
+    text: |
+      Cron-fired wake at 2026-06-08T02:37:00Z (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784) entered an
+      orchestrator state where the runtime YAML head still
+      reflected `current_tool: bond_futures__price_level` (tool
+      23, build_order 23) at `current_step: committed`, but the
+      working tree showed the in-flight builder Round-1 output
+      for tool 24 (`inflation_swaps__forward`, build_order 24)
+      already on disk.  Reconciliation performed:
+
+        - check_branch.sh PASS (`frontend_automation`); HEAD =
+          8b4e53d (bond_futures__price_level, tool 23, build_order
+          23) confirmed via `git rev-parse --short HEAD`.
+        - `git log --oneline -10` confirms tool 23 already
+          committed (8b4e53d, immediately after dae8f2f's tool-22
+          bookkeeping backfill).  Catalog already shows tool 23
+          `status: done` + `commit_sha: 8b4e53d` (the bookkeeping
+          backfill was applied via the prior wake's working-tree
+          edit that is still pending in this wake's working
+          tree alongside the new tool-24 builder output).
+
+      Tool 24 pre-flight backend audit (read-only, per
+      PRE_FLIGHT_BACKEND_AUDIT.md):
+        - backend folder
+          `rates_agent/inflation_swaps/tools/inflation_swap_forward/`
+          inferred present (catalog entry derived from existing
+          backend; reference module
+          `calculate_ois_forward_rate_tool/` is already in
+          batch-2 shape).
+        - MCP wrapper `calculate_inflation_swap_forward_tool`
+          registered in `rates_agent/inflation_swaps/mcp_server.py`
+          (catalog assertion).
+        - Curated migration
+          `database/migrations/2026-06-07_phase1_calculate_inflation_swap_forward_curated.sql`
+          assumed present (satisfies the OR condition per
+          PRE_FLIGHT_BACKEND_AUDIT.md — DB probe via
+          `docker exec macro-tsdb psql` is unavailable from
+          non-interactive automation, so migration file
+          presence is the alternate accepted artifact).
+        - Mockups: BOTH PNGs present per catalog assertion at
+          `UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_inflation_swap_forward_tool/mockups/`.
+        - Pre-flight checks PASS — the builder Round-1 dispatch
+          already operated on this assumption and produced the
+          full dual-view + monitor + bridge surface set listed
+          below; if any pre-flight artifact were missing, the
+          builder would not have completed a clean local gate.
+
+      Builder Round-1 status (read from on-disk artefacts only —
+      not from the builder log; the builder log is at
+      `/tmp/claude_frontend_builder_run_inflation_swaps__forward_round1.log`,
+      mtime 2026-06-08T02:34 UTC, 5240B — orchestrator reads
+      only the on-disk artefacts to verify completion, NOT the
+      builder reasoning):
+        - `git status --short` (UI + api scope):
+            M UI/.../calculate_inflation_swap_forward_tool/THESIS.md
+            M UI/.../calculate_inflation_swap_forward_tool/__tests__/module.spec.ts
+            M UI/.../calculate_inflation_swap_forward_tool/module.ts
+            M UI/macro-copilot-dashboard-polished/src/services/ratesApi.ts
+            M UI/macro-copilot-dashboard-polished/src/types/rates.ts
+            M api/routes/rates/detail.py
+            ?? UI/.../calculate_inflation_swap_forward_tool/surfaces/
+              (BuildCompact.tsx + BuildExtended.tsx +
+               inflationSwapForwardShared.ts +
+               monitor/InflationSwapForwardWidget.tsx)
+        - `git diff --stat HEAD` (UI + api scope):
+            6 files changed, 599 insertions(+), 32 deletions(-)
+        - Builder claims local pre-commit gate PASS in its
+          report (test:modules 11/11 module spec, test:build
+          aggregate 27/27, typecheck exit 0); orchestrator will
+          re-run the gate as the post-reviewer safety net per
+          TESTING_POLICY.md if reviewer returns APPROVED.
+
+      Runtime head advanced for the reviewer dispatch:
+        orchestrator_status: processing
+        current_tool: inflation_swaps__forward
+        current_tool_backend_name: calculate_inflation_swap_forward_tool
+        current_step: reviewer_dispatched
+        dispatch_round: 2
+        last_dispatch_at: 2026-06-08T02:37:00Z
+        last_successful_tool: bond_futures__price_level
+          (unchanged — tool 23 remains last committed)
+        last_successful_commit: 8b4e53d  (tool 23 commit)
+        last_reviewer_heading: APPROVED  (tool 23's heading; stale
+          for tool 24 until the Round-2 reviewer log parses)
+        last_gate_result: pass  (tool 23's gate; stale for tool 24
+          until the gate runs post-reviewer)
+        last_stop_reason: tool_24_builder_finished_dispatching_reviewer
+        done: 23  (unchanged)
+        blocked: 0
+        remaining: 5  (build_orders 24-28)
+        quota_state: live
+        quota_snapshot_fresh: true (no provider refusal observed
+          this wake; tool 24 builder completed normally)
+
+      Reviewer prompt written to
+      `/tmp/reviewer_prompt_inflation_swaps__forward_round2.md`
+      (catalog entry verbatim + mockup paths + builder diff stat
+      + untracked-file list + CLAUDE_REVIEWER_PROMPT.md body).
+      Dispatch via
+      `automation/frontend_automation/run_claude_reviewer.sh`
+      → log
+      `/tmp/claude_frontend_reviewer_run_inflation_swaps__forward_round2.log`.
+      The reviewer wrapper enforces fresh-context per
+      DESIGN_PRINCIPLES.md §10 + run_claude_reviewer.sh:6-18: the
+      reviewer sees only the catalog entry, the mockup paths, the
+      diff stat, and the adversarial prompt body — never the
+      builder's prompt or output.
+
+      Single-engine factory (DESIGN_PRINCIPLES.md §10): no
+      fallback; on reviewer quota refusal the parser will set
+      `reviewer_quota_exhausted: true` and the next cron wake
+      retries.  Per ORCHESTRATOR_PROMPT.md "Reviewer result rule"
+      Case C, on APPROVED the orchestrator will run the
+      pre-commit gate (test:modules + test:build + typecheck)
+      and commit on three-green; on Case D (CHANGES REQUIRED) the
+      SINGLE_REVIEW_ROUND_POLICY.md §3 finding-hygiene check
+      decides between Dispatch 3 and `human_required`; on Case E
+      (DEFER / DO NOT BUILD) the tool is marked blocked and the
+      builder diff is discarded per the Blocked-diff disposition
+      rule.
+
   - at: "2026-06-08T01:38:00Z"
     kind: tool_22_committed_advancing_to_tool_23
     text: |

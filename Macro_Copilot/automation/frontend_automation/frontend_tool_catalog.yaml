@@ -1185,6 +1185,7 @@ tools:
       - "Mirror calculate_ois_forward_rate_tool dual-view shape (Batch 2)"
       - "Standalone-bridge endpoint at /api/v1/rates/detail/inflation-swap-forward"
       - "Per Option (c) precedent: keep shell-standard density on Compact; document any deviation in THESIS"
+    commit_sha: 20def2e
 
   - id: inflation_swaps__swap_breakeven_basis
     status: todo
