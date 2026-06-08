@@ -1,22 +1,23 @@
 version: '1.0'
 branch: frontend_automation
 backend: claude-cli
-orchestrator_status: processing
-current_tool: ois__financing_rate
-current_tool_backend_name: compute_financing_rate_tool
+orchestrator_status: catalog_exhausted
+current_tool: null
+current_tool_backend_name: null
 current_step: committed
 dispatch_round: 2
-last_dispatch_at: "2026-06-08T14:38:00Z"
-last_successful_tool: ois__financing_rate
+last_dispatch_at: "2026-06-08T18:15:00Z"
+last_successful_tool: ois__swap_spread
 last_successful_commit: pending_this_wake
 last_reviewer_heading: APPROVED
 last_gate_result: pass
-last_stop_reason: tool_27_committed_advancing_to_tool_28
+last_stop_reason: catalog_exhausted
 last_error: null
-last_updated: "2026-06-08T14:42:00Z"
-done: 27
+last_updated: "2026-06-08T18:20:00Z"
+done: 28
 blocked: 0
-remaining: 1
+remaining: 0
+catalog_exhausted_at: "2026-06-08T18:20:00Z"
 human_required: null
 quota_state: live
 quota_snapshot: null
@@ -44,8 +45,104 @@ reviewer_mode_history:
       and SINGLE_REVIEW_ROUND_POLICY.md.  Quota exhaustion on either
       dispatch triggers a clean waiting_quota stop; the next cron wake
       retries.
-catalog_exhausted_at: null
 status_notes:
+  - at: "2026-06-08T18:20:00Z"
+    kind: wake_tool_28_swap_spread_approved_committed_catalog_exhausted
+    text: |
+      Cron wake at 2026-06-08T18:10Z resumed the in-flight builder
+      for tool 28 (ois__swap_spread / calculate_swap_spread_tool).
+      Background builder PID 279111 dispatched by the prior 17:53Z
+      wake was still executing at wake entry; per
+      BACKGROUND_EXECUTION_POLICY.md §7 (no-overlap rule) this wake
+      did NOT redispatch — it waited for the existing worker to exit.
+
+      Builder exited at 18:13:20Z with full BUILDER REPORT and all
+      three gates green (test:modules: 6 passed; typecheck: clean;
+      test:build: all build-folder tests passed).  Files produced:
+        - module.ts (overwrote Stage-3 stub; tiers
+          [generic_runnable, custom_build_surface, monitor_surface],
+          typedView=null)
+        - THESIS.md (overwrote Stage-3 stub; Q1-Q5 + Mockup
+          conformance subsection documenting the Option (c)
+          deviation)
+        - __tests__/module.spec.ts (overwrote Stage-3 stub;
+          round-trip + dual-view + standalone-bridge checks)
+        - surfaces/BuildExtended.tsx (10473B)
+        - surfaces/BuildCompact.tsx (3934B)
+        - surfaces/swapSpreadShared.ts (23990B; useSwapSpread hook,
+          compactKPIs, extendedKPIs, buildReferenceBands,
+          buildStretchContext, buildMethodologyRows, pair registry,
+          SWAP_SPREAD_COMPACT_CAVEAT single-source caveat with
+          TODO(PR10) marker)
+        - surfaces/monitor/SwapSpreadWidget.tsx (185KB widget)
+        - types/rates.ts: SwapSpreadCurrentMetrics,
+          SwapSpreadTimeSeriesRow, SwapSpreadOutput Pydantic mirror
+        - services/ratesApi.ts: fetchDetailSwapSpread +
+          SwapSpreadDetailParams
+        - api/routes/rates/detail.py: @router.get(
+          "/detail/swap-spread") route with the par-leg OIS
+          approximation pattern; existing 41 routes untouched
+        - src/modules/index.ts: alphabetical loader entry already
+          present from Stage-3 scaffold sweep (no edit needed)
+
+      Reviewer (Dispatch 2, FRESH CONTEXT) dispatched at 18:15Z via
+      run_claude_reviewer.sh; PID 287203 exited at 18:18:37Z.  Log
+      at /tmp/claude_frontend_reviewer_run_ois__swap_spread_round2.log
+      (2376B).  parse_reviewer_log.py: heading=APPROVED,
+      environment_failure=false, reviewer_quota_exhausted=false.
+      Reviewer confirmed:
+        - dual-view contract (rendering_density.md §1, §2.1, §2.2)
+        - mockup conformance (Extended 1:1; Compact follows Option
+          (c) precedent — explicitly documented)
+        - standalone bridge (typedView=null; per-tool detail
+          endpoint; fetchDetailSwapSpread helper; SwapSpreadOutput
+          mirror; all surfaces consume the same bridge via
+          useSwapSpread)
+        - methodology disclosure (SWAP_SPREAD_COMPACT_CAVEAT single
+          source of truth with explicit PR10 migration marker,
+          matching OIS sub-domain precedent for tools whose
+          Pydantic Output lacks methodology_label)
+        - FM1, FM3, FM7, FM8, FM10, FM11, FM12 all satisfied
+        - shared helper bypass: none
+
+      Pre-commit gate independently re-run by the orchestrator:
+        - npm run test:modules → exit 0 (all module + registry
+          tests passed; calculate_swap_spread_tool: 6 passed)
+        - npm run typecheck → exit 0
+        - npm run test:build → exit 0 (all build-folder tests
+          passed)
+
+      Catalog status: tool 28 (ois__swap_spread) flipped
+      todo → done; shipped_at=2026-06-08T18:18:37Z;
+      last_review_heading=APPROVED; last_gate_result=pass.
+
+      Counts: done=28, blocked=0, remaining=0.  Catalog is
+      EXHAUSTED — every entry in frontend_tool_catalog.yaml is in
+      a terminal state (done or blocked).  Per
+      BACKGROUND_EXECUTION_POLICY.md §8.1, runtime state head
+      updated:
+        orchestrator_status: processing → catalog_exhausted
+        last_stop_reason: catalog_exhausted
+        catalog_exhausted_at: 2026-06-08T18:20:00Z
+        current_tool: null
+        current_tool_backend_name: null
+        current_step: committed
+
+      Next cron wake: per §8.2 the entry-point script reads
+      orchestrator_status=catalog_exhausted and short-circuits with
+      `catalog exhausted at 2026-06-08T18:20:00Z; skipping wake`.
+      Zero Claude quota consumed on future wakes until a human
+      re-arms the factory by either appending a new todo entry to
+      frontend_tool_catalog.yaml or explicitly resetting
+      orchestrator_status (per §8.3).
+
+      Discord `main` agent answer set updated:
+        "28/28 done — frontend factory catalog exhausted.  Last
+         shipped: ois__swap_spread (APPROVED, gate pass, commit
+         this wake).  Factory is now in catalog_exhausted state;
+         next cron wake short-circuits with no Claude spend until
+         a human re-arms with new tool entries."
+
   - at: "2026-06-08T14:14:00Z"
     kind: wake_builder_round1_dispatched_tool_27_post_architectural_fix
     text: |

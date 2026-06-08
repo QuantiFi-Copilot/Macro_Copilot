@@ -289,6 +289,33 @@ from rates_agent.ois.tools.cross_market_spread import (
     OISCrossMarketSpreadOutput,
     calculate_ois_cross_market_spread,
 )
+# Standalone-bridge endpoint for the CROSS-DOMAIN swap-spread primitive — one
+# sovereign yield leg + one OIS rate leg at the SAME tenor in the SAME currency
+# (e.g. UST 10Y minus USD_SOFR_OIS 10Y).  Per
+# ``docs_revamped/03_standards/methodology_exposure.md §5`` every new tool ships
+# its OWN typed-detail endpoint consumed by both the extended and compact Build
+# views (rendering_density dual-view) + the Monitor tile.  Distinct from the
+# sibling sovereign ``/detail/spread`` (sovereign vs sovereign) and OIS
+# ``/detail/ois-curve-spread`` (OIS vs OIS) — this primitive is the asset-swap-
+# spread style ``(sovereign_yield − ois_rate) × 100`` differential.  Sign
+# convention POSITIVE = treasuries trade CHEAP to OIS (locked in code).
+# Currency-match invariant enforced by the schema layer (UST vs ESTR rejected).
+# The par-leg OIS approximation caveat (NOT per-bond ASW) is the load-bearing
+# honesty disclosure — surfaced on the methodology card via the per-tool TS-side
+# registry until the OIS sub-domain ships ``methodology_label`` on the wire
+# (mirrors the sibling OIS curve_spread / butterfly / cross-market bridges).
+# Rolling-z-score conventions are YAML-locked on this primitive — only
+# ``lookback_days`` + per-leg ``sovereign_field_name`` / ``ois_field_name`` are
+# exposed at the API layer (the two legs use DIFFERENT Bloomberg field-name
+# mnemonics — sovereign YLD_YTM_MID vs OIS PX_LAST).
+from rates_agent.ois.tools.swap_spread.compute import (
+    CONFIG_PATH as SWAP_SPREAD_CONFIG_PATH,
+    calculate_swap_spread,
+)
+from rates_agent.ois.tools.swap_spread.schemas import (
+    SwapSpreadInput,
+    SwapSpreadOutput,
+)
 # Standalone-bridge endpoint for the single-tenor OIS par-swap-rate-level
 # primitive (e.g. USD_SOFR_OIS 2Y, EUR_ESTR_OIS 10Y, GBP_SONIA_OIS 5Y).
 # Per ``docs_revamped/03_standards/methodology_exposure.md §5`` every new tool
@@ -1688,6 +1715,117 @@ def ois_cross_market_spread_detail(
         result,
         f"OIS cross-market spread for {curve_family_1} - "
         f"{curve_family_2} {tenor}",
+    )
+    return result
+
+
+# ============================================================================
+# /detail/swap-spread  — cross-domain sovereign-vs-OIS swap spread bridge
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# calculate_swap_spread primitive ships its OWN typed-detail endpoint.
+# Cross-domain primitive: one sovereign curve leg + one OIS curve leg at the
+# same tenor in the same currency (e.g. UST 10Y minus USD_SOFR_OIS 10Y).
+# Distinct from the sibling sovereign ``/detail/spread`` (sovereign vs
+# sovereign) and OIS ``/detail/ois-curve-spread`` (OIS vs OIS).  The schema
+# layer enforces currency-match (UST vs ESTR rejected) and curve-distinctness.
+# The same payload feeds BOTH the extended and compact Build views and the
+# Monitor tile (rendering_density.md §10).  Rolling-z-score conventions are
+# YAML-locked on this primitive — only ``lookback_days`` + per-leg
+# ``sovereign_field_name`` / ``ois_field_name`` are exposed at the API layer
+# (the two legs use DIFFERENT Bloomberg field-name mnemonics).
+# ============================================================================
+@router.get(
+    "/detail/swap-spread",
+    response_model=SwapSpreadOutput,
+    summary="Cross-Domain Swap Spread Detail (standalone bridge)",
+)
+def swap_spread_detail(
+    engine: Engine = Depends(get_engine),
+    sovereign_curve_family: str = Query(
+        ...,
+        description=(
+            "Sovereign curve family for the cash-bond leg.  Examples: 'UST', "
+            "'DE_BUND', 'IT_BTP', 'FR_OAT', 'UK_GILT', 'JGB'."
+        ),
+    ),
+    ois_curve_family: str = Query(
+        ...,
+        description=(
+            "OIS curve family for the swap leg.  Must be in the same currency "
+            "as ``sovereign_curve_family`` (UST/USD_SOFR_OIS, BUND/EUR_ESTR_OIS, "
+            "GILT/GBP_SONIA_OIS, JGB/JPY_OIS).  Cross-currency pairings are "
+            "rejected at the schema layer."
+        ),
+    ),
+    tenor: str = Query(
+        ...,
+        description=(
+            "Tenor point shared by both legs.  Examples: '1Y', '2Y', '5Y', "
+            "'10Y', '30Y'."
+        ),
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    sovereign_field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic for the sovereign leg.  Omit (None) to "
+            "use the tool's bundled ``sovereign_leg_default_field`` convention "
+            "(currently 'YLD_YTM_MID' — bond yield-to-maturity)."
+        ),
+    ),
+    ois_field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic for the OIS leg.  Omit (None) to use the "
+            "tool's bundled ``ois_leg_default_field`` convention (currently "
+            "'PX_LAST' — OIS par swap rate)."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the frontend
+    module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
+    AND the Monitor widget per the rendering-density dual-view + monitor
+    contract.
+
+    Sign convention: spread = (sovereign_yield − ois_rate) × 100 in bps.
+    POSITIVE means the sovereign trades CHEAP to OIS (asset-swap-spread
+    convention).  The sign is locked in code; the validator does NOT support
+    inverting it.
+
+    The swap_spread primitive intentionally does NOT expose the z-score
+    conventions at its Input layer — its rolling-z-score conventions are
+    sourced from the YAML at compute() time only.  Mirrors the sibling OIS
+    curve_spread / butterfly / cross-market spread bridges.
+    """
+    try:
+        params = SwapSpreadInput(
+            sovereign_curve_family=sovereign_curve_family,
+            ois_curve_family=ois_curve_family,
+            tenor=tenor,
+            lookback_days=lookback_days,
+            sovereign_field_name=sovereign_field_name,
+            ois_field_name=ois_field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        ss_config = load_tool_config(SWAP_SPREAD_CONFIG_PATH)
+        result = calculate_swap_spread(
+            engine=engine, params=params, config=ss_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/swap-spread: tool failed for %s vs %s %s",
+            sovereign_curve_family, ois_curve_family, tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Swap spread for {sovereign_curve_family} vs "
+        f"{ois_curve_family} {tenor}",
     )
     return result
 

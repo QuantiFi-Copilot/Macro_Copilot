@@ -1494,6 +1494,91 @@ export type OisCrossMarketSpreadOutput = {
   time_series_zscore: TimeSeries;
 };
 
+// --- /detail/swap-spread ---
+// Standalone-bridge type for the cross-domain swap-spread primitive — sovereign
+// yield leg minus OIS rate leg at the same tenor in the same currency (e.g.
+// UST 10Y minus USD_SOFR_OIS 10Y).  Distinct from sibling sovereign /detail/spread
+// (which is sovereign vs sovereign) and OIS /detail/ois-curve-spread (which is
+// OIS vs OIS).  The two legs reference DIFFERENT field-name conventions on the
+// wire (sovereign uses YLD_YTM_MID; OIS uses PX_LAST); the Output makes this
+// explicit via independent ``sovereign_yield_pct`` / ``ois_rate_pct`` snapshot
+// fields.  Sign convention: spread = (sovereign_yield - ois_rate) * 100; POSITIVE
+// = sovereign trades CHEAP to OIS (asset-swap-spread convention; treasuries
+// "cheap" to swaps).  Currency-match invariant enforced at the schema layer —
+// cross-currency pairings (UST vs ESTR) are desk-nonsensical and rejected.
+//
+// Methodology disclosure: the swap_spread Pydantic Output does NOT carry a
+// ``methodology_label`` field (matches the OIS sub-domain sibling shape — see
+// the calculate_ois_cross_market_spread Output).  The per-tool disclosure
+// string is sourced from this file's TS-side registry with an explicit
+// ``// TODO(PR10)`` marker for when the OIS sub-domain catches up to PR10 (the
+// methodology card then switches to consume the wire — one-line edit).  The
+// par-leg OIS approximation caveat (NOT per-bond ASW) is the load-bearing
+// honesty disclosure — `(sovereign_yield − ois_rate) × 100` at MATCHED tenor
+// is the desk quick-and-dirty ASW, NOT the true present-value ASW that
+// requires bond-level metadata (coupon, accrued interest, day-count, dirty
+// price).  Error vs true ASW is typically 1-3 bps liquid / 10+ bps off-the-run.
+
+export type SwapSpreadCurrentMetrics = {
+  as_of_date: string;
+  sovereign_curve_family: string;
+  ois_curve_family: string;
+  tenor: string;
+  /** Human-readable label, e.g. "UST-USD_SOFR_OIS 10Y" (sovereign first per
+   *  the sign convention). */
+  spread_label: string;
+  /** Current swap spread in BASIS POINTS ((sovereign_yield - ois_rate) * 100).
+   *  Positive = sovereign trades CHEAP to OIS.  Already in bps on the wire. */
+  current_spread_bps: number;
+  /** 1-day change in the spread (BPS). */
+  daily_change_bps: number | null;
+  /** 5-trading-day change in the spread (BPS, ~1 calendar week). */
+  weekly_change_bps: number | null;
+  /** 22-trading-day change in the spread (BPS, ~1 calendar month). */
+  monthly_change_bps: number | null;
+  /** Rolling 252-trading-day z-score of the bps spread.  Z-score conventions
+   *  are YAML-locked on this primitive — no input-layer overrides exposed
+   *  (mirrors the OIS curve_spread / cross-market sibling primitives). */
+  current_z_score: number | null;
+  rolling_window_days: number;
+  high_252d_bps: number | null;
+  low_252d_bps: number | null;
+  percentile_252d: number | null;
+  /** Latest sovereign yield at the chosen tenor (PERCENT — natural unit for a
+   *  bond yield).  Used for the per-leg decomposition row. */
+  sovereign_yield_pct: number | null;
+  /** Latest OIS par-swap rate at the chosen tenor (PERCENT — natural unit for
+   *  an OIS par-swap rate).  Used for the per-leg decomposition row. */
+  ois_rate_pct: number | null;
+};
+
+/** Bespoke per-row shape (spread bps + z-score in one row).  Wire-frozen for
+ *  consistency with sibling cross-market spread primitives. */
+export type SwapSpreadTimeSeriesRow = {
+  date: string;
+  spread_bps: number;
+  z_score: number | null;
+};
+
+export type SwapSpreadOutput = {
+  current_metrics: SwapSpreadCurrentMetrics;
+  /** Bespoke wire-frozen shape — spread (bps) + z-score per row. */
+  time_series: SwapSpreadTimeSeriesRow[];
+  /** Canonical TimeSeriesUnits.BPS series of the swap spread (sovereign − OIS).
+   *  Required — mirrors the Pydantic Output where the field is non-optional. */
+  time_series_spread: TimeSeries;
+  /** Canonical TimeSeriesUnits.Z_SCORE series of the rolling z-score of the
+   *  spread LEVEL.  Required — mirrors the Pydantic Output where the field is
+   *  non-optional. */
+  time_series_zscore: TimeSeries;
+  /** Canonical TimeSeriesUnits.Z_SCORE series of the rolling z-score of the
+   *  day-over-day CHANGE in the spread.  Distinct from ``time_series_zscore``
+   *  (which z-scores the level — "spread is stretched today" signal); this
+   *  series z-scores the diff — "spread WIDENED a lot today" event-study
+   *  signal.  Required — mirrors the Pydantic Output non-optional field. */
+  time_series_change_zscore: TimeSeries;
+};
+
 // --- /detail/zcis-scanner ---
 // Standalone-bridge type for the universe-wide ZCIS rate-extremes scanner.
 // SCANNER shape — the wire returns a ranked LIST of (curve_family, tenor)

@@ -26,6 +26,7 @@ import type {
   OisButterflyOutput,
   OisCrossMarketSpreadOutput,
   OisCurveSpreadOutput,
+  SwapSpreadOutput,
   OisRateLevelOutput,
   OisForwardRateOutput,
   InflationSwapForwardOutput,
@@ -427,6 +428,36 @@ export function fetchDetailOisCrossMarketSpread(
   return fetchJSON(
     `${RATES_PREFIX}/detail/ois-cross-market-spread${buildQuery(params)}`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/swap-spread  — cross-domain sovereign-vs-OIS swap spread bridge
+// ---------------------------------------------------------------------------
+// Sovereign yield leg minus OIS rate leg at the same tenor in the same currency
+// (e.g. UST 10Y minus USD_SOFR_OIS 10Y).  Own typed helper per the
+// standalone-bridge contract; consumed by BOTH Build views and the Monitor
+// tile.  Rolling-z-score conventions are YAML-locked on this primitive (no
+// input-layer overrides — mirrors the sibling OIS curve_spread / butterfly /
+// cross-market bridges).  The two legs use DIFFERENT Bloomberg field-name
+// mnemonics; the wire defaults to the per-leg YAML conventions
+// (``sovereign_leg_default_field`` = YLD_YTM_MID, ``ois_leg_default_field`` =
+// PX_LAST) when the optional ``sovereign_field_name`` / ``ois_field_name``
+// query params are omitted.  Currency-match invariant is enforced at the
+// backend schema layer (cross-currency pairings rejected).
+
+export type SwapSpreadDetailParams = {
+  sovereign_curve_family: string;
+  ois_curve_family: string;
+  tenor: string;
+  lookback_days?: number;
+  sovereign_field_name?: string;
+  ois_field_name?: string;
+};
+
+export function fetchDetailSwapSpread(
+  params: SwapSpreadDetailParams,
+): Promise<SwapSpreadOutput> {
+  return fetchJSON(`${RATES_PREFIX}/detail/swap-spread${buildQuery(params)}`);
 }
 
 // ---------------------------------------------------------------------------
