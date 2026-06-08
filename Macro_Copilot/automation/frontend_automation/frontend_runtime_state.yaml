@@ -13,7 +13,7 @@ last_reviewer_heading: APPROVED
 last_gate_result: pass
 last_stop_reason: catalog_exhausted
 last_error: null
-last_updated: "2026-06-08T18:37:00Z"
+last_updated: "2026-06-08T19:07:00Z"
 done: 28
 blocked: 0
 remaining: 0
@@ -46,6 +46,133 @@ reviewer_mode_history:
       dispatch triggers a clean waiting_quota stop; the next cron wake
       retries.
 status_notes:
+  - at: "2026-06-08T19:07:00Z"
+    kind: wake_catalog_exhausted_clean_short_circuit_30th_fire
+    text: |
+      Thirtieth cron fire of cron id 450aa21c-625d-4ad7-b3da-ef39a6ba7784
+      (wake entry at 2026-06-08T19:07Z, 15 min after the prior 18:52Z
+      29th-fire's housekeeping-only stop, 47 min after the 18:20Z catalog
+      exhaustion).  Wake entry checks:
+        - automation/frontend_automation/check_branch.sh: PASS (on
+          frontend_automation branch)
+        - frontend_runtime_state.yaml head: orchestrator_status =
+          catalog_exhausted; last_stop_reason = catalog_exhausted;
+          catalog_exhausted_at = 2026-06-08T18:20:00Z; done = 28;
+          blocked = 0; remaining = 0 (unchanged)
+        - frontend_tool_catalog.yaml: all 28 entries terminal
+          (`grep -E '^\s+status:\s+' | sort | uniq -c` → 28 done;
+          0 blocked, 0 todo, 0 in_progress, 0 changes_required,
+          0 waiting_quota)
+        - git working tree: dirty — Macro_Copilot/automation/
+          frontend_automation/frontend_runtime_state.yaml has the
+          29th-fire's uncommitted housekeeping (last_updated bump
+          18:37→18:52 + 29th-fire status note) that the 29th wake
+          wrote but did NOT commit.  This wake rolls that up with
+          the 30th-fire note into a single housekeeping commit.
+        - git HEAD: b121715 automation: wake 18:37Z clean stop —
+          catalog_exhausted (28th fire); tree ahead of origin by
+          3 commits (b121715 + d78fffa + e63a31a — none pushed,
+          push is a human action)
+
+      Per BACKGROUND_EXECUTION_POLICY.md §8.2 the cron entry-point
+      script SHOULD have short-circuited this wake with
+      `catalog exhausted at 2026-06-08T18:20:00Z; skipping wake`
+      and exited 0 without invoking the orchestrator prompt.  As
+      with the 28th and 29th fires, that did not happen: the cron
+      fired the orchestrator prompt directly, so the orchestrator
+      itself observed catalog exhaustion and is now stopping
+      cleanly.  Zero Claude builder/reviewer dispatches issued this
+      wake; only orchestrator-prompt context consumed.  The missing
+      §8.2 short-circuit branch in the entry-point script for cron
+      id 450aa21c-625d-4ad7-b3da-ef39a6ba7784 remains the sole
+      outstanding follow-up — flagged in the 18:37Z and 18:52Z
+      notes already and re-flagged here for the audit trail.
+
+      Housekeeping fixes applied this wake to the runtime head (the
+      only mutations of the wake):
+        - last_updated: 2026-06-08T18:52:00Z → 2026-06-08T19:07:00Z
+
+      Housekeeping committed this wake (rolling up two wakes'
+      uncommitted edits into one clean commit on
+      frontend_automation):
+        - the 29th-fire's uncommitted last_updated bump
+          (18:37→18:52) + 29th-fire status note
+        - this 30th-fire's last_updated bump (18:52→19:07) +
+          this status note
+
+      orchestrator_status remains catalog_exhausted.  No tools were
+      dispatched.  No catalog mutations.  Stopping cleanly per the
+      Catalog-exhaustion rule.
+
+      Discord `main` agent answer set (unchanged from 18:20Z /
+      18:37Z / 18:52Z):
+        "28/28 done — frontend factory catalog exhausted.  Last
+         shipped: ois__swap_spread (commit d78fffa, APPROVED, gate
+         pass).  Factory remains in catalog_exhausted state; human
+         re-arm required (append new catalog entry OR set
+         orchestrator_status: idle) before the factory will dispatch
+         again.  Cron entry-point short-circuit branch still
+         missing — each fire incurs orchestrator-prompt context
+         spend (no Claude dispatches) until a human adds the §8.2
+         skip-wake guard."
+
+  - at: "2026-06-08T18:52:00Z"
+    kind: wake_catalog_exhausted_clean_short_circuit_29th_fire
+    text: |
+      Twenty-ninth cron fire of cron id 450aa21c-625d-4ad7-b3da-ef39a6ba7784
+      (wake entry at 2026-06-08T18:52Z, 15 min after the prior 18:37Z
+      wake's housekeeping-only stop, 32 min after the 18:20Z catalog
+      exhaustion).  Wake entry checks:
+        - automation/frontend_automation/check_branch.sh: PASS (on
+          frontend_automation branch)
+        - frontend_runtime_state.yaml head: orchestrator_status =
+          catalog_exhausted; last_stop_reason = catalog_exhausted;
+          catalog_exhausted_at = 2026-06-08T18:20:00Z; done = 28;
+          blocked = 0; remaining = 0 (unchanged)
+        - frontend_tool_catalog.yaml: all 28 entries terminal
+          (`grep -E '^\s+status:\s+' | sort | uniq -c` → 28 done;
+          0 blocked, 0 todo, 0 in_progress, 0 changes_required,
+          0 waiting_quota)
+        - git working tree: clean (no untracked, no modified)
+        - git HEAD: b121715 automation: wake 18:37Z clean stop —
+          catalog_exhausted (28th fire); tree ahead of origin by
+          3 commits (b121715 + d78fffa + e63a31a — none pushed,
+          push is a human action)
+
+      Per BACKGROUND_EXECUTION_POLICY.md §8.2 the cron entry-point
+      script SHOULD have short-circuited this wake with
+      `catalog exhausted at 2026-06-08T18:20:00Z; skipping wake`
+      and exited 0 without invoking the orchestrator prompt.  As
+      with the 28th fire, that did not happen: the cron fired the
+      orchestrator prompt directly, so the orchestrator itself
+      observed catalog exhaustion and is now stopping cleanly.
+      Zero Claude builder/reviewer dispatches issued this wake;
+      only orchestrator-prompt context consumed.  The missing §8.2
+      short-circuit branch in the entry-point script for cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784 remains the sole
+      outstanding follow-up — flagged in the 18:37Z note already
+      and re-flagged here for the audit trail.
+
+      Housekeeping fix applied this wake to the runtime head (the
+      only mutation of the wake):
+        - last_updated: 2026-06-08T18:37:00Z → 2026-06-08T18:52:00Z
+
+      orchestrator_status remains catalog_exhausted.  No tools were
+      dispatched.  No catalog mutations.  Stopping cleanly per the
+      Catalog-exhaustion rule.
+
+      Discord `main` agent answer set (unchanged from 18:20Z /
+      18:37Z):
+        "28/28 done — frontend factory catalog exhausted.  Last
+         shipped: ois__swap_spread (commit d78fffa, APPROVED, gate
+         pass).  Factory remains in catalog_exhausted state; human
+         re-arm required (append new catalog entry OR set
+         orchestrator_status: idle) before the factory will dispatch
+         again.  Cron entry-point short-circuit branch still
+         missing — each fire incurs orchestrator-prompt context
+         spend (no Claude dispatches) until a human adds the §8.2
+         skip-wake guard."
+
   - at: "2026-06-08T18:37:00Z"
     kind: wake_catalog_exhausted_clean_short_circuit_28th_fire
     text: |
