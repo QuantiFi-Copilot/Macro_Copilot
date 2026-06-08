@@ -4,19 +4,19 @@ backend: claude-cli
 orchestrator_status: processing
 current_tool: inflation_swaps__swap_breakeven_basis
 current_tool_backend_name: calculate_swap_breakeven_basis_simple_tool
-current_step: builder_dispatched
-dispatch_round: 1
-last_dispatch_at: "2026-06-08T03:01:00Z"
-last_successful_tool: inflation_swaps__forward
-last_successful_commit: 20def2e
-last_reviewer_heading: APPROVED-AFTER-FIX
+current_step: committed
+dispatch_round: 2
+last_dispatch_at: "2026-06-08T03:19:00Z"
+last_successful_tool: inflation_swaps__swap_breakeven_basis
+last_successful_commit: e72e8a0
+last_reviewer_heading: APPROVED
 last_gate_result: pass
-last_stop_reason: tool_24_committed_dispatching_tool_25_builder
+last_stop_reason: tool_25_committed_dispatching_tool_26_builder_next_wake
 last_error: null
-last_updated: "2026-06-08T03:01:00Z"
-done: 24
+last_updated: "2026-06-08T03:27:00Z"
+done: 25
 blocked: 0
-remaining: 4
+remaining: 3
 quota_state: live
 quota_snapshot: null
 quota_snapshot_at: '2026-06-08T03:01:00Z'
@@ -41,6 +41,108 @@ reviewer_mode_history:
 catalog_exhausted_at: null
 human_required: null
 status_notes:
+  - at: "2026-06-08T03:27:00Z"
+    kind: tool_25_committed_dispatching_tool_26_builder_next_wake
+    text: |
+      Cron-fired wake at 2026-06-08T03:07:00Z (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784) observed an in-flight
+      Round-1 builder dispatch for tool 25
+      (`inflation_swaps__swap_breakeven_basis`, build_order 25) that
+      the prior wake (02:52→03:01) had backgrounded and handed off
+      with the explicit plan "next cron wake will observe the
+      builder log on disk and dispatch the reviewer".  Wake
+      reconciled: builder PID 4180410 (`claude --print --model opus
+      --effort xhigh --permission-mode bypassPermissions` via
+      `run_claude_builder.sh`) still active at wake entry; polled
+      until PID exited at 2026-06-08T03:17:43Z (15:43 total builder
+      runtime).  BUILDER REPORT (`/tmp/claude_frontend_builder_run_inflation_swaps__swap_breakeven_basis_round1.log`,
+      3970 B) confirmed:
+        - Files created: `surfaces/swapBreakevenBasisShared.ts`,
+          `surfaces/BuildExtended.tsx`, `surfaces/BuildCompact.tsx`,
+          `surfaces/monitor/SwapBreakevenBasisWidget.tsx`.
+        - Files overwritten: `module.ts` (dual-view + monitor wired,
+          `typedView: null`), `THESIS.md` (v3 — five-question +
+          mockup-conformance subsection), `__tests__/module.spec.ts`
+          (dual-view + standalone-bridge + monitor-widget-id checks).
+        - Shared-file edits: `types/rates.ts` (added
+          `SwapBreakevenBasisSimpleCurrentMetrics` / `...TimeSeriesRow`
+          / `...Output`), `services/ratesApi.ts` (added
+          `SwapBreakevenBasisDetailParams` +
+          `fetchDetailSwapBreakevenBasis` + import line),
+          `api/routes/rates/detail.py` (added
+          `/detail/swap-breakeven-basis` GET endpoint; existing 11
+          endpoints untouched).
+        - Loader entry pre-existing per orchestrator note
+          (`src/modules/index.ts:71` + `:144`); no edit required.
+        - Mockup conformance: Extended + Compact match `Extended.png`
+          + `Compact.png` (no deviations claimed).
+        - methodology_label wire-sourced (NOT hardcoded);
+          load-bearing `index_family_caveat` surfaced on BOTH views
+          + Monitor widget per Phase-1 PR10 / P5 contract.
+        - Builder's local pre-commit gate three-green
+          (`test:modules: 8 passed`, `test:build` green,
+          `typecheck` clean).
+
+      Reviewer Round 2 dispatched at 2026-06-08T03:19:00Z via
+      `run_claude_reviewer.sh` (fresh-context Claude — never sees
+      builder prompt or output) with prompt at
+      `/tmp/reviewer_prompt_inflation_swaps__swap_breakeven_basis_round2.md`
+      (CLAUDE_REVIEWER_PROMPT.md body + catalog entry verbatim +
+      resolved mockup absolute paths + reference module path +
+      target folder path + diff pointer to
+      `/tmp/tool25_builder_diff.patch` 2004 lines incl. untracked
+      surfaces/ via `git add --intent-to-add`).  Reviewer PID
+      4186828 ran to completion at 2026-06-08T03:26:31Z (7:31
+      reviewer runtime).  `parse_reviewer_log.py` returned
+      `{"ok": true, "heading": "APPROVED",
+        "environment_failure": false,
+        "reviewer_quota_exhausted": false}`.  Reviewer body
+      confirmed all 30 review checks green: dual-view contract;
+      mockup conformance (both views; load-bearing caveat surfaced;
+      identity primary "US"/"UK" carry-over from Phase-1 pilot judged
+      acceptable cosmetic); standalone-bridge contract; FM1–FM12;
+      methodology honesty (`cm.methodology_label` at
+      `swapBreakevenBasisShared.ts:576`); shared helper consumed by
+      all three surfaces; Pydantic-mirror types complete (23 fields
+      including the load-bearing wire pair).
+
+      Orchestrator-safety-net pre-commit gate (per
+      `TESTING_POLICY.md`):
+        * `npm run test:modules` ✓ (`calculate_swap_breakeven_basis_simple_tool: 8 passed, 0 failed`; all module + registry tests passed)
+        * `npm run test:build` ✓ (all build-folder tests passed)
+        * `npm run typecheck` ✓ (`tsc -p tsconfig.app.json --noEmit` clean)
+
+      Mirrors per `ORCHESTRATOR_PROMPT` Case C step:
+        - `docs_revamped/02_components/surface_contract.md` §4.4 row
+          for `calculate_swap_breakeven_basis_simple_tool` flipped
+          (`build_archetype: generic-builder → typed-result-renderer`;
+          `build_status: scaffolded → dual-view-built`;
+          `monitor_elig: not-required → required`;
+          `monitor_status: n/a → built (SwapBreakevenBasis widget)`).
+        - §11 changelog v33 entry appended documenting the APPROVED
+          path (no fix pass needed) with the load-bearing caveat
+          wire contract and the 23-field Pydantic mirror.
+        - `graphify update` SKIPPED — not on PATH (recorded per
+          `ORCHESTRATOR_PROMPT` Mirrors §2 fallback).
+        - Commit landing on `frontend_automation` (commit_sha
+          captured in next bookkeeping update; see commit body for
+          full file list).
+
+      Catalog entry tool 25 advanced to `status: done`,
+      `last_review_heading: APPROVED`, `last_gate_result: pass`,
+      `committed_at: 2026-06-08T03:27:00Z`.
+
+      Single-engine factory (`DESIGN_PRINCIPLES.md §10`): no
+      fallback; this wake observed clean APPROVED (no quota
+      refusal, no environment failure, no findings).  Wake stops
+      cleanly here; the next cron wake will dispatch the Round-1
+      builder for build_order 26 (`inflation_indexed_bonds__cross_country_breakeven_spread`)
+      after re-running its pre-flight backend audit.  Counts:
+      done 25 / blocked 0 / remaining 3 (26, 27, 28).  Quota state
+      remains `live` / runtime-enforced (no `/status` probe
+      available from non-interactive automation; no provider
+      refusal observed this wake).
+
   - at: "2026-06-08T03:01:00Z"
     kind: tool_24_committed_dispatching_tool_25_builder
     text: |

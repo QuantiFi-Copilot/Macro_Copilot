@@ -1188,10 +1188,12 @@ tools:
     commit_sha: 20def2e
 
   - id: inflation_swaps__swap_breakeven_basis
-    status: todo
+    status: done
     human_action_required: false
-    last_review_heading: null
-    last_gate_result: not_run
+    last_review_heading: APPROVED
+    last_gate_result: pass
+    commit_sha: e72e8a0
+    committed_at: '2026-06-08T03:27:00Z'
     build_order: 25
     backend_tool_name: calculate_swap_breakeven_basis_simple_tool
     instrument_family: inflation_swaps
