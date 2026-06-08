@@ -2,33 +2,122 @@ version: '1.0'
 branch: frontend_automation
 backend: claude-cli
 orchestrator_status: processing
-current_tool: inflation_indexed_bonds__cross_country_breakeven_spread
-current_tool_backend_name: calculate_cross_country_breakeven_spread_simple_tool
-current_step: builder_dispatched
+current_tool: ois__financing_rate
+current_tool_backend_name: compute_financing_rate_tool
+current_step: pre_flight
 dispatch_round: 1
-last_dispatch_at: "2026-06-08T03:34:00Z"
-last_successful_tool: inflation_swaps__swap_breakeven_basis
-last_successful_commit: e72e8a0
+last_dispatch_at: "2026-06-08T08:03:00Z"
+last_successful_tool: inflation_indexed_bonds__cross_country_breakeven_spread
+last_successful_commit: 7493683
 last_reviewer_heading: APPROVED
 last_gate_result: pass
-last_stop_reason: tool_25_committed_dispatching_tool_26_builder
+last_stop_reason: tool_27_pre_flight_pass_schema_shape_concern_human_required
 last_error: null
-last_updated: "2026-06-08T03:34:00Z"
-done: 25
+last_updated: "2026-06-08T08:10:00Z"
+done: 26
 blocked: 0
-remaining: 3
+remaining: 2
+human_required:
+  reason: tool_27_backend_output_shape_divergence_from_catalog_reference
+  tool_id: ois__financing_rate
+  backend_tool_name: compute_financing_rate_tool
+  catalog_claim: |
+    category: snapshot
+    reference_frontend_module: get_real_yield_level_tool (Phase-1 pilot snapshot shape)
+    design_guardrail #1: "Mirror get_real_yield_level_tool snapshot shape (Phase-1 pilot)"
+  actual_backend_output_shape: |
+    class FinancingRateOutput(BaseModel):
+        method: FinancingMethod
+        as_of_start: str
+        as_of_end: str
+        n_observations: int
+        mean_rate_pct: Optional[float]
+        methodology_disclosures: List[str]
+        panel: Optional[Panel]
+    (rates_agent/ois/tools/financing_rate/schemas.py:148-187)
+  divergence: |
+    The catalog assumes a snapshot Output shape with current_metrics (z-score,
+    percentile, 252d hi/lo, observation count, daily change) + time_series block —
+    matching every snapshot tool shipped in batches 1/2/3 so far (the standalone-
+    bridge endpoint mirrors the backend Pydantic Output 1:1 via response_model=...).
+    The actual FinancingRateOutput has NEITHER block.  It returns a scalar
+    mean_rate_pct + a per-day Panel artifact + a List[str] of methodology disclosures
+    (plural, not the singular `methodology_label`/`methodology_disclosure` field
+    every other tool uses).  Furthermore, the MCP layer DROPS the panel before
+    serialising for the LLM, so the standalone-bridge endpoint would either need to
+    (a) re-construct the panel on the route side, (b) re-derive snapshot stats
+    server-side, or (c) re-design the frontend module to consume a panel + scalar
+    contract.  None of these is a small fix; any choice is an architectural
+    decision the human should make, not the builder.
+  why_not_dispatch_builder: |
+    The wake already shipped tool 26 (commit 7493683) successfully via the
+    canonical snapshot path.  Dispatching the tool-27 builder against the catalog's
+    "Mirror get_real_yield_level_tool snapshot shape" guardrail would force one of:
+      - Builder refuses with the canonical "backend Output shape doesn't match
+        what the mockup implies" blocker — wastes ~15-20 min of Claude quota.
+      - Builder builds with creative adaptation — reviewer almost certainly emits
+        STRUCTURAL: per SINGLE_REVIEW_ROUND_POLICY §3 (architectural mismatch
+        beyond a fix-pass scope), routed to human_required anyway.
+    Either way, the structural decision has to come from the human. Surfacing it
+    now via this human_required block (per ORCHESTRATOR_PROMPT Stop conditions
+    "the tool is not actually a backend tool that exists on this branch [in the
+    shape the catalog claims]") is the honest stop.
+  user_decision_needed:
+    - Should the standalone-bridge route at api/routes/rates/detail.py construct
+      a synthetic current_metrics + time_series view from the panel + mean_rate_pct?
+      (Adds non-mirror translation logic to the route — first time the factory
+      has done this; sets a precedent.)
+    - OR amend the catalog to use a different reference module / a non-snapshot
+      category?  (The tool's category may genuinely be "panel" not "snapshot".)
+    - OR defer tool 27 to a human-led design pass and leave it blocked?
+  pre_flight_audit_result: |
+    All four pre-flight checks PASS (read-only):
+      - backend folder rates_agent/ois/tools/financing_rate/ exists with the
+        canonical 4-file shape (__init__.py 2070B + schemas.py 6580B +
+        compute.py 9092B + config.yaml 4415B).
+      - MCP wrapper compute_financing_rate_tool registered at
+        rates_agent/ois/mcp_server.py:1112.
+      - curated migration database/migrations/2026-06-07_phase1_compute_financing_rate_curated.sql
+        exists (2032B).
+      - mockups Compact.png (1356432B) + Extended.png (1658107B) present at
+        UI/.../compute_financing_rate_tool/mockups/.
+      - loader entry already at src/modules/index.ts:77 (import) + :150 (array).
+    PRE_FLIGHT_BACKEND_AUDIT.md only checks artifact PRESENCE, not shape conformance
+    (audit blind spot — same as tool 2's mockup-content-mismatch from 2026-05-29).
+    The schema-shape concern surfaces at builder-dispatch readiness, NOT pre-flight.
+  remediation_options:
+    a_extend_bridge_route_with_synthesis: |
+      Add a panel→current_metrics+time_series synthesis helper at
+      api/routes/rates/detail.py for the financing-rate endpoint specifically;
+      derive 252d stats / z-score / percentile from the panel data on the server.
+      Document the synthesis as a per-tool deviation in surface_contract.md.
+      Cost: 1-2h of human design + a builder pass with explicit synthesis spec.
+    b_amend_catalog_to_panel_category: |
+      Change category from `snapshot` to `panel`, switch reference module to a
+      future panel-shaped tool (none ship yet), defer until a panel-shaped
+      reference is built.
+    c_defer_tool_27_block_and_proceed_to_tool_28: |
+      Mark tool 27 status: blocked with block_reason capturing this concern;
+      advance to tool 28 (ois__swap_spread) which uses the calculate_breakeven_inflation_simple_tool
+      reference (Phase-1 snapshot pattern — the schema should be conformant).
+      Cron resumes on tool 28 next wake.
 quota_state: live
 quota_snapshot: null
-quota_snapshot_at: '2026-06-08T03:01:00Z'
+quota_snapshot_at: '2026-06-08T07:43:00Z'
 quota_snapshot_fresh: true
 quota_note: |
-  Provider reset at 2026-06-08T00:20:00Z opened the window;
-  this wake already observed tool 21 (commit ad4a6fa) and
-  tool 22 (commit abe834b) commit cleanly post-reset (builder
-  + reviewer + gate three-green).  Runtime-enforced quota mode
-  per QUOTA_AND_RESUME_POLICY.md §3: continue dispatching;
-  stop only on a real provider refusal envelope.  No fresh
-  /status probe available (non-interactive); proceeding.
+  Prior wake's builder Round 1 dispatch for tool 26 (03:34 UTC)
+  captured a quota refusal envelope to the builder log:
+  "You've hit your limit · resets 6:40am (UTC)".  Current wake
+  entered at 2026-06-08T07:37Z (cron id 450aa21c-625d-4ad7-b3da-ef39a6ba7784,
+  the second fire from this cron entry).  Provider reset at
+  2026-06-08T06:40:00Z opened the window 57 min before wake
+  entry.  Runtime-enforced quota mode per QUOTA_AND_RESUME_POLICY.md §3:
+  re-dispatching builder Round 1 with the existing prompt at
+  /tmp/builder_prompt_inflation_indexed_bonds__cross_country_breakeven_spread_round1.md
+  (26274B, unchanged since 03:34 UTC).  Background wrapper PID
+  74946, claude --print PID 74953.  Stop only on a fresh provider
+  refusal envelope.
 reviewer_mode: claude_only
 reviewer_mode_history:
   - at: '2026-05-29T00:00:00Z'
@@ -39,8 +128,284 @@ reviewer_mode_history:
       dispatch triggers a clean waiting_quota stop; the next cron wake
       retries.
 catalog_exhausted_at: null
-human_required: null
 status_notes:
+  - at: "2026-06-08T08:10:00Z"
+    kind: tool_26_committed_tool_27_pre_flight_pass_schema_concern_human_required
+    text: |
+      Tool 26 (inflation_indexed_bonds__cross_country_breakeven_spread)
+      fully shipped on cron wake 450aa21c-625d-4ad7-b3da-ef39a6ba7784
+      (second fire at 2026-06-08T07:37Z).  Pipeline:
+        - Builder Round 1 re-dispatched 07:43Z (post-quota-reset retry
+          of the 03:34Z dispatch that hit the provider's 6:40am UTC
+          quota wall); ran ~19 min and exited 08:02Z with a clean
+          4899B BUILDER REPORT (no quota refusal).  Working-tree
+          delta: 11 files (target module surfaces/+module.ts+THESIS+
+          spec; types/rates.ts; services/ratesApi.ts;
+          api/routes/rates/detail.py).
+        - Reviewer Round 2 dispatched 08:03Z; ran ~5 min and exited
+          08:08Z; parse_reviewer_log.py returned
+          {"heading": "APPROVED", "environment_failure": false,
+           "reviewer_quota_exhausted": false}.  Reviewer scorecard
+          green across A. Dual-view contract / B. Mockup conformance
+          (Compact's shell-standard density vs mockup's 9-KPI layout
+          accepted per design_guardrail #4 + THESIS Q3 documentation) /
+          C. Standalone-bridge contract (typedView:null, response_model=
+          CrossCountryBreakevenSpreadSimpleOutput at detail.py:3947-4054,
+          shared hook backs all three surfaces) / D. FM1-FM12 / E.
+          Methodology honesty (cm.methodology_label threaded via
+          buildMethodologyRows; shortIndexCaveat() helper for the
+          per-pair caveat) / F. Shared cross-surface helper / G.
+          Pre-commit gate ready (builder self-reported).
+        - Pre-commit gate re-run in orchestrator session at 08:08Z:
+          test:modules ✓ (calculate_cross_country_breakeven_spread_simple_tool:
+          8 passed, 0 failed; all module + registry tests passed),
+          test:build ✓ (all build-folder tests passed),
+          typecheck ✓ (tsc clean).
+        - Mirrors §4.3 row updated:
+          build_archetype: generic-builder → typed-result-renderer
+          build_status: scaffolded → dual-view-built
+          monitor_elig: not-required → required
+          monitor_status: n/a → built (CrossCountryBreakevenSpread widget)
+          §11 changelog v34 added.
+        - graphify update skipped (not on PATH per VM convention).
+        - Commit 7493683 on frontend_automation: 11 files changed,
+          1880 insertions, 32 deletions.
+        - Catalog entry status: done; commit_sha: 7493683; dispatch
+          timeline fields populated; counts done=26, blocked=0,
+          remaining=2.
+
+      Tool 27 (ois__financing_rate) pre-flight backend audit:
+        - backend folder rates_agent/ois/tools/financing_rate/ PRESENT
+          (canonical 4-file shape: __init__.py 2070B + schemas.py 6580B
+          + compute.py 9092B + config.yaml 4415B).
+        - MCP wrapper compute_financing_rate_tool registered at
+          rates_agent/ois/mcp_server.py:1112.
+        - Curated migration database/migrations/2026-06-07_phase1_compute_financing_rate_curated.sql
+          PRESENT (2032B).
+        - Mockups Compact.png (1356432B) + Extended.png (1658107B)
+          PRESENT at UI/.../compute_financing_rate_tool/mockups/.
+        - Loader entry pre-existing at src/modules/index.ts:77
+          (import) + :150 (array).
+        - PRE_FLIGHT_BACKEND_AUDIT.md checks all PASS.
+
+      HONEST STOP — schema-shape mismatch surfaced post-pre-flight:
+        Read the backend schemas.py for compute_financing_rate_tool
+        and discovered FinancingRateOutput is structurally DIFFERENT
+        from every snapshot tool shipped so far:
+          - Output fields: method + as_of_start/end + n_observations +
+            mean_rate_pct (scalar) + methodology_disclosures (List[str],
+            PLURAL not singular) + panel (Optional[Panel]).
+          - NO current_metrics block (no z_score, percentile, 252d hi/lo,
+            daily change, observation count tied to a snapshot date).
+          - NO time_series block (the daily series lives inside `panel`,
+            and the MCP layer DROPS panel before serialising for the LLM —
+            so the standalone-bridge route would need explicit re-shaping
+            logic, not the canonical response_model=...Output mirror).
+        Catalog's `reference_frontend_module: get_real_yield_level_tool`
+        + `design_guardrail #1: "Mirror get_real_yield_level_tool
+        snapshot shape"` cannot be satisfied 1:1 against this Output.
+        Any builder pass would force either a refusal-blocker or a
+        STRUCTURAL: reviewer finding routed to human_required anyway.
+        Surfacing now via runtime head `human_required: {...}` block
+        (per ORCHESTRATOR_PROMPT Stop conditions; same pattern that
+        worked for tool 2's mockup-content-mismatch on 2026-05-29).
+
+      Runtime head advanced to reflect tool 26 success + tool 27 honest
+      stop:
+        orchestrator_status: processing
+        current_tool: ois__financing_rate (was inflation_indexed_bonds__cross_country_breakeven_spread)
+        current_tool_backend_name: compute_financing_rate_tool
+          (was calculate_cross_country_breakeven_spread_simple_tool)
+        current_step: pre_flight (was reviewer_dispatched)
+        dispatch_round: 1 (reset for tool 27)
+        last_successful_tool: inflation_indexed_bonds__cross_country_breakeven_spread
+          (was inflation_swaps__swap_breakeven_basis)
+        last_successful_commit: 7493683 (was e72e8a0)
+        last_reviewer_heading: APPROVED (still describes tool 26)
+        last_gate_result: pass (still describes tool 26)
+        last_stop_reason: tool_27_pre_flight_pass_schema_shape_concern_human_required
+        done: 26 / blocked: 0 / remaining: 2.
+        quota_state: live (no provider refusal observed at any
+          point on this wake).
+        human_required block populated with the divergence details
+        + three remediation options for the user to pick:
+          (a) extend the bridge route with panel→snapshot synthesis,
+          (b) amend the catalog to category=panel,
+          (c) block tool 27 + advance to tool 28 next wake.
+
+      Plan for next cron wake (no automated continuation this wake):
+        - Wake entry script reads orchestrator_status=processing +
+          human_required != null → stops the wake cleanly before
+          dispatching anything (per QUOTA_AND_RESUME_POLICY.md §6
+          resume rule + BACKGROUND_EXECUTION_POLICY §8 "human_required
+          short-circuits the catalog loop").
+        - Discord `main` agent answering progress questions reads:
+            "26/28 done (last: cross_country_breakeven_spread @ 7493683);
+             tool 27 paused on human design call re: panel-vs-snapshot
+             schema; 2 remaining."
+        - User remediation:
+            (a) → add per-tool synthesis to api/routes/rates/detail.py,
+                clear human_required, set current_step: pre_flight,
+                next cron wake dispatches builder Round 1.
+            (b) → amend catalog tool 27 entry, defer until panel
+                reference module ships, advance to tool 28 next wake.
+            (c) → set tool 27 status: blocked + block_reason, clear
+                human_required, set current_tool: ois__swap_spread,
+                next cron wake runs tool 28 pre-flight.
+
+  - at: "2026-06-08T08:03:00Z"
+    kind: tool_26_builder_round1_complete_reviewer_round2_dispatched
+    text: |
+      Tool 26 builder Round 1 (PID 74953, dispatched 2026-06-08T07:43Z
+      after the post-quota-reset re-dispatch) ran ~19 minutes and
+      exited cleanly at 2026-06-08T08:02Z.  Output log 4899B,
+      structured BUILDER REPORT with all four canonical sections
+      (Files created / Files updated / Mockup conformance /
+      Test results).  No quota refusal envelope.  Working-tree
+      delta (relative to HEAD 9b3c4c4 ... actually e72e8a0+d1e988f
+      on `frontend_automation`):
+        - Modified: 6 files (target module.ts + THESIS.md +
+          __tests__/module.spec.ts; types/rates.ts +
+          services/ratesApi.ts; api/routes/rates/detail.py).
+        - Added:    4 files (target surfaces/ subtree —
+          BuildExtended.tsx + BuildCompact.tsx +
+          crossCountryBreakevenSpreadSimpleShared.ts +
+          monitor/CrossCountryBreakevenSpreadWidget.tsx).
+        - 628 insertions, 42 deletions across 7 files
+          (excluding the new surfaces).
+        - Untracked surfaces folder marked via
+          `git add --intent-to-add` so `git diff` captures
+          additions for the reviewer.
+      Builder's self-reported gate results: typecheck=0,
+      test:modules=0, test:build=0 (orchestrator does NOT
+      trust these — re-runs the gate post-approval per
+      TESTING_POLICY.md).
+
+      Reviewer Round 2 prompt assembled at
+      `/tmp/reviewer_prompt_inflation_indexed_bonds__cross_country_breakeven_spread_round2.md`
+      (121171 B): CLAUDE_REVIEWER_PROMPT.md body verbatim +
+      catalog entry yaml verbatim + resolved mockup absolute
+      paths + reference frontend module pointer
+      (calculate_cross_market_inflation_swap_spread_tool —
+      the Batch 1 cross-market sibling) + the 104749-B
+      builder diff at `/tmp/tool26_builder_diff.patch` +
+      single-round factory reminder.  Dispatched in
+      background via
+      `automation/frontend_automation/run_claude_reviewer.sh`
+      — wrapper PID 83223, child PID 83224.  Output to
+      `/tmp/claude_frontend_reviewer_run_inflation_indexed_bonds__cross_country_breakeven_spread_round2.log`.
+
+      Runtime head advanced:
+        current_step: reviewer_dispatched (was builder_dispatched)
+        dispatch_round: 2 (was 1)
+        last_dispatch_at: 2026-06-08T08:03:00Z (was 07:43Z)
+        last_stop_reason: tool_26_reviewer_round2_dispatched
+        last_successful_tool / commit / heading / gate: unchanged
+          (still describe tool 25).
+        done: 25 / blocked: 0 / remaining: 3 (unchanged).
+        quota_state: live; quota_snapshot_fresh: true (no
+          provider refusal observed on builder Round 1
+          completion).
+
+      Plan continuation for this wake:
+        1. Poll reviewer log to disk-completion (PID 83224 exits).
+        2. Run `parse_reviewer_log.py` on the reviewer log.
+        3. APPROVED → pre-commit gate (test:modules + test:build
+           + typecheck) → Mirrors (surface_contract.md §4/§10/§11)
+           + graphify + commit → advance to tool 27.
+        4. CHANGES REQUIRED with concrete findings → Dispatch 3
+           builder fix → re-run gate → commit per
+           SINGLE_REVIEW_ROUND_POLICY (no re-review).
+        5. STRUCTURAL/vague/blast-radius findings → human_required,
+           skip Dispatch 3.
+        6. Quota signal at any point → waiting_quota, stop wake
+           cleanly per QUOTA_AND_RESUME_POLICY §3.
+
+  - at: "2026-06-08T07:43:00Z"
+    kind: tool_26_builder_round1_redispatched_post_quota_reset
+    text: |
+      Second cron fire of cron id 450aa21c-625d-4ad7-b3da-ef39a6ba7784
+      (the same daily entry — first fire entered at 2026-06-08T03:07Z,
+      this fire entered at 2026-06-08T07:37Z).  On wake entry,
+      inspected the in-flight tool 26 builder Round 1 log from the
+      prior wake's background dispatch
+      (`/tmp/claude_frontend_builder_run_inflation_indexed_bonds__cross_country_breakeven_spread_round1.log`,
+      45 B) and observed the canonical provider quota refusal envelope:
+      "You've hit your limit · resets 6:40am (UTC)".  The prior
+      wake's builder dispatched at 2026-06-08T03:34Z and clearly
+      hit the provider's quota wall almost immediately (45 B log,
+      no diff produced in the working tree).
+
+      Quota reset window: 2026-06-08T06:40:00Z (per provider's own
+      refusal message). Current wake entered 57 minutes past the
+      reset point, so quota should be re-opened.  No fresh
+      `/status` probe available (non-interactive).  Per
+      `QUOTA_AND_RESUME_POLICY.md` §3 + §6 resume rule:
+      `current_step: builder_dispatched` indicates re-dispatch the
+      builder — the prior dispatch failed mid-stream (in fact,
+      pre-stream) so safe to retry idempotently (each dispatch
+      overwrites its working-tree changes; no per-dispatch state
+      leaks across retries).
+
+      Pre-flight backend audit re-verification SKIPPED — the prior
+      wake performed the full check (kind=tool_25_committed_tool_26_pre_flight_pass_builder_round1_dispatched)
+      and recorded ALL checks PASS at 2026-06-08T03:34Z.  Backend
+      artifacts are read-only inputs (folder, MCP wrapper, migration
+      file, mockups) that do not mutate between cron wakes; re-running
+      the audit would burn time for no signal.
+
+      Re-dispatch action:
+        - Existing builder prompt at
+          `/tmp/builder_prompt_inflation_indexed_bonds__cross_country_breakeven_spread_round1.md`
+          (26274B, unchanged since 03:34Z) re-used verbatim — no
+          edits.  Prompt encodes the full pre-flight audit output +
+          load-bearing index-family-mismatch caveat + cross-country
+          shape contract + reference module pointer + backend schema
+          verbatim from `schemas.py:244-431`.
+        - Builder log cleared in-place by `run_claude_builder.sh`
+          (the wrapper does `: >"$LOG_FILE"` on entry, which truncates
+          the prior 45 B quota-refusal capture).
+        - Background dispatch via
+          `automation/frontend_automation/run_claude_builder.sh` —
+          wrapper PID 74946, `claude --print` PID 74953 — output to
+          `/tmp/claude_frontend_builder_run_inflation_indexed_bonds__cross_country_breakeven_spread_round1.log`.
+        - Background (not synchronous) because Round 1 builders
+          typically run 10-15+ min and synchronous Bash would exceed
+          the orchestrator's 10-min tool timeout.
+
+      Runtime head fields advanced for the re-dispatch:
+        orchestrator_status: processing
+        current_tool: inflation_indexed_bonds__cross_country_breakeven_spread
+        current_tool_backend_name: calculate_cross_country_breakeven_spread_simple_tool
+        current_step: builder_dispatched (unchanged — same dispatch round)
+        dispatch_round: 1 (unchanged)
+        last_dispatch_at: 2026-06-08T07:43:00Z (was 03:34Z)
+        last_stop_reason: tool_26_builder_round1_redispatched_post_quota_reset
+        last_successful_tool: inflation_swaps__swap_breakeven_basis (unchanged)
+        last_successful_commit: e72e8a0 (unchanged)
+        last_reviewer_heading: APPROVED (unchanged — still describes tool 25)
+        last_gate_result: pass (unchanged — still describes tool 25)
+        done: 25 (unchanged)
+        blocked: 0 (unchanged)
+        remaining: 3 (unchanged — tool 26 + 27 + 28)
+        quota_state: live
+        quota_snapshot_at: 2026-06-08T07:43:00Z (was 03:01Z — refreshed)
+        quota_snapshot_fresh: true
+
+      Plan for this wake:
+        1. Poll the builder log to disk-completion (PID 74953 exits).
+        2. On completion, generate the reviewer Round 2 prompt
+           (CLAUDE_REVIEWER_PROMPT.md body + catalog entry verbatim +
+           resolved mockup absolute paths + builder diff via
+           `git add --intent-to-add` + `git diff > /tmp/tool26_builder_diff.patch`).
+        3. Dispatch reviewer via `run_claude_reviewer.sh`.
+        4. Parse reviewer log via `parse_reviewer_log.py`.
+        5. On APPROVED: pre-commit gate (test:modules + test:build +
+           typecheck), Mirrors + commit, advance to tool 27.
+        6. On CHANGES REQUIRED with actionable findings: Dispatch 3
+           builder fix → gate → commit per SINGLE_REVIEW_ROUND_POLICY.
+        7. On any quota signal: stop cleanly as waiting_quota.
+
   - at: "2026-06-08T03:34:00Z"
     kind: tool_25_committed_tool_26_pre_flight_pass_builder_round1_dispatched
     text: |
