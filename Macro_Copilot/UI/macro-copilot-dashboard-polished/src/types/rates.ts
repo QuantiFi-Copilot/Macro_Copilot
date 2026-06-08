@@ -2626,3 +2626,74 @@ export type CrossCountryBreakevenSpreadSimpleOutput = {
   time_series_zscore: TimeSeries;
 };
 
+// --- /detail/financing-rate (standalone bridge, ROUTE-SIDE SYNTHESIS) ---
+//
+// FIRST-OF-ITS-KIND architectural deviation in this factory.  The backend
+// ``FinancingRateOutput`` (rates_agent/ois/tools/financing_rate/schemas.py)
+// is Panel-shaped (single-column DataFrame of daily rates in PERCENT) —
+// NOT the standard snapshot ``current_metrics`` + ``time_series`` shape.
+// The Panel-based shape is load-bearing for the ``evaluate_trades``
+// workflow consumer.  Per the 2026-06-08 human resolution (Option (a)),
+// the route handler at ``/api/v1/rates/detail/financing-rate`` SYNTHESIZES
+// the snapshot shape on the fly from ``result.panel.payload``; the
+// backend Output is preserved AS-IS.
+//
+// The TS types below mirror the SYNTHESIZED route response, NOT the
+// backend Output.  Above the typed-detail boundary the financing-rate
+// surfaces are STRUCTURALLY IDENTICAL to other snapshot tools — the
+// architectural deviation is invisible to the frontend module layer.
+
+export type FinancingRateCurrentMetrics = {
+  as_of_date: string;
+  /** OIS proxy curve used as the financing-rate source (e.g. USD_SOFR_OIS). */
+  proxy_curve: string;
+  /** Financing method.  V1 ships ``overnight_index_proxy`` only. */
+  method: string;
+  /** Current financing rate in percent (synthesized: panel.payload's last
+   *  observation).  Distinct from the OIS rate-level primitive's
+   *  ``rate_pct`` field — same underlying data source (OIS curve) but a
+   *  different conceptual object (financing rate proxy for repo, not
+   *  the OIS quoted level itself). */
+  financing_rate_pct: number;
+  daily_change_bps: number | null;
+  weekly_change_bps: number | null;
+  monthly_change_bps: number | null;
+  /** Rolling z-score over the trailing ``lookback_days`` trading days
+   *  (default 252).  Synthesized in-route from mean + sample std of the
+   *  display window. */
+  z_score: number | null;
+  high_252d_pct: number | null;
+  low_252d_pct: number | null;
+  percentile_252d: number | null;
+  /** Number of observations IN the display window (post-trim). */
+  observation_count: number;
+  /** Total number of observations the backend tool emitted before
+   *  display-window trimming.  Mirrors FinancingRateOutput.n_observations. */
+  n_observations: number;
+};
+
+export type FinancingRateTimeSeriesRow = {
+  date: string;
+  value: number | null;
+};
+
+export type FinancingRateTimeSeries = {
+  series_name: string;
+  units: string;
+  description: string;
+  rows: FinancingRateTimeSeriesRow[];
+};
+
+export type FinancingRateDetailResponse = {
+  current_metrics: FinancingRateCurrentMetrics;
+  /** Canonical TimeSeries-shape view of the financing rate over the
+   *  display window (synthesized in-route from panel.payload.iloc[-N:]). */
+  time_series: FinancingRateTimeSeries;
+  /** Joined methodology disclosure — backend ships a List[str]
+   *  (PLURAL) in FinancingRateOutput.methodology_disclosures; the route
+   *  joins with a single space into one string for the methodology
+   *  card + compact caveat.  NEVER hardcode prose on the frontend
+   *  side; this is the source-of-truth. */
+  methodology_disclosure: string;
+};
+

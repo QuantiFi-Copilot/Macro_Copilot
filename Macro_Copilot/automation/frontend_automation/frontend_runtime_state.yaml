@@ -4,19 +4,19 @@ backend: claude-cli
 orchestrator_status: processing
 current_tool: ois__financing_rate
 current_tool_backend_name: compute_financing_rate_tool
-current_step: ready_to_dispatch
-dispatch_round: 0
-last_dispatch_at: "2026-06-08T08:03:00Z"
-last_successful_tool: inflation_indexed_bonds__cross_country_breakeven_spread
-last_successful_commit: 7493683
+current_step: committed
+dispatch_round: 2
+last_dispatch_at: "2026-06-08T14:38:00Z"
+last_successful_tool: ois__financing_rate
+last_successful_commit: pending_this_wake
 last_reviewer_heading: APPROVED
 last_gate_result: pass
-last_stop_reason: tool_27_architectural_fix_applied_option_a_route_synthesis
+last_stop_reason: tool_27_committed_advancing_to_tool_28
 last_error: null
-last_updated: "2026-06-08T14:15:00Z"
-done: 26
+last_updated: "2026-06-08T14:42:00Z"
+done: 27
 blocked: 0
-remaining: 2
+remaining: 1
 human_required: null
 quota_state: live
 quota_snapshot: null
@@ -46,6 +46,53 @@ reviewer_mode_history:
       retries.
 catalog_exhausted_at: null
 status_notes:
+  - at: "2026-06-08T14:14:00Z"
+    kind: wake_builder_round1_dispatched_tool_27_post_architectural_fix
+    text: |
+      Twenty-seventh cron fire of cron id 450aa21c-625d-4ad7-b3da-ef39a6ba7784
+      (entry at 2026-06-08T14:13Z, ~7 min after the 26th fire's clean-stop note
+      committed ea8a297).  HEAD is now 9acaa31 — the human's architectural fix
+      commit "fix(factory): tool 27 unblock via Option (a) — route-side panel
+      synthesis".  This wake departs from the 25-fire clean-stop pattern because
+      the precondition has been resolved by the human:
+        - runtime head's `human_required` block is now null
+        - runtime head's `current_step` was set to `ready_to_dispatch`
+        - catalog tool 27 design_guardrails now carries the full architectural
+          override (ARCHITECTURE — BACKEND OUTPUT SHAPE, ROUTE-SIDE SYNTHESIS,
+          TEMPLATE SNIPPET, FRONTEND STANDARD SNAPSHOT PATTERN APPLIES, QUERY
+          PARAMS, METHODOLOGY DISCLOSURE, THESIS MUST DOCUMENT, DO NOT REFUSE
+          THIS BUILD, Standalone-bridge endpoint) — eight discrete guardrails
+        - catalog tool 27 status remains `todo` with `human_action_required:
+          false` (the human cleared the flag with the fix commit)
+
+      Pre-flight backend audit for tool 27 (ois__financing_rate / compute_
+      financing_rate_tool):
+        - backend folder rates_agent/ois/tools/financing_rate/: PASS (canonical
+          4-file shape: __init__.py, compute.py, config.yaml, schemas.py)
+        - MCP wrapper compute_financing_rate_tool in rates_agent/ois/mcp_server.py:
+          PASS (import at line 88, registration at line 1106-1112, dispatch at
+          1181)
+        - curated migration database/migrations/2026-06-07_phase1_compute_
+          financing_rate_curated.sql: PASS (2032B, mtime 2026-06-07 15:31)
+        - mockup PNGs in UI/.../primitives/compute_financing_rate_tool/mockups/:
+          PASS (Compact.png 1356432B, Extended.png 1658107B; both mtime
+          2026-06-07 15:31)
+        - reference frontend module get_real_yield_level_tool/: PASS (THESIS.md,
+          __tests__, mockups, module.ts, surfaces present)
+
+      Dispatch plan:
+        Round 1 builder — writing prompt to
+        /tmp/builder_prompt_ois__financing_rate_round1.md (CLAUDE_BUILDER_PROMPT.md
+        body + catalog entry verbatim + resolved mockup paths + reference module
+        path + pre-flight audit output + architectural override summary).
+        Background dispatch via run_claude_builder.sh → log captured at
+        /tmp/claude_frontend_builder_run_ois__financing_rate_round1.log.
+
+      Discord `main` agent answer set updated:
+        "26/28 done; tool 27 (ois__financing_rate) builder Round 1 dispatched
+         at 14:14Z after human architectural fix (9acaa31) cleared the prior
+         human_required block; awaiting builder completion."
+
   - at: "2026-06-08T14:07:00Z"
     kind: wake_clean_stop_human_required_tool_27_unchanged_26th_fire
     text: |

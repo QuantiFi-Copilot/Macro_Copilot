@@ -12,10 +12,12 @@ Each returns the complete tool output including time_series for charts.
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import date, timedelta
 from typing import List, Literal, Optional
 
+import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.engine import Engine
 
 from api.dependencies import get_engine
@@ -321,6 +323,24 @@ from rates_agent.ois.tools.forward_rate import (
     OISForwardRateInput,
     OISForwardRateOutput,
     calculate_ois_forward_rate,
+)
+# Standalone-bridge endpoint for the OIS-implied financing rate primitive
+# (e.g. SOFR-proxied UST 10Y financing, ESTR-proxied Bund financing).
+# ARCHITECTURAL DEVIATION — ROUTE-SIDE SYNTHESIS.  Unlike sibling snapshot
+# tools, the backend ``FinancingRateOutput`` does NOT carry the standard
+# snapshot ``current_metrics`` + ``time_series`` fields (it ships
+# ``mean_rate_pct`` + ``methodology_disclosures`` + a ``Panel`` artifact
+# instead — the Panel-based shape needed by the ``evaluate_trades``
+# workflow consumer; the MCP layer drops the panel before LLM serialisation).
+# This route ACCESSES the panel directly via ``result['panel'].payload``
+# and SYNTHESIZES the snapshot-shape response (FinancingRateDetailResponse)
+# on the fly — backend Output preserved, frontend consumes a shape-
+# equivalent payload identical in structure to every other snapshot tool.
+# See human_required resolution Option (a) — 2026-06-08.
+from rates_agent.ois.tools.financing_rate import (
+    CONFIG_PATH as FINANCING_RATE_CONFIG_PATH,
+    FinancingRateInput,
+    compute_financing_rate,
 )
 # Standalone-bridge endpoint for the single-pillar zero-coupon inflation swap
 # (ZCIS) rate-level primitive (e.g. USD_ZCIS 5Y, EUR_ZCIS 10Y, GBP_ZCIS 2Y).
@@ -4052,3 +4072,299 @@ def cross_country_breakeven_spread_detail(
         ),
     )
     return result
+
+
+# ============================================================================
+# /detail/financing-rate — Standalone-bridge endpoint with ROUTE-SIDE SYNTHESIS
+# ----------------------------------------------------------------------------
+# FIRST-OF-ITS-KIND architectural deviation in this factory.  The backend
+# ``FinancingRateOutput`` (rates_agent/ois/tools/financing_rate/schemas.py:148-187)
+# returns a Panel-shaped artifact (single-column DataFrame of daily rates
+# in PERCENT) plus method / as_of_start / as_of_end / mean_rate_pct /
+# methodology_disclosures (List[str], PLURAL) — NOT the standard snapshot-tool
+# ``current_metrics`` + ``time_series`` shape every other Phase-1 snapshot
+# bridge consumes.  The Panel-based shape is load-bearing for the
+# ``evaluate_trades`` workflow consumer (carries per-day rates with units +
+# lineage); the MCP layer drops the panel for the LLM but the route handler
+# can access it directly via ``result['panel'].payload``.
+#
+# Per the 2026-06-08 human resolution (Option (a), route-side synthesis) the
+# backend Output is preserved AS-IS, and this route synthesizes the standard
+# snapshot-shape response (FinancingRateDetailResponse below) by reducing the
+# Panel.payload column to a single-column pd.Series and computing latest,
+# daily/weekly/monthly change in bps (rate-in-pct delta × 100), rolling
+# mean/std → z_score, max/min → 252d high/low, percentile rank, and the
+# canonical TimeSeries view.  The frontend module is structurally identical
+# to other snapshot tools — the synthesis is invisible above the typed-
+# detail boundary.
+# ============================================================================
+
+
+_VALID_FINANCING_PROXY_CURVES = frozenset({
+    "USD_SOFR_OIS",
+    "EUR_ESTR_OIS",
+    "GBP_SONIA_OIS",
+    "JPY_TONA_OIS",
+    "AUD_AONIA_OIS",
+    "CAD_CORRA_OIS",
+})
+
+
+class FinancingRateCurrentMetrics(BaseModel):
+    """Synthesized snapshot-current metrics for the financing-rate bridge.
+
+    Built in-route from ``result['panel'].payload`` (single-column daily
+    rates in PERCENT) because the underlying ``FinancingRateOutput`` is
+    Panel-shaped (no native current_metrics field).  Field names mirror
+    the other snapshot bridges exactly so the frontend layer is
+    structurally identical.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    as_of_date: str
+    proxy_curve: str
+    method: str
+    financing_rate_pct: float
+    daily_change_bps: Optional[float] = None
+    weekly_change_bps: Optional[float] = None
+    monthly_change_bps: Optional[float] = None
+    z_score: Optional[float] = None
+    high_252d_pct: Optional[float] = None
+    low_252d_pct: Optional[float] = None
+    percentile_252d: Optional[float] = None
+    observation_count: int
+    n_observations: int
+
+
+class FinancingRateTimeSeriesRow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    date: str
+    value: Optional[float] = None
+
+
+class FinancingRateTimeSeries(BaseModel):
+    """Canonical-TimeSeries-shape view of the financing-rate series.
+
+    Mirrors ``shared.schemas.time_series.TimeSeries`` so the frontend's
+    BuildExtendedShell / BuildCompactShell can consume it identically
+    to every other snapshot tool's ``time_series`` field.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    series_name: str
+    units: str
+    description: str
+    rows: List[FinancingRateTimeSeriesRow] = Field(default_factory=list)
+
+
+class FinancingRateDetailResponse(BaseModel):
+    """Top-level synthesized response for the financing-rate bridge.
+
+    Composition:
+      - current_metrics : snapshot-current view (route-side synthesis)
+      - time_series     : canonical TimeSeries view (route-side synthesis)
+      - methodology_disclosure : joined from FinancingRateOutput's PLURAL
+                                 ``methodology_disclosures`` field (single
+                                 string consumed by the methodology card +
+                                 compact caveat).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    current_metrics: FinancingRateCurrentMetrics
+    time_series: FinancingRateTimeSeries
+    methodology_disclosure: str
+
+
+@router.get(
+    "/detail/financing-rate",
+    response_model=FinancingRateDetailResponse,
+    summary="Financing Rate Detail (OIS-implied, standalone bridge, route-side synthesis)",
+)
+def financing_rate_detail(
+    engine: Engine = Depends(get_engine),
+    method: str = Query(
+        default="overnight_index_proxy",
+        description=(
+            "Financing-rate method.  V1 ships ``overnight_index_proxy``; "
+            "``constant_rate`` / ``term_repo_curve`` / ``gc_special_blend`` "
+            "are out of scope on this bridge."
+        ),
+    ),
+    proxy_curve: str = Query(
+        ...,
+        description=(
+            "OIS proxy curve when method=overnight_index_proxy.  One of: "
+            "USD_SOFR_OIS, EUR_ESTR_OIS, GBP_SONIA_OIS, JPY_TONA_OIS, "
+            "AUD_AONIA_OIS, CAD_CORRA_OIS."
+        ),
+    ),
+    lookback_days: int = Query(
+        default=252,
+        ge=60,
+        le=2520,
+        description=(
+            "Trading-day display window for the synthesized snapshot "
+            "stats (z-score / 252d high+low / percentile / time_series).  "
+            "Defaults to 252 (one trading year)."
+        ),
+    ),
+):
+    """Synthesize a snapshot-shape response from the financing-rate Panel.
+
+    See file-header comment for the architectural rationale.  Frontend
+    surfaces (``BuildExtended.tsx``, ``BuildCompact.tsx``, Monitor tile)
+    consume this synthesized response identically to other snapshot
+    tools.
+    """
+    if method != "overnight_index_proxy":
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"method={method!r} is out of scope on this bridge.  V1 "
+                "supports 'overnight_index_proxy' only."
+            ),
+        )
+    if proxy_curve not in _VALID_FINANCING_PROXY_CURVES:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"proxy_curve={proxy_curve!r} is not a recognised OIS "
+                f"family.  Allowed: {sorted(_VALID_FINANCING_PROXY_CURVES)}."
+            ),
+        )
+
+    # Calendar-day buffer for rolling-stats warmup before the 252d display
+    # window (per catalog template snippet).  1.4× lookback + 60 days gives
+    # enough non-trading-day padding.
+    end_dt = date.today()
+    start_dt = end_dt - timedelta(days=int(lookback_days * 1.4 + 60))
+
+    try:
+        params = FinancingRateInput(
+            method=method,
+            proxy_curve=proxy_curve,
+            start_date=start_dt,
+            end_date=end_dt,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        fr_config = load_tool_config(FINANCING_RATE_CONFIG_PATH)
+        result = compute_financing_rate(
+            engine=engine, params=params, config=fr_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/financing-rate: tool failed for %s", proxy_curve,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(result, f"Financing rate for {proxy_curve}")
+
+    panel = result.get("panel")
+    if panel is None or getattr(panel, "payload", None) is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Financing rate for {proxy_curve}: backend returned no "
+                "Panel artifact (compute succeeded but produced no rate series)."
+            ),
+        )
+
+    payload_df: pd.DataFrame = panel.payload
+    if payload_df.empty or payload_df.shape[1] == 0:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Financing rate for {proxy_curve}: panel payload is "
+                "empty over the requested window."
+            ),
+        )
+
+    series_key = str(payload_df.columns[0])
+    s = payload_df.iloc[:, 0].astype(float).dropna()
+    if s.empty:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Financing rate for {proxy_curve}: panel payload contains "
+                "no observations after dropping nulls."
+            ),
+        )
+
+    # ---- Synthesize snapshot-current metrics ----------------------------
+    latest = float(s.iloc[-1])
+    daily_change_bps = (
+        float((s.iloc[-1] - s.iloc[-2]) * 100.0) if len(s) >= 2 else None
+    )
+    weekly_change_bps = (
+        float((s.iloc[-1] - s.iloc[-6]) * 100.0) if len(s) >= 6 else None
+    )
+    monthly_change_bps = (
+        float((s.iloc[-1] - s.iloc[-22]) * 100.0) if len(s) >= 22 else None
+    )
+
+    display_window = s.iloc[-min(lookback_days, len(s)):]
+    n_display = int(len(display_window))
+
+    mean_v = float(display_window.mean())
+    std_v = float(display_window.std(ddof=1)) if n_display >= 2 else 0.0
+    z_score: Optional[float] = (
+        float((latest - mean_v) / std_v) if std_v > 0 else None
+    )
+    high_pct = float(display_window.max()) if n_display > 0 else None
+    low_pct = float(display_window.min()) if n_display > 0 else None
+    percentile_252d: Optional[float] = (
+        float(round(100.0 * (display_window <= latest).sum() / n_display))
+        if n_display > 0 else None
+    )
+
+    as_of = display_window.index[-1].strftime("%Y-%m-%d")
+
+    current_metrics = FinancingRateCurrentMetrics(
+        as_of_date=as_of,
+        proxy_curve=proxy_curve,
+        method=method,
+        financing_rate_pct=latest,
+        daily_change_bps=daily_change_bps,
+        weekly_change_bps=weekly_change_bps,
+        monthly_change_bps=monthly_change_bps,
+        z_score=z_score,
+        high_252d_pct=high_pct,
+        low_252d_pct=low_pct,
+        percentile_252d=percentile_252d,
+        observation_count=n_display,
+        n_observations=int(result.get("n_observations") or len(s)),
+    )
+
+    # ---- Synthesize canonical TimeSeries view ---------------------------
+    rows = [
+        FinancingRateTimeSeriesRow(
+            date=idx.strftime("%Y-%m-%d"), value=float(val),
+        )
+        for idx, val in display_window.items()
+    ]
+    time_series = FinancingRateTimeSeries(
+        series_name=series_key,
+        units="percent",
+        description=(
+            f"OIS-implied financing rate proxied by {proxy_curve} "
+            f"(daily, percent) over the trailing {n_display} trading days."
+        ),
+        rows=rows,
+    )
+
+    # ---- Methodology disclosure (joined PLURAL list → singular) ---------
+    disclosures = result.get("methodology_disclosures") or []
+    methodology_disclosure = " ".join(str(d) for d in disclosures)
+
+    return FinancingRateDetailResponse(
+        current_metrics=current_metrics,
+        time_series=time_series,
+        methodology_disclosure=methodology_disclosure,
+    )

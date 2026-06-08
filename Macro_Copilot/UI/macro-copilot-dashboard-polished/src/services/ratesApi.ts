@@ -43,6 +43,7 @@ import type {
   FuturesCrossMarketSpreadOutput,
   FuturesPackAverageSimpleOutput,
   CrossCountryBreakevenSpreadSimpleOutput,
+  FinancingRateDetailResponse,
 } from '@/types/rates';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
@@ -1064,5 +1065,32 @@ export function fetchDetailCrossCountryBreakevenSpread(
 ): Promise<CrossCountryBreakevenSpreadSimpleOutput> {
   return fetchJSON(
     `${RATES_PREFIX}/detail/cross-country-breakeven-spread${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/financing-rate — standalone bridge with ROUTE-SIDE SYNTHESIS
+// ---------------------------------------------------------------------------
+// FIRST-OF-ITS-KIND architectural deviation in this factory.  The backend
+// ``FinancingRateOutput`` is Panel-shaped (single-column daily-rate
+// DataFrame) — NOT the standard ``current_metrics`` + ``time_series``
+// snapshot shape.  Per the 2026-06-08 human resolution (Option (a)) the
+// route handler synthesizes the snapshot shape on the fly from
+// ``result.panel.payload``; the backend Output is preserved AS-IS for
+// the ``evaluate_trades`` workflow consumer.  This fetcher consumes the
+// SYNTHESIZED shape; above the typed-detail boundary the financing-rate
+// surfaces are structurally identical to other snapshot tools.
+
+export type FinancingRateDetailParams = {
+  method?: string;
+  proxy_curve: string;
+  lookback_days?: number;
+};
+
+export function fetchDetailFinancingRate(
+  params: FinancingRateDetailParams,
+): Promise<FinancingRateDetailResponse> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/financing-rate${buildQuery(params)}`,
   );
 }
