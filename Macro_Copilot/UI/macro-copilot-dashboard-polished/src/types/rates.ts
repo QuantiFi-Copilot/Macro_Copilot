@@ -2078,3 +2078,124 @@ export type FuturesCrossMarketSpreadOutput = {
   methodology_disclosure: string;
 };
 
+// --- /detail/policy-futures-pack-average ---
+// Standalone-bridge type for the policy_futures same-curve pack-average
+// implied-rate primitive (e.g. SOFR_FUT whites = arithmetic mean of
+// SFR1..SFR4 implied rates, SONIA_FUT reds = mean of SFI5..SFI8).
+// Mirrors ``FuturesPackAverageSimpleOutput`` from
+// rates_agent/policy_futures/tools/futures_pack_average_simple/schemas.py
+// byte-for-byte (snake_case wire fields preserved).
+//
+// Wire convention (frozen):
+//   ``pack_average_implied_rate_pct =
+//      mean(implied_rate_pct(leg_1..leg_4))``
+// where each ``rate_*`` is derived from the strip slot's raw_price via
+// the per-curve ``inverse_pricing`` flag (PR8 / P6 metadata-driven).
+// Sub-domain stays in PERCENT POINTS on implied-rate-derived objects;
+// the desk display layer renders the rate in PERCENT (3-dp) for the
+// headline KPI and multiplies the 1d change by 100 to render in bps.
+//
+// V1 scope (ADR 0013):
+//   - ``curve_family`` admits ``EUR_SHORT_RATE_FUT`` at the schema layer
+//     but the compute layer raises a clean error envelope on it (IBOR
+//     regime, missing playbook metadata).  SOFR_FUT / SONIA_FUT are the
+//     V1-executable families.
+//   - ``pack`` is a closed Literal ``'whites' | 'reds'``; whites = strip
+//     positions 1-4, reds = strip positions 5-8 (YAML-locked).  Greens /
+//     blues land as PR11 planned-extension territory.
+
+export type FuturesPackAverageSimpleTimeSeriesRow = {
+  date: string;
+  /** Pack-average implied rate in PERCENT at the trade date: arithmetic
+   *  mean of the four per-leg ``implied_rate_pct`` values. */
+  pack_average_implied_rate_pct: number;
+  /** Rolling 252-trading-day z-score of the pack-average at this trade
+   *  date.  ``null`` during the warmup window before
+   *  ``z_score_min_periods`` observations accumulate. */
+  z_score: number | null;
+};
+
+export type FuturesPackAverageSimpleCurrentMetrics = {
+  /** Most recent trade date on which ALL FOUR legs of the requested
+   *  pack have a value (YYYY-MM-DD).  Snapshot anchored to the
+   *  intersection of the four legs' trading days. */
+  as_of_date: string;
+  /** Policy-futures curve family (e.g. 'SOFR_FUT' / 'SONIA_FUT'). */
+  curve_family: string;
+  /** Pack identifier — 'whites' (positions 1-4) or 'reds' (positions
+   *  5-8).  Closed Literal on the schema side. */
+  pack: string;
+  /** Ordered list of strip positions covered by the requested pack
+   *  (e.g. [1,2,3,4] for whites).  Echoes the YAML's pack convention so
+   *  the consumer can audit exactly which slots were averaged. */
+  strip_positions: number[];
+  /** Human-readable label for the pack, e.g. "SOFR_FUT whites
+   *  (SFR1..SFR4)" / "SONIA_FUT reds (SFI5..SFI8)". */
+  pack_label: string;
+  /** Strip-slot master stems for the four pack members, in strip-
+   *  position order (e.g. ["SFR1","SFR2","SFR3","SFR4"] for SOFR_FUT
+   *  whites).  Stable across rolls. */
+  contract_codes: string[];
+  /** Current-front underlying contract per pack member AS OF
+   *  ``as_of_date`` (e.g. ["SFRM26","SFRU26","SFRZ26","SFRH27"]).  Same
+   *  length and order as ``contract_codes``. */
+  underlying_contract_codes: Array<string | null>;
+  /** Latest-effective SECURITY_DES per pack member. */
+  security_names: Array<string | null>;
+  /** LAST_TRADEABLE_DT for each pack member's current-front contract
+   *  (YYYY-MM-DD). */
+  expiry_dates: Array<string | null>;
+  /** Inverse-pricing flag — when true (SFR / ER / SFI in V1),
+   *  ``implied_rate_pct = 100 − raw_price`` per leg. */
+  inverse_priced: boolean;
+  /** 'RFR' (SOFR / SONIA) or 'IBOR' (Euribor) — methodology disclosure
+   *  label. */
+  short_rate_regime: string;
+  /** Latest per-leg implied rates in PERCENT, in strip-position order.
+   *  Same length and order as ``contract_codes``. */
+  implied_rates_pct: number[];
+  /** Latest aligned pack average in PERCENT: arithmetic mean of the
+   *  four per-leg implied rates. */
+  pack_average_implied_rate_pct: number;
+  /** 1-trading-day change in ``pack_average_implied_rate_pct`` (raw
+   *  subtraction in PERCENT POINTS; multiply by 100 to render in bps). */
+  daily_change_pack_average_implied_rate_pct: number | null;
+  /** Rolling 252-trading-day z-score of the pack-average series. */
+  z_score_pack_average: number | null;
+  /** Highest pack-average value over the trailing 252 trading days, in
+   *  PERCENT. */
+  high_252d_pack_average_implied_rate_pct: number | null;
+  /** Lowest pack-average value over the trailing 252 trading days, in
+   *  PERCENT. */
+  low_252d_pack_average_implied_rate_pct: number | null;
+  /** Midpoint of the trailing 252-day pack-average range, PERCENT. */
+  mid_252d_pack_average_implied_rate_pct: number | null;
+  /** Percentile rank of ``pack_average_implied_rate_pct`` within the
+   *  trailing 252-day range (0-100). */
+  percentile_252d: number | null;
+  rolling_window_days: number;
+  observation_count: number;
+};
+
+export type FuturesPackAverageSimpleOutput = {
+  current_metrics: FuturesPackAverageSimpleCurrentMetrics;
+  /** Bespoke wire-frozen per-row shape — date + pack-average value +
+   *  rolling z-score per trade date.  Mirrors the sibling butterfly
+   *  tool's per-row shape so the frontend chart pulls both the value
+   *  and the z-score from one row. */
+  time_series: FuturesPackAverageSimpleTimeSeriesRow[];
+  /** Canonical TimeSeriesUnits.PERCENT series of the pack-average. */
+  time_series_pack_average: TimeSeries;
+  /** Canonical TimeSeriesUnits.Z_SCORE series of the rolling z-score. */
+  time_series_zscore: TimeSeries;
+  /** P5 / ADR 0013 caveat composed at runtime by compute().  Includes
+   *  the arithmetic-mean weighting, the per-curve_family regime label
+   *  (RFR vs IBOR), the inverse-pricing rule, the z-score lookback
+   *  window, the trailing-range window, the strip-position keying, and
+   *  the explicit refusal of duration-weighted / meeting-by-meeting /
+   *  CTD-of-OIS pack variants (PR11 planned-extension territory).
+   *  Surfaced verbatim on the extended view's methodology card + the
+   *  Monitor widget's title= tooltip (NOT a hardcoded TS literal). */
+  methodology_disclosure: string;
+};
+

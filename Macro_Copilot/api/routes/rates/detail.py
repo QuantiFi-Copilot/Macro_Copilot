@@ -389,6 +389,23 @@ from rates_agent.policy_futures.tools.futures_cross_market_spread import (
     FuturesCrossMarketSpreadOutput,
     calculate_futures_cross_market_spread,
 )
+# Catalog tool-22 — same-curve pack-average implied rate (arithmetic mean
+# across 4 consecutive quarterly STIR contracts) on a SINGLE
+# ``curve_family`` (whites = SFR1..SFR4 / SFI5..SFI8 / etc; reds = SFR5..
+# SFR8 / SFI5..SFI8).  Same standalone-bridge contract as the other rates
+# primitives: own typed-detail endpoint consumed by both Build views + the
+# Monitor tile.  Methodology disclosure flows verbatim from compute()'s
+# ``methodology_disclosure`` string (NOT a hardcoded TS literal); includes
+# the arithmetic-mean weighting, per-curve_family regime label (RFR vs
+# IBOR), inverse-pricing rule, z-score lookback window, strip-position
+# keying, and explicit refusal of duration-weighted / meeting-by-meeting
+# pack variants (PR11 planned-extension territory).
+from rates_agent.policy_futures.tools.futures_pack_average_simple import (
+    CONFIG_PATH as POLICY_FUTURES_PACK_AVERAGE_SIMPLE_CONFIG_PATH,
+    FuturesPackAverageSimpleInput,
+    FuturesPackAverageSimpleOutput,
+    calculate_futures_pack_average_simple,
+)
 from rates_agent.sovereign_bonds.tools.zscore_custom import (
     CONFIG_PATH as ZSCORE_CUSTOM_CONFIG_PATH,
     ZscoreCustomInput,
@@ -3382,5 +3399,123 @@ def policy_futures_cross_market_detail(
         result,
         f"Policy futures cross-market spread for {curve_family_a} vs "
         f"{curve_family_b} strip {strip_position}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/policy-futures-pack-average — policy_futures same-curve pack average
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# ``policy_futures_get_futures_pack_average_simple_tool`` primitive ships its
+# OWN typed-detail endpoint.  Pack-average implied rate (arithmetic mean
+# across 4 consecutive quarterly STIR contracts) on a SINGLE policy-futures
+# ``curve_family``: whites = strip positions 1-4 (e.g. SFR1..SFR4 for
+# SOFR_FUT), reds = strip positions 5-8 (e.g. SFI5..SFI8 for SONIA_FUT).
+# Pack composition (which strip positions each pack covers) is YAML-locked
+# and NOT user-overridable; only the structural ``curve_family`` + ``pack``
+# keys plus ``lookback_days`` / ``as_of_date`` / ``field_name`` are exposed
+# (mirrors the MCP wrapper's input surface).  Wire shape: pack-average
+# implied rate in PERCENT (per-strip rates derived via the per-leg
+# inverse-pricing flag — SFR / ER / SFI quote 100-minus-rate).
+# ``curve_family='EUR_SHORT_RATE_FUT'`` is admitted at the schema layer but
+# returns a clean controlled-error envelope from compute() per ADR 0013 V1
+# scope (IBOR regime, missing ``delivery_month_type`` playbook metadata).
+@router.get(
+    "/detail/policy-futures-pack-average",
+    response_model=FuturesPackAverageSimpleOutput,
+    summary="Policy Futures Same-Curve Pack Average Detail (standalone bridge)",
+)
+def policy_futures_pack_average_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family: str = Query(
+        ...,
+        description=(
+            "Policy-futures curve family — 'SOFR_FUT' (US RFR, V1-"
+            "executable), 'SONIA_FUT' (UK RFR, V1-executable), "
+            "'EUR_SHORT_RATE_FUT' (Euribor IBOR — admitted at the "
+            "schema layer but returns a clean controlled-error "
+            "envelope from compute() per ADR 0013 V1 scope; "
+            "missing ``delivery_month_type`` playbook metadata)."
+        ),
+    ),
+    pack: str = Query(
+        ...,
+        description=(
+            "Pack identifier — 'whites' (strip positions 1-4, e.g. "
+            "SFR1..SFR4 for SOFR_FUT) or 'reds' (strip positions "
+            "5-8, e.g. SFI5..SFI8 for SONIA_FUT).  Pack composition "
+            "is a YAML-locked desk convention; greens / blues are "
+            "PR11 planned-extension territory."
+        ),
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    as_of_date: Optional[str] = Query(
+        default=None,
+        description=(
+            "ISO-format date (YYYY-MM-DD) anchoring the snapshot.  "
+            "Omit to anchor at the universe's last observed "
+            "``trade_date`` for the requested legs (post-fetch "
+            "data-max anchor on the intersection of the four legs).  "
+            "A date BEYOND the universe's last observed "
+            "``trade_date`` for ANY leg returns the documented "
+            "controlled-error envelope."
+        ),
+    ),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg observation field mnemonic.  Omit (None) to "
+            "use the tool's bundled ``default_price_field`` "
+            "convention from "
+            "futures_pack_average_simple/config.yaml (currently "
+            "'PX_LAST')."
+        ),
+    ),
+):
+    """Same payload + sentinel semantics as the MCP wrapper.  Consumed by
+    ``surfaces/BuildExtended.tsx`` AND ``surfaces/BuildCompact.tsx`` per
+    the rendering-density dual-view contract, plus the Monitor tile.
+    None-sentinels on ``field_name`` / ``as_of_date`` fall through to the
+    YAML default / data-max anchor via compute() — same shadowing fix
+    pattern as policy_futures_cross_market_detail.
+    """
+    parsed_as_of: Optional[date] = None
+    if as_of_date and as_of_date.strip():
+        try:
+            parsed_as_of = date.fromisoformat(as_of_date.strip())
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid as_of_date {as_of_date!r}: {exc}",
+            )
+
+    try:
+        params = FuturesPackAverageSimpleInput(
+            curve_family=curve_family,
+            pack=pack,
+            lookback_days=lookback_days,
+            as_of_date=parsed_as_of,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        pf_config = load_tool_config(POLICY_FUTURES_PACK_AVERAGE_SIMPLE_CONFIG_PATH)
+        result = calculate_futures_pack_average_simple(
+            engine=engine, params=params, config=pf_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/policy-futures-pack-average: tool failed for %s %s",
+            curve_family,
+            pack,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Policy futures pack average for {curve_family} {pack}",
     )
     return result

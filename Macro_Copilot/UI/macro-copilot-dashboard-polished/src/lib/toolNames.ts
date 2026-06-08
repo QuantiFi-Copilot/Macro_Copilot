@@ -107,6 +107,15 @@ const KNOWN_TOOL_ALIASES: Record<string, string> = {
   // endpoint.
   get_futures_cross_market_spread_tool:
     'policy_futures_get_futures_cross_market_spread_tool',
+  // Same divergence for the policy_futures pack-average tool — the MCP
+  // function inside rates_agent/policy_futures/mcp_server.py is
+  // ``get_futures_pack_average_simple_tool`` (unprefixed); the workflow
+  // registry + tool_metadata DB row + frontend module folder use the
+  // ``policy_futures_`` prefix.  LLM-side calls that arrive via the
+  // unprefixed MCP name route through this alias to reach the prefixed
+  // frontend module / typed-detail endpoint.
+  get_futures_pack_average_simple_tool:
+    'policy_futures_get_futures_pack_average_simple_tool',
 };
 
 /** Normalise a tool name to the backend-canonical form.

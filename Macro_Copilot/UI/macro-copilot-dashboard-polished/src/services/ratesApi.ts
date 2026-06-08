@@ -38,6 +38,7 @@ import type {
   FuturesButterflySimpleOutput,
   FuturesCalendarSpreadOutput,
   FuturesCrossMarketSpreadOutput,
+  FuturesPackAverageSimpleOutput,
 } from '@/types/rates';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
@@ -872,6 +873,45 @@ export function fetchDetailPolicyFuturesCrossMarket(
 ): Promise<FuturesCrossMarketSpreadOutput> {
   return fetchJSON(
     `${RATES_PREFIX}/detail/policy-futures-cross-market${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/policy-futures-pack-average — policy_futures same-curve pack average
+// ---------------------------------------------------------------------------
+// Pack-average implied rate (arithmetic mean across 4 consecutive quarterly
+// STIR contracts) on a SINGLE policy-futures curve_family (e.g. SOFR_FUT
+// whites = SFR1..SFR4, SONIA_FUT reds = SFI5..SFI8).  Own typed helper per
+// the standalone-bridge contract; consumed by BOTH Build views and the
+// Monitor tile.  Rolling-z-score conventions are YAML-locked on this
+// primitive (mirrors the sibling policy_futures bridges); only the
+// structural ``curve_family`` + ``pack`` keys plus ``lookback_days`` /
+// ``as_of_date`` / ``field_name`` are exposed at the API layer.  Pack
+// composition (whites = 1-4, reds = 5-8) is YAML-locked and NOT user-
+// overridable; greens / blues are PR11 planned-extension territory.
+// ``curve_family='EUR_SHORT_RATE_FUT'`` is admitted at the schema layer
+// but returns a clean controlled-error envelope from compute() per ADR
+// 0013 V1 scope (IBOR regime, missing ``delivery_month_type`` playbook
+// metadata).
+
+export type FuturesPackAverageSimpleDetailParams = {
+  curve_family: string;
+  /** Pack identifier: 'whites' (positions 1-4) or 'reds' (positions
+   *  5-8). */
+  pack: string;
+  lookback_days?: number;
+  /** YYYY-MM-DD; omit to anchor at the universe's last observed
+   *  trade_date on the intersection of the four legs (post-fetch data-
+   *  max anchor). */
+  as_of_date?: string;
+  field_name?: string;
+};
+
+export function fetchDetailPolicyFuturesPackAverage(
+  params: FuturesPackAverageSimpleDetailParams,
+): Promise<FuturesPackAverageSimpleOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/policy-futures-pack-average${buildQuery(params)}`,
   );
 }
 
