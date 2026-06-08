@@ -42,6 +42,7 @@ import type {
   FuturesCalendarSpreadOutput,
   FuturesCrossMarketSpreadOutput,
   FuturesPackAverageSimpleOutput,
+  CrossCountryBreakevenSpreadSimpleOutput,
 } from '@/types/rates';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
@@ -1029,4 +1030,39 @@ export function fetchDetailRegime(
   params: RegimeDetailParams,
 ): Promise<RegimeOutput> {
   return fetchJSON(`${RATES_PREFIX}/detail/regime${buildQuery(params)}`);
+}
+
+// ---------------------------------------------------------------------------
+// /detail/cross-country-breakeven-spread  — same-tenor cross-country
+// bond-implied breakeven spread bridge
+// ---------------------------------------------------------------------------
+// Two-country, single-tenor primitive (e.g. UK 10Y BE minus US 10Y BE,
+// FR 10Y BE minus US 10Y BE, CA 10Y BE minus US 10Y BE).  Each country
+// contributes a (nominal, linker) pair at the shared tenor.  Sign
+// convention POSITIVE = country_a > country_b breakeven.  Output is a
+// SPREAD object — ships in BPS.  Own typed helper per the standalone-
+// bridge contract; consumed by BOTH Build views and the Monitor tile.
+// Cross-country invariant enforced at the schema layer
+// (country_a_nominal_pair != country_b_nominal_pair AND
+// country_a_linker_pair != country_b_linker_pair).  Rolling-z-score
+// conventions are YAML-locked — only ``lookback_days`` + ``field_name``
+// are exposed at the API layer (mirrors the sibling
+// cross-market-zcis / swap-breakeven-basis bridges).
+
+export type CrossCountryBreakevenSpreadDetailParams = {
+  country_a_nominal_pair: string;
+  country_a_linker_pair: string;
+  country_b_nominal_pair: string;
+  country_b_linker_pair: string;
+  tenor: string;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailCrossCountryBreakevenSpread(
+  params: CrossCountryBreakevenSpreadDetailParams,
+): Promise<CrossCountryBreakevenSpreadSimpleOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/cross-country-breakeven-spread${buildQuery(params)}`,
+  );
 }

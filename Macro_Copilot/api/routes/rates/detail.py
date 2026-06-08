@@ -132,6 +132,29 @@ from rates_agent.inflation_indexed_bonds.tools.real_yield_butterfly import (
     RealYieldButterflyOutput,
     calculate_real_yield_butterfly,
 )
+# Standalone-bridge endpoint for the same-tenor cross-country bond-implied
+# breakeven spread primitive (e.g. UK 10Y BE minus US 10Y BE, FR 10Y BE
+# minus US 10Y BE, CA 10Y BE minus US 10Y BE).  Per
+# ``docs_revamped/03_standards/methodology_exposure.md §5`` every new tool
+# ships its OWN typed-detail endpoint consumed by both the extended and
+# compact Build views (rendering_density dual-view) + the Monitor tile.
+# Cross-country invariant (country_a vs country_b are different sovereign
+# issuers) enforced by the Pydantic schema layer; per-leg same-country
+# invariant inherited transitively from each inner
+# breakeven_inflation_simple leg.  Output is a SPREAD — ships in BPS to
+# mirror the sibling spread primitives.  Sign convention POSITIVE =
+# country_a > country_b breakeven; wire-locked.  Surfaces the LOAD-BEARING
+# index-family mismatch caveat (CPI-U / RPI / HICPxT / Canada CPI are NOT
+# fungible inflation measures) via ``current_metrics.methodology_label``
+# (sourced from YAML at runtime, NOT a hardcoded Python literal).
+# Rolling-z-score conventions are YAML-locked — only ``lookback_days`` +
+# ``field_name`` are exposed at the API layer.
+from rates_agent.inflation_indexed_bonds.tools.cross_country_breakeven_spread_simple import (
+    CONFIG_PATH as CROSS_COUNTRY_BREAKEVEN_SPREAD_SIMPLE_CONFIG_PATH,
+    CrossCountryBreakevenSpreadSimpleInput,
+    CrossCountryBreakevenSpreadSimpleOutput,
+    calculate_cross_country_breakeven_spread_simple,
+)
 # Standalone-bridge endpoint for the same-tenor cross-market ZCIS spread
 # primitive (e.g. USD_ZCIS 5Y minus EUR_ZCIS 5Y).  First inflation_swaps tool
 # under the standalone-bridge contract — per
@@ -3902,5 +3925,130 @@ def bond_futures_price_detail(
     _tool_result_or_raise(
         result,
         f"Bond futures price level for {curve_family} {contract_code}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/cross-country-breakeven-spread — same-tenor cross-country
+# bond-implied breakeven spread bridge
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# cross_country_breakeven_spread_simple primitive ships its OWN typed-detail
+# endpoint.  Two-country, single-tenor primitive — each country contributes
+# a (nominal, linker) pair at the shared tenor (e.g. UST/USD_TIPS 10Y vs
+# UK_GILT/GBP_LINKER 10Y).  Schema layer rejects
+# ``country_a_nominal_pair == country_b_nominal_pair`` AND
+# ``country_a_linker_pair == country_b_linker_pair``; for same-country
+# breakeven curve / spot work, see /detail/breakeven-curve-spread + /detail/
+# breakeven-inflation-simple.  The same payload feeds BOTH the extended and
+# compact Build views and the Monitor tile (rendering_density.md §10).
+# Rolling-z-score conventions are YAML-locked on this primitive (no
+# input-layer overrides); only ``lookback_days`` + ``field_name`` are exposed.
+# ============================================================================
+@router.get(
+    "/detail/cross-country-breakeven-spread",
+    response_model=CrossCountryBreakevenSpreadSimpleOutput,
+    summary="Cross-Country Bond Breakeven Spread Detail (standalone bridge)",
+)
+def cross_country_breakeven_spread_detail(
+    engine: Engine = Depends(get_engine),
+    country_a_nominal_pair: str = Query(
+        ...,
+        description=(
+            "Country A nominal sovereign curve family (e.g. 'UST', "
+            "'UK_GILT', 'FR_OAT', 'DE_BUND', 'CANADA_GOVT').  Must "
+            "differ from country_b_nominal_pair."
+        ),
+    ),
+    country_a_linker_pair: str = Query(
+        ...,
+        description=(
+            "Country A sovereign linker curve family (e.g. 'USD_TIPS', "
+            "'GBP_LINKER', 'EUR_FR_LINKER', 'CAD_RRB').  Must share "
+            "country/currency with country_a_nominal_pair."
+        ),
+    ),
+    country_b_nominal_pair: str = Query(
+        ...,
+        description=(
+            "Country B nominal sovereign curve family.  Must differ "
+            "from country_a_nominal_pair (cross-country invariant)."
+        ),
+    ),
+    country_b_linker_pair: str = Query(
+        ...,
+        description=(
+            "Country B sovereign linker curve family.  Must share "
+            "country/currency with country_b_nominal_pair, and must "
+            "differ from country_a_linker_pair."
+        ),
+    ),
+    tenor: str = Query(
+        ...,
+        description=(
+            "Single tenor pillar applied to BOTH country legs (e.g. "
+            "'5Y', '10Y', '30Y').  Cross-country spread is evaluated "
+            "at the same tenor on each side."
+        ),
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg observation field for ALL FOUR underlying yield "
+            "series (country_a_nominal, country_a_linker, "
+            "country_b_nominal, country_b_linker).  Omit (None) to use "
+            "the tool's bundled ``default_field_name`` convention "
+            "(currently 'YLD_YTM_MID')."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the frontend
+    module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
+    AND the Monitor widget per the rendering-density dual-view + monitor
+    contract.
+
+    The cross-country breakeven spread primitive intentionally does NOT
+    expose the z-score conventions at its Input layer — its rolling-
+    z-score conventions are sourced from the YAML at compute() time only.
+    Mirrors the sibling cross_market_inflation_swap_spread bridge.
+    """
+    try:
+        params = CrossCountryBreakevenSpreadSimpleInput(
+            country_a_nominal_pair=country_a_nominal_pair,
+            country_a_linker_pair=country_a_linker_pair,
+            country_b_nominal_pair=country_b_nominal_pair,
+            country_b_linker_pair=country_b_linker_pair,
+            tenor=tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        xcbe_config = load_tool_config(
+            CROSS_COUNTRY_BREAKEVEN_SPREAD_SIMPLE_CONFIG_PATH,
+        )
+        result = calculate_cross_country_breakeven_spread_simple(
+            engine=engine, params=params, config=xcbe_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/cross-country-breakeven-spread: tool failed for "
+            "%s/%s vs %s/%s %s",
+            country_a_nominal_pair, country_a_linker_pair,
+            country_b_nominal_pair, country_b_linker_pair, tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        (
+            f"Cross-country breakeven spread for "
+            f"{country_a_nominal_pair}/{country_a_linker_pair} - "
+            f"{country_b_nominal_pair}/{country_b_linker_pair} {tenor}"
+        ),
     )
     return result

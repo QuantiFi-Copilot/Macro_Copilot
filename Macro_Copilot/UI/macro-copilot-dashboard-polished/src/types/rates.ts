@@ -2525,3 +2525,104 @@ export type FuturesPackAverageSimpleOutput = {
   methodology_disclosure: string;
 };
 
+// --- /detail/cross-country-breakeven-spread (standalone bridge) ---
+//
+// Mirrors rates_agent/inflation_indexed_bonds/tools/cross_country_breakeven_spread_simple/schemas.py
+// (CrossCountryBreakevenSpreadSimpleOutput / CrossCountryBreakevenSpreadSimpleCurrentMetrics /
+// CrossCountryBreakevenSpreadSimpleTimeSeriesRow).  Per the methodology-
+// exposure standalone-bridge contract (docs_revamped/03_standards/
+// methodology_exposure.md §5) every new tool ships its OWN typed-detail
+// endpoint at /api/v1/rates/detail/cross-country-breakeven-spread and its
+// OWN frontend type — no reuse of CrossMarketInflationSwapSpreadOutput
+// (that's a cross-MARKET ZCIS-vs-ZCIS spread; this is a cross-COUNTRY
+// bond-implied breakeven spread) and no reuse of
+// BreakevenInflationSimpleOutput (that's a single-country breakeven; this
+// is the differential between two such breakevens).
+//
+// Two-country, single-tenor primitive: each country contributes a
+// (nominal, linker) pair at a shared tenor.  Sign convention POSITIVE =
+// country_a > country_b breakeven; wire-locked at country_a minus
+// country_b.  Output is a SPREAD object — ships in BPS (not PERCENT) to
+// mirror sibling spread primitives.  The LOAD-BEARING index-family
+// mismatch caveat (CPI-U / RPI / HICPxT / Canada CPI are NOT fungible
+// inflation measures) surfaces verbatim via
+// ``current_metrics.methodology_label`` (sourced from YAML at runtime,
+// NOT a hardcoded TS literal).
+
+export type CrossCountryBreakevenSpreadSimpleCurrentMetrics = {
+  as_of_date: string;
+  country_a_nominal_pair: string;
+  country_a_linker_pair: string;
+  country_b_nominal_pair: string;
+  country_b_linker_pair: string;
+  tenor: string;
+  /** Year fraction of ``tenor`` (e.g. 10.0 for '10Y').  Same tenor on
+   *  both country legs. */
+  tenor_years: number;
+  /** Human-readable label, e.g. 'UST/USD_TIPS - UK_GILT/GBP_LINKER 10Y XC breakeven'. */
+  spread_label: string;
+  /** Current cross-country breakeven spread in BASIS POINTS
+   *  (breakeven_a_bps - breakeven_b_bps).  Sign convention POSITIVE =
+   *  country_a > country_b breakeven.  NOT a clean expected-inflation
+   *  differential — see methodology_label (each leg carries inflation
+   *  risk premium AND the two legs may reference different inflation
+   *  indices). */
+  current_spread_bps: number | null;
+  /** 1-trading-day change of the cross-country spread (bps). */
+  daily_change_bps: number | null;
+  /** 5-trading-day change of the cross-country spread (bps). */
+  weekly_change_bps: number | null;
+  /** 22-trading-day (~1 month) change of the cross-country spread (bps). */
+  monthly_change_bps: number | null;
+  /** Rolling 252-trading-day z-score of the spread (bps).  YAML-locked
+   *  on this primitive (no input-layer overrides). */
+  current_z_score: number | null;
+  rolling_window_days: number;
+  /** Highest cross-country spread over trailing 252 trading days (bps). */
+  high_252d_bps: number | null;
+  /** Lowest cross-country spread over trailing 252 trading days (bps). */
+  low_252d_bps: number | null;
+  /** Percentile rank within trailing 252-day range (0-100). */
+  percentile_252d: number | null;
+  /** Latest country_a spot bond-implied breakeven at ``tenor`` (bps) —
+   *  exposed so the desk can audit the cross-country decomposition. */
+  breakeven_a_bps: number | null;
+  /** Latest country_b spot bond-implied breakeven at ``tenor`` (bps). */
+  breakeven_b_bps: number | null;
+  /** Wire-honesty disclosure threaded from config.yaml:methodology.what_it_does.
+   *  Carries the explicit spread formula (breakeven_a_bps - breakeven_b_bps),
+   *  the sign convention (country_a minus country_b), the inflation-
+   *  compensation (not pure expected inflation) caveat AND the LOAD-
+   *  BEARING index-family mismatch caveat (CPI-U vs HICP vs RPI vs
+   *  Canada CPI are NOT fungible inflation measures) so downstream
+   *  operators and the LLM cannot misread the output.  Sourced from
+   *  YAML at runtime; NOT a hardcoded TS literal. */
+  methodology_label: string;
+};
+
+/** Bespoke wire-frozen cross-country breakeven-spread time-series row. */
+export type CrossCountryBreakevenSpreadSimpleTimeSeriesRow = {
+  date: string;
+  /** Cross-country breakeven spread in basis points. */
+  spread_bps: number;
+  /** Rolling z-score (None for rows in the rolling-window warmup). */
+  z_score: number | null;
+};
+
+export type CrossCountryBreakevenSpreadSimpleOutput = {
+  current_metrics: CrossCountryBreakevenSpreadSimpleCurrentMetrics;
+  /** Bespoke wire-frozen history (spread bps + z-score per row). */
+  time_series: CrossCountryBreakevenSpreadSimpleTimeSeriesRow[];
+  /** Canonical historical cross-country breakeven-spread series.
+   *  Closed-enum TimeSeriesUnits.BPS — the spread is a SPREAD object
+   *  (not a level) so it ships in BPS to mirror sibling spread
+   *  primitives.  series_name pattern:
+   *  '<an>_<al>_<bn>_<bl>_<tenor>_xc_breakeven_spread'.  Values match
+   *  time_series[i].spread_bps 1-to-1 by construction. */
+  time_series_spread: TimeSeries;
+  /** Canonical historical rolling z-score series.  Closed-enum
+   *  TimeSeriesUnits.Z_SCORE.  Values match time_series[i].z_score
+   *  1-to-1 (None for rows in the rolling-window warmup). */
+  time_series_zscore: TimeSeries;
+};
+
