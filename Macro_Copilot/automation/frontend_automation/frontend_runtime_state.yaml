@@ -1,7 +1,7 @@
 version: '1.0'
 branch: frontend_automation
 backend: claude-cli
-orchestrator_status: processing
+orchestrator_status: human_required
 current_tool: ois__financing_rate
 current_tool_backend_name: compute_financing_rate_tool
 current_step: pre_flight
@@ -13,7 +13,7 @@ last_reviewer_heading: APPROVED
 last_gate_result: pass
 last_stop_reason: tool_27_pre_flight_pass_schema_shape_concern_human_required
 last_error: null
-last_updated: "2026-06-08T08:10:00Z"
+last_updated: "2026-06-08T08:22:00Z"
 done: 26
 blocked: 0
 remaining: 2
@@ -129,6 +129,93 @@ reviewer_mode_history:
       retries.
 catalog_exhausted_at: null
 status_notes:
+  - at: "2026-06-08T08:22:00Z"
+    kind: wake_clean_stop_human_required_tool_27_unresolved
+    text: |
+      Third cron fire of cron id 450aa21c-625d-4ad7-b3da-ef39a6ba7784
+      (entry at 2026-06-08T08:22Z, 12 min after the prior wake stamped
+      the human_required block on tool 27 at 08:10Z).  Wake entry checks:
+        - automation/frontend_automation/check_branch.sh: PASS (on
+          frontend_automation branch).
+        - Read ORCHESTRATOR_PROMPT.md + BACKGROUND_EXECUTION_POLICY.md
+          + QUOTA_AND_RESUME_POLICY.md + DISCORD_STATUS_POLICY.md fresh
+          from repo (no memory reliance).
+        - orchestrator_status head field was stale at `processing`;
+          human_required block populated since 08:10Z (tool 27
+          schema-shape divergence, three remediation options open).
+        - git log: HEAD is 735aa03 (the prior wake's automation note
+          atop tool 26 commit 7493683).  No new commits since the
+          prior wake; working tree clean.  No user remediation
+          observed: no catalog edit clearing human_required, no new
+          api/routes/rates/detail.py synthesis logic for option (a),
+          no tool 27 status: blocked flip for option (c), no catalog
+          category amendment for option (b).
+        - Catalog state unchanged: tool 27 (ois__financing_rate)
+          status: todo; tool 28 (ois__swap_spread) status: todo;
+          26 tools status: done; 0 tools status: blocked.
+
+      Per BACKGROUND_EXECUTION_POLICY.md §4 ("Stop the current wake
+      if: ... the current tool requires human judgment") AND per the
+      prior wake's explicit plan ("Wake entry script reads
+      orchestrator_status=processing + human_required != null →
+      stops the wake cleanly before dispatching anything"): this
+      wake stops cleanly without any worker dispatch.  No builder,
+      no reviewer, no fix pass.  Zero Claude quota consumed by this
+      wake beyond the orchestrator read of repo state.
+
+      Why this wake does NOT autonomously advance to tool 28:
+        - All three remediation options the prior wake listed
+          require a USER decision (extend bridge route / amend
+          catalog / block tool 27).  Option (c) is the only one
+          that advances to tool 28, but option (c) is the user
+          affirmatively choosing to defer tool 27 — not the
+          orchestrator self-electing to skip it.
+        - SOUL.md: "Direct, process-bound, audit-focused.  Never
+          improvise outside the repo contract."  Picking a
+          remediation on the user's behalf would be improvisation.
+        - If the user later chooses (a) — extend the bridge route —
+          tool 27 ships first.  Advancing to tool 28 now and then
+          back-tracking would create unnecessary churn on the
+          standalone-bridge endpoint contract.
+
+      Runtime head changes this wake:
+        orchestrator_status: processing → human_required (honest
+          disclosure now matches the populated human_required block).
+        last_updated: 2026-06-08T08:10:00Z → 2026-06-08T08:22:00Z.
+        All other head fields unchanged (current_tool /
+        current_tool_backend_name / current_step / dispatch_round /
+        last_dispatch_at / last_successful_tool /
+        last_successful_commit / last_reviewer_heading /
+        last_gate_result / last_stop_reason / counts / quota state /
+        human_required block all still accurately describe the held
+        state from the prior wake).
+
+      Counts unchanged: done=26, blocked=0, remaining=2.
+      quota_state: live; quota_snapshot_fresh: true (carried from
+        prior wake — no new probe this wake, no provider refusal
+        observed because no dispatch happened).
+
+      Plan for next cron wake: identical to prior wake's plan.
+      User remediation required before automation can advance:
+        (a) extend api/routes/rates/detail.py with a
+            panel→current_metrics+time_series synthesis helper for
+            financing-rate specifically; clear human_required, set
+            current_step: pre_flight; next wake dispatches builder
+            Round 1 for tool 27.
+        (b) amend catalog tool 27 entry to category=panel (or defer
+            until a panel-shaped reference module ships); set
+            current_tool: ois__swap_spread; next wake runs tool 28
+            pre-flight.
+        (c) set tool 27 status: blocked with block_reason capturing
+            this schema-shape concern; clear human_required; set
+            current_tool: ois__swap_spread; next wake runs tool 28
+            pre-flight.
+
+      Discord `main` agent answer set unchanged from prior wake:
+        "26/28 done (last: cross_country_breakeven_spread @ 7493683);
+         tool 27 paused on human design call re: panel-vs-snapshot
+         schema; 2 remaining."
+
   - at: "2026-06-08T08:10:00Z"
     kind: tool_26_committed_tool_27_pre_flight_pass_schema_concern_human_required
     text: |
