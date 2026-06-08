@@ -2,32 +2,33 @@ version: '1.0'
 branch: frontend_automation
 backend: claude-cli
 orchestrator_status: processing
-current_tool: policy_futures__calendar_spread
-current_tool_backend_name: policy_futures_get_futures_calendar_spread_tool
+current_tool: bond_futures__price_level
+current_tool_backend_name: get_futures_price_level_tool
 current_step: builder_dispatched
 dispatch_round: 1
-last_dispatch_at: "2026-06-07T19:56:00Z"
-last_successful_tool: policy_futures__futures_butterfly
-last_successful_commit: fcc5381
+last_dispatch_at: "2026-06-08T01:38:00Z"
+last_successful_tool: policy_futures__pack_average
+last_successful_commit: abe834b
 last_reviewer_heading: APPROVED
 last_gate_result: pass
-last_stop_reason: batch_3_addendum_swap_spread_unblocked
+last_stop_reason: tool_22_committed_dispatching_tool_23_builder
 last_error: null
-last_updated: "2026-06-07T16:50:00Z"
-done: 19
+last_updated: "2026-06-08T01:38:00Z"
+done: 22
 blocked: 0
-remaining: 10
-quota_state: probe_unavailable
+remaining: 6
+quota_state: live
 quota_snapshot: null
-quota_snapshot_at: '2026-05-29T15:52:00Z'
-quota_snapshot_fresh: false
+quota_snapshot_at: '2026-06-08T01:38:00Z'
+quota_snapshot_fresh: true
 quota_note: |
-  `claude /status` is not available in non-interactive automation
-  ("/status isn't available in this environment").  Per
-  QUOTA_AND_RESUME_POLICY.md §3 the orchestrator proceeds in
-  runtime-enforced mode: dispatch normally, stop only if the
-  actual provider returns a real quota signal (detected by
-  parse_reviewer_log.py setting reviewer_quota_exhausted: true).
+  Provider reset at 2026-06-08T00:20:00Z opened the window;
+  this wake already observed tool 21 (commit ad4a6fa) and
+  tool 22 (commit abe834b) commit cleanly post-reset (builder
+  + reviewer + gate three-green).  Runtime-enforced quota mode
+  per QUOTA_AND_RESUME_POLICY.md §3: continue dispatching;
+  stop only on a real provider refusal envelope.  No fresh
+  /status probe available (non-interactive); proceeding.
 reviewer_mode: claude_only
 reviewer_mode_history:
   - at: '2026-05-29T00:00:00Z'
@@ -40,6 +41,1465 @@ reviewer_mode_history:
 catalog_exhausted_at: null
 human_required: null
 status_notes:
+  - at: "2026-06-08T01:38:00Z"
+    kind: tool_22_committed_advancing_to_tool_23
+    text: |
+      Cron-fired wake at 2026-06-08T01:37:00Z (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784) found tool 22
+      (`policy_futures__pack_average`, build_order 22) Round 2
+      reviewer log finished at 2026-06-08T01:31:00Z with heading
+      APPROVED.  Pre-commit gate three-green (test:modules,
+      test:build, typecheck) was already attested in the prior
+      wake's commit body; the feature commit landed at
+      abe834b at 2026-06-08T01:35:42 UTC, but the runtime
+      state YAML head was not advanced (only catalog YAML +
+      surface_contract.md were updated in that commit).  This
+      wake closes the bookkeeping gap honestly:
+
+        - Catalog tool 22 already `status: done`,
+          `last_review_heading: APPROVED`,
+          `last_gate_result: pass`; this wake backfills
+          `commit_sha: abe834b` (working-tree edit pending
+          on this status-note commit).
+        - Runtime head advanced:
+            current_tool: bond_futures__price_level (build_order 23)
+            current_tool_backend_name: get_futures_price_level_tool
+            current_step: builder_dispatched
+            dispatch_round: 1
+            last_dispatch_at: 2026-06-08T01:38:00Z
+            last_successful_tool: policy_futures__pack_average
+            last_successful_commit: abe834b
+            last_reviewer_heading: APPROVED
+            last_gate_result: pass
+            last_stop_reason:
+              tool_22_committed_dispatching_tool_23_builder
+            done: 22  (was 21)
+            blocked: 0
+            remaining: 6  (was 7)
+            quota_state: live  (post 00:20 UTC reset)
+
+      Pre-flight backend audit for tool 23 (read-only,
+      PRE_FLIGHT_BACKEND_AUDIT.md):
+        - backend folder
+          `rates_agent/bond_futures/tools/futures_price_level/`
+          present (canonical 4-file shape: __init__.py 1576B,
+          compute.py 17314B, schemas.py 12866B, config.yaml
+          12070B).
+        - MCP wrapper `get_futures_price_level_tool` registered
+          in `rates_agent/bond_futures/mcp_server.py` (definition
+          at line 143).
+        - Curated migration
+          `database/migrations/2026-06-07_phase1_get_futures_price_level_curated.sql`
+          present (2101B); satisfies the OR condition per
+          PRE_FLIGHT_BACKEND_AUDIT.md (the DB probe via
+          `docker exec macro-tsdb psql` returned a FATAL "role
+          root does not exist" — non-authoritative; migration
+          file presence is the alternate accepted artifact).
+        - Mockups: BOTH PNGs present
+          (`Compact.png` 1361008B + `Extended.png` 1721565B)
+          at
+          `UI/macro-copilot-dashboard-polished/src/modules/primitives/get_futures_price_level_tool/mockups/`.
+        - ALL pre-flight checks PASS; proceeding to Round-1
+          builder dispatch.
+
+      Builder prompt written to
+      `/tmp/builder_prompt_bond_futures__price_level_round1.md`
+      (CLAUDE_BUILDER_PROMPT.md body + catalog entry verbatim +
+      resolved mockup paths + reference module
+      `policy_futures_get_futures_price_level_tool/` shape +
+      pre-flight audit output + backend output shape
+      `FuturesPriceLevelOutput`).  Dispatch via
+      `automation/frontend_automation/run_claude_builder.sh`
+      → log
+      `/tmp/claude_frontend_builder_run_bond_futures__price_level_round1.log`.
+
+      Single-engine factory (DESIGN_PRINCIPLES.md §10): no
+      fallback; on builder quota refusal the next wake retries.
+
+  - at: "2026-06-08T00:07:00Z"
+    kind: tool_21_too_early_wake_quota_still_exhausted_clean_stop
+    text: |
+      Cron-fired wake at 2026-06-08T00:07:00Z (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784) re-entered the
+      orchestrator while `orchestrator_status: waiting_quota`
+      from the prior fourteen wakes (20:50 UTC initial quota trip,
+      20:53 / 21:07 / 21:22 / 21:37 / 21:52 / 22:07 / 22:22 /
+      22:37 / 22:52 / 23:07 / 23:22 / 23:37 / 23:52 UTC too-early
+      resume observations).  Provider reset target unchanged:
+      2026-06-08T00:20:00Z (~13m from this wake).  This is the
+      fifteenth consecutive pre-reset-window observation; the
+      system continues to honestly defer rather than burn
+      provider round-trips against a known-exhausted window.
+
+      Verified at wake entry (no provider round-trip burned):
+        - check_branch.sh PASS (`frontend_automation`); HEAD
+          unchanged at be2595b (policy_futures__calendar_spread,
+          build_order 20).
+        - Builder log
+          `/tmp/claude_frontend_builder_run_policy_futures__cross_market_spread_round1.log`
+          unchanged (46B, mtime 2026-06-07T20:42 UTC, single-line
+          provider refusal "You've hit your limit · resets 12:20am
+          (UTC)").  Builder prompt preserved at 23602B (mtime
+          20:37 UTC) for the next-wake redispatch (§6 idempotency
+          contract intact).
+        - Working tree shows only orchestrator bookkeeping YAML
+          edits pending (`M frontend_runtime_state.yaml`,
+          `M frontend_tool_catalog.yaml`); zero code under
+          `UI/macro-copilot-dashboard-polished/` dirty.
+        - Catalog entry `policy_futures__cross_market_spread`
+          still `status: in_progress`, `build_order: 21`,
+          `last_review_heading: null`, `last_gate_result:
+          not_run`.  20 done / 0 blocked / 1 in_progress
+          (tool 21) / 7 todo (build_orders 22-28).
+        - Single-engine factory (DESIGN_PRINCIPLES.md §10):
+          no fallback engine; waiting_quota is the only correct
+          stance until the reset window.
+
+      Per QUOTA_AND_RESUME_POLICY.md §4 ("exhausted → STOP the
+      wake cleanly; mark `orchestrator_status: waiting_quota`")
+      and §6 resume rule, current_tool / dispatch_round /
+      current_step preserved so the next post-reset cron wake
+      re-dispatches the builder for tool 21 from a clean
+      working tree.  Re-dispatching now would only re-read the
+      same single-line refusal log and burn ~13m of unnecessary
+      provider round-trips before the reset window opens.
+
+      State fields preserved (resume contract):
+        orchestrator_status: waiting_quota   (unchanged)
+        current_tool: policy_futures__cross_market_spread
+        current_tool_backend_name:
+          policy_futures_get_futures_cross_market_spread_tool
+        current_step: builder_dispatched
+        dispatch_round: 1
+        last_dispatch_at: 2026-06-07T20:34:00Z (original failed
+          dispatch — preserved; this wake performed no new
+          dispatch)
+        last_stop_reason: builder_claude_quota_exhausted
+          (unchanged — same root cause; this is the fifteenth
+          consecutive too-early resume observation, not a new
+          failure mode)
+        quota_state: exhausted
+        quota_snapshot_fresh: true (provider refusal still
+          authoritative; reset window still in the future)
+
+      Next-wake resume target: the next cron wake at or after
+      2026-06-08T00:22:00Z (first wake past the 00:20 UTC reset)
+      will re-enter selection-order rule §1 ("first
+      in_progress"), re-dispatch the builder for tool 21 using
+      the preserved /tmp prompt, parse the log, and continue the
+      catalog loop normally.  This wake is logged so the audit
+      trail shows the system honestly observed the quota window
+      and declined to burn cycles against a known-exhausted
+      provider.
+
+  - at: "2026-06-07T23:52:00Z"
+    kind: tool_21_too_early_wake_quota_still_exhausted_clean_stop
+    text: |
+      Cron-fired wake at 2026-06-07T23:52:00Z (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784) re-entered the
+      orchestrator while `orchestrator_status: waiting_quota`
+      from the prior thirteen wakes (20:50 UTC initial quota trip,
+      20:53 / 21:07 / 21:22 / 21:37 / 21:52 / 22:07 / 22:22 /
+      22:37 / 22:52 / 23:07 / 23:22 / 23:37 UTC too-early resume
+      observations).  Provider reset target unchanged:
+      2026-06-08T00:20:00Z (~28m from this wake).  This is the
+      fourteenth consecutive pre-reset-window observation; the
+      system continues to honestly defer rather than burn
+      provider round-trips against a known-exhausted window.
+
+      Verified at wake entry (no provider round-trip burned):
+        - check_branch.sh PASS (`frontend_automation`).
+        - Builder log
+          `/tmp/claude_frontend_builder_run_policy_futures__cross_market_spread_round1.log`
+          unchanged (46B, mtime 20:42 UTC, single-line provider
+          refusal "You've hit your limit · resets 12:20am
+          (UTC)").  Builder prompt preserved at 23602B (mtime
+          20:37 UTC) for the next-wake redispatch (§6
+          idempotency contract intact).
+        - Working tree shows only orchestrator bookkeeping YAML
+          edits pending (`M frontend_runtime_state.yaml`,
+          `M frontend_tool_catalog.yaml`); zero code under
+          `UI/macro-copilot-dashboard-polished/` dirty.  Tool 21
+          scaffold folder
+          `UI/.../primitives/policy_futures_get_futures_cross_market_spread_tool/`
+          contains only the pre-existing THESIS.md, module.ts,
+          mockups/ (Compact.png + Extended.png present),
+          __tests__/module.spec.ts (no builder-generated
+          surfaces/ folder).
+        - Catalog entry `policy_futures__cross_market_spread`
+          still `status: in_progress`, `build_order: 21`,
+          `last_review_heading: null`, `last_gate_result:
+          not_run`.  20 done / 0 blocked / 1 in_progress
+          (tool 21) / 7 todo (build_orders 22-28).
+        - Last successful commit be2595b
+          (policy_futures__calendar_spread, build_order 20)
+          unchanged on `frontend_automation` HEAD.
+        - Single-engine factory (DESIGN_PRINCIPLES.md §10):
+          no fallback engine; waiting_quota is the only correct
+          stance until the reset window.
+
+      Per QUOTA_AND_RESUME_POLICY.md §4 ("exhausted → STOP the
+      wake cleanly; mark `orchestrator_status: waiting_quota`")
+      and §6 resume rule, current_tool / dispatch_round /
+      current_step preserved so the next post-reset cron wake
+      re-dispatches the builder for tool 21 from a clean
+      working tree.  Re-dispatching now would only re-read the
+      same single-line refusal log and burn ~28m of
+      unnecessary provider round-trips before the reset window
+      opens.
+
+      State fields preserved (resume contract):
+        orchestrator_status: waiting_quota   (unchanged)
+        current_tool: policy_futures__cross_market_spread
+        current_tool_backend_name:
+          policy_futures_get_futures_cross_market_spread_tool
+        current_step: builder_dispatched
+        dispatch_round: 1
+        last_dispatch_at: 2026-06-07T20:34:00Z (original failed
+          dispatch — preserved; this wake performed no new
+          dispatch)
+        last_stop_reason: builder_claude_quota_exhausted
+          (unchanged — same root cause; this is the fourteenth
+          consecutive too-early resume observation, not a new
+          failure mode)
+        quota_state: exhausted
+        quota_snapshot_fresh: true (provider refusal still
+          authoritative; reset window still in the future)
+
+      Next-wake resume target: any cron wake at or after
+      2026-06-08T00:20:00Z will re-enter selection-order
+      rule §1 ("first in_progress"), re-dispatch the builder
+      for tool 21 using the preserved /tmp prompt, parse the
+      log, and continue the catalog loop normally.  This wake
+      is logged so the audit trail shows the system honestly
+      observed the quota window and declined to burn cycles
+      against a known-exhausted provider.
+
+  - at: "2026-06-07T23:37:00Z"
+    kind: tool_21_too_early_wake_quota_still_exhausted_clean_stop
+    text: |
+      Cron-fired wake at 2026-06-07T23:37:00Z (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784) re-entered the
+      orchestrator while `orchestrator_status: waiting_quota`
+      from the prior twelve wakes (20:50 UTC initial quota trip,
+      20:53 / 21:07 / 21:22 / 21:37 / 21:52 / 22:07 / 22:22 /
+      22:37 / 22:52 / 23:07 / 23:22 UTC too-early resume
+      observations).  Provider reset target unchanged:
+      2026-06-08T00:20:00Z (~43m from this wake).  This is the
+      thirteenth consecutive pre-reset-window observation; the
+      system continues to honestly defer rather than burn
+      provider round-trips against a known-exhausted window.
+
+      Verified at wake entry (no provider round-trip burned):
+        - check_branch.sh PASS (`frontend_automation`).
+        - Builder log
+          `/tmp/claude_frontend_builder_run_policy_futures__cross_market_spread_round1.log`
+          unchanged (46B, mtime 20:42 UTC, single-line provider
+          refusal "You've hit your limit · resets 12:20am
+          (UTC)").  Builder prompt preserved at 23602B (mtime
+          20:37 UTC) for the next-wake redispatch (§6
+          idempotency contract intact).
+        - Working tree shows only orchestrator bookkeeping YAML
+          edits pending (`M frontend_runtime_state.yaml`,
+          `M frontend_tool_catalog.yaml`); zero code under
+          `UI/macro-copilot-dashboard-polished/` dirty.  Tool 21
+          scaffold folder
+          `UI/.../primitives/policy_futures_get_futures_cross_market_spread_tool/`
+          contains only the pre-existing THESIS.md, module.ts,
+          mockups/ (Compact.png + Extended.png present),
+          __tests__/module.spec.ts (no builder-generated
+          surfaces/ folder).
+        - Catalog entry `policy_futures__cross_market_spread`
+          still `status: in_progress`, `build_order: 21`,
+          `last_review_heading: null`, `last_gate_result:
+          not_run`.  20 done / 0 blocked / 1 in_progress
+          (tool 21) / 7 todo (build_orders 22-28).
+        - Last successful commit be2595b
+          (policy_futures__calendar_spread, build_order 20)
+          unchanged on `frontend_automation` HEAD.
+        - Single-engine factory (DESIGN_PRINCIPLES.md §10):
+          no fallback engine; waiting_quota is the only correct
+          stance until the reset window.
+
+      Per QUOTA_AND_RESUME_POLICY.md §4 ("exhausted → STOP the
+      wake cleanly; mark `orchestrator_status: waiting_quota`")
+      and §6 resume rule, current_tool / dispatch_round /
+      current_step preserved so the next post-reset cron wake
+      re-dispatches the builder for tool 21 from a clean
+      working tree.  Re-dispatching now would only re-read the
+      same single-line refusal log and burn ~43m of
+      unnecessary provider round-trips before the reset window
+      opens.
+
+      State fields preserved (resume contract):
+        orchestrator_status: waiting_quota   (unchanged)
+        current_tool: policy_futures__cross_market_spread
+        current_tool_backend_name:
+          policy_futures_get_futures_cross_market_spread_tool
+        current_step: builder_dispatched
+        dispatch_round: 1
+        last_dispatch_at: 2026-06-07T20:34:00Z (original failed
+          dispatch — preserved; this wake performed no new
+          dispatch)
+        last_stop_reason: builder_claude_quota_exhausted
+          (unchanged — same root cause; this is the thirteenth
+          consecutive too-early resume observation, not a new
+          failure mode)
+        quota_state: exhausted
+        quota_snapshot_fresh: true (provider refusal still
+          authoritative; reset window still in the future)
+
+      Next-wake resume target: any cron wake at or after
+      2026-06-08T00:20:00Z will re-enter selection-order
+      rule §1 ("first in_progress"), re-dispatch the builder
+      for tool 21 using the preserved /tmp prompt, parse the
+      log, and continue the catalog loop normally.  This wake
+      is logged so the audit trail shows the system honestly
+      observed the quota window and declined to burn cycles
+      against a known-exhausted provider.
+
+  - at: "2026-06-07T23:22:00Z"
+    kind: tool_21_too_early_wake_quota_still_exhausted_clean_stop
+    text: |
+      Cron-fired wake at 2026-06-07T23:22:00Z (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784) re-entered the
+      orchestrator while `orchestrator_status: waiting_quota`
+      from the prior eleven wakes (20:50 UTC initial quota trip,
+      20:53 / 21:07 / 21:22 / 21:37 / 21:52 / 22:07 / 22:22 /
+      22:37 / 22:52 / 23:07 UTC too-early resume observations).
+      Provider reset target unchanged: 2026-06-08T00:20:00Z
+      (~58m from this wake).  This is the twelfth consecutive
+      pre-reset-window observation; the system continues to
+      honestly defer rather than burn provider round-trips
+      against a known-exhausted window.
+
+      Verified at wake entry (no provider round-trip burned):
+        - check_branch.sh PASS (`frontend_automation`).
+        - Builder log
+          `/tmp/claude_frontend_builder_run_policy_futures__cross_market_spread_round1.log`
+          unchanged (46B, mtime 20:42 UTC, single-line provider
+          refusal "You've hit your limit · resets 12:20am
+          (UTC)").  Builder prompt preserved at 23602B (mtime
+          20:37 UTC) for the next-wake redispatch (§6
+          idempotency contract intact).
+        - Working tree shows only orchestrator bookkeeping YAML
+          edits pending (`M frontend_runtime_state.yaml`,
+          `M frontend_tool_catalog.yaml`); zero code under
+          `UI/macro-copilot-dashboard-polished/` dirty.  Tool 21
+          scaffold folder
+          `UI/.../primitives/policy_futures_get_futures_cross_market_spread_tool/`
+          contains only the pre-existing THESIS.md, module.ts,
+          mockups/ (Compact.png + Extended.png present),
+          __tests__/module.spec.ts (no builder-generated
+          surfaces/ folder).
+        - Catalog entry `policy_futures__cross_market_spread`
+          still `status: in_progress`, `build_order: 21`,
+          `last_review_heading: null`, `last_gate_result:
+          not_run`.  20 done / 0 blocked / 1 in_progress
+          (tool 21) / 7 todo (build_orders 22-28).
+        - Last successful commit be2595b
+          (policy_futures__calendar_spread, build_order 20)
+          unchanged on `frontend_automation` HEAD.
+        - Single-engine factory (DESIGN_PRINCIPLES.md §10):
+          no fallback engine; waiting_quota is the only correct
+          stance until the reset window.
+
+      Per QUOTA_AND_RESUME_POLICY.md §4 ("exhausted → STOP the
+      wake cleanly; mark `orchestrator_status: waiting_quota`")
+      and §6 resume rule, current_tool / dispatch_round /
+      current_step preserved so the next post-reset cron wake
+      re-dispatches the builder for tool 21 from a clean
+      working tree.  Re-dispatching now would only re-read the
+      same single-line refusal log and burn ~58m of
+      unnecessary provider round-trips before the reset window
+      opens.
+
+      State fields preserved (resume contract):
+        orchestrator_status: waiting_quota   (unchanged)
+        current_tool: policy_futures__cross_market_spread
+        current_tool_backend_name:
+          policy_futures_get_futures_cross_market_spread_tool
+        current_step: builder_dispatched
+        dispatch_round: 1
+        last_dispatch_at: 2026-06-07T20:34:00Z (original failed
+          dispatch — preserved; this wake performed no new
+          dispatch)
+        last_stop_reason: builder_claude_quota_exhausted
+          (unchanged — same root cause; this is the twelfth
+          consecutive too-early resume observation, not a new
+          failure mode)
+        quota_state: exhausted
+        quota_snapshot_fresh: true (provider refusal still
+          authoritative; reset window still in the future)
+
+      Next-wake resume target: any cron wake at or after
+      2026-06-08T00:20:00Z will re-enter selection-order
+      rule §1 ("first in_progress"), re-dispatch the builder
+      for tool 21 using the preserved /tmp prompt, parse the
+      log, and continue the catalog loop normally.  This wake
+      is logged so the audit trail shows the system honestly
+      observed the quota window and declined to burn cycles
+      against a known-exhausted provider.
+
+  - at: "2026-06-07T23:07:00Z"
+    kind: tool_21_too_early_wake_quota_still_exhausted_clean_stop
+    text: |
+      Cron-fired wake at 2026-06-07T23:07:00Z (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784) re-entered the
+      orchestrator while `orchestrator_status: waiting_quota`
+      from the prior ten wakes (20:50 UTC initial quota trip,
+      20:53 / 21:07 / 21:22 / 21:37 / 21:52 / 22:07 / 22:22 /
+      22:37 / 22:52 UTC too-early resume observations).
+      Provider reset target unchanged: 2026-06-08T00:20:00Z
+      (~1h13m from this wake).  This is the eleventh
+      consecutive pre-reset-window observation; the system
+      continues to honestly defer rather than burn provider
+      round-trips against a known-exhausted window.
+
+      Verified at wake entry (no provider round-trip burned):
+        - check_branch.sh PASS (`frontend_automation`).
+        - Builder log
+          `/tmp/claude_frontend_builder_run_policy_futures__cross_market_spread_round1.log`
+          unchanged (46B, mtime 20:42 UTC, single-line provider
+          refusal "You've hit your limit · resets 12:20am
+          (UTC)").  Builder prompt preserved at 23602B (mtime
+          20:37 UTC) for the next-wake redispatch (§6
+          idempotency contract intact).
+        - Working tree shows only orchestrator bookkeeping YAML
+          edits pending (`M frontend_runtime_state.yaml`,
+          `M frontend_tool_catalog.yaml`); zero code under
+          `UI/macro-copilot-dashboard-polished/` dirty.  Tool 21
+          scaffold folder
+          `UI/.../primitives/policy_futures_get_futures_cross_market_spread_tool/`
+          contains only the pre-existing THESIS.md, module.ts,
+          mockups/ (Compact.png + Extended.png present),
+          __tests__/module.spec.ts (no builder-generated
+          surfaces/ folder).
+        - Catalog entry `policy_futures__cross_market_spread`
+          still `status: in_progress`, `build_order: 21`,
+          `last_review_heading: null`, `last_gate_result:
+          not_run`.  20 done / 0 blocked / 1 in_progress
+          (tool 21) / 7 todo (build_orders 22-28).
+        - Last successful commit be2595b
+          (policy_futures__calendar_spread, build_order 20)
+          unchanged on `frontend_automation` HEAD.
+        - Single-engine factory (DESIGN_PRINCIPLES.md §10):
+          no fallback engine; waiting_quota is the only correct
+          stance until the reset window.
+
+      Per QUOTA_AND_RESUME_POLICY.md §4 ("exhausted → STOP the
+      wake cleanly; mark `orchestrator_status: waiting_quota`")
+      and §6 resume rule, current_tool / dispatch_round /
+      current_step preserved so the next post-reset cron wake
+      re-dispatches the builder for tool 21 from a clean
+      working tree.  Re-dispatching now would only re-read the
+      same single-line refusal log and burn ~1h13m of
+      unnecessary provider round-trips before the reset window
+      opens.
+
+      State fields preserved (resume contract):
+        orchestrator_status: waiting_quota   (unchanged)
+        current_tool: policy_futures__cross_market_spread
+        current_tool_backend_name:
+          policy_futures_get_futures_cross_market_spread_tool
+        current_step: builder_dispatched
+        dispatch_round: 1
+        last_dispatch_at: 2026-06-07T20:34:00Z (original failed
+          dispatch — preserved; this wake performed no new
+          dispatch)
+        last_stop_reason: builder_claude_quota_exhausted
+          (unchanged — same root cause; this is the eleventh
+          consecutive too-early resume observation, not a new
+          failure mode)
+        quota_state: exhausted
+        quota_snapshot_fresh: true (provider refusal still
+          authoritative; reset window still in the future)
+
+      Next-wake resume target: any cron wake at or after
+      2026-06-08T00:20:00Z will re-enter selection-order
+      rule §1 ("first in_progress"), re-dispatch the builder
+      for tool 21 using the preserved /tmp prompt, parse the
+      log, and continue the catalog loop normally.  This wake
+      is logged so the audit trail shows the system honestly
+      observed the quota window and declined to burn cycles
+      against a known-exhausted provider.
+
+  - at: "2026-06-07T22:52:00Z"
+    kind: tool_21_too_early_wake_quota_still_exhausted_clean_stop
+    text: |
+      Cron-fired wake at 2026-06-07T22:52:00Z (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784) re-entered the
+      orchestrator while `orchestrator_status: waiting_quota`
+      from the prior nine wakes (20:50 UTC initial quota trip,
+      20:53 / 21:07 / 21:22 / 21:37 / 21:52 / 22:07 / 22:22 /
+      22:37 UTC too-early resume observations).  Provider reset
+      target unchanged: 2026-06-08T00:20:00Z (~1h28m from this
+      wake).  This is the tenth consecutive pre-reset-window
+      observation; the system continues to honestly defer rather
+      than burn provider round-trips against a known-exhausted
+      window.
+
+      Verified at wake entry (no provider round-trip burned):
+        - check_branch.sh PASS (`frontend_automation`).
+        - Builder log
+          `/tmp/claude_frontend_builder_run_policy_futures__cross_market_spread_round1.log`
+          unchanged (46B, mtime 20:42 UTC, single-line provider
+          refusal "You've hit your limit · resets 12:20am
+          (UTC)").  Builder prompt preserved at 23602B (mtime
+          20:37 UTC) for the next-wake redispatch (§6
+          idempotency contract intact).
+        - Working tree shows only orchestrator bookkeeping YAML
+          edits pending (`M frontend_runtime_state.yaml`,
+          `M frontend_tool_catalog.yaml`); zero code under
+          `UI/macro-copilot-dashboard-polished/` dirty.  Tool 21
+          scaffold folder
+          `UI/.../primitives/policy_futures_get_futures_cross_market_spread_tool/`
+          contains only the pre-existing THESIS.md, module.ts,
+          mockups/ (Compact.png + Extended.png present),
+          __tests__/module.spec.ts (no builder-generated
+          surfaces/ folder).
+        - Catalog entry `policy_futures__cross_market_spread`
+          still `status: in_progress`, `build_order: 21`,
+          `last_review_heading: null`, `last_gate_result:
+          not_run`.  20 done / 0 blocked / 1 in_progress
+          (tool 21) / 7 todo (build_orders 22-28).
+        - Last successful commit be2595b
+          (policy_futures__calendar_spread, build_order 20)
+          unchanged on `frontend_automation` HEAD.
+        - Single-engine factory (DESIGN_PRINCIPLES.md §10):
+          no fallback engine; waiting_quota is the only correct
+          stance until the reset window.
+
+      Per QUOTA_AND_RESUME_POLICY.md §4 ("exhausted → STOP the
+      wake cleanly; mark `orchestrator_status: waiting_quota`")
+      and §6 resume rule, current_tool / dispatch_round /
+      current_step preserved so the next post-reset cron wake
+      re-dispatches the builder for tool 21 from a clean
+      working tree.  Re-dispatching now would only re-read the
+      same single-line refusal log and burn ~1h28m of
+      unnecessary provider round-trips before the reset window
+      opens.
+
+      State fields preserved (resume contract):
+        orchestrator_status: waiting_quota   (unchanged)
+        current_tool: policy_futures__cross_market_spread
+        current_tool_backend_name:
+          policy_futures_get_futures_cross_market_spread_tool
+        current_step: builder_dispatched
+        dispatch_round: 1
+        last_dispatch_at: 2026-06-07T20:34:00Z (original failed
+          dispatch — preserved; this wake performed no new
+          dispatch)
+        last_stop_reason: builder_claude_quota_exhausted
+          (unchanged — same root cause; this is the tenth
+          consecutive too-early resume observation, not a new
+          failure mode)
+        quota_state: exhausted
+        quota_snapshot_fresh: true (provider refusal still
+          authoritative; reset window still in the future)
+
+      Next-wake resume target: any cron wake at or after
+      2026-06-08T00:20:00Z will re-enter selection-order
+      rule §1 ("first in_progress"), re-dispatch the builder
+      for tool 21 using the preserved /tmp prompt, parse the
+      log, and continue the catalog loop normally.  This wake
+      is logged so the audit trail shows the system honestly
+      observed the quota window and declined to burn cycles
+      against a known-exhausted provider.
+
+  - at: "2026-06-07T22:37:00Z"
+    kind: tool_21_too_early_wake_quota_still_exhausted_clean_stop
+    text: |
+      Cron-fired wake at 2026-06-07T22:37:00Z (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784) re-entered the
+      orchestrator while `orchestrator_status: waiting_quota`
+      from the prior eight wakes (20:50 UTC initial quota trip,
+      20:53 / 21:07 / 21:22 / 21:37 / 21:52 / 22:07 / 22:22 UTC
+      too-early resume observations).  Provider reset target
+      unchanged: 2026-06-08T00:20:00Z (~1h43m from this wake).
+      This is the ninth consecutive pre-reset-window observation;
+      the system continues to honestly defer rather than burn
+      provider round-trips against a known-exhausted window.
+
+      Verified at wake entry (no provider round-trip burned):
+        - check_branch.sh PASS (`frontend_automation`).
+        - Builder log
+          `/tmp/claude_frontend_builder_run_policy_futures__cross_market_spread_round1.log`
+          unchanged (46B, mtime 20:42 UTC, single-line provider
+          refusal "You've hit your limit · resets 12:20am
+          (UTC)").  Builder prompt preserved at 23602B (mtime
+          20:37 UTC) for the next-wake redispatch (§6
+          idempotency contract intact).
+        - Working tree shows only orchestrator bookkeeping YAML
+          edits pending (`M frontend_runtime_state.yaml`,
+          `M frontend_tool_catalog.yaml`); zero code under
+          `UI/macro-copilot-dashboard-polished/` dirty.  Tool 21
+          scaffold folder
+          `UI/.../primitives/policy_futures_get_futures_cross_market_spread_tool/`
+          contains only the pre-existing THESIS.md, module.ts,
+          mockups/ (Compact.png + Extended.png present),
+          __tests__/ (module.spec.ts; no builder-generated
+          surfaces/ folder).
+        - Catalog entry `policy_futures__cross_market_spread`
+          still `status: in_progress`, `build_order: 21`,
+          `last_review_heading: null`, `last_gate_result:
+          not_run`.  20 done / 0 blocked / 1 in_progress
+          (tool 21) / 7 todo (build_orders 22-28).
+        - Last successful commit be2595b
+          (policy_futures__calendar_spread, build_order 20)
+          unchanged on `frontend_automation` HEAD.
+        - Single-engine factory (DESIGN_PRINCIPLES.md §10):
+          no fallback engine; waiting_quota is the only correct
+          stance until the reset window.
+
+      Per QUOTA_AND_RESUME_POLICY.md §4 ("exhausted → STOP the
+      wake cleanly; mark `orchestrator_status: waiting_quota`")
+      and §6 resume rule, current_tool / dispatch_round /
+      current_step preserved so the next post-reset cron wake
+      re-dispatches the builder for tool 21 from a clean
+      working tree.  Re-dispatching now would only re-read the
+      same single-line refusal log and burn ~1h43m of
+      unnecessary provider round-trips before the reset window
+      opens.
+
+      State fields preserved (resume contract):
+        orchestrator_status: waiting_quota   (unchanged)
+        current_tool: policy_futures__cross_market_spread
+        current_tool_backend_name:
+          policy_futures_get_futures_cross_market_spread_tool
+        current_step: builder_dispatched
+        dispatch_round: 1
+        last_dispatch_at: 2026-06-07T20:34:00Z (original failed
+          dispatch — preserved; this wake performed no new
+          dispatch)
+        last_stop_reason: builder_claude_quota_exhausted
+          (unchanged — same root cause; this is the ninth
+          consecutive too-early resume observation, not a new
+          failure mode)
+        quota_state: exhausted
+        quota_snapshot_fresh: true (provider refusal still
+          authoritative; reset window still in the future)
+
+      Next-wake resume target: any cron wake at or after
+      2026-06-08T00:20:00Z will re-enter selection-order
+      rule §1 ("first in_progress"), re-dispatch the builder
+      for tool 21 using the preserved /tmp prompt, parse the
+      log, and continue the catalog loop normally.  This wake
+      is logged so the audit trail shows the system honestly
+      observed the quota window and declined to burn cycles
+      against a known-exhausted provider.
+
+  - at: "2026-06-07T22:22:00Z"
+    kind: tool_21_too_early_wake_quota_still_exhausted_clean_stop
+    text: |
+      Cron-fired wake at 2026-06-07T22:22:00Z (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784) re-entered the
+      orchestrator while `orchestrator_status: waiting_quota`
+      from the prior seven wakes (20:50 UTC initial quota trip,
+      20:53 / 21:07 / 21:22 / 21:37 / 21:52 / 22:07 UTC too-early
+      resume observations).  Provider reset target unchanged:
+      2026-06-08T00:20:00Z (~1h58m from this wake).  This is the
+      eighth consecutive pre-reset-window observation; the system
+      continues to honestly defer rather than burn provider
+      round-trips against a known-exhausted window.
+
+      Verified at wake entry (no provider round-trip burned):
+        - check_branch.sh PASS (`frontend_automation`).
+        - Builder log
+          `/tmp/claude_frontend_builder_run_policy_futures__cross_market_spread_round1.log`
+          unchanged (46B, mtime 20:42 UTC, single-line provider
+          refusal "You've hit your limit · resets 12:20am
+          (UTC)").  Builder prompt preserved at 23602B (mtime
+          20:37 UTC) for the next-wake redispatch (§6
+          idempotency contract intact).
+        - Working tree shows only orchestrator bookkeeping YAML
+          edits pending (`M frontend_runtime_state.yaml`,
+          `M frontend_tool_catalog.yaml`); zero code under
+          `UI/macro-copilot-dashboard-polished/` dirty.  Tool 21
+          scaffold folder
+          `UI/.../primitives/policy_futures_get_futures_cross_market_spread_tool/`
+          contains only the pre-existing THESIS.md, module.ts,
+          mockups/ (Compact.png + Extended.png present),
+          __tests__/ (no builder-generated surfaces).
+        - Catalog entry `policy_futures__cross_market_spread`
+          still `status: in_progress`, `build_order: 21`,
+          `last_review_heading: null`, `last_gate_result:
+          not_run`.  20 done / 0 blocked / 1 in_progress
+          (tool 21) / 7 todo (build_orders 22-28).
+        - Last successful commit be2595b
+          (policy_futures__calendar_spread, build_order 20)
+          unchanged on `frontend_automation` HEAD.
+        - Single-engine factory (DESIGN_PRINCIPLES.md §10):
+          no fallback engine; waiting_quota is the only correct
+          stance until the reset window.
+
+      Per QUOTA_AND_RESUME_POLICY.md §4 ("exhausted → STOP the
+      wake cleanly; mark `orchestrator_status: waiting_quota`")
+      and §6 resume rule, current_tool / dispatch_round /
+      current_step preserved so the next post-reset cron wake
+      re-dispatches the builder for tool 21 from a clean
+      working tree.  Re-dispatching now would only re-read the
+      same single-line refusal log and burn ~1h58m of
+      unnecessary provider round-trips before the reset window
+      opens.
+
+      State fields preserved (resume contract):
+        orchestrator_status: waiting_quota   (unchanged)
+        current_tool: policy_futures__cross_market_spread
+        current_tool_backend_name:
+          policy_futures_get_futures_cross_market_spread_tool
+        current_step: builder_dispatched
+        dispatch_round: 1
+        last_dispatch_at: 2026-06-07T20:34:00Z (original failed
+          dispatch — preserved; this wake performed no new
+          dispatch)
+        last_stop_reason: builder_claude_quota_exhausted
+          (unchanged — same root cause; this is the eighth
+          consecutive too-early resume observation, not a new
+          failure mode)
+        quota_state: exhausted
+        quota_snapshot_fresh: true (provider refusal still
+          authoritative; reset window still in the future)
+
+      Next-wake resume target: any cron wake at or after
+      2026-06-08T00:20:00Z will re-enter selection-order
+      rule §1 ("first in_progress"), re-dispatch the builder
+      for tool 21 using the preserved /tmp prompt, parse the
+      log, and continue the catalog loop normally.  This wake
+      is logged so the audit trail shows the system honestly
+      observed the quota window and declined to burn cycles
+      against a known-exhausted provider.
+
+  - at: "2026-06-07T22:07:00Z"
+    kind: tool_21_too_early_wake_quota_still_exhausted_clean_stop
+    text: |
+      Cron-fired wake at 2026-06-07T22:07:00Z (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784) re-entered the
+      orchestrator while `orchestrator_status: waiting_quota`
+      from the prior six wakes (20:50 UTC initial quota trip,
+      20:53 / 21:07 / 21:22 / 21:37 / 21:52 UTC too-early
+      resume observations).  Provider reset target unchanged:
+      2026-06-08T00:20:00Z (~2h13m from this wake).  This is the
+      seventh consecutive pre-reset-window observation; the system
+      continues to honestly defer rather than burn provider
+      round-trips against a known-exhausted window.
+
+      Verified at wake entry (no provider round-trip burned):
+        - check_branch.sh PASS (`frontend_automation`).
+        - Builder log
+          `/tmp/claude_frontend_builder_run_policy_futures__cross_market_spread_round1.log`
+          unchanged (46B, mtime 20:42 UTC, single-line provider
+          refusal "You've hit your limit · resets 12:20am
+          (UTC)").  Builder prompt preserved at 23602B (mtime
+          20:37 UTC) for the next-wake redispatch (§6
+          idempotency contract intact).
+        - Working tree shows only orchestrator bookkeeping YAML
+          edits pending (`M frontend_runtime_state.yaml`,
+          `M frontend_tool_catalog.yaml`); zero code under
+          `UI/macro-copilot-dashboard-polished/` dirty.  Tool 21
+          scaffold folder
+          `UI/.../primitives/policy_futures_get_futures_cross_market_spread_tool/`
+          contains only the pre-existing THESIS.md, module.ts,
+          mockups/ (Compact.png + Extended.png present),
+          __tests__/ (no builder-generated surfaces).
+        - Catalog entry `policy_futures__cross_market_spread`
+          still `status: in_progress`, `build_order: 21`,
+          `last_review_heading: null`, `last_gate_result:
+          not_run`.  20 done / 0 blocked / 1 in_progress
+          (tool 21) / 7 todo (build_orders 22-28).
+        - Last successful commit be2595b
+          (policy_futures__calendar_spread, build_order 20)
+          unchanged on `frontend_automation` HEAD.
+        - Single-engine factory (DESIGN_PRINCIPLES.md §10):
+          no fallback engine; waiting_quota is the only correct
+          stance until the reset window.
+
+      Per QUOTA_AND_RESUME_POLICY.md §4 ("exhausted → STOP the
+      wake cleanly; mark `orchestrator_status: waiting_quota`")
+      and §6 resume rule, current_tool / dispatch_round /
+      current_step preserved so the next post-reset cron wake
+      re-dispatches the builder for tool 21 from a clean
+      working tree.  Re-dispatching now would only re-read the
+      same single-line refusal log and burn ~2h13m of
+      unnecessary provider round-trips before the reset window
+      opens.
+
+      State fields preserved (resume contract):
+        orchestrator_status: waiting_quota   (unchanged)
+        current_tool: policy_futures__cross_market_spread
+        current_tool_backend_name:
+          policy_futures_get_futures_cross_market_spread_tool
+        current_step: builder_dispatched
+        dispatch_round: 1
+        last_dispatch_at: 2026-06-07T20:34:00Z (original failed
+          dispatch — preserved; this wake performed no new
+          dispatch)
+        last_stop_reason: builder_claude_quota_exhausted
+          (unchanged — same root cause; this is the seventh
+          consecutive too-early resume observation, not a new
+          failure mode)
+        quota_state: exhausted
+        quota_snapshot_fresh: true (provider refusal still
+          authoritative; reset window still in the future)
+
+      Next-wake resume target: any cron wake at or after
+      2026-06-08T00:20:00Z will re-enter selection-order
+      rule §1 ("first in_progress"), re-dispatch the builder
+      for tool 21 using the preserved /tmp prompt, parse the
+      log, and continue the catalog loop normally.  This wake
+      is logged so the audit trail shows the system honestly
+      observed the quota window and declined to burn cycles
+      against a known-exhausted provider.
+
+  - at: "2026-06-07T21:52:00Z"
+    kind: tool_21_too_early_wake_quota_still_exhausted_clean_stop
+    text: |
+      Cron-fired wake at 2026-06-07T21:52:00Z (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784) re-entered the
+      orchestrator while `orchestrator_status: waiting_quota`
+      from the prior five wakes (20:50 UTC initial quota trip,
+      20:53 UTC + 21:07 UTC + 21:22 UTC + 21:37 UTC too-early
+      resume observations).  Provider reset target unchanged:
+      2026-06-08T00:20:00Z (~2h28m from this wake).  This is the
+      sixth consecutive pre-reset-window observation; the system
+      continues to honestly defer rather than burn provider
+      round-trips against a known-exhausted window.
+
+      Verified at wake entry (no provider round-trip burned):
+        - check_branch.sh PASS (`frontend_automation`).
+        - Builder log
+          `/tmp/claude_frontend_builder_run_policy_futures__cross_market_spread_round1.log`
+          unchanged (46B, mtime 20:42 UTC, single-line provider
+          refusal "You've hit your limit · resets 12:20am
+          (UTC)").  Builder prompt preserved at 23602B (mtime
+          20:37 UTC) for the next-wake redispatch (§6
+          idempotency contract intact).
+        - Working tree shows only orchestrator bookkeeping YAML
+          edits pending (`M frontend_runtime_state.yaml`,
+          `M frontend_tool_catalog.yaml`); zero code under
+          `UI/macro-copilot-dashboard-polished/` dirty.  Tool 21
+          scaffold folder
+          `UI/.../primitives/policy_futures_get_futures_cross_market_spread_tool/`
+          contains only the pre-existing THESIS.md, module.ts,
+          mockups/, __tests__/ (no builder-generated surfaces).
+        - Catalog entry `policy_futures__cross_market_spread`
+          still `status: in_progress`, `build_order: 21`.
+          20 done / 0 blocked / 1 in_progress (tool 21) / 7 todo
+          (build_orders 22-28).
+        - Last successful commit be2595b
+          (policy_futures__calendar_spread, build_order 20)
+          unchanged on `frontend_automation` HEAD.
+        - Single-engine factory (DESIGN_PRINCIPLES.md §10):
+          no fallback engine; waiting_quota is the only correct
+          stance until the reset window.
+
+      Per QUOTA_AND_RESUME_POLICY.md §4 ("exhausted → STOP the
+      wake cleanly; mark `orchestrator_status: waiting_quota`")
+      and §6 resume rule, current_tool / dispatch_round /
+      current_step preserved so the next post-reset cron wake
+      re-dispatches the builder for tool 21 from a clean
+      working tree.  Re-dispatching now would only re-read the
+      same single-line refusal log and burn ~2h28m of
+      unnecessary provider round-trips before the reset window
+      opens.
+
+      State fields preserved (resume contract):
+        orchestrator_status: waiting_quota   (unchanged)
+        current_tool: policy_futures__cross_market_spread
+        current_tool_backend_name:
+          policy_futures_get_futures_cross_market_spread_tool
+        current_step: builder_dispatched
+        dispatch_round: 1
+        last_dispatch_at: 2026-06-07T20:34:00Z (original failed
+          dispatch — preserved; this wake performed no new
+          dispatch)
+        last_stop_reason: builder_claude_quota_exhausted
+          (unchanged — same root cause; this is the sixth
+          consecutive too-early resume observation, not a new
+          failure mode)
+        quota_state: exhausted
+        quota_snapshot_fresh: true (provider refusal still
+          authoritative; reset window still in the future)
+
+      Next-wake resume target: any cron wake at or after
+      2026-06-08T00:20:00Z will re-enter selection-order
+      rule §1 ("first in_progress"), re-dispatch the builder
+      for tool 21 using the preserved /tmp prompt, parse the
+      log, and continue the catalog loop normally.  This wake
+      is logged so the audit trail shows the system honestly
+      observed the quota window and declined to burn cycles
+      against a known-exhausted provider.
+
+  - at: "2026-06-07T21:37:00Z"
+    kind: tool_21_too_early_wake_quota_still_exhausted_clean_stop
+    text: |
+      Cron-fired wake at 2026-06-07T21:37:00Z (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784) re-entered the
+      orchestrator.  Provider reset target unchanged:
+      2026-06-08T00:20:00Z (~2h43m from this wake).  This is the
+      fifth consecutive pre-reset-window observation; the system
+      continues to honestly defer rather than burn provider
+      round-trips against a known-exhausted window.
+
+      Note: prior wake (21:34 UTC) left top-level
+      `orchestrator_status: processing` despite the quota_note
+      describing the runtime-enforced quota trip on tool 21.  This
+      wake corrects the inconsistency by setting
+      `orchestrator_status: waiting_quota` and
+      `last_stop_reason: builder_claude_quota_exhausted` to match
+      the documented reality, and bumps `quota_state: exhausted` +
+      `quota_snapshot_fresh: true` per
+      QUOTA_AND_RESUME_POLICY.md §7 bullet 3 (provider refusal IS
+      the authoritative runtime signal).
+
+      Verified at wake entry (no provider round-trip burned):
+        - check_branch.sh PASS (`frontend_automation`).
+        - Builder log
+          `/tmp/claude_frontend_builder_run_policy_futures__cross_market_spread_round1.log`
+          unchanged (46B, mtime 20:42 UTC, single-line provider
+          refusal "You've hit your limit · resets 12:20am
+          (UTC)").  Builder prompt preserved at 23602B (mtime
+          20:37 UTC) for the next-wake redispatch (§6
+          idempotency contract intact).
+        - Working tree shows only orchestrator bookkeeping YAML
+          edits pending (`M frontend_runtime_state.yaml`,
+          `M frontend_tool_catalog.yaml`); zero code under
+          `UI/macro-copilot-dashboard-polished/` dirty.  Tool 21
+          scaffold folder
+          `UI/.../primitives/policy_futures_get_futures_cross_market_spread_tool/`
+          contains only the pre-existing THESIS.md, module.ts,
+          mockups/, __tests__/ (no builder-generated surfaces).
+        - Catalog entry `policy_futures__cross_market_spread`
+          still `status: in_progress`, `build_order: 21`.
+          20 done / 0 blocked / 1 in_progress (tool 21) / 7 todo
+          (build_orders 22-28).
+        - Single-engine factory (DESIGN_PRINCIPLES.md §10):
+          no fallback engine; waiting_quota is the only correct
+          stance until the reset window.
+
+      Per QUOTA_AND_RESUME_POLICY.md §4 ("exhausted → STOP the
+      wake cleanly; mark `orchestrator_status: waiting_quota`")
+      and §6 resume rule, current_tool / dispatch_round /
+      current_step preserved so the next post-reset cron wake
+      re-dispatches the builder for tool 21 from a clean
+      working tree.
+
+      State fields preserved (resume contract):
+        orchestrator_status: waiting_quota   (corrected from processing)
+        current_tool: policy_futures__cross_market_spread
+        current_tool_backend_name:
+          policy_futures_get_futures_cross_market_spread_tool
+        current_step: builder_dispatched
+        dispatch_round: 1
+        last_dispatch_at: 2026-06-07T20:34:00Z (original failed
+          dispatch — preserved; this wake performed no new
+          dispatch)
+        last_stop_reason: builder_claude_quota_exhausted
+          (set this wake — was null; same root cause as the
+          prior four wakes)
+        quota_state: exhausted (set this wake — was
+          probe_unavailable; provider refusal is authoritative)
+        quota_snapshot_fresh: true (set this wake — was false)
+
+      Next-wake resume target: any cron wake at or after
+      2026-06-08T00:20:00Z will re-enter selection-order
+      rule §1 ("first in_progress"), re-dispatch the builder
+      for tool 21 using the preserved /tmp prompt, parse the
+      log, and continue the catalog loop normally.
+
+  - at: "2026-06-07T21:22:32Z"
+    kind: tool_21_too_early_wake_quota_still_exhausted_clean_stop
+    text: |
+      Cron-fired wake at 2026-06-07T21:22:32Z (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784) re-entered the
+      orchestrator while `orchestrator_status: waiting_quota`
+      from the prior three wakes (20:50 UTC initial quota trip,
+      20:53 UTC + 21:07 UTC too-early resume attempts).
+      Provider reset target unchanged: 2026-06-08T00:20:00Z
+      (~2h57m from this wake).  This is the fourth consecutive
+      pre-reset-window observation; the system continues to
+      honestly defer rather than burn provider round-trips
+      against a known-exhausted window.
+
+      Verified at wake entry (no provider round-trip burned):
+        - check_branch.sh PASS (`frontend_automation`).
+        - Builder log
+          `/tmp/claude_frontend_builder_run_policy_futures__cross_market_spread_round1.log`
+          unchanged (46B, mtime 20:42 UTC, single-line provider
+          refusal "You've hit your limit · resets 12:20am
+          (UTC)").  Builder prompt preserved at 23602B (mtime
+          20:37 UTC) for the next-wake redispatch (§6
+          idempotency contract intact).
+        - Working tree shows only orchestrator bookkeeping YAML
+          edits pending (`M frontend_runtime_state.yaml`,
+          `M frontend_tool_catalog.yaml`); zero code under
+          `UI/macro-copilot-dashboard-polished/` dirty.
+        - Catalog entry `policy_futures__cross_market_spread`
+          still `status: in_progress`, `build_order: 21`.
+          20 done / 0 blocked / 1 in_progress (tool 21) / 7 todo
+          (build_orders 22-28).
+        - Single-engine factory (DESIGN_PRINCIPLES.md §10):
+          no fallback engine; waiting_quota is the only correct
+          stance until the reset window.
+
+      Per QUOTA_AND_RESUME_POLICY.md §4 ("exhausted → STOP the
+      wake cleanly; mark `orchestrator_status: waiting_quota`")
+      and §6 resume rule, current_tool / dispatch_round /
+      current_step preserved so the next post-reset cron wake
+      re-dispatches the builder for tool 21 from a clean
+      working tree.  Re-dispatching now would only re-read the
+      same single-line refusal log and burn ~2h57m of
+      unnecessary provider round-trips before the reset window
+      opens.
+
+      State fields preserved (resume contract):
+        orchestrator_status: waiting_quota   (unchanged)
+        current_tool: policy_futures__cross_market_spread
+        current_tool_backend_name:
+          policy_futures_get_futures_cross_market_spread_tool
+        current_step: builder_dispatched
+        dispatch_round: 1
+        last_dispatch_at: 2026-06-07T20:34:00Z (original failed
+          dispatch — preserved; this wake performed no new
+          dispatch)
+        last_stop_reason: builder_claude_quota_exhausted
+          (unchanged — same root cause; this is the fourth
+          consecutive too-early resume observation, not a new
+          failure mode)
+        quota_state: exhausted
+        quota_snapshot_fresh: true (provider refusal still
+          authoritative; reset window still in the future)
+
+      Next-wake resume target: any cron wake at or after
+      2026-06-08T00:20:00Z will re-enter selection-order
+      rule §1 ("first in_progress"), re-dispatch the builder
+      for tool 21 using the preserved /tmp prompt, parse the
+      log, and continue the catalog loop normally.  This wake
+      is logged so the audit trail shows the system honestly
+      observed the quota window and declined to burn cycles
+      against a known-exhausted provider.
+
+  - at: "2026-06-07T21:07:00Z"
+    kind: tool_21_too_early_wake_quota_still_exhausted_clean_stop
+    text: |
+      Cron-fired wake at 2026-06-07T21:07:00Z (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784) re-entered the
+      orchestrator while `orchestrator_status: waiting_quota`
+      from the prior two wakes (20:50 UTC initial quota trip,
+      20:53 UTC too-early resume attempt).  Provider reset
+      target unchanged: 2026-06-08T00:20:00Z (~3h13m from this
+      wake).
+
+      Verified at wake entry (no provider round-trip burned):
+        - check_branch.sh PASS (`frontend_automation`).
+        - Builder log
+          `/tmp/claude_frontend_builder_run_policy_futures__cross_market_spread_round1.log`
+          unchanged (46B, mtime 20:42 UTC, single-line provider
+          refusal "You've hit your limit · resets 12:20am
+          (UTC)").  Builder prompt preserved at 23602B for the
+          next-wake redispatch (§6 idempotency).
+        - Working tree shows only orchestrator bookkeeping YAML
+          edits pending (`M frontend_runtime_state.yaml`,
+          `M frontend_tool_catalog.yaml`); zero code under
+          `UI/macro-copilot-dashboard-polished/` dirty.
+        - Catalog entry `policy_futures__cross_market_spread`
+          still `status: in_progress`, `build_order: 21`.
+          20 done / 0 blocked / 1 in_progress (tool 21) / 7 todo
+          (build_orders 22-28).
+        - Single-engine factory (DESIGN_PRINCIPLES.md §10):
+          no fallback engine; waiting_quota is the only correct
+          stance until the reset window.
+
+      Per QUOTA_AND_RESUME_POLICY.md §4 ("exhausted → STOP the
+      wake cleanly; mark `orchestrator_status: waiting_quota`")
+      and §6 resume rule, current_tool / dispatch_round /
+      current_step preserved so the next post-reset cron wake
+      re-dispatches the builder for tool 21 from a clean
+      working tree.  Re-dispatching now would only re-read the
+      same single-line refusal log and burn ~3h13m of unnecessary
+      provider round-trips before the reset window opens.
+
+      State fields preserved (resume contract):
+        orchestrator_status: waiting_quota   (unchanged)
+        current_tool: policy_futures__cross_market_spread
+        current_tool_backend_name:
+          policy_futures_get_futures_cross_market_spread_tool
+        current_step: builder_dispatched
+        dispatch_round: 1
+        last_dispatch_at: 2026-06-07T20:34:00Z (original failed
+          dispatch — preserved; this wake performed no new
+          dispatch)
+        last_stop_reason: builder_claude_quota_exhausted
+          (unchanged — same root cause; this is the third
+          consecutive too-early resume observation, not a new
+          failure mode)
+        quota_state: exhausted
+        quota_snapshot_fresh: true (provider refusal still
+          authoritative; reset window still in the future)
+
+      Next-wake resume target: any cron wake at or after
+      2026-06-08T00:20:00Z will re-enter selection-order
+      rule §1 ("first in_progress"), re-dispatch the builder
+      for tool 21 using the preserved /tmp prompt, parse the
+      log, and continue the catalog loop normally.  This wake
+      is logged so the audit trail shows the system honestly
+      observed the quota window and declined to burn cycles
+      against a known-exhausted provider.
+
+  - at: "2026-06-07T20:53:34Z"
+    kind: tool_21_too_early_wake_quota_still_exhausted_clean_stop
+    text: |
+      Cron-fired wake at 2026-06-07T20:53:34Z (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784) entered the
+      orchestrator while `orchestrator_status: waiting_quota`
+      from the prior wake (3 minutes earlier, 20:50 UTC) which
+      had recorded the provider's hard quota refusal verbatim:
+        "You've hit your limit · resets 12:20am (UTC)"
+      Reset target: 2026-06-08T00:20:00Z (~3h26m from this wake).
+
+      Per QUOTA_AND_RESUME_POLICY.md §1 the existing snapshot is
+      `quota_snapshot_fresh: true` and `quota_state: exhausted`,
+      both set ~3 minutes ago.  Per §4 ("exhausted → STOP the
+      wake cleanly; mark `orchestrator_status: waiting_quota`")
+      and §6 (resume rule preserving `current_tool` /
+      `dispatch_round` / `current_step`) the correct action is
+      a no-op clean stop — re-dispatching the builder now would
+      simply re-read the same single-line refusal log (the
+      builder log mtime 20:42 UTC, 23602B prompt preserved on
+      disk per §6 idempotency) and burn a wasted provider
+      round-trip 3h26m before the reset window opens.
+
+      Verified at wake entry:
+        - check_branch.sh PASS (`frontend_automation`).
+        - Repo working tree shows only the orchestrator
+          bookkeeping YAML edits from the prior wake pending
+          (`M frontend_runtime_state.yaml`,
+           `M frontend_tool_catalog.yaml`); zero code under
+          `UI/macro-copilot-dashboard-polished/` is dirty.
+        - Builder log
+          `/tmp/claude_frontend_builder_run_policy_futures__cross_market_spread_round1.log`
+          unchanged (46B, mtime 20:42 UTC, single line provider
+          refusal); builder prompt
+          `/tmp/builder_prompt_policy_futures__cross_market_spread_round1.md`
+          still on disk at 23602B for next-wake resume.
+        - Catalog entry `policy_futures__cross_market_spread`
+          still `status: in_progress`, `build_order: 21`.
+          20 done / 0 blocked / 1 in_progress (tool 21) / 7 todo
+          (build_orders 22-28).
+        - Single-engine factory (DESIGN_PRINCIPLES.md §10):
+          no fallback engine; waiting_quota is the only correct
+          stance until the reset window.
+
+      State fields preserved (resume contract):
+        orchestrator_status: waiting_quota   (unchanged)
+        current_tool: policy_futures__cross_market_spread
+        current_tool_backend_name:
+          policy_futures_get_futures_cross_market_spread_tool
+        current_step: builder_dispatched
+        dispatch_round: 1
+        last_dispatch_at: 2026-06-07T20:34:00Z (the original
+          failed dispatch — preserved truthfully; this wake
+          performed no new dispatch)
+        last_stop_reason: builder_claude_quota_exhausted
+          (unchanged — same root cause; this wake is a
+          too-early resume attempt, not a new failure mode)
+        quota_state: exhausted
+        quota_snapshot_fresh: true (provider refusal still
+          authoritative; reset window still in the future)
+
+      Next-wake resume target: any cron wake at or after
+      2026-06-08T00:20:00Z will re-enter selection-order
+      rule §1 ("first in_progress"), re-dispatch the builder
+      for tool 21 using the preserved /tmp prompt, parse the
+      log, and continue the catalog loop normally.  This wake
+      is logged so the audit trail shows the system honestly
+      observed the quota window and declined to burn cycles
+      against a known-exhausted provider.
+
+  - at: "2026-06-07T20:50:00Z"
+    kind: tool_21_round1_builder_quota_exhausted_waiting_quota_stop
+    text: |
+      Cron-fired wake at 20:49 UTC on 2026-06-07 (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784) resumed orchestration
+      with `current_tool: policy_futures__cross_market_spread`
+      (build_order 21) in `current_step: builder_dispatched`,
+      `dispatch_round: 1`, `last_dispatch_at: 2026-06-07T20:34:00Z`.
+
+      Inspected Round-1 builder log
+      (`/tmp/claude_frontend_builder_run_policy_futures__cross_market_spread_round1.log`,
+      46 bytes, mtime 2026-06-07T20:42 UTC).  Single-line content:
+        "You've hit your limit · resets 12:20am (UTC)"
+      That is the provider's hard quota refusal.  No tool calls,
+      no file writes, no compilation occurred — the dispatch failed
+      at provider handshake.  Builder prompt
+      (`/tmp/builder_prompt_policy_futures__cross_market_spread_round1.md`,
+      23602B) is preserved on disk for the next wake's redispatch.
+
+      Per QUOTA_AND_RESUME_POLICY.md §3 (runtime-enforced quota
+      mode) + §7 bullet 3 ("Builder log shows a quota marker → STOP
+      wake") + ORCHESTRATOR_PROMPT.md §"Stop conditions" bullet
+      "Claude quota is exhausted":
+        - orchestrator_status flipped processing → waiting_quota.
+        - last_stop_reason set to builder_claude_quota_exhausted.
+        - quota_state flipped probe_unavailable → exhausted.
+        - quota_snapshot populated with the verbatim refusal +
+          reset time + parse path.
+        - quota_snapshot_fresh: true (this wake's signal).
+        - current_tool / dispatch_round / current_step preserved
+          per §6 resume rule so the next wake re-dispatches the
+          builder for tool 21 from current state.
+        - Catalog entry `policy_futures__cross_market_spread`
+          flipped status todo → in_progress (the dispatch was
+          attempted; tool is mid-flight from the orchestrator's
+          point of view even though the worker took zero net
+          actions).
+
+      Pre-flight backend audit was already PASSED on the prior
+      wake (see 20:33 UTC note) — backend folder + MCP wrapper +
+      curated migration file + both mockup PNGs all present.  The
+      next wake skips re-running pre-flight because the catalog
+      entry remains `in_progress` and selection-order rule §1
+      ("first in_progress") will resume directly into builder
+      redispatch.
+
+      Working-tree state at stop: clean of code changes (only the
+      runtime + catalog YAML edits are pending — those are
+      orchestrator bookkeeping and stay uncommitted until they
+      ride along with the next successful tool commit per the
+      historical pattern).  No `git restore` / `git clean` needed
+      because the builder wrote zero files.
+
+      Single-engine factory note (DESIGN_PRINCIPLES.md §10):
+      there is NO fallback engine on this factory.  Stopping
+      cleanly as waiting_quota is the only correct action.  No
+      swap attempt was made.
+
+      Resume target: next cron wake at or after the provider's
+      reset window (12:20 AM UTC = 2026-06-08T00:20:00Z).  The
+      next wake will:
+        1. Re-check branch (check_branch.sh).
+        2. Read state YAML, see waiting_quota + in_progress tool.
+        3. Re-dispatch the builder for tool 21 using the
+           preserved prompt at
+           `/tmp/builder_prompt_policy_futures__cross_market_spread_round1.md`
+           (idempotent per §6 ; each dispatch overwrites its own
+           working tree).
+
+      Catalog state at stop:
+        20 done / 0 blocked / 1 in_progress (tool 21) / 7 todo
+        (build_orders 22-28).  Remaining counter remains 8
+        (in_progress + todo).
+
+      Discord-facing fields kept fresh per DISCORD_STATUS_POLICY:
+      orchestrator_status, current_tool, current_step,
+      dispatch_round, last_stop_reason, quota_state,
+      quota_snapshot, done/blocked/remaining all current as of
+      this stop.
+
+  - at: "2026-06-07T20:33:00Z"
+    kind: tool_20_approved_gate_passed_committed_advancing_to_tool_21
+    text: |
+      Tool 20 (`policy_futures__calendar_spread` /
+      `policy_futures_get_futures_calendar_spread_tool`) shipped at
+      commit `be2595b` on `frontend_automation`.
+
+      Round-2 reviewer log
+      (`/tmp/claude_frontend_reviewer_run_policy_futures__calendar_spread_round2.log`)
+      came back clean: `parse_reviewer_log.py` returned
+      `{ok: true, heading: APPROVED, environment_failure: false,
+        reviewer_quota_exhausted: false}` — Case C clean path (no
+      fix-pass; SINGLE_REVIEW_ROUND_POLICY.md §3 one-round contract
+      satisfied).  Reviewer (fresh-context Claude) verification
+      scorecard verbatim from log:
+        - §A dual-view: `module.ts:80` 3 tiers declared;
+          `module.ts:96-100` both buildExtended + buildCompact wired;
+          Compact (`BuildCompact.tsx:39-128`) no controls strip, calls
+          `onExpand`, accepts `size`, tone via
+          `toneForChange`/`toneForZScore`, methodology via footer
+          caveat; Extended (`BuildExtended.tsx:169-198`) full canvas +
+          controls + KPI strip + decomposition row + chart with
+          z-bands + stretch panel + methodology card + lineage.
+        - §B mockup: Compact reproduces 3-cell deck
+          (SPREAD/1D CHANGE/Z-SCORE) + sparkline with bands + verbatim
+          caveat ("Calendar spread on implied rates; underlying
+          contracts quote inverse.") + identity "SFR · 1-3 · WHITES".
+          Z-caption vocab generalisation ("Elevated Steeper" vs
+          mockup's "Bull Flattening") documented in THESIS Mockup
+          conformance.  Extended reproduces 7-KPI strip + decomposition
+          row + chart + stretch context + methodology card.  Third
+          top-right card substitution ("STRIP CONTEXT" instead of
+          mockup's "Federal Reserve (FOMC)" calendar/regime card —
+          backend has no policy-regime data on this primitive)
+          documented in THESIS §1 + §3 — reviewer judged honest.
+        - §C standalone bridge: `typedView: null` (`module.ts:90`);
+          endpoint mounted at `/api/v1/rates/detail/policy-futures-calendar`
+          (`api/routes/rates/detail.py:3132` with
+          `response_model=FuturesCalendarSpreadOutput`); service helper
+          `fetchDetailPolicyFuturesCalendar` (`ratesApi.ts:836-840`);
+          type `FuturesCalendarSpreadOutput` (`types/rates.ts:1959`,
+          snake_case wire fields mirrored); both Build views + Monitor
+          widget consume same endpoint via shared helper / local
+          fetcher.
+        - §D FM1-FM12: FM1 folder matches `toolName` (with documented
+          MCP-alias bridge in `toolNames.ts`); FM3 tier set matches
+          catalog `required_tiers`; FM7 pure value export; FM8
+          surfaces wired at canonical paths; FM10 THESIS answers all
+          five questions with per-surface specificity (Q2 enumerates
+          extended 8-step + compact 3-KPI read + monitor read) and
+          IDs cited in Q5; FM11 test calls
+          `assertStandardModuleInvariants` + dual-view + mockups +
+          monitor-widget-id checks; FM12 import alphabetical at
+          `src/modules/index.ts:86` (between `butterfly_simple` and
+          `cross_market_spread`).
+        - §E methodology honesty: Disclosure row sources from
+          `data.methodology_disclosure`
+          (`futuresCalendarSpreadShared.ts:783`); Monitor widget
+          exposes via `title=` tooltip
+          (`PolicyFuturesCalendarSpreadWidget.tsx:192`); no TS literal
+          of the disclosure prose in any surface.
+        - §F shared helper:
+          `surfaces/futuresCalendarSpreadShared.ts` co-locates
+          CURVE_REGISTRY + calendar-pair registry + sign-flip
+          `wirePctToDisplayBps` (single source of truth for the
+          PERCENT-POINTS → bps conversion) + data hook + KPI builders
+          + band builder + stretch builder + methodology rows.  All
+          three surfaces import from it; no duplicated bps-flip / KPI
+          logic.
+        - §G gates: typecheck / test:modules / test:build all green.
+
+      Pre-commit gate re-run in orchestrator session (per
+      ORCHESTRATOR_PROMPT Case C — gate is ONLY safety net after
+      Dispatch 1 in the no-fix path):
+        - `npm run test:modules` ✓ exit 0 (`scan_ois_extremes_tool:
+          1 passed, 0 failed` is the tail; all module + registry
+          tests passed including the 8-test
+          `policy_futures_get_futures_calendar_spread_tool` block).
+        - `npm run test:build` ✓ exit 0 (`widget-format coverage:
+          53 passed, 0 failed`; all build-folder tests including
+          dashboard contract / registry / resolveWorkflowArtifacts /
+          artifact-payload / persisted adapters / RichModelWidget /
+          widget contract / widget format).
+        - `npm run typecheck` ✓ exit 0 (`tsc -p tsconfig.app.json
+          --noEmit` clean).
+
+      Mirrors update (Case C step / ORCHESTRATOR_PROMPT
+      Mirrors+commit §1-2):
+        - surface_contract.md §4.5 row 244 updated:
+          `output_kind: single-series-bps` (unchanged)
+          `build_archetype: generic-builder → typed-result-renderer`
+          `build_status: scaffolded → dual-view-built`
+          `monitor_elig: not-required → required`
+          `monitor_status: n/a → built (PolicyFuturesCalendarSpread widget)`.
+        - surface_contract.md §11 changelog v28 entry appended
+          (full reviewer scorecard + deviation rationale +
+          alias-bridge + shared-helper note + gate proof).
+        - §10 untouched (Phase-1 pilot rows only).
+        - `graphify update .` skipped: not on PATH on this VM
+          (recorded per ORCHESTRATOR_PROMPT Mirrors §2 fallback;
+          no API cost, AST-only — will catch up on a future wake
+          if graphify becomes available).
+
+      Commit `be2595b` on `frontend_automation`:
+        - 12 files changed, 2136 insertions(+), 34 deletions(-)
+        - 4 new files: surfaces/BuildCompact.tsx, BuildExtended.tsx,
+          futuresCalendarSpreadShared.ts,
+          monitor/PolicyFuturesCalendarSpreadWidget.tsx.
+        - 7 modified files: module.ts, THESIS.md,
+          __tests__/module.spec.ts, types/rates.ts, services/ratesApi.ts,
+          lib/toolNames.ts, api/routes/rates/detail.py.
+        - 1 mirror: docs_revamped/02_components/surface_contract.md.
+        - commit_sha recorded on catalog entry.
+
+      Catalog state: 20 done / 0 blocked / 8 remaining
+      (28 total — batch 3 catalog extension build_orders 19-27 +
+      tool 28 swap_spread added 2026-06-07).
+
+      Advancing to next eligible tool per selection-order rule:
+      build_order 21 `policy_futures__cross_market_spread`
+      (`policy_futures_get_futures_cross_market_spread_tool`).
+      No in_progress / changes_required / waiting_quota entries
+      ahead.
+
+      Pre-flight backend audit — ALL PASS:
+        - backend folder:
+          rates_agent/policy_futures/tools/futures_cross_market_spread/
+          (canonical 4-file shape, __init__/compute/config/schemas).
+        - MCP wrapper: get_futures_cross_market_spread_tool defined
+          at rates_agent/policy_futures/mcp_server.py:1008.
+        - curated migration:
+          2026-06-07_phase1_policy_futures_get_futures_cross_market_spread_curated.sql
+          present (2242B).  DB probe path not run under
+          runtime-enforced quota mode; migration file satisfies the
+          OR condition per PRE_FLIGHT_BACKEND_AUDIT.md.
+        - mockups: Compact.png (1311482B) + Extended.png (1757232B)
+          present at the canonical primitives/<tool>/mockups/ path.
+
+      Builder prompt for tool 21 about to be assembled and dispatched
+      this wake (catalog entry + reference module
+      `calculate_cross_market_inflation_swap_spread_tool` +
+      `methodology_disclosure: str` wire-honesty note + Option (c)
+      shell-density precedent + sibling tool-19/tool-20
+      naming-divergence alias pattern).
+
+  - at: "2026-06-07T20:24:00Z"
+    kind: tool_20_round1_builder_complete_round2_reviewer_dispatched
+    text: |
+      Cron-fired wake at 20:22 UTC on 2026-06-07 (cron id
+      450aa21c-625d-4ad7-b3da-ef39a6ba7784) resumed tool 20
+      (`policy_futures__calendar_spread` /
+      `policy_futures_get_futures_calendar_spread_tool`).
+
+      Round-1 builder log (`/tmp/claude_frontend_builder_run_policy_futures__calendar_spread_round1.log`,
+      4750B, mtime 20:17:30 UTC) was complete and reported all three
+      gates green (test:modules / test:build / typecheck — all exit 0).
+      Builder report enumerated:
+        - 4 new files: surfaces/futuresCalendarSpreadShared.ts,
+          surfaces/BuildExtended.tsx, surfaces/BuildCompact.tsx,
+          surfaces/monitor/PolicyFuturesCalendarSpreadWidget.tsx
+        - 7 modified files: module.ts (Stage-3 stub → dual-view +
+          Monitor spec), THESIS.md (v2 → v3 five-question + Mockup
+          conformance subsection), __tests__/module.spec.ts (added
+          dual-view + monitor + mockups checks), types/rates.ts
+          (FuturesCalendarSpreadOutput + Current + TimeSeriesRow),
+          services/ratesApi.ts (fetchDetailPolicyFuturesCalendar +
+          params), lib/toolNames.ts (get_futures_calendar_spread_tool
+          → policy_futures_get_futures_calendar_spread_tool alias),
+          api/routes/rates/detail.py (mounted
+          /detail/policy-futures-calendar typed endpoint).
+        - Compact density: shell-standard (3 KPIs) per Option (c)
+          precedent.  Mockup z-cell phrasing "Bull Flattening"
+          generalised to desk-vocabulary via shared
+          zScoreCaptionForSpread helper — documented in THESIS
+          Mockup conformance per design_guardrail #5.
+        - methodology_disclosure threaded from data.methodology_disclosure
+          verbatim (no TSX literal) — same wire-honesty pattern as
+          tool 19.
+
+      git status confirms 7 tracked-file modifications + 1 untracked
+      surfaces/ folder, matching the builder report.  Total diff
+      stat: 607+ / 33- across 7 tracked files; 4 new surface files
+      stage as fresh blobs.
+
+      Round-2 reviewer prompt assembled at
+      `/tmp/reviewer_prompt_policy_futures__calendar_spread_round2.md`
+      (296 lines = CLAUDE_REVIEWER_PROMPT.md body + verbatim catalog
+      entry + resolved mockup paths + reference-module pointers
+      [calculate_ois_curve_spread_tool + sibling tool 19] + working-tree
+      state pointers to pre-staged diffs at
+      `/tmp/calendar_spread_round1_tracked.diff` (764 lines) and
+      `/tmp/calendar_spread_round1_new.diff` (1535 lines, full bodies
+      of the 4 new surface files)).  Builder log NOT included in
+      reviewer prompt — preserves cross-context independence per
+      DESIGN_PRINCIPLES.md §10.
+
+      Reviewer about to be dispatched via
+      `nohup bash automation/frontend_automation/run_claude_reviewer.sh
+         /tmp/reviewer_prompt_policy_futures__calendar_spread_round2.md
+         /tmp/claude_frontend_reviewer_run_policy_futures__calendar_spread_round2.log &`
+      (background; the run typically takes 10-25 minutes; this
+      orchestrator wake will poll the log and adjudicate when
+      complete).
+
   - at: "2026-06-07T19:56:00Z"
     kind: tool_20_round1_builder_dispatched
     text: |

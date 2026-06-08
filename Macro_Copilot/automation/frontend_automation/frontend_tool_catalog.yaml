@@ -1112,6 +1112,7 @@ tools:
       - "Frontend folder = workflow registry = policy_futures_get_futures_pack_average_simple_tool; MCP function (no prefix) = get_futures_pack_average_simple_tool"
       - "Quote convention: 100-minus-rate; pack types Whites/Reds/Greens/Blues"
       - "Per Option (c) precedent: keep shell-standard density on Compact; document any density deviation in THESIS"
+    commit_sha: abe834b
 
   - id: bond_futures__price_level
     status: todo
