@@ -737,6 +737,130 @@ export type BreakevenInflationSimpleOutput = {
   time_series_zscore?: TimeSeries;
 };
 
+// --- /detail/swap-breakeven-basis (standalone bridge) ---
+//
+// Mirrors rates_agent/inflation_swaps/tools/swap_breakeven_basis_simple/schemas.py
+// (SwapBreakevenBasisSimpleOutput / SwapBreakevenBasisSimpleCurrentMetrics /
+// SwapBreakevenBasisSimpleTimeSeriesRow).  Per the methodology-exposure
+// standalone-bridge contract (docs_revamped/03_standards/methodology_exposure.md
+// §5) the swap-breakeven basis primitive ships its OWN typed-detail endpoint
+// at /api/v1/rates/detail/swap-breakeven-basis and its OWN frontend type —
+// no reuse of CrossMarketInflationSwapSpreadOutput (that's a same-tenor
+// cross-MARKET ZCIS-vs-ZCIS spread; this is a SAME-CURRENCY swap-vs-bond
+// basis) and no reuse of BreakevenInflationSimpleOutput (that's nominal
+// minus linker real; this is ZCIS minus that breakeven).  Same-currency,
+// single-tenor primitive composing the inner ZCIS rate-level + bond-implied
+// breakeven primitives at one pillar.  Output is the SPREAD between
+// inflation swap and bond-implied breakeven — NOT a clean liquidity-premium
+// read; the load-bearing caveat lives in ``methodology_label`` (sourced
+// from YAML at runtime) PLUS the per-leg index-family metadata + the
+// derived ``index_families_match`` / ``index_family_caveat`` pair.
+
+export type SwapBreakevenBasisSimpleCurrentMetrics = {
+  as_of_date: string;
+  zcis_curve_family: string;
+  nominal_curve_family: string;
+  linker_curve_family: string;
+  tenor: string;
+  /** Year fraction of ``tenor`` (e.g. 10.0 for '10Y'). */
+  tenor_years: number;
+  /** Human-readable label, e.g. 'USD_ZCIS - UST/USD_TIPS 10Y swap-breakeven basis'. */
+  basis_label: string;
+  /** Current swap-breakeven basis in PERCENT (zcis_pct - breakeven_pct).
+   *  Sign convention POSITIVE = ZCIS rich vs bond breakeven.  NOT a clean
+   *  liquidity-premium read — see methodology_label. */
+  basis_pct: number;
+  /** Current swap-breakeven basis in BASIS POINTS (= basis_pct * 100).
+   *  The basis is a SPREAD object (not a level) so the desk display unit
+   *  on the wire is BPS — mirror this in the chart axis. */
+  basis_bps: number;
+  /** Latest ZCIS leg rate (percent) feeding the basis — exposed for audit. */
+  zcis_pct: number | null;
+  /** Latest bond-implied breakeven (percent) at the same tenor. */
+  breakeven_pct: number | null;
+  /** Latest bond-implied breakeven (basis points) at the same tenor. */
+  breakeven_bps: number | null;
+  /** Latest nominal sovereign yield (percent) used to form the breakeven leg. */
+  nominal_yield_pct: number | null;
+  /** Latest sovereign linker real yield (percent) used to form the breakeven leg. */
+  real_yield_pct: number | null;
+  change_1d_bps: number | null;
+  change_1w_bps: number | null;
+  change_1m_bps: number | null;
+  /** Rolling 252-trading-day z-score of the basis (in bps).  YAML-locked
+   *  on this primitive (no input-layer overrides). */
+  z_score_252d: number | null;
+  /** Highest swap-breakeven basis over trailing 252 trading days (bps). */
+  high_252d_bps: number | null;
+  /** Lowest swap-breakeven basis over trailing 252 trading days (bps). */
+  low_252d_bps: number | null;
+  /** Percentile rank within trailing 252-day range (0-100). */
+  percentile_252d: number | null;
+  observation_count: number;
+  /** Inflation index family the ZCIS leg references (e.g. 'US_CPI_URBAN'
+   *  for USD_ZCIS, 'EU_HICP' for EUR_ZCIS, 'UK_RPI' for GBP_ZCIS).
+   *  Load-bearing: index-family differences between legs drive the basis. */
+  zcis_inflation_index_family: string;
+  /** Indexation lag the ZCIS leg references ('3M' for USD/EUR ZCIS,
+   *  '2M' for GBP ZCIS). */
+  zcis_index_lag: string;
+  /** Index-fixing interpolation convention the ZCIS leg uses ('Daily'
+   *  for USD_ZCIS, 'Monthly' for EUR/GBP ZCIS). */
+  zcis_interpolation: string;
+  /** Underlying inflation index Bloomberg ticker on the ZCIS leg
+   *  ('CPURNSA Index' / 'CPTFEMU Index' / 'UKRPI Index'). */
+  zcis_underlying_index: string | null;
+  /** Inflation index family the LINKER leg references — pulled from the
+   *  breakeven primitive's surface when available; None when not yet
+   *  surfaced (the basis primitive consumes what's available). */
+  linker_inflation_index_family: string | null;
+  /** Indexation lag the linker leg references — pulled from the
+   *  breakeven primitive's surface when available. */
+  linker_index_lag: string | null;
+  /** Derived top-level index-family match summary.  True iff the two
+   *  per-leg families are non-empty AND equal.  False otherwise —
+   *  including the common case where the linker primitive does not yet
+   *  surface its index family on the wire (treated as False so the
+   *  caveat is visible to the desk reader). */
+  index_families_match: boolean;
+  /** Human-readable one-sentence caveat the wire surfaces when
+   *  index_families_match is False.  None when the legs match. */
+  index_family_caveat: string | null;
+  /** Wire-honesty disclosure threaded from config.yaml:methodology.what_it_does.
+   *  Spells out the basis formula, composition pattern, the LOAD-BEARING
+   *  basis caveat (NOT a clean liquidity-premium read — also reflects
+   *  index-lag differences, linker on-the-run / liquidity effects, AND
+   *  structural ZCIS basis), AND the canonical sign convention
+   *  zcis_minus_breakeven.  Sourced from YAML at runtime; NOT a hardcoded
+   *  TS literal. */
+  methodology_label: string;
+};
+
+/** Bespoke wire-frozen swap-breakeven basis time-series row.  Carries
+ *  both the basis (pct + bps) and the per-leg inputs used to form it. */
+export type SwapBreakevenBasisSimpleTimeSeriesRow = {
+  date: string;
+  basis_pct: number;
+  basis_bps: number;
+  zcis_pct: number | null;
+  breakeven_pct: number | null;
+};
+
+export type SwapBreakevenBasisSimpleOutput = {
+  current_metrics: SwapBreakevenBasisSimpleCurrentMetrics;
+  /** Bespoke wire-frozen history (basis + per-leg inputs per row). */
+  time_series: SwapBreakevenBasisSimpleTimeSeriesRow[];
+  /** Canonical historical swap-breakeven basis series.  Closed-enum
+   *  TimeSeriesUnits.BPS — the basis is a SPREAD object (not a level)
+   *  so it ships in BPS to mirror sibling spread primitives.  series_name
+   *  pattern: '<zcis>_<nominal>_<linker>_<tenor>_swap_breakeven_basis'.
+   *  Values match time_series[i].basis_bps 1-to-1. */
+  time_series_basis: TimeSeries;
+  /** Canonical historical rolling z-score series.  Closed-enum
+   *  TimeSeriesUnits.Z_SCORE.  None for rows in the rolling-window warmup. */
+  time_series_zscore: TimeSeries;
+};
+
 // --- /detail/forward-breakeven ---
 // Standalone-bridge type for the same-country forward bond-implied breakeven
 // inflation primitive (e.g. UST/USD_TIPS 5Y5Y, FR_OAT/EUR_FR_LINKER 5Y10Y).

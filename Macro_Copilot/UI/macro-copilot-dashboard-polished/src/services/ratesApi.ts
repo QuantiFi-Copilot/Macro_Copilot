@@ -33,6 +33,7 @@ import type {
   InflationSwapCurveSpreadOutput,
   ScanInflationSwapsExtremesOutput,
   ScanInflationLinkersExtremesOutput,
+  SwapBreakevenBasisSimpleOutput,
   ScanBondFuturesExtremesOutput,
   ScanPolicyFuturesExtremesOutput,
   PolicyFuturesPriceLevelOutput,
@@ -546,6 +547,36 @@ export function fetchDetailInflationSwapRateLevel(
 ): Promise<InflationSwapRateLevelOutput> {
   return fetchJSON(
     `${RATES_PREFIX}/detail/inflation-swap-rate-level${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/swap-breakeven-basis  — same-tenor swap-vs-bond inflation basis bridge
+// ---------------------------------------------------------------------------
+// Same-currency, single-tenor object composing the ZCIS rate-level + the
+// bond-implied breakeven primitives at one pillar (e.g. USD_ZCIS 10Y minus
+// UST/USD_TIPS 10Y breakeven).  Own typed helper per the standalone-bridge
+// contract; consumed by BOTH Build views and the Monitor tile.  Rolling-
+// z-score conventions are YAML-locked on this primitive — only
+// ``lookback_days`` + ``field_name`` are exposed at the API layer (mirrors
+// the sibling ZCIS rate_level / curve_spread / forward / cross-market
+// bridges).  Same-currency invariant inherited transitively from the inner
+// breakeven leg's same-country guard.
+
+export type SwapBreakevenBasisDetailParams = {
+  zcis_curve_family: string;
+  nominal_curve_family: string;
+  linker_curve_family: string;
+  tenor: string;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailSwapBreakevenBasis(
+  params: SwapBreakevenBasisDetailParams,
+): Promise<SwapBreakevenBasisSimpleOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/swap-breakeven-basis${buildQuery(params)}`,
   );
 }
 

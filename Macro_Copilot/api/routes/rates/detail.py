@@ -316,6 +316,29 @@ from rates_agent.inflation_swaps.tools.inflation_swap_rate_level import (
     InflationSwapRateLevelOutput,
     calculate_inflation_swap_rate_level,
 )
+# Standalone-bridge endpoint for the same-currency swap-vs-bond inflation
+# basis primitive (USD_ZCIS 10Y minus UST/USD_TIPS 10Y bond-implied
+# breakeven; EUR_ZCIS 10Y minus FR_OAT/EUR_FR_LINKER 10Y breakeven;
+# GBP_ZCIS 10Y minus UK_GILT/GBP_LINKER 10Y breakeven).  Per
+# ``docs_revamped/03_standards/methodology_exposure.md §5`` every new tool
+# ships its OWN typed-detail endpoint consumed by both the extended and
+# compact Build views (rendering_density dual-view) + the Monitor tile.
+# Output is a SPREAD — the basis ships in BPS (not PERCENT) to mirror
+# sibling spread primitives.  Sign convention POSITIVE = ZCIS rich vs
+# bond breakeven; wire-locked at ``zcis_minus_breakeven``.  NOT a clean
+# liquidity-premium read — the LOAD-BEARING caveat (index-lag differences,
+# linker on-the-run effects, structural ZCIS basis) surfaces verbatim via
+# ``current_metrics.methodology_label`` (sourced from YAML at runtime, NOT
+# a hardcoded Python literal) PLUS the per-leg index-family metadata +
+# derived ``index_families_match`` / ``index_family_caveat`` pair.
+# Rolling-z-score conventions are YAML-locked — only ``lookback_days`` +
+# ``field_name`` are exposed at the API layer.
+from rates_agent.inflation_swaps.tools.swap_breakeven_basis_simple import (
+    CONFIG_PATH as SWAP_BREAKEVEN_BASIS_SIMPLE_CONFIG_PATH,
+    SwapBreakevenBasisSimpleInput,
+    SwapBreakevenBasisSimpleOutput,
+    calculate_swap_breakeven_basis_simple,
+)
 # Standalone-bridge endpoint for the same-curve ZCIS forward-rate primitive
 # (USD_ZCIS 5Y5Y, EUR_ZCIS 5Y5Y, GBP_ZCIS 2Y3Y).  Per
 # ``docs_revamped/03_standards/methodology_exposure.md §5`` every new tool
@@ -2138,6 +2161,132 @@ def inflation_swap_curve_spread_detail(
     _tool_result_or_raise(
         result,
         f"ZCIS curve spread for {curve_family} {short_tenor}/{long_tenor}",
+    )
+    return result
+
+
+# ============================================================================
+# /detail/swap-breakeven-basis  — same-currency ZCIS-vs-bond-breakeven bridge
+# ----------------------------------------------------------------------------
+# Same-currency, single-tenor object composing the inner ZCIS rate-level +
+# bond-implied breakeven primitives at one pillar (e.g. USD_ZCIS 10Y minus
+# UST/USD_TIPS 10Y bond-implied breakeven).  Per
+# ``docs_revamped/03_standards/methodology_exposure.md §5`` ships its OWN
+# typed-detail endpoint consumed by both Build views + the Monitor tile per
+# rendering_density.md §10.  Output is a SPREAD object — the basis ships in
+# BPS (not PERCENT) to mirror the sibling spread primitives.  Sign convention
+# POSITIVE = ZCIS rich vs bond breakeven; wire-locked at ``zcis_minus_breakeven``
+# (compute layer raises NotImplementedError on any other value).  NOT a clean
+# liquidity-premium read — the LOAD-BEARING caveat (index-lag differences
+# between ZCIS conventions and the linker's CPI accrual, linker on-the-run
+# liquidity premium, structural ZCIS basis) flows verbatim via
+# ``current_metrics.methodology_label`` (sourced from YAML at runtime, NOT
+# a hardcoded Python literal) PLUS the per-leg index-family triple
+# (``zcis_inflation_index_family`` / ``zcis_index_lag`` / ``zcis_interpolation``
+# / ``zcis_underlying_index``) and the derived ``index_families_match`` /
+# ``index_family_caveat`` pair.  Rolling-z-score conventions are YAML-locked
+# on this primitive — only ``lookback_days`` + ``field_name`` are exposed at
+# the API layer (mirrors the sibling ZCIS rate_level / curve_spread /
+# forward / cross-market bridges).
+# ============================================================================
+@router.get(
+    "/detail/swap-breakeven-basis",
+    response_model=SwapBreakevenBasisSimpleOutput,
+    summary="Swap-Breakeven Basis Detail (standalone bridge)",
+)
+def swap_breakeven_basis_detail(
+    engine: Engine = Depends(get_engine),
+    zcis_curve_family: str = Query(
+        ...,
+        description=(
+            "Inflation-swap curve family for the ZCIS leg.  Examples: "
+            "'USD_ZCIS' (US CPI-U), 'EUR_ZCIS' (Eurozone HICPxT), "
+            "'GBP_ZCIS' (UK RPI).  See rates_agent/playbooks/"
+            "inflation_swaps.yml for the ingested universe."
+        ),
+    ),
+    nominal_curve_family: str = Query(
+        ...,
+        description=(
+            "Nominal sovereign curve family feeding the breakeven leg "
+            "(e.g. 'UST' for USD basis, 'FR_OAT' for EUR/FR basis, "
+            "'UK_GILT' for GBP basis).  Must pair to the same currency "
+            "as ``zcis_curve_family``; the same-country invariant on "
+            "the breakeven leg is inherited transitively from the inner "
+            "breakeven primitive."
+        ),
+    ),
+    linker_curve_family: str = Query(
+        ...,
+        description=(
+            "Sovereign linker curve family feeding the breakeven leg "
+            "(e.g. 'USD_TIPS', 'EUR_FR_LINKER', 'GBP_LINKER').  Must "
+            "differ from ``nominal_curve_family`` (the schema layer "
+            "rejects identical legs).  Same-country invariant inherited "
+            "from the inner breakeven primitive."
+        ),
+    ),
+    tenor: str = Query(
+        ...,
+        description=(
+            "Single tenor pillar shared by the ZCIS leg and both "
+            "breakeven legs (e.g. '5Y', '10Y', '30Y').  Available "
+            "tenors are country-specific intersections of the ZCIS grid "
+            "(1Y / 2Y / 3Y / 5Y / 10Y / 20Y / 30Y) and the linker / "
+            "nominal grids."
+        ),
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic threaded into BOTH inner calls "
+            "(the ZCIS level call AND the breakeven call).  Omit "
+            "(None) so each inner primitive's YAML default resolves "
+            "(ZCIS: PX_MID; breakeven: YLD_YTM_MID).  Pass an explicit "
+            "field name to override per query; the same value is "
+            "threaded into both inner calls."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the frontend
+    module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
+    AND the Monitor widget per the rendering-density dual-view + monitor
+    contract.
+
+    The swap-breakeven basis primitive intentionally does NOT expose the
+    z-score conventions at its Input layer — they're sourced from the YAML
+    at compute() time only.  Mirrors the sibling ZCIS rate_level /
+    curve_spread / forward / cross-market tools.
+    """
+    try:
+        params = SwapBreakevenBasisSimpleInput(
+            zcis_curve_family=zcis_curve_family,
+            nominal_curve_family=nominal_curve_family,
+            linker_curve_family=linker_curve_family,
+            tenor=tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        sbb_config = load_tool_config(SWAP_BREAKEVEN_BASIS_SIMPLE_CONFIG_PATH)
+        result = calculate_swap_breakeven_basis_simple(
+            engine=engine, params=params, config=sbb_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/swap-breakeven-basis: tool failed for %s - %s/%s %s",
+            zcis_curve_family, nominal_curve_family, linker_curve_family, tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Swap-breakeven basis for {zcis_curve_family} - "
+        f"{nominal_curve_family}/{linker_curve_family} {tenor}",
     )
     return result
 
