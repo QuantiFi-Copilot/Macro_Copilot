@@ -1300,10 +1300,91 @@ tools:
     target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/compute_financing_rate_tool/
     required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
     design_guardrails:
-      - "Mirror get_real_yield_level_tool snapshot shape (Phase-1 pilot)"
-      - "Standalone-bridge endpoint at /api/v1/rates/detail/financing-rate"
-      - "Methodology disclosure: OIS proxy approximation; do NOT reflect specials/scarcity premia at the per-bond level"
-      - "Per Option (c) precedent: keep shell-standard density on Compact; document any deviation in THESIS"
+      # ARCHITECTURAL OVERRIDE (resolves tool_27_human_required block from 2026-06-08T08:03Z).
+      # The original assumption — `Mirror get_real_yield_level_tool snapshot shape` — was
+      # WRONG.  FinancingRateOutput (rates_agent/ois/tools/financing_rate/schemas.py:148-187)
+      # does NOT carry current_metrics or time_series like other snapshot tools.  Per Option
+      # (a) chosen by the human (route-side synthesis), the route handler synthesizes the
+      # snapshot shape from result.panel.payload.  Backend Output stays as-is; frontend
+      # consumes a shape-equivalent response built in the route.
+      - >
+        ARCHITECTURE — BACKEND OUTPUT SHAPE.  FinancingRateOutput
+        (rates_agent/ois/tools/financing_rate/schemas.py:148-187) returns:
+        method, as_of_start, as_of_end, n_observations, mean_rate_pct (scalar),
+        methodology_disclosures (List[str], PLURAL), and panel (Optional[Panel]
+        — a single-column pd.DataFrame with datetime index, values in PERCENT,
+        column name = series_key).  The MCP layer drops `panel` before
+        serialising for LLM consumption.  Route handlers in api/routes/rates/detail.py
+        call calculate_financing_rate() directly and CAN access `panel`.
+      - >
+        ARCHITECTURE — ROUTE-SIDE SYNTHESIS (Option (a) — human-authorized).  The route
+        handler at /api/v1/rates/detail/financing-rate MUST synthesize a snapshot-shaped
+        response (current_metrics + time_series, matching every other snapshot tool's
+        response_model) from result.panel.payload.  Logic: extract the single
+        column from panel.payload as a pd.Series; latest value, daily change in
+        bps (rate-in-pct delta * 100), trim to 252d display window, compute mean +
+        stdev → z_score, max → high_252d_pct, min → low_252d_pct, rank → percentile_252d.
+        Construct FinancingRateOutput TS-mirror types (FinancingRateCurrentMetrics +
+        FinancingRateTimeSeriesRow + FinancingRateDetailResponse) in src/types/rates.ts;
+        these mirror the SYNTHESIZED shape, NOT the backend Output.  Document this in
+        a one-line file-header comment in detail.py + the THESIS.
+      - >
+        ARCHITECTURE — TEMPLATE SNIPPET for the route.  Pseudo-code:
+        result_dict = calculate_financing_rate(FinancingRateInput(...));
+        panel = result_dict['panel'];  # Panel object (model_dump mode=python preserves it);
+        if panel is None or panel.payload.empty: raise 404;
+        s = panel.payload.iloc[:, 0];  # single-column DataFrame -> Series, PERCENT;
+        latest = float(s.iloc[-1]);
+        daily_change_bps = float((s.iloc[-1] - s.iloc[-2]) * 100) if len(s) >= 2 else 0.0;
+        display = s.iloc[-min(252, len(s)):];
+        z = float((latest - display.mean()) / display.std()) if display.std() > 0 else 0.0;
+        percentile = float(round(100 * (display <= latest).sum() / len(display)));
+        as_of = display.index[-1].strftime('%Y-%m-%d');
+        methodology = ' '.join(result_dict.get('methodology_disclosures', []));
+        return response with current_metrics{financing_rate_pct, daily_change_bps,
+        z_score, percentile_252d, high_252d_pct, low_252d_pct, as_of_date,
+        proxy_curve, method, n_observations} + time_series[{trade_date,
+        financing_rate_pct}] + methodology_disclosure (joined plural -> singular).
+      - >
+        FRONTEND — STANDARD SNAPSHOT PATTERN APPLIES.  Despite the architectural
+        special-case on the backend side, the frontend module is STRUCTURALLY
+        IDENTICAL to other snapshot tools.  Use get_real_yield_level_tool as the
+        reference module file-for-file.  module.ts, THESIS.md, surfaces/BuildExtended.tsx,
+        surfaces/BuildCompact.tsx, surfaces/financingRateShared.ts, surfaces/monitor/
+        FinancingRateWidget.tsx, __tests__/module.spec.ts — all standard.  The fetcher
+        helper fetchDetailFinancingRate consumes the SYNTHESIZED shape, which matches
+        other snapshot fetchers exactly.
+      - >
+        QUERY PARAMS — the route accepts: method (default 'overnight_index_proxy'),
+        proxy_curve (required when method=overnight_index_proxy; one of USD_SOFR_OIS,
+        EUR_ESTR_OIS, GBP_SONIA_OIS, JPY_TONA_OIS, AUD_AONIA_OIS, CAD_CORRA_OIS),
+        lookback_days (default 252, ge=60, le=2520).  Compute the start_date as
+        end_date - timedelta(days = int(lookback_days * 1.4 + 60)) to give enough
+        calendar-day buffer for rolling stats warmup before the 252d display window.
+      - >
+        METHODOLOGY DISCLOSURE — backend returns List[str] (PLURAL) in
+        methodology_disclosures.  Join with ' ' into a single string for the
+        methodology card + Compact caveat.  Do NOT hardcode any prose; the joined
+        backend value is the source-of-truth.
+      - >
+        THESIS MUST DOCUMENT the route-side synthesis as the first-of-its-kind
+        architectural deviation in this factory.  Add a `## Backend shape note`
+        subsection explaining: (1) why FinancingRateOutput diverges (Panel-based
+        for the evaluate_trades workflow consumer; the MCP layer drops the panel
+        but the route accesses it directly); (2) the synthesis happens in the route,
+        not on the backend, to preserve backend compatibility with evaluate_trades;
+        (3) the frontend module is structurally identical to other snapshots —
+        the deviation is invisible above the typed-detail boundary.
+      - >
+        DO NOT REFUSE THIS BUILD.  The architectural mismatch from the prior wake's
+        human_required block has been resolved by the human (route-side synthesis,
+        Option a).  Apply the template above.  If something STILL blocks you, surface
+        it in BUILDER REPORT with concrete detail — do NOT silently invent a third path.
+      - >
+        Standalone-bridge endpoint at /api/v1/rates/detail/financing-rate.  Mockup
+        density: keep shell-standard density on Compact (3 KPIs, single identity);
+        if mockup shows MORE, collapse extras + add Mockup conformance subsection
+        to THESIS per Option (c) precedent from Batch 1 fdac7d2.
 
   - id: ois__swap_spread
     status: todo

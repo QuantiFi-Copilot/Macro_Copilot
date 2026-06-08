@@ -1,106 +1,23 @@
 version: '1.0'
 branch: frontend_automation
 backend: claude-cli
-orchestrator_status: human_required
+orchestrator_status: processing
 current_tool: ois__financing_rate
 current_tool_backend_name: compute_financing_rate_tool
-current_step: pre_flight
-dispatch_round: 1
+current_step: ready_to_dispatch
+dispatch_round: 0
 last_dispatch_at: "2026-06-08T08:03:00Z"
 last_successful_tool: inflation_indexed_bonds__cross_country_breakeven_spread
 last_successful_commit: 7493683
 last_reviewer_heading: APPROVED
 last_gate_result: pass
-last_stop_reason: tool_27_pre_flight_pass_schema_shape_concern_human_required
+last_stop_reason: tool_27_architectural_fix_applied_option_a_route_synthesis
 last_error: null
-last_updated: "2026-06-08T14:07:00Z"
+last_updated: "2026-06-08T14:15:00Z"
 done: 26
 blocked: 0
 remaining: 2
-human_required:
-  reason: tool_27_backend_output_shape_divergence_from_catalog_reference
-  tool_id: ois__financing_rate
-  backend_tool_name: compute_financing_rate_tool
-  catalog_claim: |
-    category: snapshot
-    reference_frontend_module: get_real_yield_level_tool (Phase-1 pilot snapshot shape)
-    design_guardrail #1: "Mirror get_real_yield_level_tool snapshot shape (Phase-1 pilot)"
-  actual_backend_output_shape: |
-    class FinancingRateOutput(BaseModel):
-        method: FinancingMethod
-        as_of_start: str
-        as_of_end: str
-        n_observations: int
-        mean_rate_pct: Optional[float]
-        methodology_disclosures: List[str]
-        panel: Optional[Panel]
-    (rates_agent/ois/tools/financing_rate/schemas.py:148-187)
-  divergence: |
-    The catalog assumes a snapshot Output shape with current_metrics (z-score,
-    percentile, 252d hi/lo, observation count, daily change) + time_series block —
-    matching every snapshot tool shipped in batches 1/2/3 so far (the standalone-
-    bridge endpoint mirrors the backend Pydantic Output 1:1 via response_model=...).
-    The actual FinancingRateOutput has NEITHER block.  It returns a scalar
-    mean_rate_pct + a per-day Panel artifact + a List[str] of methodology disclosures
-    (plural, not the singular `methodology_label`/`methodology_disclosure` field
-    every other tool uses).  Furthermore, the MCP layer DROPS the panel before
-    serialising for the LLM, so the standalone-bridge endpoint would either need to
-    (a) re-construct the panel on the route side, (b) re-derive snapshot stats
-    server-side, or (c) re-design the frontend module to consume a panel + scalar
-    contract.  None of these is a small fix; any choice is an architectural
-    decision the human should make, not the builder.
-  why_not_dispatch_builder: |
-    The wake already shipped tool 26 (commit 7493683) successfully via the
-    canonical snapshot path.  Dispatching the tool-27 builder against the catalog's
-    "Mirror get_real_yield_level_tool snapshot shape" guardrail would force one of:
-      - Builder refuses with the canonical "backend Output shape doesn't match
-        what the mockup implies" blocker — wastes ~15-20 min of Claude quota.
-      - Builder builds with creative adaptation — reviewer almost certainly emits
-        STRUCTURAL: per SINGLE_REVIEW_ROUND_POLICY §3 (architectural mismatch
-        beyond a fix-pass scope), routed to human_required anyway.
-    Either way, the structural decision has to come from the human. Surfacing it
-    now via this human_required block (per ORCHESTRATOR_PROMPT Stop conditions
-    "the tool is not actually a backend tool that exists on this branch [in the
-    shape the catalog claims]") is the honest stop.
-  user_decision_needed:
-    - Should the standalone-bridge route at api/routes/rates/detail.py construct
-      a synthetic current_metrics + time_series view from the panel + mean_rate_pct?
-      (Adds non-mirror translation logic to the route — first time the factory
-      has done this; sets a precedent.)
-    - OR amend the catalog to use a different reference module / a non-snapshot
-      category?  (The tool's category may genuinely be "panel" not "snapshot".)
-    - OR defer tool 27 to a human-led design pass and leave it blocked?
-  pre_flight_audit_result: |
-    All four pre-flight checks PASS (read-only):
-      - backend folder rates_agent/ois/tools/financing_rate/ exists with the
-        canonical 4-file shape (__init__.py 2070B + schemas.py 6580B +
-        compute.py 9092B + config.yaml 4415B).
-      - MCP wrapper compute_financing_rate_tool registered at
-        rates_agent/ois/mcp_server.py:1112.
-      - curated migration database/migrations/2026-06-07_phase1_compute_financing_rate_curated.sql
-        exists (2032B).
-      - mockups Compact.png (1356432B) + Extended.png (1658107B) present at
-        UI/.../compute_financing_rate_tool/mockups/.
-      - loader entry already at src/modules/index.ts:77 (import) + :150 (array).
-    PRE_FLIGHT_BACKEND_AUDIT.md only checks artifact PRESENCE, not shape conformance
-    (audit blind spot — same as tool 2's mockup-content-mismatch from 2026-05-29).
-    The schema-shape concern surfaces at builder-dispatch readiness, NOT pre-flight.
-  remediation_options:
-    a_extend_bridge_route_with_synthesis: |
-      Add a panel→current_metrics+time_series synthesis helper at
-      api/routes/rates/detail.py for the financing-rate endpoint specifically;
-      derive 252d stats / z-score / percentile from the panel data on the server.
-      Document the synthesis as a per-tool deviation in surface_contract.md.
-      Cost: 1-2h of human design + a builder pass with explicit synthesis spec.
-    b_amend_catalog_to_panel_category: |
-      Change category from `snapshot` to `panel`, switch reference module to a
-      future panel-shaped tool (none ship yet), defer until a panel-shaped
-      reference is built.
-    c_defer_tool_27_block_and_proceed_to_tool_28: |
-      Mark tool 27 status: blocked with block_reason capturing this concern;
-      advance to tool 28 (ois__swap_spread) which uses the calculate_breakeven_inflation_simple_tool
-      reference (Phase-1 snapshot pattern — the schema should be conformant).
-      Cron resumes on tool 28 next wake.
+human_required: null
 quota_state: live
 quota_snapshot: null
 quota_snapshot_at: '2026-06-08T07:43:00Z'
@@ -6831,3 +6748,36 @@ status_notes:
       Counters: done:18 blocked:0 remaining: 9 -> 10.  Orchestrator
       will pick this up AFTER tools 19-27 ship (build_order 28 is
       lowest priority among current todos).
+
+  - at: "2026-06-08T14:15:00Z"
+    kind: tool_27_architectural_fix_applied
+    text: |
+      Tool 27 (ois__financing_rate / compute_financing_rate_tool)
+      unblocked via Option (a) — route-side synthesis.  The catalog's
+      design_guardrails for tool 27 have been rewritten to:
+
+        - Document the actual backend Output shape (scalar + Panel +
+          List[str] disclosures, NOT current_metrics + time_series).
+        - Direct the builder to synthesize the snapshot shape from
+          result.panel.payload in the route handler at
+          /api/v1/rates/detail/financing-rate (the route bypasses MCP
+          so the panel is accessible there).
+        - Provide a concrete code template (pseudo-Python) for the
+          synthesis: latest value, daily change in bps, 252d rolling
+          z-score / percentile / high / low.
+        - Confirm the FRONTEND module is structurally standard (still
+          mirrors get_real_yield_level_tool) — the architectural
+          deviation is invisible above the typed-detail boundary.
+        - Require a `## Backend shape note` subsection in THESIS to
+          document the first-of-its-kind route-side synthesis.
+        - Explicitly tell the builder DO NOT REFUSE — the architectural
+          mismatch is now resolved, apply the template.
+
+      State: orchestrator_status human_required -> processing; current_step
+      pre_flight -> ready_to_dispatch; human_required -> null.  Counters
+      unchanged (done:26 blocked:0 remaining:2 = tools 27 + 28).
+
+      Cron was disabled during the fix to stop the 23 no-op chore commits
+      that accumulated during the human_required idle period (0acbc2e to
+      somewhere earlier).  Re-enable after this commit lands so the
+      orchestrator picks up tool 27 with the new guardrails.
