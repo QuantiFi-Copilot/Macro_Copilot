@@ -1002,10 +1002,10 @@ tools:
       - "Per Option (c) precedent (Batch 1 fdac7d2 + policy_futures_get_futures_price_level_tool d8e8233): keep shell-standard density on Compact (3 KPIs, single identity); add a Mockup conformance subsection to THESIS if mockup density exceeds shell"
 
   - id: policy_futures__calendar_spread
-    status: todo
+    status: done
     human_action_required: false
-    last_review_heading: null
-    last_gate_result: not_run
+    last_review_heading: APPROVED
+    last_gate_result: pass
     build_order: 20
     backend_tool_name: policy_futures_get_futures_calendar_spread_tool
     instrument_family: policy_futures
@@ -1037,12 +1037,13 @@ tools:
       - "Frontend folder = workflow registry = policy_futures_get_futures_calendar_spread_tool; MCP function (no prefix) = get_futures_calendar_spread_tool"
       - "Quote convention: 100-minus-rate; positive spread = back contract HIGHER yield (steeper policy path)"
       - "Per Option (c) precedent: keep shell-standard density on Compact; document any density deviation in THESIS"
+    commit_sha: be2595b
 
   - id: policy_futures__cross_market_spread
-    status: todo
+    status: done
     human_action_required: false
-    last_review_heading: null
-    last_gate_result: not_run
+    last_review_heading: APPROVED-AFTER-FIX
+    last_gate_result: pass
     build_order: 21
     backend_tool_name: policy_futures_get_futures_cross_market_spread_tool
     instrument_family: policy_futures

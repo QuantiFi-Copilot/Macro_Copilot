@@ -373,6 +373,22 @@ from rates_agent.policy_futures.tools.futures_calendar_spread import (
     FuturesCalendarSpreadOutput,
     calculate_futures_calendar_spread,
 )
+# Catalog tool-21 — matched-strip cross-market implied-rate differential
+# between two ``curve_family`` values at one strip position (e.g.
+# SOFR_FUT vs SONIA_FUT strip 1 = SFR1 − SFI1, SOFR_FUT vs
+# EUR_SHORT_RATE_FUT strip 4 = SFR4 − ER4).  Same standalone-bridge
+# contract as the other rates primitives: own typed-detail endpoint
+# consumed by both Build views + the Monitor tile.  Methodology
+# disclosure flows verbatim from compute()'s ``methodology_disclosure``
+# string (NOT a hardcoded TS literal), including per-leg short-rate
+# regime labels (RFR vs IBOR) and explicit mixed-regime call-out per
+# the catalog guardrail (NO pack-average collapse).
+from rates_agent.policy_futures.tools.futures_cross_market_spread import (
+    CONFIG_PATH as POLICY_FUTURES_CROSS_MARKET_SPREAD_CONFIG_PATH,
+    FuturesCrossMarketSpreadInput,
+    FuturesCrossMarketSpreadOutput,
+    calculate_futures_cross_market_spread,
+)
 from rates_agent.sovereign_bonds.tools.zscore_custom import (
     CONFIG_PATH as ZSCORE_CUSTOM_CONFIG_PATH,
     ZscoreCustomInput,
@@ -3237,5 +3253,134 @@ def policy_futures_calendar_detail(
         result,
         f"Policy futures calendar spread for {curve_family} "
         f"{strip_position_short}-{strip_position_long}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/policy-futures-cross-market — policy_futures cross-market spread
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# ``policy_futures_get_futures_cross_market_spread_tool`` primitive ships its
+# OWN typed-detail endpoint.  Matched-strip implied-rate differential between
+# TWO different ``curve_family`` values at ONE strip position (e.g.
+# SOFR_FUT vs SONIA_FUT strip_position 1 → SFR1 − SFI1, SOFR_FUT vs
+# EUR_SHORT_RATE_FUT strip_position 4 → SFR4 − ER4) per ADR 0013.
+# Conventions are YAML-locked in V1; only the structural pair-leg + strip-
+# position keys plus ``lookback_days`` / ``as_of_date`` / ``field_name``
+# are exposed (mirrors the MCP wrapper's input surface).  Wire spread lives
+# on the implied-rate axis in PERCENT POINTS in the A − B convention
+# (orientation-honest — swapping the inputs flips the sign by construction);
+# the frontend display layer multiplies by 100 to render in bps but does
+# NOT flip the sign — A − B is the desk-canonical cross-CB divergence
+# direction.  The schema layer enforces ``curve_family_a !=
+# curve_family_b`` so a self-spread (mathematically zero) cannot be
+# dispatched.
+@router.get(
+    "/detail/policy-futures-cross-market",
+    response_model=FuturesCrossMarketSpreadOutput,
+    summary="Policy Futures Matched-Strip Cross-Market Spread Detail (standalone bridge)",
+)
+def policy_futures_cross_market_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family_a: str = Query(
+        ...,
+        description=(
+            "First (numerator / 'A') policy-futures curve family.  V1 "
+            "values: 'SOFR_FUT' (US Fed SOFR strip, RFR regime), "
+            "'EUR_SHORT_RATE_FUT' (ECB Euribor strip, IBOR regime), "
+            "'SONIA_FUT' (BOE SONIA strip, RFR regime).  Spread is "
+            "computed as ``rate_A − rate_B`` with A and B echoed back "
+            "on the methodology card."
+        ),
+    ),
+    curve_family_b: str = Query(
+        ...,
+        description=(
+            "Second (denominator / 'B') policy-futures curve family.  "
+            "Must differ from ``curve_family_a`` (enforced by Pydantic "
+            "validator — a self-spread is mathematically zero and not "
+            "a real desk object)."
+        ),
+    ),
+    strip_position: int = Query(
+        ...,
+        ge=1,
+        le=12,
+        description=(
+            "1-based strip position on BOTH legs (matched-strip read).  "
+            "1 = front contract on each market; higher numbers = "
+            "quarterly forwards down each strip."
+        ),
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    as_of_date: Optional[str] = Query(
+        default=None,
+        description=(
+            "ISO-format date (YYYY-MM-DD) anchoring the snapshot.  Omit "
+            "to anchor at the universe's last observed ``trade_date`` "
+            "for the requested legs (post-fetch data-max anchor on the "
+            "intersection of both legs).  A date BEYOND the universe's "
+            "last observed ``trade_date`` for EITHER leg returns the "
+            "documented controlled-error envelope."
+        ),
+    ),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg observation field mnemonic.  Omit (None) to use "
+            "the tool's bundled ``default_price_field`` convention from "
+            "futures_cross_market_spread/config.yaml (currently 'PX_LAST')."
+        ),
+    ),
+):
+    """Same payload + sentinel semantics as the MCP wrapper.  Consumed by
+    ``surfaces/BuildExtended.tsx`` AND ``surfaces/BuildCompact.tsx`` per
+    the rendering-density dual-view contract, plus the Monitor tile.
+    None-sentinels on ``field_name`` / ``as_of_date`` fall through to the
+    YAML default / data-max anchor via compute() — same shadowing fix
+    pattern as policy_futures_calendar_detail.
+    """
+    parsed_as_of: Optional[date] = None
+    if as_of_date and as_of_date.strip():
+        try:
+            parsed_as_of = date.fromisoformat(as_of_date.strip())
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid as_of_date {as_of_date!r}: {exc}",
+            )
+
+    try:
+        params = FuturesCrossMarketSpreadInput(
+            curve_family_a=curve_family_a,
+            curve_family_b=curve_family_b,
+            strip_position=strip_position,
+            lookback_days=lookback_days,
+            as_of_date=parsed_as_of,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        pf_config = load_tool_config(POLICY_FUTURES_CROSS_MARKET_SPREAD_CONFIG_PATH)
+        result = calculate_futures_cross_market_spread(
+            engine=engine, params=params, config=pf_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/policy-futures-cross-market: tool failed for %s vs %s "
+            "strip %d",
+            curve_family_a,
+            curve_family_b,
+            strip_position,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Policy futures cross-market spread for {curve_family_a} vs "
+        f"{curve_family_b} strip {strip_position}",
     )
     return result

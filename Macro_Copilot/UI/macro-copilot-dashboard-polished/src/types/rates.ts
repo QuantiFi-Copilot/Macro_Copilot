@@ -1965,3 +1965,116 @@ export type FuturesCalendarSpreadOutput = {
   methodology_disclosure: string;
 };
 
+// --- /detail/policy-futures-cross-market ---
+// Standalone-bridge type for the policy_futures matched-strip cross-market
+// implied-rate differential primitive (e.g. SOFR_FUT vs SONIA_FUT strip 1
+// = SFR1 − SFI1, SOFR_FUT vs EUR_SHORT_RATE_FUT strip 4 = SFR4 − ER4).
+// Mirrors ``FuturesCrossMarketSpreadOutput`` from
+// rates_agent/policy_futures/tools/futures_cross_market_spread/schemas.py
+// byte-for-byte (snake_case wire fields preserved).
+//
+// Wire sign convention (frozen):
+//   ``spread_value_pct = implied_rate_pct(curve_family_a)
+//                      − implied_rate_pct(curve_family_b)``
+// in PERCENT POINTS (NOT bps — the policy-futures sub-domain stays in
+// PERCENT POINTS on implied-rate-derived objects).  Display convention
+// (in surfaces) is bps via ``* 100`` for the headline KPI strip;
+// orientation is identity (A − B is desk-canonical for cross-CB
+// divergence — UNLIKE the same-curve calendar spread, no sign flip).
+// The per-leg disclosure block carries BOTH the strip-slot master stems
+// (stable across rolls) AND current-front underlying contracts (rotate
+// at roll), plus per-leg SCD2 metadata + per-leg short-rate regime
+// labels (RFR vs IBOR — surfaced INDEPENDENTLY for mixed-regime pairs;
+// NO pack-average collapse).
+
+export type FuturesCrossMarketSpreadTimeSeriesRow = {
+  date: string;
+  /** Cross-market spread in implied-rate space, PERCENT POINTS:
+   *  ``implied_rate_pct(curve_family_a) − implied_rate_pct(curve_family_b)``. */
+  spread_value_pct: number;
+  /** Rolling 252-trading-day z-score of the SPREAD series at this trade
+   *  date.  ``null`` during the warmup window before
+   *  ``z_score_min_periods`` observations accumulate. */
+  z_score: number | null;
+};
+
+export type FuturesCrossMarketSpreadCurrentMetrics = {
+  as_of_date: string;
+  curve_family_a: string;
+  curve_family_b: string;
+  strip_position: number;
+  /** Human-readable pair label, e.g. "SFR1-SFI1" / "SFR4-ER4".  Derived
+   *  from the two legs' resolved ``contract_code`` stems. */
+  spread_label: string;
+  /** Strip-slot master stem of leg A (e.g. "SFR1"). */
+  contract_code_a: string;
+  /** Strip-slot master stem of leg B (e.g. "SFI1"). */
+  contract_code_b: string;
+  /** Current-front underlying contract leg A resolves to. */
+  underlying_contract_code_a: string | null;
+  /** Current-front underlying contract leg B resolves to. */
+  underlying_contract_code_b: string | null;
+  security_name_a: string | null;
+  security_name_b: string | null;
+  expiry_date_a: string | null;
+  expiry_date_b: string | null;
+  /** Inverse-pricing flag for leg A (metadata-driven). */
+  inverse_priced_a: boolean;
+  /** Inverse-pricing flag for leg B (metadata-driven, read INDEPENDENTLY
+   *  from leg A so a future direct-priced family integrates without code
+   *  changes). */
+  inverse_priced_b: boolean;
+  /** Per-leg short-rate regime label for leg A — 'RFR' (SOFR / SONIA) or
+   *  'IBOR' (Euribor).  Surfaced INDEPENDENTLY for the catalog's mixed-
+   *  regime guardrail (NO pack-average collapse). */
+  short_rate_regime_a: string;
+  /** Per-leg short-rate regime label for leg B (RFR vs IBOR). */
+  short_rate_regime_b: string;
+  /** Latest implied rate on leg A in PERCENT (PR14-frozen ``_pct``
+   *  suffix). */
+  implied_rate_pct_a: number;
+  /** Latest implied rate on leg B in PERCENT. */
+  implied_rate_pct_b: number;
+  /** Latest aligned RAW cross-market implied-rate differential in
+   *  PERCENT POINTS: ``rate_a − rate_b``.  Wire-frozen orientation —
+   *  swapping the inputs flips the sign by construction.  NOT basis-
+   *  adjusted; NOT beta-adjusted. */
+  spread_value_pct: number;
+  /** 1-trading-day raw subtraction in PERCENT POINTS (NOT multiplied by
+   *  100 to bps). */
+  daily_change_spread_value_pct: number | null;
+  /** Rolling 252-trading-day z-score of the SPREAD series. */
+  z_score_spread: number | null;
+  /** Trailing 252-trading-day high on the spread series, PERCENT POINTS. */
+  high_252d_spread_value_pct: number | null;
+  /** Trailing 252-trading-day low on the spread series, PERCENT POINTS. */
+  low_252d_spread_value_pct: number | null;
+  /** Midpoint of the trailing 252-day spread range, PERCENT POINTS. */
+  mid_252d_spread_value_pct: number | null;
+  /** Percentile rank of ``spread_value_pct`` within the trailing
+   *  252-day range (0-100). */
+  percentile_252d: number | null;
+  rolling_window_days: number;
+  observation_count: number;
+};
+
+export type FuturesCrossMarketSpreadOutput = {
+  current_metrics: FuturesCrossMarketSpreadCurrentMetrics;
+  /** Bespoke wire-frozen per-row shape (mirrors the sovereign cross_market_
+   *  spread tool's frontend-friendly shape) — date + spread_value_pct +
+   *  rolling z_score per trade date.  Values match the canonical
+   *  ``time_series_spread`` / ``time_series_zscore`` 1-to-1 by
+   *  construction. */
+  time_series: FuturesCrossMarketSpreadTimeSeriesRow[];
+  /** P5 / ADR 0013 caveat composed at runtime by compute().  Includes
+   *  the A − B sign convention with specific A/B labels echoed, per-leg
+   *  short-rate regime labels (RFR vs IBOR — explicit mixed-regime
+   *  call-out), per-leg inverse-pricing rule, z-score lookback window,
+   *  trailing-range window, matched-strip-position keying, RAW-
+   *  differential guardrail (NOT basis-adjusted, NOT beta-adjusted),
+   *  explicit refusal of pack-average collapse on mixed-regime pairs.
+   *  Surfaced verbatim on the extended view's methodology card + the
+   *  Monitor widget's title= tooltip (NOT a hardcoded TS literal). */
+  methodology_disclosure: string;
+};
+

@@ -37,6 +37,7 @@ import type {
   PolicyFuturesPriceLevelOutput,
   FuturesButterflySimpleOutput,
   FuturesCalendarSpreadOutput,
+  FuturesCrossMarketSpreadOutput,
 } from '@/types/rates';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
@@ -837,6 +838,40 @@ export function fetchDetailPolicyFuturesCalendar(
 ): Promise<FuturesCalendarSpreadOutput> {
   return fetchJSON(
     `${RATES_PREFIX}/detail/policy-futures-calendar${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/policy-futures-cross-market — policy_futures cross-market spread
+// ---------------------------------------------------------------------------
+// Matched-strip implied-rate differential between TWO different
+// policy_futures curve families at ONE strip position (e.g. SOFR_FUT vs
+// SONIA_FUT strip 1 = SFR1 − SFI1, SOFR_FUT vs EUR_SHORT_RATE_FUT strip 4
+// = SFR4 − ER4).  Own typed helper per the standalone-bridge contract;
+// consumed by BOTH Build views and the Monitor tile.  Rolling-z-score
+// conventions are YAML-locked (mirrors the sibling sovereign /
+// inflation_swaps cross-market bridges); only the structural pair-leg
+// + strip-position keys plus ``lookback_days`` / ``as_of_date`` /
+// ``field_name`` are exposed at the API layer.  The schema layer
+// enforces ``curve_family_a != curve_family_b`` (a self-spread is
+// mathematically zero and operationally not a real desk object).
+
+export type FuturesCrossMarketSpreadDetailParams = {
+  curve_family_a: string;
+  curve_family_b: string;
+  strip_position: number;
+  lookback_days?: number;
+  /** YYYY-MM-DD; omit to anchor at the universe's last observed trade_date
+   *  on the intersection of both legs (post-fetch data-max anchor). */
+  as_of_date?: string;
+  field_name?: string;
+};
+
+export function fetchDetailPolicyFuturesCrossMarket(
+  params: FuturesCrossMarketSpreadDetailParams,
+): Promise<FuturesCrossMarketSpreadOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/policy-futures-cross-market${buildQuery(params)}`,
   );
 }
 
