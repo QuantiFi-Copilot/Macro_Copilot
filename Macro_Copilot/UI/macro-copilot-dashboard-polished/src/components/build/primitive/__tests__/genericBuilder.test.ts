@@ -346,13 +346,13 @@ check('decodeList: generic_builder entries are retained in order', () => {
   const list = decodePrimitiveList(
     encodeContext([
       { tool: 'calculate_swap_spread_tool' },         // generic_builder
-      { tool: 'calculate_curve_spread_tool' },        // typed view
+      { tool: 'get_yield_levels_tool' },              // typed view
       { tool: 'calculate_ois_curve_spread_tool' },    // generic_builder
     ]),
   );
   assertEqual(list.length, 3, 'three entries');
   assertEqual(list[0].kind, 'generic_builder', '0: generic_builder');
-  assertEqual(list[1].kind, 'spread', '1: typed view');
+  assertEqual(list[1].kind, 'yield', '1: typed view');
   assertEqual(list[2].kind, 'generic_builder', '2: generic_builder');
 });
 

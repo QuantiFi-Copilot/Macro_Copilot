@@ -1471,7 +1471,8 @@ tools:
     human_action_required: false
     last_review_heading: APPROVED
     last_gate_result: pass
-    commit_sha: PENDING_COMMIT
+    commit_sha: e6db97f
+    committed_at: "2026-06-10T06:55:00Z"
     build_order: 30
     backend_tool_name: calculate_otr_ofr_spread_tool
     instrument_family: sovereign_bonds
@@ -1504,11 +1505,12 @@ tools:
       - "Per Option (c) shell-density precedent: keep shell-standard density on Compact"
 
   - id: sovereign__curve_spread__migrate
-    status: todo
+    status: done
     build_mode: migration
     human_action_required: false
-    last_review_heading: null
-    last_gate_result: not_run
+    last_review_heading: APPROVED-AFTER-FIX
+    last_gate_result: pass
+    commit_sha: PENDING_COMMIT
     build_order: 31
     backend_tool_name: calculate_curve_spread_tool
     instrument_family: sovereign_bonds

@@ -279,13 +279,13 @@ check('unsupportedKnownReasonFor: scan_ois_extremes_tool has explicit copy', () 
 // decodePrimitiveContext — single-best lookup per matrix row.
 // ----------------------------------------------------------------------------
 
-check('decode: calculate_curve_spread_tool → spread typed view', () => {
+check('decode: calculate_curve_spread_tool → generic_builder', () => {
   const ctx = encodeContext([
     { tool: 'calculate_curve_spread_tool', params: { curve_family: 'UST' } },
   ]);
   const out = decodePrimitiveContext(ctx);
   assertTruthy(out, 'decode result');
-  assertEqual(out!.kind, 'spread', 'kind');
+  assertEqual(out!.kind, 'generic_builder', 'kind');
   assertEqual(out!.toolName, 'calculate_curve_spread_tool', 'toolName');
 });
 
@@ -368,14 +368,14 @@ check('decode: builder + primitive → builder wins (priority)', () => {
 check('decode: typed primitive + generic_builder → typed wins (priority)', () => {
   // PR2 priority: BUILDER > typed view > generic_builder > unsupported_known.
   // A typed chart conveys more information than a configure-and-run
-  // form, so curve_spread wins over swap_spread (generic_builder).
+  // form, so yield_levels (typed view) wins over swap_spread (generic_builder).
   const out = decodePrimitiveContext(
     encodeContext([
       { tool: 'calculate_swap_spread_tool' }, // generic_builder
-      { tool: 'calculate_curve_spread_tool' }, // typed view
+      { tool: 'get_yield_levels_tool' }, // typed view
     ]),
   );
-  assertEqual(out!.kind, 'spread', 'spread wins over generic_builder');
+  assertEqual(out!.kind, 'yield', 'yield wins over generic_builder');
 });
 
 check('decode: generic_builder + unsupported_known → generic_builder wins (priority)', () => {
@@ -435,13 +435,13 @@ check('decodeList: generic_builder + unsupported_known are both retained', () =>
   // tiles + unsupported tiles together.  Builders alone are filtered.
   const list = decodePrimitiveList(
     encodeContext([
-      { tool: 'calculate_curve_spread_tool' }, // typed view
+      { tool: 'calculate_curve_spread_tool' }, // generic_builder
       { tool: 'calculate_swap_spread_tool' },  // generic_builder
       { tool: 'scan_ois_extremes_tool' },      // unsupported_known
     ]),
   );
   assertEqual(list.length, 3, 'all three retained');
-  assertEqual(list[0].kind, 'spread', 'first: typed view');
+  assertEqual(list[0].kind, 'generic_builder', 'first: generic_builder');
   assertEqual(list[1].kind, 'generic_builder', 'second: generic_builder');
   assertEqual(list[2].kind, 'unsupported_known', 'third: unsupported_known');
 });
@@ -664,23 +664,23 @@ check('decode: typed-view + workflow_incompatible → typed-view wins (priority)
   const out = decodePrimitiveContext(
     encodeContext([
       { tool: 'get_otr_history_tool' },             // workflow_incompatible
-      { tool: 'calculate_curve_spread_tool' },      // typed view 'spread'
+      { tool: 'get_yield_levels_tool' },            // typed view 'yield'
     ]),
   );
-  assertEqual(out!.kind, 'spread', 'typed-view beats workflow_incompatible');
+  assertEqual(out!.kind, 'yield', 'typed-view beats workflow_incompatible');
 });
 
 check('decodeList: workflow_incompatible entries retained in order', () => {
   const list = decodePrimitiveList(
     encodeContext([
-      { tool: 'calculate_curve_spread_tool' },       // typed view
+      { tool: 'get_yield_levels_tool' },             // typed view
       { tool: 'get_otr_history_tool' },              // workflow_incompatible
       { tool: 'calculate_wirp_meeting_pricing_tool' }, // workflow_incompatible
       { tool: 'scan_ois_extremes_tool' },            // unsupported_known
     ]),
   );
   assertEqual(list.length, 4, 'four entries');
-  assertEqual(list[0].kind, 'spread', '0: typed view');
+  assertEqual(list[0].kind, 'yield', '0: typed view');
   assertEqual(list[1].kind, 'workflow_incompatible', '1: workflow_incompatible');
   assertEqual(list[2].kind, 'workflow_incompatible', '2: workflow_incompatible');
   assertEqual(list[3].kind, 'unsupported_known', '3: unsupported_known');

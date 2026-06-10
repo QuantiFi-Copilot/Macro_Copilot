@@ -2,21 +2,21 @@ version: '1.0'
 branch: frontend_automation
 backend: claude-cli
 orchestrator_status: processing
-current_tool: sovereign__otr_ofr_spread
-current_tool_backend_name: calculate_otr_ofr_spread_tool
-current_step: committed
-dispatch_round: 2
-last_dispatch_at: "2026-06-10T06:38:00Z"
-last_successful_tool: sovereign__otr_ofr_spread
+current_tool: sovereign__yield_levels__migrate
+current_tool_backend_name: get_yield_levels_tool
+current_step: pre_flight
+dispatch_round: 0
+last_dispatch_at: "2026-06-10T10:34:00Z"
+last_successful_tool: sovereign__curve_spread__migrate
 last_successful_commit: PENDING_COMMIT
-last_reviewer_heading: APPROVED
+last_reviewer_heading: APPROVED-AFTER-FIX
 last_gate_result: pass
-last_stop_reason: tool_30_shipped_advancing
+last_stop_reason: tool_31_shipped_curve_spread_migration_approved_after_fix
 last_error: null
-last_updated: "2026-06-10T06:55:00Z"
-done: 30
+last_updated: "2026-06-10T10:45:00Z"
+done: 31
 blocked: 0
-remaining: 5
+remaining: 4
 catalog_exhausted_at: null
 human_required: null
 quota_state: live
@@ -46,6 +46,155 @@ reviewer_mode_history:
       dispatch triggers a clean waiting_quota stop; the next cron wake
       retries.
 status_notes:
+  - at: "2026-06-10T10:45:00Z"
+    kind: tool_31_shipped_curve_spread_migration_approved_after_fix
+    text: |
+      Tool 31 / 35 (sovereign__curve_spread__migrate /
+      calculate_curve_spread_tool, build_mode=migration) shipped this wake.
+      First migration-mode tool of the factory.
+
+      Wake-entry context (this wake, 10:37Z):
+        Cron 450aa21c fired 10:37Z, 3 minutes into an in-flight Round 3
+        builder fix dispatch.  Prior wake (10:22Z) had already:
+          - re-dispatched the reviewer Round 2 after the Claude provider
+            quota reset (10:10Z) cleared the prior wake's quota refusal
+          - parsed the reviewer log → heading = CHANGES REQUIRED with
+            9 concrete + actionable + bounded findings (no STRUCTURAL /
+            vague / blast-radius-excessive flags per
+            SINGLE_REVIEW_ROUND_POLICY §3)
+          - assembled the Round 3 fix prompt
+            /tmp/builder_prompt_sovereign__curve_spread__migrate_round3.md
+            (11028 bytes) and dispatched
+            automation/frontend_automation/run_claude_builder.sh at 10:34Z
+          - written current_step=fix_dispatched, dispatch_round=3 into
+            runtime state
+
+        This wake observed the still-running builder PID 1085481 (4 min
+        elapsed), attached a background process-wait watcher
+        (Bash run_in_background) against the PID, and parked the wake
+        for a single non-cache-burning 270s window so the watcher could
+        notify on builder exit.
+
+      Round 3 builder fix exit:
+        Builder PID 1085481 exited cleanly at 2026-06-10T10:41:49Z
+        (~8 min elapsed).  Log payload (tee'd) reports all 9 reviewer
+        findings applied:
+          - buildE2E.test.ts rows 6+13: typedView 'spread' → null
+            (decode '_typedView' shadow flipped to 'generic_builder';
+            row 13 desc renamed to reflect the migration)
+          - routingCoverage.test.ts: direct curve_spread decode flipped
+            to 'generic_builder'; the two "typed primitive + ..."
+            priority tests now use get_yield_levels_tool → 'yield';
+            workflow_incompatible decodeList substitutes curve_spread
+            → yield_levels; the generic_builder+unsupported decodeList
+            test re-labels curve_spread as a second 'generic_builder'
+            row
+          - genericBuilder.test.ts:349 typed-view sibling substitution
+            curve_spread → yield_levels
+          - finding 8: BuildExtended.tsx third top-right card replaced
+            from 'sovereign_caveat' (duplicate methodology) to a
+            'regime' card using
+              shapeRegimeCaption(current_spread_bps) ×
+              zScoreCaptionForSpread(current_z_score)
+            as the kicker, signedFixed(current_spread_bps, 1) bp as
+            headline, "Curve-shape regime" subtext; unused
+            SOVEREIGN_CURVE_SPREAD_COMPACT_CAVEAT import dropped
+          - finding 9: THESIS.md Q3 appended a
+            "Documented density deviation" paragraph naming the 6-cell
+            mockup strip / 3-KPI implementation gap with Option (c)
+            Batch 1 fdac7d2 (calculate_breakeven_butterfly_tool)
+            precedent citation
+
+      Pre-commit gate re-run in orchestrator session:
+        - npm run test:modules → calculate_curve_spread_tool: 8 passed
+          0 failed; all module + registry tests passed
+        - npm run test:build → all build-folder tests passed (23 bundles,
+          ~448 individual checks)
+        - npm run typecheck → tsc -p tsconfig.app.json --noEmit clean
+
+      Mirrors:
+        - docs_revamped/02_components/surface_contract.md §4.1 row
+          updated for calculate_curve_spread_tool: build_archetype
+          typed-result-renderer → dual-view-bridge; build_status
+          typed-renderer-built → dual-view-built.  Monitor row
+          preserved verbatim ("built (2 widgets: CurveSpreads,
+          SpreadChart)") per MIGRATION_RULES.md widget-identity-
+          preservation contract.
+        - §11 changelog v38 entry appended (between v8 and v37 in
+          the file's mixed-order changelog convention).
+        - §10.3 row NOT added — pilot-pinned per v10 precedent.
+        - graphify update skipped (not on PATH on this VM, recorded
+          per ORCHESTRATOR_PROMPT Mirrors §2 fallback).
+
+      Catalog mutation bundled into this commit:
+        - sovereign__curve_spread__migrate: status in_progress → done,
+          last_review_heading APPROVED-AFTER-FIX (honest disclosure
+          that the fix bypassed re-review per
+          SINGLE_REVIEW_ROUND_POLICY), last_gate_result pass,
+          commit_sha PENDING_COMMIT (backfilled in follow-up).
+
+      Catalog state post-ship: 31 done / 0 blocked / 4 remaining.
+      Next eligible by selection order (first in_progress → first
+      changes_required → first waiting_quota → first todo):
+      sovereign__yield_levels__migrate (build_order 32, build_mode
+      migration).
+
+      Continuing the catalog loop per ORCHESTRATOR_PROMPT
+      §"Required loop".
+
+  - at: "2026-06-10T10:22:00Z"
+    kind: tool_31_resume_after_claude_quota_reset
+    text: |
+      Wake entry at 2026-06-10T10:22Z resumes the in-flight reviewer Round 2
+      dispatch for tool 31 (sovereign__curve_spread__migrate /
+      calculate_curve_spread_tool, build_mode=migration).  Prior wake at
+      07:14Z dispatched the reviewer; the dispatch immediately got a
+      provider quota refusal envelope to
+      /tmp/claude_frontend_reviewer_run_sovereign__curve_spread__migrate_round2.log:
+      "You've hit your limit · resets 10:10am (UTC)".  Current wake entry
+      is 12 min past the stated reset, so the quota window is open.
+
+      parse_reviewer_log.py on the 07:15 log returned
+      reviewer_quota_exhausted=false, heading=null — the parser misses
+      the "you've hit your limit" envelope phrasing (its markers cover
+      "rate limit", "limit reached", "you have reached your", etc., but
+      not the contracted "you've hit your limit").  The text of the log
+      is unambiguous and matches the prior wake's quota envelope format,
+      so Case A applies operationally (treat as
+      reviewer_claude_quota_exhausted with auto-resume on quota reset)
+      rather than Case F (transient parse failure → human_required).
+      Parser gap captured for follow-up but does not block resume.
+
+      Working tree state confirmed intact:
+        - 8 staged file mutations under
+          UI/macro-copilot-dashboard-polished/src/modules/primitives/
+          calculate_curve_spread_tool/ + src/types/rates.ts
+        - `git diff --cached` size 76216 bytes matches saved
+          /tmp/builder_diff_sovereign__curve_spread__migrate.patch
+          byte-for-byte (the diff embedded into the reviewer prompt
+          at 07:15 is current)
+        - reviewer prompt /tmp/reviewer_prompt_sovereign__curve_spread
+          __migrate_round2.md (122792 bytes) intact, unchanged since
+          07:15
+        - builder Round 1 log is 1 byte — likely truncated/empty
+          because builder finished cleanly via apply_patch into the
+          index without echoing significant stdout (the actual diff
+          is on disk + indexed, which is the artefact we need)
+
+      Catalog mutation this wake (pre-dispatch):
+        - sovereign__curve_spread__migrate: status todo → in_progress
+          (correctness backfill; runtime state already reflected
+          in_progress via current_tool / dispatch_round / current_step
+          but the catalog entry still said todo from the 07:00 dispatch
+          prep)
+
+      Re-dispatching reviewer Round 2 with the existing prompt file via
+      automation/frontend_automation/run_claude_reviewer.sh — same diff,
+      same docs, same mockup paths — per QUOTA_AND_RESUME_POLICY §6
+      resume rule (current_step=reviewer_dispatched → re-dispatch the
+      reviewer, idempotent because the diff is on disk and embedded into
+      the prompt).
+
   - at: "2026-06-10T06:55:00Z"
     kind: tool_30_shipped_otr_ofr_spread
     text: |

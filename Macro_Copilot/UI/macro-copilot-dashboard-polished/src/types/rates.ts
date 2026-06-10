@@ -1924,7 +1924,16 @@ export type CurveSpreadTimeSeriesRow = {
 
 export type CurveSpreadOutput = {
   current_metrics: CurveSpreadCurrentMetrics;
+  /** Wire-frozen bespoke shape — kept for legacy ResultRenderer-era
+   *  consumers and the SpreadChartWidget Monitor tile.  The dual-view
+   *  surfaces consume ``time_series_spread`` (canonical TimeSeries BPS)
+   *  instead. */
   time_series: CurveSpreadTimeSeriesRow[];
+  /** Canonical TimeSeries (BPS) — spread series in chronological order.
+   *  Optional defensively; the REST detail endpoint always returns it. */
+  time_series_spread?: TimeSeries;
+  /** Canonical TimeSeries (Z_SCORE) — rolling z-score series. */
+  time_series_zscore?: TimeSeries;
 };
 
 // --- /detail/cross-market ---
