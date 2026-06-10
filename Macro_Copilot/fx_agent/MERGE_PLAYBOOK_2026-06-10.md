@@ -54,3 +54,13 @@ The cascade-rebase plan from 05-28 therefore stands, with `origin/revamp` substi
 
 ## 6. Refresh
 Re-run §2's command + re-check `git rev-list --count origin/codex/fx-on-latest-build..origin/revamp`; update verdicts; bump filename date.
+
+## 7. Status update — 2026-06-10: Sreeram signed off
+
+Ping sent; answer: **"OK I trust you."** → all 3 questions green-lit, operator fate delegated to us. Executed same day:
+
+- **#241 closed** (superseded by his `rolling_zscore`; branch kept on origin for reference).
+- **#242 closed** (different operation — cross-sectional vs time-rank — but Panel→Panel shape doesn't fit revamp's OPR9 Series-closed-family rules; re-propose post-merge in revamp-conform shape, e.g. `cross_sectional_rank(SeriesSet)` per the architecture doc's own Pass example).
+- **Rebase target = revamp** confirmed. **FX frontend via his factory** post-merge confirmed; #243/#244 remain open as spec/reference for the factory run.
+
+Remaining gate: **the merge window is Sacha's timing call.** When opened, run §4 steps 2-5 (throwaway dry-run → one-session cascade rebase → merge bottom-up → re-ingest → factory → backlog).
