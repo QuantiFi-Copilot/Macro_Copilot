@@ -1771,14 +1771,19 @@ tools:
         - "Monitor dashboards mounting 'cross_market_spreads' or 'cross_market_spread' widget IDs continue to render"
 
   - id: sovereign__scan_extremes__migrate
-    status: in_progress
+    status: done
     build_mode: migration
     human_action_required: false
-    last_review_heading: null
-    last_gate_result: not_run
-    dispatch_round: 1
-    active_step: builder_dispatched_quota_exhausted
+    last_review_heading: APPROVED
+    last_gate_result: pass
+    dispatch_round: 2
+    active_step: committed
     dispatched_at: "2026-06-10T17:16:00Z"
+    builder_finished_at: "2026-06-10T18:14:00Z"
+    reviewer_dispatched_at: "2026-06-10T18:15:00Z"
+    reviewer_finished_at: "2026-06-10T18:24:00Z"
+    commit_sha: PENDING_COMMIT
+    committed_at: "2026-06-10T18:25:00Z"
     build_order: 35
     backend_tool_name: scan_extremes_tool
     instrument_family: sovereign_bonds

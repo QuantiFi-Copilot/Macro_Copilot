@@ -1841,6 +1841,45 @@ export type ScanPolicyFuturesExtremesOutput = {
   methodology_disclosure: string;
 };
 
+// --- /detail/scanner ---
+// Standalone-bridge type for the universe-wide SOVEREIGN yield-extremes
+// scanner (``scan_extremes_tool``).  SCANNER shape — the wire returns a
+// ranked LIST of (curve_family, tenor) extremes ordered by |z| of the
+// 252d-rolling YLD_YTM_MID z-score across the sovereign-benchmark universe
+// (UST / DE_BUND / UK_GILT / FR_OAT / IT_BTP / ES_BONO / JP_JGB / AU_GOVT /
+// CANADA_GOVT).  Mirrors the backend ``ScannerOutput`` from
+// rates_agent/sovereign_bonds/tools/scan_extremes/schemas.py field-for-field.
+//
+// Distinct from the legacy aggregated-dashboard ``ScannerResponse`` (above —
+// the pre-aggregated RatesPage payload with abbreviated field names).  This
+// is the TYPED-DETAIL mirror consumed by the per-tool BuildExtended +
+// BuildCompact surfaces via ``/api/v1/rates/detail/scanner``.
+
+/** One ranked extreme on the sovereign yield universe scan.  Mirrors
+ *  ``ScannerResultRow``. */
+export type ScanExtremesResultRow = {
+  rank: number;
+  curve_family: string;
+  tenor: string;
+  as_of_date: string;
+  current_yield_pct: number | null;
+  daily_change_bps: number | null;
+  z_score: number | null;
+  high_252d_pct: number | null;
+  low_252d_pct: number | null;
+  percentile_252d: number | null;
+  /** Closed enum derived from z-score sign on rows that pass the
+   *  ``min_abs_z_score`` filter. */
+  signal: 'EXTREME_HIGH' | 'EXTREME_LOW';
+};
+
+export type ScanExtremesOutput = {
+  /** Human-readable one-line summary (e.g. "Scanned 36 instruments.  Found
+   *  6 with |z-score| >= 1.5.  Showing top 5 by absolute z-score."). */
+  scan_summary: string;
+  results: ScanExtremesResultRow[];
+};
+
 // --- /detail/real_yield_curve_spread ---
 // Standalone-bridge type for the same-country linker real-yield curve-spread
 // primitive.  Own type — the object is the term structure of REAL YIELDS

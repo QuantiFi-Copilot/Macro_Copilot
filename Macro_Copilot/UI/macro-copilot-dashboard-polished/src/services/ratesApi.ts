@@ -32,6 +32,7 @@ import type {
   InflationSwapForwardOutput,
   InflationSwapRateLevelOutput,
   InflationSwapCurveSpreadOutput,
+  ScanExtremesOutput,
   ScanInflationSwapsExtremesOutput,
   ScanInflationLinkersExtremesOutput,
   SwapBreakevenBasisSimpleOutput,
@@ -639,6 +640,45 @@ export function fetchDetailInflationSwapCurveSpread(
 ): Promise<InflationSwapCurveSpreadOutput> {
   return fetchJSON(
     `${RATES_PREFIX}/detail/inflation-swap-curve-spread${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/scanner  — universe-wide SOVEREIGN yield-extremes scanner bridge
+// ---------------------------------------------------------------------------
+// SCANNER-shape primitive under the standalone-bridge contract.  Wire returns
+// a ranked LIST of (curve_family, tenor) sovereign-benchmark extremes — the
+// per-tool BuildCompact renders a top-N table (NOT a sparkline), the
+// BuildExtended renders the universe scan + full ranked detail, and the
+// preserved ``ScannerWidget`` keeps reading the pre-aggregated RatesPage feed
+// (legacy, non-parameterised).  Rolling-z-score conventions are YAML-locked
+// on this primitive (mirrors the sibling ZCIS / linker / bond-futures /
+// policy-futures scanners); ``curve_families`` / ``top_n`` / ``min_abs_z_score``
+// / ``field_name`` remain exposed.
+//
+// Distinct from the legacy ``fetchScanner`` above — that targets the
+// pre-aggregated dashboard endpoint at ``/api/v1/rates/scanner``; this hits
+// the typed-detail endpoint at ``/api/v1/rates/detail/scanner`` and returns
+// the full ``ScannerOutput`` Pydantic mirror.
+
+export type ScanExtremesDetailParams = {
+  /** Comma-separated list of sovereign curve families to scan (e.g.
+   *  "UST,DE_BUND,UK_GILT"). Omit for the full sovereign-benchmark universe. */
+  curve_families?: string;
+  /** Number of extreme stems to return; omit for the YAML default (10). */
+  top_n?: number;
+  /** Minimum absolute z-score threshold; omit for the YAML default (1.5). */
+  min_abs_z_score?: number;
+  /** Bloomberg observation field to scan.  Omit for the YAML default
+   *  (YLD_YTM_MID). */
+  field_name?: string;
+};
+
+export function fetchDetailScanner(
+  params: ScanExtremesDetailParams,
+): Promise<ScanExtremesOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/scanner${buildQuery(params)}`,
   );
 }
 

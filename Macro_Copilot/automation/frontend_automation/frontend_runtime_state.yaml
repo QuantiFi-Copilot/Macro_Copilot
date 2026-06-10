@@ -1,23 +1,23 @@
 version: '1.0'
 branch: frontend_automation
 backend: claude-cli
-orchestrator_status: processing
-current_tool: sovereign__scan_extremes__migrate
-current_tool_backend_name: scan_extremes_tool
-current_step: builder_dispatched
-dispatch_round: 1
-last_dispatch_at: "2026-06-10T17:53:00Z"
-last_successful_tool: sovereign__cross_market_spread__migrate
-last_successful_commit: c0bf1ee
-last_reviewer_heading: APPROVED-AFTER-FIX
+orchestrator_status: catalog_exhausted
+current_tool: null
+current_tool_backend_name: null
+current_step: committed
+dispatch_round: 2
+last_dispatch_at: "2026-06-10T18:15:00Z"
+last_successful_tool: sovereign__scan_extremes__migrate
+last_successful_commit: PENDING_BACKFILL
+last_reviewer_heading: APPROVED
 last_gate_result: pass
-last_stop_reason: tool_35_scan_extremes_migration_round1_builder_in_flight
+last_stop_reason: catalog_exhausted
 last_error: null
-last_updated: "2026-06-10T17:54:00Z"
-done: 34
+last_updated: "2026-06-10T18:25:00Z"
+done: 35
 blocked: 0
-remaining: 1
-catalog_exhausted_at: null
+remaining: 0
+catalog_exhausted_at: "2026-06-10T18:25:00Z"
 human_required: null
 quota_state: probe_unavailable
 quota_reset_at: null
@@ -51,6 +51,107 @@ reviewer_mode_history:
       dispatch triggers a clean waiting_quota stop; the next cron wake
       retries.
 status_notes:
+  - at: "2026-06-10T18:25:00Z"
+    kind: tool_35_scan_extremes_migration_shipped_approved_catalog_exhausted
+    text: |
+      Wake-entry 2026-06-10T18:07Z (cron 450aa21c-625d-4ad7-b3da-ef39a6ba7784).
+      Per ORCHESTRATOR_PROMPT: read source-of-truth docs, ran branch check
+      (OK: frontend_automation), inspected prior wake's in-flight Round-1
+      builder (PID 1263463, dispatched 17:53Z via documented stdin workaround).
+
+      Round 1 BUILDER — completion observed at 2026-06-10T18:14:00Z
+        - wall time: ~21 min (started 17:53Z)
+        - log final size: 7179 bytes (--print buffers until exit)
+        - working-tree changes (per `git diff --stat HEAD`):
+            UI/.../scan_extremes_tool/THESIS.md          (modified)
+            UI/.../scan_extremes_tool/__tests__/module.spec.ts (modified)
+            UI/.../scan_extremes_tool/module.ts           (modified)
+            UI/.../scan_extremes_tool/surfaces/ResultRenderer.tsx (DELETED ✓ H1)
+            UI/.../scan_extremes_tool/surfaces/BuildExtended.tsx  (NEW ✓ H8)
+            UI/.../scan_extremes_tool/surfaces/BuildCompact.tsx   (NEW ✓ H8)
+            UI/.../scan_extremes_tool/surfaces/scanExtremesShared.ts (NEW ✓ H8)
+            UI/.../src/types/rates.ts                    (modified — +ScanExtremesOutput / ScanExtremesResultRow)
+            UI/.../src/services/ratesApi.ts              (modified — +fetchDetailScanner)
+            Macro_Copilot/api/routes/rates/detail.py     (modified — +/detail/scanner route)
+        - builder pushed back on catalog `remove_fields: [..., unsupportedReason]`
+          per FM6 invariant 8 (assertStandardModuleInvariants requires the
+          field whenever manifest_typed_view tier is preserved — which
+          MIGRATION_RULES §4 step 6 mandates).  Kept the field; refreshed copy
+          to describe the dual-view affordance.  Documented in module.ts +
+          THESIS Q5.
+
+      Round 2 REVIEWER — dispatched 2026-06-10T18:15:00Z via stdin workaround
+      (prompt 146803 bytes — argv path stalls per documented bug); claude
+      PID 1273403, log /tmp/claude_frontend_reviewer_run_sovereign__scan_extremes
+      __migrate_round2.log (final 7843 bytes).  Wall time: ~9 min.
+      `parse_reviewer_log.py` output:
+        {"ok": true, "heading": "APPROVED",
+         "environment_failure": false,
+         "reviewer_quota_exhausted": false}
+
+      Reviewer verdict: APPROVED with NO findings.  Section A–H all green:
+        A. Dual-view contract ✓
+        B. Mockup conformance (Extended + Compact both faithful) ✓
+        C. Standalone bridge (typedView null + /detail/scanner + fetchDetailScanner
+           + ScanExtremesOutput mirror + both views share useScanExtremes hook) ✓
+        D. FM1–FM12 (folder=tool.name; tiers valid; pure value export; canonical
+           paths; THESIS Q1 enumerates 3 surfaces; spec asserts invariants +
+           dual-view; alphabetical loader) ✓
+        E. Methodology honesty (synthesised disclosure rows anchored to backend
+           constants — backend ScannerOutput lacks methodology_disclosure
+           wire field; documented gap + unblock path per swap_spread/OIS
+           precedent) ✓
+        F. Shared helper (formatters / tone / FAMILY_REGISTRY / useScanExtremes
+           hook / methodology rows — all single source; both views import) ✓
+        G. Pre-commit gate ✓ (re-run in orchestrator session below)
+        H. Migration 13 checks all ✓ (H1 ResultRenderer deleted; H2 typedView
+           null; H3 workspaceLabel removed [H3-b unsupportedReason kept with
+           documented justification for the catalog/FM6 conflict the reviewer
+           specifically endorses]; H4 ScannerWidget verbatim including id
+           'scanner', label, non-parameterised paramFields; H5 ScanExtremesOutput
+           1× in rates.ts:1876; H6 fetchDetailScanner 1× in ratesApi.ts:677;
+           H7 /detail/scanner 1× in detail.py:2541; H8 3 NEW files; H9 THESIS
+           v3 5-question template; H10 spec calls assertStandardModuleInvariants
+           + dual-view + migration backward-compat lock; H11 manifest_typed_view
+           preserved per backend reality; H12 all three gates exit 0; H13
+           BuildCompact != ScannerWidget two different files / two different
+           components / two different import paths).
+
+      Pre-commit gate (Case C — per TESTING_POLICY) re-run in orchestrator
+      session 2026-06-10T18:24Z–18:25Z:
+        - `cd UI/macro-copilot-dashboard-polished && npm run test:modules`
+          → scan_extremes_tool: 10 passed, 0 failed; all 19 modules green;
+            "all module + registry tests passed"; exit 0 ✓
+        - `npm run test:build`
+          → slot-controls 40/40; generic-builder 32/32; param-fidelity 29/29;
+            routing 48/48; dashboard-contract 11/11; dashboard-registry 18/18;
+            resolveWorkflowArtifacts 12/12; artifact-payload 28/28;
+            persisted-model-adapters 20/20; RichModelWidget 18/18;
+            widget contract 11/11; widget-format 53/53;
+            "all build-folder tests passed"; exit 0 ✓
+        - `npm run typecheck` → tsc -p tsconfig.app.json --noEmit clean;
+          exit 0 ✓
+
+      Mirrors (per ORCHESTRATOR_PROMPT.md "Mirrors + commit"):
+        - docs_revamped/02_components/surface_contract.md
+          §4.1 row 192 (scan_extremes_tool): typed-result-renderer →
+          dual-view-bridge; typed-renderer-built → dual-view-built;
+          monitor cell preserved verbatim (required | built (Scanner)).
+          §11 v42 changelog entry appended (batch-4 COMPLETE).
+        - graphify update . SKIPPED — graphify not on $PATH on this VM
+          (per ORCHESTRATOR_PROMPT Mirrors §2 fallback; recorded here).
+
+      Catalog state post-ship: 35 done / 0 blocked / 0 remaining.
+      Batch-4 EXHAUSTED.  orchestrator_status set to catalog_exhausted per
+      BACKGROUND_EXECUTION_POLICY §8.1.  Cron entry-point script will
+      short-circuit on next wake until human adds new work or sets
+      orchestrator_status: idle.
+
+      commit_sha: PENDING_BACKFILL (will be set in the next status_notes
+      update after the ship commit lands; tool 35 catalog entry's commit_sha
+      stays PENDING_BACKFILL in this ship commit and gets backfilled in a
+      follow-up automation commit — same pattern as tool 34 c0bf1ee → 854eb75).
+
   - at: "2026-06-10T17:54:00Z"
     kind: tool_35_scan_extremes_migration_round1_builder_redispatched_quota_reset_early
     text: |
