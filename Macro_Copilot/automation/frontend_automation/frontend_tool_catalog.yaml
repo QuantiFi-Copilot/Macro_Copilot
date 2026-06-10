@@ -1708,6 +1708,8 @@ tools:
     human_action_required: false
     last_review_heading: APPROVED-AFTER-FIX
     last_gate_result: pass
+    commit_sha: c0bf1ee
+    committed_at: "2026-06-10T17:08:00Z"
     build_order: 34
     backend_tool_name: calculate_cross_market_spread_tool
     instrument_family: sovereign_bonds
@@ -1769,11 +1771,14 @@ tools:
         - "Monitor dashboards mounting 'cross_market_spreads' or 'cross_market_spread' widget IDs continue to render"
 
   - id: sovereign__scan_extremes__migrate
-    status: todo
+    status: in_progress
     build_mode: migration
     human_action_required: false
     last_review_heading: null
     last_gate_result: not_run
+    dispatch_round: 1
+    active_step: builder_dispatched_quota_exhausted
+    dispatched_at: "2026-06-10T17:16:00Z"
     build_order: 35
     backend_tool_name: scan_extremes_tool
     instrument_family: sovereign_bonds

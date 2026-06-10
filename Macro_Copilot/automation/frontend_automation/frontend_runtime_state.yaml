@@ -1,27 +1,28 @@
 version: '1.0'
 branch: frontend_automation
 backend: claude-cli
-orchestrator_status: processing
-current_tool: null
-current_tool_backend_name: null
-current_step: ready_to_dispatch
-dispatch_round: 0
-last_dispatch_at: null
+orchestrator_status: waiting_quota
+current_tool: sovereign__scan_extremes__migrate
+current_tool_backend_name: scan_extremes_tool
+current_step: builder_dispatched
+dispatch_round: 1
+last_dispatch_at: "2026-06-10T17:16:00Z"
 last_successful_tool: sovereign__cross_market_spread__migrate
 last_successful_commit: c0bf1ee
 last_reviewer_heading: APPROVED-AFTER-FIX
 last_gate_result: pass
-last_stop_reason: tool_35_recovery_after_old_account_quota_exhaustion
+last_stop_reason: builder_claude_quota_exhausted_tool35_round1
 last_error: null
-last_updated: "2026-06-10T17:20:00Z"
+last_updated: "2026-06-10T17:38:00Z"
 done: 34
 blocked: 0
 remaining: 1
 catalog_exhausted_at: null
 human_required: null
-quota_state: live
+quota_state: waiting_quota
+quota_reset_at: "2026-06-10T20:30:00Z"
 quota_snapshot: null
-quota_snapshot_at: '2026-06-08T07:43:00Z'
+quota_snapshot_at: '2026-06-10T17:38:00Z'
 quota_snapshot_fresh: true
 quota_note: |
   Prior wake's builder Round 1 dispatch for tool 26 (03:34 UTC)
@@ -46,6 +47,52 @@ reviewer_mode_history:
       dispatch triggers a clean waiting_quota stop; the next cron wake
       retries.
 status_notes:
+  - at: "2026-06-10T17:38:00Z"
+    kind: tool_35_scan_extremes_round1_quota_exhausted_waiting_quota
+    text: |
+      Wake-entry 2026-06-10T17:36Z (cron 450aa21c-625d-4ad7-b3da-ef39a6ba7784).
+      Per ORCHESTRATOR_PROMPT: read source-of-truth docs, ran branch check
+      (OK: frontend_automation), inspected prior wake's Round-1 builder dispatch
+      for tool 35 (sovereign__scan_extremes__migrate, the final entry of
+      batch-4; 1 remaining).
+
+      Inspection result:
+        - Builder claude PID 1248009 (parent shell 1248008, wrapper 1248003)
+          all absent from `ps -ef`.
+        - Builder log /tmp/claude_frontend_builder_run_sovereign__scan_extremes
+          __migrate_round1.log  →  45 bytes, 1 line, mtime 17:19Z:
+            "You've hit your limit · resets 8:30pm (UTC)"
+        - Provider envelope = real Claude quota refusal.  Builder Round 1
+          NEVER executed the prompt — claude exited immediately at provider
+          login.  No diff generated; module folder untouched.
+        - Working tree: only `M frontend_tool_catalog.yaml` (benign tool-34
+          commit_sha + committed_at backfill from the prior wake's post-ship
+          mirrors update; no module-folder writes).
+
+      Decision per ORCHESTRATOR_PROMPT.md "Reviewer result rule §Case A"
+      generalized to builder-side quota (QUOTA_AND_RESUME_POLICY.md §3 — the
+      same waiting_quota stop applies on either dispatch):
+        - last_stop_reason: builder_claude_quota_exhausted_tool35_round1
+        - orchestrator_status: waiting_quota
+        - quota_reset_at: 2026-06-10T20:30:00Z (provider envelope)
+        - tool 35 catalog status: todo → in_progress (preserve dispatch_round 1
+          + active_step builder_dispatched_quota_exhausted so the next wake
+          re-attempts Round 1 from the existing prompt at /tmp/builder_prompt_
+          sovereign__scan_extremes__migrate_round1.md)
+        - NO engine swap (single-engine factory; QUOTA_AND_RESUME_POLICY.md §3).
+        - NO clean of /tmp prompt files — re-used on next wake.
+        - Working-tree diff committed alongside this state update so HEAD
+          carries the post-tool-34 commit_sha backfill.
+
+      Next wake (after 2026-06-10T20:30Z provider reset) will:
+        1. Re-run check_branch.sh
+        2. Read this status_notes entry + runtime state
+        3. Re-dispatch builder Round 1 from the existing prompt file (still on
+           disk per BACKGROUND_EXECUTION_POLICY §retain-prompts-on-quota-stop)
+        4. Continue normal Case A→B→C→D flow.
+
+      Counts: done 34 / blocked 0 / remaining 1 (unchanged).
+
   - at: "2026-06-10T17:16:00Z"
     kind: tool_35_scan_extremes_migration_round1_builder_dispatched
     text: |
