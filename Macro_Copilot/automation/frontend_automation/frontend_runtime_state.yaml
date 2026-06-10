@@ -2,18 +2,18 @@ version: '1.0'
 branch: frontend_automation
 backend: claude-cli
 orchestrator_status: processing
-current_tool: sovereign__scan_extremes__migrate
-current_tool_backend_name: scan_extremes_tool
-current_step: pre_flight
+current_tool: null
+current_tool_backend_name: null
+current_step: ready_to_dispatch
 dispatch_round: 0
-last_dispatch_at: "2026-06-10T16:53:00Z"
+last_dispatch_at: null
 last_successful_tool: sovereign__cross_market_spread__migrate
-last_successful_commit: PENDING_COMMIT
+last_successful_commit: c0bf1ee
 last_reviewer_heading: APPROVED-AFTER-FIX
 last_gate_result: pass
-last_stop_reason: tool_34_cross_market_spread_migration_approved_after_fix_gate_pass_advancing_to_tool_35
+last_stop_reason: tool_35_recovery_after_old_account_quota_exhaustion
 last_error: null
-last_updated: "2026-06-10T17:08:00Z"
+last_updated: "2026-06-10T17:20:00Z"
 done: 34
 blocked: 0
 remaining: 1
@@ -46,6 +46,94 @@ reviewer_mode_history:
       dispatch triggers a clean waiting_quota stop; the next cron wake
       retries.
 status_notes:
+  - at: "2026-06-10T17:16:00Z"
+    kind: tool_35_scan_extremes_migration_round1_builder_dispatched
+    text: |
+      Same wake (2026-06-10T16:52Z entry, cron 450aa21c-625d-4ad7-b3da-ef39a6ba7784)
+      proceeded after tool 34 ship + commit c0bf1ee per ORCHESTRATOR_PROMPT
+      "Do not intentionally stop after a single completed tool if more
+      eligible catalog work remains."  Only 1 entry remained: build_order 35
+      sovereign__scan_extremes__migrate (final entry of batch-4).
+
+      Pre-flight backend audit for tool 35 (per PRE_FLIGHT_BACKEND_AUDIT.md
+      + Check 5 for migration mode):
+        A. backend folder rates_agent/sovereign_bonds/tools/scan_extremes/ → EXISTS
+           4-file shape verified (__init__.py + compute.py + config.yaml + schemas.py).
+        B. MCP wrapper scan_extremes_tool registered in
+           rates_agent/sovereign_bonds/mcp_server.py:843 → OK.
+        C. Mockups Extended.png (1653378B) + Compact.png (1221087B) → BOTH PRESENT.
+        D. Curated SQL migration database/migrations/
+           2026-06-09_phase1_scan_extremes_curated.sql (1922B) → EXISTS.
+        E. Check 5 legacy pattern detection (migration mode):
+           - module.ts declares typedView: 'scanner' ✓
+           - module.ts has surfaces.resultRenderer ✓
+           - surfaces/ResultRenderer.tsx (7312B) exists on disk ✓
+        ALL 5 CHECKS PASS → proceeded to Round 1 builder dispatch.
+
+      Dispatch 1 (builder) prompt assembled to
+        /tmp/builder_prompt_sovereign__scan_extremes__migrate_round1.md
+        (50857 bytes; CLAUDE_BUILDER_PROMPT.md body + MIGRATION_RULES.md full body
+        + catalog entry lines 1773-1836 verbatim + resolved mockup paths +
+        reference frontend module path + pre-flight audit output).
+
+      First attempt via run_claude_builder.sh wrapper failed with the same
+      pattern observed on butterfly + cross_market_spread runs — the
+      wrapper's `"$(cat $PROMPT_FILE)"` argv expansion stalled the bash
+      shell without spawning `claude --print` (wrapper PID 1247467 alive
+      but no claude child after 23s; log 0 bytes).  Even at 50857 bytes
+      (well below documented MAX_ARG_STRLEN 131072) the wrapper bug
+      reproduces.  Killed wrapper PIDs 1247462 / 1247467 cleanly.
+
+      Re-dispatched via documented stdin workaround:
+        nohup bash -c 'claude --print --model opus --effort xhigh \
+          --permission-mode bypassPermissions \
+          < /tmp/builder_prompt_sovereign__scan_extremes__migrate_round1.md \
+          2>&1 | tee /tmp/claude_frontend_builder_run_sovereign__scan_extremes__migrate_round1.log'
+      Builder claude PID 1248009 spawned 17:16Z (parent shell PID 1248008,
+      wrapper PID 1248003).  Log path
+        /tmp/claude_frontend_builder_run_sovereign__scan_extremes__migrate_round1.log.
+      Branch verified frontend_automation before dispatch.
+
+      Runtime state set this wake (post-dispatch):
+        current_tool: sovereign__scan_extremes__migrate
+        current_tool_backend_name: scan_extremes_tool
+        current_step: builder_dispatched
+        dispatch_round: 1
+        last_dispatch_at: 2026-06-10T17:09:00Z (updated to 17:16Z post-stdin-redispatch)
+        last_successful_tool: sovereign__cross_market_spread__migrate
+        last_successful_commit: c0bf1ee
+        last_reviewer_heading: APPROVED-AFTER-FIX
+        last_gate_result: pass
+        last_stop_reason: tool_35_scan_extremes_migration_round1_builder_dispatched
+        done: 34 / blocked: 0 / remaining: 1
+
+      Stopping wake cleanly per BACKGROUND_EXECUTION_POLICY (long-running
+      builder is in-flight; next cron wake will pick up Round 1 completion
+      and advance to Round 2 reviewer).  Expected Round 1 duration ~15-30
+      min based on prior migration tools.
+
+      Special considerations for tool 35 (per catalog design_guardrails):
+        - Scanner shape (top-N ranked list + sparklines + threshold strip),
+          reference module scan_inflation_swaps_extremes_tool (already
+          shipped at v24 of surface_contract.md).
+        - PRESERVE manifest_typed_view tier — backend _PRIMITIVE_SPECS does
+          NOT contain scan_extremes_tool; MIGRATION_RULES §8 anti-pattern
+          forbids swapping to generic_runnable.  This puts tool 35 in the
+          SAME category as butterfly (preserve manifest_typed_view) NOT
+          yield_levels (swap to generic_runnable).
+        - PRESERVE ScannerWidget (id 'scanner', non-parameterized).
+        - DELETE surfaces/ResultRenderer.tsx (7312B).
+        - REUSE existing typed-detail endpoint at /api/v1/rates/detail/scanner
+          (or wherever the existing scanner route lives — builder to verify).
+        - Remove workspaceLabel + unsupportedReason block (catalog says
+          remove unsupportedReason — BUT note that __test-utils.ts:263-288
+          invariant 8 mandates unsupportedReason whenever manifest_typed_view
+          tier is claimed; the reviewer flagged this conflict on butterfly
+          and the builder RETAINED unsupportedReason with refreshed copy.
+          The same pattern may be required here — catalog design_guardrail
+          may be in tension with __test-utils.ts invariant 8.  Reviewer will
+          adjudicate.)
+
   - at: "2026-06-10T17:08:00Z"
     kind: tool_34_cross_market_spread_migration_approved_after_fix_shipped
     text: |
@@ -7878,3 +7966,20 @@ status_notes:
       needs its own classifier-shell design pass.
 
       Counters: done:28  blocked:0  remaining:7.
+
+  - at: "2026-06-10T17:20:00Z"
+    kind: tool_35_recovery_after_account_switch
+    text: |
+      Tool 35 (scan_extremes migration) was builder_dispatched at 17:09Z
+      on the OLD claude account.  The old account hit its 5-hour quota
+      limit mid-dispatch; the builder log captured only the literal
+      provider error (45 bytes; quota limit reset 8:30pm UTC).
+
+      Human switched accounts; the orchestrator process that woke 5min
+      after dispatch (PID 1252822) was killed cleanly.  No orphan watchers.
+
+      State reset: ready_to_dispatch, dispatch_round 0.  Catalog tool 35
+      status stays todo (was never flipped to in_progress).  Counters:
+      done:34 blocked:0 remaining:1.
+
+      Next wake retries tool 35 cleanly on the new account quota.
