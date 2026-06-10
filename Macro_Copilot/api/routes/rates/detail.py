@@ -564,6 +564,12 @@ from rates_agent.policy_futures.tools.futures_pack_average_simple import (
     FuturesPackAverageSimpleOutput,
     calculate_futures_pack_average_simple,
 )
+from rates_agent.sovereign_bonds.tools.otr_ofr_spread import (
+    CONFIG_PATH as OTR_OFR_SPREAD_CONFIG_PATH,
+    OtrOfrSpreadInput,
+    OtrOfrSpreadOutput,
+    calculate_otr_ofr_spread,
+)
 from rates_agent.sovereign_bonds.tools.zscore_custom import (
     CONFIG_PATH as ZSCORE_CUSTOM_CONFIG_PATH,
     ZscoreCustomInput,
@@ -4639,3 +4645,88 @@ def financing_rate_detail(
         time_series=time_series,
         methodology_disclosure=methodology_disclosure,
     )
+
+
+# ----------------------------------------------------------------------------
+# /detail/otr-ofr-spread — sovereign cash-bond OTR/OFR yield-spread bridge
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# otr_ofr_spread primitive ships its OWN typed-detail endpoint.  Single-
+# slot primitive — one (country, tenor) sovereign cash-bond OTR vs first-
+# off-the-run yield spread (e.g. US 10Y OTR/OFR).  Sign convention
+# POSITIVE = OTR yield ABOVE OFR (OTR cheap to OFR — inverted-liquidity-
+# premium signature); typical signature is NEGATIVE (OTR rich, freshly
+# auctioned premium).  The same payload feeds BOTH the extended and
+# compact Build views and the Monitor tile (rendering_density.md §10).
+# Rolling-z-score conventions are YAML-locked (no input-layer overrides);
+# only ``lookback_days`` + ``field_name`` are exposed.
+# ============================================================================
+@router.get(
+    "/detail/otr-ofr-spread",
+    response_model=OtrOfrSpreadOutput,
+    summary="Sovereign OTR/OFR Yield Spread Detail (standalone bridge)",
+)
+def otr_ofr_spread_detail(
+    engine: Engine = Depends(get_engine),
+    country: str = Query(
+        ...,
+        description=(
+            "Sovereign country code as stored in macro_data.otr_history.  "
+            "Convention: uppercase ISO-3166-alpha-2 — e.g. 'US', 'DE', "
+            "'GB', 'JP', 'FR', 'IT', 'ES', 'CA', 'AU'."
+        ),
+    ),
+    tenor: str = Query(
+        ...,
+        description=(
+            "Canonical slot tenor as stored in macro_data.otr_history.  "
+            "Convention: integer-Y matching sovereign_cash_bonds.yml — "
+            "'2Y', '3Y', '5Y', '7Y', '10Y', '20Y', '30Y'."
+        ),
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg observation field for the cash-bond yield.  Omit "
+            "(None) to use the tool's bundled ``default_field_name`` "
+            "convention (currently 'YLD_YTM_MID')."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the frontend
+    module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
+    AND the Monitor widget per the rendering-density dual-view + monitor
+    contract.
+
+    The OTR/OFR spread primitive intentionally does NOT expose the z-score
+    conventions at its Input layer — its rolling-z-score conventions are
+    sourced from the YAML at compute() time only.  Mirrors the sibling
+    curve_spread / cross_country_real_yield_spread bridges.
+    """
+    try:
+        params = OtrOfrSpreadInput(
+            country=country,
+            tenor=tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        otr_config = load_tool_config(OTR_OFR_SPREAD_CONFIG_PATH)
+        result = calculate_otr_ofr_spread(
+            engine=engine, params=params, config=otr_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/otr-ofr-spread: tool failed for %s %s",
+            country, tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result, f"OTR/OFR spread for {country} {tenor}",
+    )
+    return result

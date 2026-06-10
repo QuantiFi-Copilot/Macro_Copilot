@@ -2,21 +2,21 @@ version: '1.0'
 branch: frontend_automation
 backend: claude-cli
 orchestrator_status: processing
-current_tool: inflation_indexed_bonds__cross_country_real_yield_spread
-current_tool_backend_name: calculate_cross_country_real_yield_spread_simple_tool
+current_tool: sovereign__otr_ofr_spread
+current_tool_backend_name: calculate_otr_ofr_spread_tool
 current_step: committed
 dispatch_round: 2
-last_dispatch_at: "2026-06-10T05:36:00Z"
-last_successful_tool: inflation_indexed_bonds__cross_country_real_yield_spread
+last_dispatch_at: "2026-06-10T06:38:00Z"
+last_successful_tool: sovereign__otr_ofr_spread
 last_successful_commit: PENDING_COMMIT
 last_reviewer_heading: APPROVED
 last_gate_result: pass
-last_stop_reason: tool_29_shipped_advancing
+last_stop_reason: tool_30_shipped_advancing
 last_error: null
-last_updated: "2026-06-10T06:12:00Z"
-done: 29
+last_updated: "2026-06-10T06:55:00Z"
+done: 30
 blocked: 0
-remaining: 6
+remaining: 5
 catalog_exhausted_at: null
 human_required: null
 quota_state: live
@@ -46,6 +46,54 @@ reviewer_mode_history:
       dispatch triggers a clean waiting_quota stop; the next cron wake
       retries.
 status_notes:
+  - at: "2026-06-10T06:55:00Z"
+    kind: tool_30_shipped_otr_ofr_spread
+    text: |
+      Tool 30 / 35 (sovereign__otr_ofr_spread / calculate_otr_ofr_spread_tool)
+      shipped this wake.  Continuation of the mid-flight run begun at
+      06:38Z (reviewer dispatched).
+
+      Reviewer Round 2 emitted bare APPROVED with no blocking findings;
+      verification scorecard green across dual-view contract, mockup
+      conformance (with documented backend-constraint deviation for
+      Auction Context — Pydantic OtrOfrSpreadOutput has no
+      effective_from / auction-date field and TD #27b makes the
+      resolver's effective_from an unsafe proxy), standalone bridge,
+      FM1–FM12, methodology honesty, and shared cross-surface helper.
+
+      Pre-commit gate re-run by the orchestrator:
+        - npm run test:modules → calculate_otr_ofr_spread_tool: 8 passed
+          0 failed; full suite all module + registry tests passed
+        - npm run test:build → all build-folder tests passed
+        - npm run typecheck → tsc -p tsconfig.app.json --noEmit clean
+
+      Mirrors:
+        - docs_revamped/02_components/surface_contract.md §4.1 row
+          updated (build_archetype: generic-builder → dual-view-bridge;
+          build_status: scaffolded → dual-view-built; monitor_status:
+          deferred → built (OtrOfrSpreadWidget)) — closes the final
+          v2 containment-violation remediation (OTR-OFR monitor surface
+          restored under the bridge contract)
+        - §11 changelog v37 entry appended
+        - graphify update skipped (not on PATH on this VM)
+
+      Catalog mutations bundled into this commit:
+        - sovereign__otr_ofr_spread: status todo → done,
+          last_review_heading APPROVED, last_gate_result pass,
+          commit_sha PENDING_COMMIT (backfilled in follow-up)
+        - backfill of prior tool's commit_sha:
+          inflation_indexed_bonds__cross_country_real_yield_spread
+          (PENDING_COMMIT → c593072)
+
+      Catalog state post-ship: 30 done / 0 blocked / 5 remaining.
+      Next eligible by selection order (first in_progress → first
+      changes_required → first waiting_quota → first todo):
+      sovereign__curve_spread__migrate (build_order 31, build_mode
+      migration).
+
+      Continuing the catalog loop per ORCHESTRATOR_PROMPT §"Required
+      loop".
+
   - at: "2026-06-08T19:22:00Z"
     kind: wake_catalog_exhausted_clean_short_circuit_31st_fire
     text: |

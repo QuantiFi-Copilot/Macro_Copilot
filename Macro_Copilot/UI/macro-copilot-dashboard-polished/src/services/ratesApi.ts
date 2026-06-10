@@ -46,6 +46,7 @@ import type {
   CrossCountryBreakevenSpreadSimpleOutput,
   CrossCountryRealYieldSpreadSimpleOutput,
   FinancingRateDetailResponse,
+  OtrOfrSpreadOutput,
 } from '@/types/rates';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
@@ -1156,5 +1157,32 @@ export function fetchDetailFinancingRate(
 ): Promise<FinancingRateDetailResponse> {
   return fetchJSON(
     `${RATES_PREFIX}/detail/financing-rate${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/otr-ofr-spread  — sovereign cash-bond OTR/OFR yield-spread bridge
+// ---------------------------------------------------------------------------
+// On-the-run vs first-off-the-run yield spread for one (country, tenor)
+// sovereign cash-bond slot (e.g. US 10Y OTR/OFR).  Own typed helper per the
+// standalone-bridge contract; consumed by BOTH Build views and the Monitor
+// tile.  Sign convention POSITIVE = OTR yield ABOVE OFR (OTR cheap to OFR —
+// the inverted-liquidity-premium signature); typical signature is NEGATIVE
+// (OTR rich, freshly auctioned premium).  Rolling-z-score conventions are
+// YAML-locked on this primitive (no input-layer overrides); only structural
+// (country, tenor) plus ``lookback_days`` + ``field_name`` are exposed.
+
+export type OtrOfrSpreadDetailParams = {
+  country: string;
+  tenor: string;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailOtrOfrSpread(
+  params: OtrOfrSpreadDetailParams,
+): Promise<OtrOfrSpreadOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/otr-ofr-spread${buildQuery(params)}`,
   );
 }

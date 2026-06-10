@@ -1433,7 +1433,7 @@ tools:
     human_action_required: false
     last_review_heading: APPROVED
     last_gate_result: pass
-    commit_sha: PENDING_COMMIT
+    commit_sha: c593072
     build_order: 29
     backend_tool_name: calculate_cross_country_real_yield_spread_simple_tool
     instrument_family: inflation_indexed_bonds
@@ -1466,11 +1466,12 @@ tools:
       - "Per Option (c) shell-density precedent: keep shell-standard density on Compact (3 KPIs, single identity); document any deviation in THESIS"
 
   - id: sovereign__otr_ofr_spread
-    status: todo
+    status: done
     build_mode: new_build
     human_action_required: false
-    last_review_heading: null
-    last_gate_result: not_run
+    last_review_heading: APPROVED
+    last_gate_result: pass
+    commit_sha: PENDING_COMMIT
     build_order: 30
     backend_tool_name: calculate_otr_ofr_spread_tool
     instrument_family: sovereign_bonds

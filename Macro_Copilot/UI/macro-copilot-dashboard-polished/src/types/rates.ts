@@ -2904,3 +2904,117 @@ export type FinancingRateDetailResponse = {
   methodology_disclosure: string;
 };
 
+// --- /detail/otr-ofr-spread (standalone bridge, sovereign cash-bond) ---
+//
+// Mirrors rates_agent/sovereign_bonds/tools/otr_ofr_spread/schemas.py
+// (OtrOfrSpreadOutput / OtrOfrSpreadCurrentMetrics / OtrOfrSpreadTimeSeriesRow).
+// Per the methodology-exposure standalone-bridge contract
+// (docs_revamped/03_standards/methodology_exposure.md §5) this tool ships
+// its OWN typed-detail endpoint at /api/v1/rates/detail/otr-ofr-spread and
+// its OWN frontend type.
+//
+// Object shape: single-slot OTR/OFR yield spread for one (country, tenor)
+// sovereign cash-bond slot.  spread_bps = (otr_yield - ofr_yield) × 100,
+// sign convention POSITIVE = OTR yield ABOVE OFR = OTR trading CHEAP to
+// OFR (the inverted-liquidity-premium signature).  The typical signature
+// is NEGATIVE = OTR rich (newly auctioned bond commands a liquidity
+// premium / trades at a tighter yield).
+//
+// Honest-absence shape (per backend P5 + P6): when the resolver has not
+// yet observed a slot's prior SCD2 window (the slot's very first observed
+// window), ``ofr_*`` identity fields AND ``ofr_yield_pct`` are null on
+// the wire — render N/A / em-dash, never fabricate.
+//
+// Wire-honesty quirk: ``methodology_note`` lives on the TOP-LEVEL Output
+// (NOT on current_metrics) — mirrors the financing-rate pattern
+// (data.methodology_disclosure), NOT the breakeven-spread pattern
+// (cm.methodology_label).  Surfaces TD #27 forward-only + detection-date
+// disclosure verbatim on all three surfaces.
+
+export type OtrOfrSpreadCurrentMetrics = {
+  as_of_date: string;
+  /** Uppercase ISO-3166-alpha-2 (or alpha-3) sovereign country code as
+   *  stored in macro_data.otr_history (e.g. 'US', 'DE', 'GB', 'JP',
+   *  'FR', 'IT', 'ES', 'CA', 'AU'). */
+  country: string;
+  /** Integer-Y canonical slot tenor (e.g. '2Y', '5Y', '10Y', '30Y'). */
+  tenor: string;
+  /** Human-readable slot label, e.g. 'US 10Y OTR/OFR'. */
+  slot_label: string;
+  /** (otr_yield - ofr_yield) × 100 at the as_of_date, in bps.  Sign
+   *  convention POSITIVE = OTR yield ABOVE OFR (OTR cheap to OFR —
+   *  inverted-liquidity signature).  NEGATIVE = OTR rich (typical
+   *  signature).  None when the slot's most recent window has no prior
+   *  OFR observation (honest absence). */
+  current_spread_bps: number | null;
+  /** 1-day change in the OTR/OFR spread (bps). */
+  daily_change_bps: number | null;
+  /** Rolling z-score of the spread vs its own trailing 252-trading-day
+   *  window.  None during the rolling-window warmup. */
+  current_z_score: number | null;
+  /** Window used for the z-score calculation (matches config convention
+   *  z_score_window_days — wire-frozen at 252). */
+  rolling_window_days: number;
+  /** Highest OTR/OFR spread (bps) over trailing 252 trading days. */
+  high_252d_bps: number | null;
+  /** Lowest OTR/OFR spread (bps) over trailing 252 trading days. */
+  low_252d_bps: number | null;
+  /** Percentile rank of the current spread within its trailing 252d
+   *  range (0-100).  0 = at-or-below low, 100 = at-or-above high. */
+  percentile_252d: number | null;
+  /** OTR bond yield at the as_of_date (PERCENT).  Decomposition leg A. */
+  otr_yield_pct: number | null;
+  /** OFR bond yield at the as_of_date (PERCENT).  Decomposition leg B.
+   *  None when no prior SCD2 window exists for the slot, or the prior
+   *  bond has no observation that date — honest absence. */
+  ofr_yield_pct: number | null;
+  /** OTR bond identifiers at the as_of_date.  CUSIP is NULL for non-US
+   *  sovereigns whose instrument_master row carries ISIN only. */
+  otr_instrument_id: number | null;
+  otr_cusip: string | null;
+  otr_isin: string | null;
+  otr_vendor_ticker: string | null;
+  /** OFR bond identifiers — null on the slot's first observed window
+   *  (no prior SCD2 window yet).  Honest absence, never fabricated. */
+  ofr_instrument_id: number | null;
+  ofr_cusip: string | null;
+  ofr_isin: string | null;
+  ofr_vendor_ticker: string | null;
+  /** Count of trading-day observations in the display time series. */
+  observation_count: number;
+};
+
+/** Bespoke wire-frozen OTR/OFR spread time-series row.  ``spread_bps`` is
+ *  null on dates where the OFR bond has no observation (the slot's first
+ *  observed window has no prior, or the prior bond has dropped out of
+ *  market_data_daily). */
+export type OtrOfrSpreadTimeSeriesRow = {
+  date: string;
+  spread_bps: number | null;
+  z_score: number | null;
+  otr_yield_pct: number | null;
+  ofr_yield_pct: number | null;
+};
+
+export type OtrOfrSpreadOutput = {
+  current_metrics: OtrOfrSpreadCurrentMetrics;
+  /** Bespoke wire-frozen history (spread + z + per-leg yields per row). */
+  time_series: OtrOfrSpreadTimeSeriesRow[];
+  /** Canonical historical OTR/OFR spread series.  Closed-enum
+   *  TimeSeriesUnits.BPS; series_name pattern
+   *  '<country_lower>_<tenor_lower>_otr_ofr_spread'.  Values match
+   *  time_series[i].spread_bps 1-to-1 by construction. */
+  time_series_spread: TimeSeries;
+  /** Canonical historical rolling z-score series.  Closed-enum
+   *  TimeSeriesUnits.Z_SCORE.  Values match time_series[i].z_score
+   *  1-to-1 (null for rows in the rolling-window warmup). */
+  time_series_zscore: TimeSeries;
+  /** Wire-honesty disclosure threaded from the resolver's TD #27
+   *  forward-only + detection-date limits.  Lives on the TOP-LEVEL
+   *  Output (NOT on current_metrics — mirrors the financing-rate
+   *  pattern).  Surfaced verbatim on the Extended methodology card +
+   *  Compact caveat footer + Monitor widget tooltip.  Sourced from the
+   *  resolver/config at runtime; NOT a hardcoded TS literal. */
+  methodology_note: string;
+};
+
