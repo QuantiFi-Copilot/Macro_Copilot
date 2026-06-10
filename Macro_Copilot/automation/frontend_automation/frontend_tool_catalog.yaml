@@ -1428,11 +1428,12 @@ tools:
 
 
   - id: inflation_indexed_bonds__cross_country_real_yield_spread
-    status: todo
+    status: done
     build_mode: new_build
     human_action_required: false
-    last_review_heading: null
-    last_gate_result: not_run
+    last_review_heading: APPROVED
+    last_gate_result: pass
+    commit_sha: PENDING_COMMIT
     build_order: 29
     backend_tool_name: calculate_cross_country_real_yield_spread_simple_tool
     instrument_family: inflation_indexed_bonds

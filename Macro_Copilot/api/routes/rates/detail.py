@@ -157,6 +157,33 @@ from rates_agent.inflation_indexed_bonds.tools.cross_country_breakeven_spread_si
     CrossCountryBreakevenSpreadSimpleOutput,
     calculate_cross_country_breakeven_spread_simple,
 )
+# Standalone-bridge endpoint for the same-tenor cross-country linker REAL-
+# YIELD spread primitive (e.g. USD_TIPS 10Y real yield minus GBP_LINKER 10Y
+# real yield).  Two-curve, single-tenor primitive; each leg is a sovereign
+# linker real-yield level at the shared tenor.  Per
+# ``docs_revamped/03_standards/methodology_exposure.md §5`` every new tool
+# ships its OWN typed-detail endpoint consumed by both the extended and
+# compact Build views (rendering_density dual-view) + the Monitor tile.
+# Cross-country invariant (first_curve_family != second_curve_family)
+# enforced by the Pydantic schema layer; both-legs-must-be-linker invariant
+# enforced at compute time against macro_data.instrument_master.  Output is
+# a SPREAD — ships in PERCENT (real yields are quoted in PERCENT, NOT BPS;
+# this is the key shape delta from the sibling cross-country BREAKEVEN
+# spread which ships in BPS).  Daily / weekly / monthly *changes* are
+# reported in BPS per desk convention.  Sign convention POSITIVE = first
+# curve real yield > second curve real yield; wire-locked.  Surfaces the
+# LOAD-BEARING index-family AND market-structure mismatch caveats (CPI-U /
+# RPI / HICPxT / Canada CPI; cross-country linker liquidity / issuance-
+# size differences) via ``current_metrics.methodology_label`` (sourced
+# from YAML at runtime, NOT a hardcoded Python literal).  Rolling-z-score
+# conventions are YAML-locked — only ``lookback_days`` + ``field_name`` are
+# exposed at the API layer.
+from rates_agent.inflation_indexed_bonds.tools.cross_country_real_yield_spread_simple import (
+    CONFIG_PATH as CROSS_COUNTRY_REAL_YIELD_SPREAD_SIMPLE_CONFIG_PATH,
+    CrossCountryRealYieldSpreadSimpleInput,
+    CrossCountryRealYieldSpreadSimpleOutput,
+    calculate_cross_country_real_yield_spread_simple,
+)
 # Standalone-bridge endpoint for the same-tenor cross-market ZCIS spread
 # primitive (e.g. USD_ZCIS 5Y minus EUR_ZCIS 5Y).  First inflation_swaps tool
 # under the standalone-bridge contract — per
@@ -4207,6 +4234,112 @@ def cross_country_breakeven_spread_detail(
             f"Cross-country breakeven spread for "
             f"{country_a_nominal_pair}/{country_a_linker_pair} - "
             f"{country_b_nominal_pair}/{country_b_linker_pair} {tenor}"
+        ),
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/cross-country-real-yield-spread — same-tenor cross-country
+# linker REAL-YIELD differential bridge
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# cross_country_real_yield_spread_simple primitive ships its OWN typed-
+# detail endpoint.  Two-curve, single-tenor primitive — each leg is a
+# sovereign linker real-yield level at the shared tenor (e.g. USD_TIPS 10Y
+# real yield minus GBP_LINKER 10Y real yield).  Schema layer rejects
+# ``first_curve_family == second_curve_family``; for same-country curve-
+# shape work, see /detail/real-yield-curve-spread.  The same payload feeds
+# BOTH the extended and compact Build views and the Monitor tile
+# (rendering_density.md §10).  Rolling-z-score conventions are YAML-locked
+# (no input-layer overrides); only ``lookback_days`` + ``field_name`` are
+# exposed.  Spread units are PERCENT (real yields are quoted in PERCENT —
+# NOT BPS); daily / weekly / monthly *changes* are BPS per desk convention.
+# ============================================================================
+@router.get(
+    "/detail/cross-country-real-yield-spread",
+    response_model=CrossCountryRealYieldSpreadSimpleOutput,
+    summary="Cross-Country Linker Real-Yield Spread Detail (standalone bridge)",
+)
+def cross_country_real_yield_spread_detail(
+    engine: Engine = Depends(get_engine),
+    first_curve_family: str = Query(
+        ...,
+        description=(
+            "First linker curve family identifier (e.g. 'USD_TIPS', "
+            "'GBP_LINKER', 'EUR_FR_LINKER', 'CAD_RRB').  Must differ "
+            "from second_curve_family (cross-country invariant)."
+        ),
+    ),
+    second_curve_family: str = Query(
+        ...,
+        description=(
+            "Second linker curve family identifier.  Must differ from "
+            "first_curve_family.  Sign convention is first_curve_family "
+            "minus second_curve_family — fixed; the tool never silently "
+            "flips the sign."
+        ),
+    ),
+    tenor: str = Query(
+        ...,
+        description=(
+            "Single tenor pillar applied to BOTH linker legs (e.g. "
+            "'5Y', '10Y', '30Y').  Cross-country real-yield spread is "
+            "evaluated at the same tenor on each side."
+        ),
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg observation field used for BOTH endpoint real-"
+            "yield series (first_curve at tenor, second_curve at tenor).  "
+            "Omit (None) to use the tool's bundled ``default_field_name`` "
+            "convention (currently 'YLD_YTM_MID')."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the frontend
+    module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
+    AND the Monitor widget per the rendering-density dual-view + monitor
+    contract.
+
+    The cross-country real-yield spread primitive intentionally does NOT
+    expose the z-score conventions at its Input layer — its rolling-
+    z-score conventions are sourced from the YAML at compute() time only.
+    Mirrors the sibling cross_country_breakeven_spread_simple bridge.
+    """
+    try:
+        params = CrossCountryRealYieldSpreadSimpleInput(
+            first_curve_family=first_curve_family,
+            second_curve_family=second_curve_family,
+            tenor=tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        xcry_config = load_tool_config(
+            CROSS_COUNTRY_REAL_YIELD_SPREAD_SIMPLE_CONFIG_PATH,
+        )
+        result = calculate_cross_country_real_yield_spread_simple(
+            engine=engine, params=params, config=xcry_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/cross-country-real-yield-spread: tool failed for "
+            "%s - %s %s",
+            first_curve_family, second_curve_family, tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        (
+            f"Cross-country real-yield spread for "
+            f"{first_curve_family} - {second_curve_family} {tenor}"
         ),
     )
     return result

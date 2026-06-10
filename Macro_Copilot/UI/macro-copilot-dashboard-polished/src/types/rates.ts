@@ -2711,6 +2711,128 @@ export type CrossCountryBreakevenSpreadSimpleOutput = {
   time_series_zscore: TimeSeries;
 };
 
+// --- /detail/cross-country-real-yield-spread (standalone bridge) ---
+//
+// Mirrors rates_agent/inflation_indexed_bonds/tools/cross_country_real_yield_spread_simple/schemas.py
+// (CrossCountryRealYieldSpreadSimpleOutput / CrossCountryRealYieldSpreadSimpleCurrentMetrics /
+// CrossCountryRealYieldSpreadSimpleTimeSeriesRow).  Per the methodology-
+// exposure standalone-bridge contract (docs_revamped/03_standards/
+// methodology_exposure.md §5) this tool ships its OWN typed-detail endpoint
+// at /api/v1/rates/detail/cross-country-real-yield-spread and its OWN
+// frontend type — distinct from the sibling cross-country BREAKEVEN spread
+// (which differences two nominal-minus-linker breakevens — inflation
+// compensation, BPS units) and the same-country curve-shape real-yield
+// curve spread.
+//
+// CRITICAL SHAPE DELTA from the breakeven sibling: the cross-country REAL-
+// YIELD spread is in PERCENT (not BPS).  Real yields are quoted in PERCENT
+// so a difference of two real-yield levels stays in PERCENT.  Daily /
+// weekly / monthly *changes* are in BPS per desk convention (change of a
+// percent-units spread reported in bps).  The LOAD-BEARING index-family
+// AND market-structure mismatch caveats (CPI-U vs HICP vs RPI vs Canada
+// CPI; cross-country linker-liquidity / issuance-size differences) surface
+// verbatim via ``current_metrics.methodology_label`` (sourced from YAML at
+// runtime, NOT a hardcoded TS literal).
+
+export type CrossCountryRealYieldSpreadSimpleCurrentMetrics = {
+  as_of_date: string;
+  /** First linker curve family (e.g. 'USD_TIPS', 'GBP_LINKER',
+   *  'EUR_FR_LINKER', 'CAD_RRB'). */
+  first_curve_family: string;
+  /** Second linker curve family.  Must differ from first_curve_family
+   *  (cross-country invariant). */
+  second_curve_family: string;
+  /** Single tenor pillar applied to BOTH curves (e.g. '5Y', '10Y', '30Y'). */
+  tenor: string;
+  /** Year fraction of ``tenor`` (e.g. 10.0 for '10Y'). */
+  tenor_years: number;
+  /** Human-readable label, e.g.
+   *  'USD_TIPS - GBP_LINKER 10Y XC real-yield'. */
+  spread_label: string;
+  /** Current cross-country real-yield spread in PERCENT
+   *  (first_curve_real_yield_pct - second_curve_real_yield_pct).  Cross-
+   *  country REAL-RATE differential — distinct from a cross-country
+   *  breakeven differential (inflation compensation) and from a sovereign
+   *  nominal cross-market spread (nominal-yield divergence).  Subject to
+   *  index-family AND market-structure mismatch caveats — see
+   *  methodology_label. */
+  current_spread_pct: number | null;
+  /** 1-trading-day change of the cross-country real-yield spread (BPS).
+   *  Daily change of a percent-units spread is reported in bps per desk
+   *  convention. */
+  daily_change_bps: number | null;
+  /** 5-trading-day change of the spread (BPS). */
+  weekly_change_bps: number | null;
+  /** 22-trading-day (~1 month) change of the spread (BPS). */
+  monthly_change_bps: number | null;
+  /** Rolling 252-trading-day z-score of the percent-units spread.
+   *  YAML-locked on this primitive (no input-layer overrides). */
+  current_z_score: number | null;
+  rolling_window_days: number;
+  /** Highest cross-country real-yield spread over trailing 252 trading
+   *  days (PERCENT — NOT BPS; the schema field name embeds the units). */
+  high_252d_pct: number | null;
+  /** Lowest cross-country real-yield spread over trailing 252 trading
+   *  days (PERCENT). */
+  low_252d_pct: number | null;
+  /** Percentile rank within trailing 252-day range (0-100). */
+  percentile_252d: number | null;
+  /** Latest first_curve real yield (PERCENT) at ``tenor`` — exposed so
+   *  the desk can audit the cross-country spread decomposition end-to-end
+   *  without a second tool call. */
+  first_curve_real_yield_pct: number | null;
+  /** Latest second_curve real yield (PERCENT) at ``tenor``. */
+  second_curve_real_yield_pct: number | null;
+  /** Country identifier resolved from instrument_master for
+   *  first_curve_family (e.g. 'US', 'UK', 'France', 'Canada'). */
+  first_curve_country: string;
+  /** Currency identifier resolved from instrument_master for
+   *  first_curve_family (e.g. 'USD', 'GBP', 'EUR', 'CAD'). */
+  first_curve_currency: string;
+  /** Country identifier resolved from instrument_master for
+   *  second_curve_family. */
+  second_curve_country: string;
+  /** Currency identifier resolved from instrument_master for
+   *  second_curve_family. */
+  second_curve_currency: string;
+  /** Wire-honesty disclosure threaded from
+   *  config.yaml:methodology.what_it_does.  Carries the explicit spread
+   *  formula (first_curve_real_yield_pct - second_curve_real_yield_pct),
+   *  the sign convention (first minus second), the index-family mismatch
+   *  caveat (CPI-U vs HICP vs RPI vs CAN_CPI), AND the market-structure
+   *  mismatch caveat (cross-country linker-liquidity / issuance-size
+   *  differences).  Sourced from YAML at runtime; NOT a hardcoded TS
+   *  literal. */
+  methodology_label: string;
+};
+
+/** Bespoke wire-frozen cross-country real-yield-spread time-series row. */
+export type CrossCountryRealYieldSpreadSimpleTimeSeriesRow = {
+  date: string;
+  /** Cross-country real-yield spread in PERCENT (not bps). */
+  spread_pct: number;
+  /** Rolling z-score (None for rows in the rolling-window warmup). */
+  z_score: number | null;
+};
+
+export type CrossCountryRealYieldSpreadSimpleOutput = {
+  current_metrics: CrossCountryRealYieldSpreadSimpleCurrentMetrics;
+  /** Bespoke wire-frozen history (spread pct + z-score per row). */
+  time_series: CrossCountryRealYieldSpreadSimpleTimeSeriesRow[];
+  /** Canonical historical cross-country real-yield-spread series.
+   *  Closed-enum TimeSeriesUnits.PERCENT — the spread is in PERCENT
+   *  because real yields are quoted in PERCENT (NOT BPS).  This is the
+   *  key shape delta from the cross-country BREAKEVEN spread sibling.
+   *  series_name pattern:
+   *  '<first>_<second>_<tenor>_xc_real_yield_spread'.  Values match
+   *  time_series[i].spread_pct 1-to-1 by construction. */
+  time_series_spread: TimeSeries;
+  /** Canonical historical rolling z-score series.  Closed-enum
+   *  TimeSeriesUnits.Z_SCORE.  Values match time_series[i].z_score
+   *  1-to-1 (None for rows in the rolling-window warmup). */
+  time_series_zscore: TimeSeries;
+};
+
 // --- /detail/financing-rate (standalone bridge, ROUTE-SIDE SYNTHESIS) ---
 //
 // FIRST-OF-ITS-KIND architectural deviation in this factory.  The backend

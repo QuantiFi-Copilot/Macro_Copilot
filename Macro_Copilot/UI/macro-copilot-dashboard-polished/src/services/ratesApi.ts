@@ -44,6 +44,7 @@ import type {
   FuturesCrossMarketSpreadOutput,
   FuturesPackAverageSimpleOutput,
   CrossCountryBreakevenSpreadSimpleOutput,
+  CrossCountryRealYieldSpreadSimpleOutput,
   FinancingRateDetailResponse,
 } from '@/types/rates';
 
@@ -1096,6 +1097,38 @@ export function fetchDetailCrossCountryBreakevenSpread(
 ): Promise<CrossCountryBreakevenSpreadSimpleOutput> {
   return fetchJSON(
     `${RATES_PREFIX}/detail/cross-country-breakeven-spread${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/cross-country-real-yield-spread  — same-tenor cross-country
+// linker REAL-YIELD differential bridge
+// ---------------------------------------------------------------------------
+// Two-curve, single-tenor primitive (e.g. USD_TIPS 10Y real yield minus
+// GBP_LINKER 10Y real yield).  Each leg is a sovereign linker real-yield
+// level at the shared tenor.  Sign convention POSITIVE = first_curve real
+// yield > second_curve real yield; wire-locked at first minus second.
+// Output spread is in PERCENT (not BPS — real yields are quoted in
+// PERCENT); daily / weekly / monthly *changes* are reported in BPS per
+// desk convention.  Own typed helper per the standalone-bridge contract;
+// consumed by BOTH Build views and the Monitor tile.  Cross-country
+// invariant enforced at the schema layer (first_curve_family !=
+// second_curve_family).  Rolling-z-score conventions are YAML-locked —
+// only ``lookback_days`` + ``field_name`` are exposed at the API layer.
+
+export type CrossCountryRealYieldSpreadDetailParams = {
+  first_curve_family: string;
+  second_curve_family: string;
+  tenor: string;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailCrossCountryRealYieldSpread(
+  params: CrossCountryRealYieldSpreadDetailParams,
+): Promise<CrossCountryRealYieldSpreadSimpleOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/cross-country-real-yield-spread${buildQuery(params)}`,
   );
 }
 
