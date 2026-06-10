@@ -1,0 +1,56 @@
+# FX Merge Playbook — 2026-06-10 (retargeted: `revamp` is the mainline)
+
+**Supersedes** `MERGE_PLAYBOOK_2026-05-28.md` (which targeted `build`). On 2026-06-10 Sacha confirmed: **`revamp` is the new mainline.** `build` has been frozen since 2026-05-26; everything below is re-measured against `origin/revamp`.
+
+Still a **planning doc, not an instruction to merge now.** Hard rules from the 05-28 playbook carry over unchanged: no merge without a coordinated window, no live rebase/force-push of any stack branch until ready to cascade the whole chain in one session, `revamp`/`build` never touched.
+
+---
+
+## 1. What changed on the mainline (verified 2026-06-10)
+
+- `origin/revamp`: **+195 commits over `build`**, **+266 over our stack base** (#178's branch point). Active daily.
+- **Frontend automation factory**: per-tool UI modules generated under `UI/.../src/modules/primitives/<tool_name>/` (THESIS.md · module.ts · surfaces/BuildCompact.tsx + BuildExtended.tsx + monitor/<X>Widget.tsx · mockups/ · __tests__/module.spec.ts), driven by `docs_revamped/02_components/{primitive,operator}/BUILD_GUIDE.md`, run by an automation loop (branch `frontend_automation`, merged in batches — ~28 rates tools done).
+- **Operator layer expanded BY SREERAM** on revamp: `rolling_zscore`, `percentile_rank`, `correlation`, `rolling_correlation`, `cointegration`, `rolling_statistic`, `convert_units` — all **Series→Series** per "OPR9: one Series in, one Series out (closed family)". (`construct/evaluate/summarize_trades` no longer present in operators/.)
+- **`fx_agent/` does not exist on revamp** → our backend territory is untouched.
+
+## 2. The (surprisingly good) conflict picture
+
+Conflict surface of `codex/fx-on-latest-build` (#178) vs **revamp** = **the SAME 8 files** as vs build:
+
+`orchestrator/{config,contracts,prompts,session}.py` · `UI/.../monitor/registry.ts` · `UI/.../monitor/WidgetRenderer.tsx` · `UI/.../types/library.ts` · `tests/conftest.py`
+
+Revamp's 370 UI file changes are **new files** (factory modules) — zero new overlap with our stack. Reproduce:
+```bash
+git fetch origin
+base=$(git merge-base origin/revamp origin/codex/fx-on-latest-build)
+comm -12 <(git diff --name-only "$base" origin/revamp | sort) \
+         <(git diff --name-only "$base" origin/codex/fx-on-latest-build | sort) | grep -v graphify-out
+```
+The cascade-rebase plan from 05-28 therefore stands, with `origin/revamp` substituted for `origin/build` everywhere. More commits to replay through (266), same 8-file resolution surface.
+
+## 3. Per-PR verdicts under the new mainline
+
+| PRs | Verdict |
+|---|---|
+| **#178 → #240** (stack: data + 30 tools) | **Fully valid.** `fx_agent/` is new-file territory; rebase target becomes revamp. |
+| **#241 `rolling_zscore_panel`** | **Likely obsolete.** Sreeram's `rolling_zscore` (Series→Series) is canonical on revamp; a panel variant is reproducible by composition (map over columns) → fails his promotion rule. Recommend: close in favor of his, after his confirmation. |
+| **#242 `cross_sectional_rank`** | **Different operation, undecided.** His `percentile_rank` ranks a value within its own trailing history (time axis); ours ranks ACROSS columns at each date (cross-section). Not a duplicate — but our Panel→Panel shape may not fit his OPR9 Series-closed-family rules. His call: keep/reshape (SeriesSet input?)/absorb into his factory. |
+| **#243 (UI polish) / #244 (Wave 2 widgets)** | **Pattern question.** Monitor widget core (registry/renderer) is unchanged on revamp, so they still apply technically — but his factory now generates per-tool modules including monitor widgets. FX UI should probably be REDONE through his factory post-merge (BUILD_GUIDE stages) rather than merged as hand-built widgets. Keep both PRs as reference/spec; expect to supersede. |
+| Planning docs (INVENTORY, PLAYBOOKs, BACKLOG) | Valid; this doc supersedes the 05-28 playbook. |
+
+## 4. Recommended sequence when the window opens
+
+1. **Align with Sreeram first** (see ping below): confirm rebase target = revamp; fate of #241/#242; FX frontend via his factory.
+2. **Throwaway dry-run**: rebase a copy of #178's branch onto `origin/revamp`, document the 8 resolutions, delete the branch. No force-push.
+3. **Cascade-rebase the stack bottom-up in ONE session** (#178 → … → #240 (+#243/#244 if kept)), force-with-lease each, re-run the FX suites.
+4. **Merge bottom-up** into revamp. Close #241 (and possibly #242) instead of merging.
+5. **Post-merge**: re-ingest FX data in the target env (the 695 instruments / 9.15M rows live in the local dev DB; OIS 1.14M rows were local-only), run his frontend factory over the FX tools, then resume the tools backlog (`FX_TOOLS_BACKLOG_2026-05-28.md` — fully valid, fx_agent untouched).
+
+## 5. Sreeram ping (3 questions, evidence-backed)
+
+> 1. **Mainline**: confirming we rebase the FX stack (#178→#244) onto `revamp` — measured the conflict surface, it's the same 8 files as vs build (orchestrator ×4, monitor registry/renderer, library types, conftest); fx_agent is all new files.
+> 2. **Operators**: you shipped `rolling_zscore` + `percentile_rank` (Series→Series, OPR9) on revamp — I close our #241 `rolling_zscore_panel` in favor of yours? And #242 `cross_sectional_rank` (ranks across columns per date — different op from percentile_rank): want it reshaped to your OPR rules, or absorbed into your roadmap?
+> 3. **FX frontend**: should FX UI go through your frontend_automation factory (BUILD_GUIDE modules) post-merge instead of our hand-built monitor widgets (#243/#244)? Happy to treat ours as spec/reference for the factory run.
+
+## 6. Refresh
+Re-run §2's command + re-check `git rev-list --count origin/codex/fx-on-latest-build..origin/revamp`; update verdicts; bump filename date.
