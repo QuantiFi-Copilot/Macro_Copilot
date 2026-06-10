@@ -1997,6 +1997,15 @@ export type ButterflyTimeSeriesRow = {
 export type ButterflyOutput = {
   current_metrics: ButterflyCurrentMetrics;
   time_series: ButterflyTimeSeriesRow[];
+  /** Canonical TimeSeriesUnits.BPS series of the butterfly value.  Mirror of
+   *  the Pydantic Output's ``time_series_butterfly`` field added by the
+   *  legacy-TimeSeries tech-debt cleanup; values match ``time_series[i].
+   *  butterfly_bps`` 1-to-1 by construction. */
+  time_series_butterfly: TimeSeries;
+  /** Canonical TimeSeriesUnits.Z_SCORE series of the rolling z-score.  Mirror
+   *  of the Pydantic Output's ``time_series_zscore``; values match
+   *  ``time_series[i].z_score`` 1-to-1 (null for warmup rows). */
+  time_series_zscore: TimeSeries;
 };
 
 // --- /detail/regime --- (no time_series — classification only)

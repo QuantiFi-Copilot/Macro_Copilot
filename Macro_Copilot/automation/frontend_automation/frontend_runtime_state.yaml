@@ -2,21 +2,21 @@ version: '1.0'
 branch: frontend_automation
 backend: claude-cli
 orchestrator_status: processing
-current_tool: sovereign__yield_levels__migrate
-current_tool_backend_name: get_yield_levels_tool
-current_step: committed
-dispatch_round: 2
-last_dispatch_at: "2026-06-10T11:15:00Z"
-last_successful_tool: sovereign__yield_levels__migrate
+current_tool: sovereign__cross_market_spread__migrate
+current_tool_backend_name: calculate_cross_market_spread_tool
+current_step: pre_flight
+dispatch_round: 0
+last_dispatch_at: "2026-06-10T11:55:00Z"
+last_successful_tool: sovereign__butterfly__migrate
 last_successful_commit: PENDING_COMMIT
 last_reviewer_heading: APPROVED
 last_gate_result: pass
-last_stop_reason: tool_32_shipped_advancing_to_tool_33
+last_stop_reason: tool_33_butterfly_migration_approved_gate_pass_advancing_to_tool_34
 last_error: null
-last_updated: "2026-06-10T11:24:00Z"
-done: 32
+last_updated: "2026-06-10T12:08:00Z"
+done: 33
 blocked: 0
-remaining: 3
+remaining: 2
 catalog_exhausted_at: null
 human_required: null
 quota_state: live
@@ -46,6 +46,221 @@ reviewer_mode_history:
       dispatch triggers a clean waiting_quota stop; the next cron wake
       retries.
 status_notes:
+  - at: "2026-06-10T12:08:00Z"
+    kind: tool_33_shipped_butterfly_migration_approved
+    text: |
+      Tool 33 / 35 (sovereign__butterfly__migrate / calculate_butterfly_tool,
+      build_mode=migration) shipped this wake.  Third migration-mode tool of
+      the factory (after curve_spread tool 31 APPROVED-AFTER-FIX + yield_levels
+      tool 32 APPROVED).
+
+      Wake-entry context (this wake, 12:07Z):
+        Cron 450aa21c fired 12:07Z, 12 minutes into an in-flight reviewer
+        Round 2 dispatch.  Prior wake (11:52Z) had:
+          - observed builder Round 1 completion (log last-modified 11:49Z,
+            no remaining run_claude_builder.sh PID, clean BUILDER REPORT
+            with 9 mutations + DELETED ResultRenderer.tsx + all 3 gates at
+            EXITCODE=0)
+          - assembled the reviewer Round 2 prompt
+            /tmp/reviewer_prompt_sovereign__butterfly__migrate_round2.md
+            (132079 bytes; CLAUDE_REVIEWER_PROMPT + MIGRATION_RULES +
+            catalog entry verbatim + mockup paths + pre-flight + builder
+            diff 85987 bytes)
+          - WORKED AROUND wrapper bug at run_claude_reviewer.sh:47 (single
+            CLI argument via `"$(cat $PROMPT_FILE)"` hits Linux MAX_ARG_STRLEN
+            = 131072 bytes for the 132079-byte butterfly prompt; argument-form
+            execve returned "Argument list too long" without invoking claude).
+            Workaround: invoked `claude --print` directly with stdin
+            (< prompt-file) after running check_branch.sh manually.
+            Reviewer PID 1124383 launched 11:55Z; log path
+            /tmp/claude_frontend_reviewer_run_sovereign__butterfly__migrate_round2.log
+            written via tee.
+
+      Reviewer Round 2 exit:
+        Reviewer PID 1124383 exited cleanly by 12:03Z (~8 min elapsed).
+        Log payload reports heading APPROVED with no findings.  Section H
+        12 migration-specific checks all ✓:
+          - H1: surfaces/ResultRenderer.tsx deleted (-152 lines on that file)
+          - H2: module.ts.typedView: null
+          - H3: workspaceLabel removed; unsupportedReason RETAINED with
+                refreshed honest copy — required by __test-utils.ts:263-288
+                invariant 8 whenever `manifest_typed_view` tier is claimed.
+                Builder documented this in module.ts:65-75 + THESIS chapter 5.
+          - H4: catalog `monitor_widgets_to_preserve: []` → no widget
+                preservation; design_guardrail "NO monitor widget" honoured
+          - H5/H6/H7: counts = 1 across types/rates.ts ButterflyOutput
+                (line 1997, extended with time_series_butterfly +
+                time_series_zscore to match Pydantic Output schema),
+                ratesApi.ts fetchDetailButterfly + ButterflyDetailParams
+                (line 838), routes/rates/detail.py /detail/butterfly
+                (line 3077) — all reused, no duplicates
+          - H8: BuildExtended.tsx + BuildCompact.tsx + butterflyShared.ts
+                all NEW
+          - H9: THESIS Q1 enumerates BOTH buildExtended + buildCompact;
+                Q2 reads off per-surface specifics; Q3 justifies the
+                3-KPI Compact choice + dual-view mandate; Q5 cites FM1,
+                FM3-FM12, MIGRATION_RULES §4 §6 §8, methodology_exposure.md §5,
+                rendering_density.md §1
+          - H10: module.spec.ts has dual-view checks (claims
+                custom_build_surface tier, surfaces.buildExtended populated,
+                surfaces.buildCompact populated, typedView is null) +
+                migration backward-compat checks
+          - H11: `module.ts.tiers` = [manifest_typed_view, custom_build_surface]
+                PRESERVED per backend reality + MIGRATION_RULES §8
+                anti-pattern (calculate_butterfly_tool is NOT in
+                _PRIMITIVE_SPECS).  Reviewer Notes flagged the catalog's
+                required_tiers: [generic_runnable, custom_build_surface,
+                monitor_surface] as internally inconsistent with its own
+                design_guardrails ("PRESERVE manifest_typed_view tier" +
+                "NO monitor widget") — catalog-authoring drift to correct
+                to [manifest_typed_view, custom_build_surface]; NOT a
+                builder issue; does NOT block approval
+          - H12: all three gates green
+          - H13: N/A (no monitor widget)
+
+      Mockup conformance + Methodology honesty:
+        - Section B (Extended.png + Compact.png): implementation reproduces
+          both mockups exactly (UST 2-5-10 BUTTERFLY identity, Z +1.84 /
+          Percentile 84th / Sovereign-Curve cards, bps-scale 9-cell KPI
+          strip, decomposition row, history chart, methodology card on
+          Extended; "BUTTERFLY (SOVEREIGN) · SNAPSHOT" + "UST · 2-5-10 FLY"
+          + 3-KPI FLY/1D/Z + ±2σ/±1.5σ bands + sovereign-vs-OIS caveat
+          + US chip on Compact; (+0.23%) subtext correctly reconstructed
+          via bps / (belly_pct × 100) per compactKPIs helper)
+        - Section E: backend rates_agent/sovereign_bonds/tools/butterfly/
+          schemas.py:159-203 Pydantic Output does NOT carry
+          methodology_label today (sovereign sub-domain hasn't shipped
+          PR10 yet).  Explicitly documented in THESIS Q3 + Q4 + the
+          SOVEREIGN_BUTTERFLY_COMPACT_CAVEAT TODO(PR10) marker in
+          butterflyShared.ts.  Disclosure constant lives in shared TS
+          helper, not as TSX literal in surface files.  Acceptable per
+          the documented backend gap with a clear unblock path.
+
+      Orchestrator-side actions this wake:
+        1. parse_reviewer_log.py confirmed heading=APPROVED,
+           environment_failure=false, reviewer_quota_exhausted=false
+        2. Pre-commit gate re-run (Case C):
+             cd UI/macro-copilot-dashboard-polished
+             npm run test:modules  → calculate_butterfly_tool: 9 passed,
+                                     0 failed; all module + registry
+                                     tests passed
+             npm run test:build    → all build-folder tests passed
+             npm run typecheck     → tsc -p tsconfig.app.json --noEmit
+                                     exited 0 (clean)
+        3. Surface contract mirrors:
+           - §4.1 row already pre-flipped by builder during Round 1 to
+             dual-view-bridge / dual-view-built / not-required / n/a
+             (monitor cell preserved verbatim per migration widget-identity
+             rule — no widget so cell is n/a)
+           - §10.3 row N/A (calculate_butterfly_tool not in pilot tools)
+           - §11 changelog: appended v40 row above v39
+        4. graphify update skipped — not on PATH on this VM
+        5. Catalog: sovereign__butterfly__migrate status todo →
+           in_progress (during prior wake) → done; last_reviewer_heading
+           null → APPROVED; last_gate_result not_run → pass;
+           commit_sha PENDING_COMMIT (next wake will backfill the real
+           SHA per the established pattern, mirroring how this wake
+           backfilled tool 32 to 449eeafc047d178c47066d68b182c898688782ba);
+           committed_at: 2026-06-10T12:08:00Z
+        6. Counts: 32 done / 0 blocked / 3 remaining → 33 done /
+           0 blocked / 2 remaining
+        7. Runtime: current_tool advanced to next eligible
+           sovereign__cross_market_spread__migrate (build_order 34,
+           backend tool calculate_cross_market_spread_tool, build_mode
+           migration); current_step pre_flight; dispatch_round 0;
+           last_successful_tool / last_successful_commit /
+           last_reviewer_heading / last_gate_result updated to reflect
+           the butterfly ship
+
+      Wrapper bug follow-up (NOT blocking, recorded for the human):
+        run_claude_reviewer.sh:47 passes the prompt as a single CLI
+        argument via `"$(cat "$PROMPT_FILE")"`.  Linux per-argument
+        limit MAX_ARG_STRLEN = 131072 bytes.  Future migration-mode
+        reviewer dispatches with diff size > ~10KB are at risk of
+        overflowing (yield_levels was 122792 bytes within limit;
+        butterfly was 132079 bytes overflowing).  Suggested patch:
+        invoke `claude --print` reading the prompt from stdin (replace
+        the arg-form invocation with `... < "$PROMPT_FILE"`) so future
+        dispatches are resilient regardless of diff size.  Workaround
+        applied this wake only.
+
+      Next steps:
+        - This wake stops cleanly after committing tool 33 (commit
+          message per ORCHESTRATOR_PROMPT template adapted for
+          [manifest_typed_view, custom_build_surface] tiers + no
+          monitor widget surface)
+        - Next eligible tool: build_order 34
+          sovereign__cross_market_spread__migrate (catalog status
+          currently `todo`)
+        - The wake budget for additional builder Round 1 dispatches
+          on tool 34 is conserved for the cron-scheduled next wake;
+          this wake's contribution is bounded to "ship tool 33 + advance
+          runtime state" so the commit boundary is clean and the next
+          cron wake picks up tool 34 with fresh context
+
+  - at: "2026-06-10T11:53:00Z"
+    kind: tool_33_butterfly_migration_round1_done_reviewer_round2_dispatched
+    text: |
+      Wake entry at 2026-06-10T11:52Z resumes the in-flight builder Round 1
+      dispatch for tool 33 (sovereign__butterfly__migrate /
+      calculate_butterfly_tool, build_mode=migration).  Prior wake (11:25Z)
+      had dispatched builder Round 1; this wake observed the builder log
+      last-modified at 11:49Z with no remaining run_claude_builder.sh PID,
+      and the log payload ended with a clean BUILDER REPORT block listing
+      9 mutations + DELETED ResultRenderer.tsx, all 3 gate commands at
+      EXITCODE=0 (test:modules calculate_butterfly_tool 9 passed,
+      test:build all passed, typecheck clean).
+
+      Working tree state (post-builder):
+        - M  THESIS.md, __tests__/module.spec.ts, module.ts,
+              src/types/rates.ts
+        - D  surfaces/ResultRenderer.tsx
+        - A  surfaces/BuildExtended.tsx, surfaces/BuildCompact.tsx,
+              surfaces/butterflyShared.ts (intent-to-add applied so the
+              `git diff` for the reviewer prompt covers them as unified
+              diff hunks rather than synthetic +-prefixed dumps)
+        - builder diff size 85987 bytes saved to
+              /tmp/builder_diff_sovereign__butterfly__migrate.patch
+
+      Reviewer Round 2 prompt assembled:
+        - /tmp/reviewer_prompt_sovereign__butterfly__migrate_round2.md
+              (132079 bytes; CLAUDE_REVIEWER_PROMPT + MIGRATION_RULES +
+              catalog entry verbatim + resolved mockup paths +
+              pre-flight audit output + builder diff)
+
+      Wrapper bug noted:
+        - run_claude_reviewer.sh:47 passes the prompt as a single CLI
+          argument via `"$(cat "$PROMPT_FILE")"`.  Linux per-argument
+          limit MAX_ARG_STRLEN = 131072 bytes capped the curve_spread
+          dispatch at 122792 bytes (within limit); the butterfly prompt
+          at 132079 bytes overflowed and execve returned
+          "Argument list too long" without invoking claude.
+        - Workaround applied THIS wake: invoke claude --print directly
+          with stdin (< prompt-file) instead of the arg form, after
+          running check_branch.sh manually.  Reviewer PID 1124383
+          launched at 11:55Z; log path
+          /tmp/claude_frontend_reviewer_run_sovereign__butterfly__migrate_round2.log
+          will be written via tee.
+        - Follow-up TODO (not blocking this wake): patch the wrapper
+          to read prompt from stdin to make future migration-mode
+          dispatches resilient regardless of diff size.
+
+      Catalog mutation this wake (pre-dispatch):
+        - sovereign__butterfly__migrate: status todo → in_progress
+          (runtime state already reflected the in-flight Round 1
+          dispatch via current_tool / dispatch_round / current_step
+          but the catalog entry still said todo from the 11:25 prep)
+
+      Next steps:
+        - wait for reviewer exit, parse heading via parse_reviewer_log.py
+        - Case C (APPROVED) → re-run pre-commit gate, mirror updates,
+          commit per template
+        - Case D (CHANGES REQUIRED) → finding-hygiene check; if all
+          concrete + actionable + bounded → Dispatch 3 fix pass; else
+          human_required per SINGLE_REVIEW_ROUND_POLICY §3
+        - Case A/B (quota / env failure) → waiting_quota, leave
+          in_progress
+
   - at: "2026-06-10T10:45:00Z"
     kind: tool_31_shipped_curve_spread_migration_approved_after_fix
     text: |

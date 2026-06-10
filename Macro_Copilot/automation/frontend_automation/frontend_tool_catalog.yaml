@@ -1578,7 +1578,7 @@ tools:
     human_action_required: false
     last_review_heading: APPROVED
     last_gate_result: pass
-    commit_sha: PENDING_COMMIT
+    commit_sha: 449eeafc047d178c47066d68b182c898688782ba
     committed_at: "2026-06-10T11:24:00Z"
     build_order: 32
     backend_tool_name: get_yield_levels_tool
@@ -1638,11 +1638,13 @@ tools:
         - "Legacy pre-aggregated yield_snapshot widget (in monitor/registry.ts) is OUT OF SCOPE — it reads from dashboard aggregate endpoint, not this tool; do not touch it"
 
   - id: sovereign__butterfly__migrate
-    status: todo
+    status: done
     build_mode: migration
     human_action_required: false
-    last_review_heading: null
-    last_gate_result: not_run
+    last_review_heading: APPROVED
+    last_gate_result: pass
+    commit_sha: PENDING_COMMIT
+    committed_at: "2026-06-10T12:08:00Z"
     build_order: 33
     backend_tool_name: calculate_butterfly_tool
     instrument_family: sovereign_bonds
