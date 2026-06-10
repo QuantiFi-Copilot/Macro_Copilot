@@ -1965,7 +1965,19 @@ export type CrossMarketSpreadTimeSeriesRow = {
 
 export type CrossMarketSpreadOutput = {
   current_metrics: CrossMarketSpreadCurrentMetrics;
+  /** Wire-frozen bespoke shape — kept for legacy ResultRenderer-era
+   *  consumers and the parameterised Monitor tile (CrossMarketSpreadWidget).
+   *  The dual-view surfaces consume ``time_series_spread`` (canonical
+   *  TimeSeries BPS) instead. */
   time_series: CrossMarketSpreadTimeSeriesRow[];
+  /** Canonical TimeSeries (BPS) — cross-market spread series in
+   *  chronological order.  Optional defensively; the REST detail endpoint
+   *  always returns it (mirrors the Pydantic Output where the field is
+   *  non-optional — added by the legacy-TimeSeries tech-debt cleanup). */
+  time_series_spread?: TimeSeries;
+  /** Canonical TimeSeries (Z_SCORE) — rolling z-score series.  Values
+   *  match ``time_series[i].z_score`` 1-to-1 (null for warmup rows). */
+  time_series_zscore?: TimeSeries;
 };
 
 // --- /detail/butterfly ---

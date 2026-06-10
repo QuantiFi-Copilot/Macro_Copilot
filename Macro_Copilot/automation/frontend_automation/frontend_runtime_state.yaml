@@ -2,21 +2,21 @@ version: '1.0'
 branch: frontend_automation
 backend: claude-cli
 orchestrator_status: processing
-current_tool: sovereign__cross_market_spread__migrate
-current_tool_backend_name: calculate_cross_market_spread_tool
+current_tool: sovereign__scan_extremes__migrate
+current_tool_backend_name: scan_extremes_tool
 current_step: pre_flight
 dispatch_round: 0
-last_dispatch_at: "2026-06-10T11:55:00Z"
-last_successful_tool: sovereign__butterfly__migrate
+last_dispatch_at: "2026-06-10T16:53:00Z"
+last_successful_tool: sovereign__cross_market_spread__migrate
 last_successful_commit: PENDING_COMMIT
-last_reviewer_heading: APPROVED
+last_reviewer_heading: APPROVED-AFTER-FIX
 last_gate_result: pass
-last_stop_reason: tool_33_butterfly_migration_approved_gate_pass_advancing_to_tool_34
+last_stop_reason: tool_34_cross_market_spread_migration_approved_after_fix_gate_pass_advancing_to_tool_35
 last_error: null
-last_updated: "2026-06-10T12:08:00Z"
-done: 33
+last_updated: "2026-06-10T17:08:00Z"
+done: 34
 blocked: 0
-remaining: 2
+remaining: 1
 catalog_exhausted_at: null
 human_required: null
 quota_state: live
@@ -46,6 +46,277 @@ reviewer_mode_history:
       dispatch triggers a clean waiting_quota stop; the next cron wake
       retries.
 status_notes:
+  - at: "2026-06-10T17:08:00Z"
+    kind: tool_34_cross_market_spread_migration_approved_after_fix_shipped
+    text: |
+      Same wake (2026-06-10T16:52Z entry, cron 450aa21c-625d-4ad7-b3da-ef39a6ba7784)
+      observed Round 3 builder exit at 17:05Z.  Builder log
+      /tmp/claude_frontend_builder_run_sovereign__cross_market_spread__migrate_round3.log
+      (34 lines, 3451 bytes) ended with a clean BUILDER REPORT block: all 8
+      reviewer findings applied verbatim across 3 central test files
+      (routingCoverage.test.ts 5 sites, genericBuilder.test.ts 1 site,
+      paramFidelity.test.ts 5 sites); module folder + types/rates.ts +
+      services/ratesApi.ts + api/routes/rates/detail.py NOT touched
+      (Round 1 module-folder build was already APPROVED on Section B + E + H1-H11 + H13).
+
+      Builder substitute choice for stale typedView 'cross_market' references:
+      classify_curve_move_tool (typedView 'regime') — preferred over
+      scan_extremes_tool because scan_extremes_tool is build_order 35 in this
+      same migration batch (verified at frontend_tool_catalog.yaml:1778);
+      classify_curve_move_tool is a v1.1-deferred typed-view tool that stays
+      live.  Self-audited via TOOL_TO_VIEW in contextDecoder.ts:203-209 to
+      confirm 'cross_market' is no longer registered after Round 1.
+
+      Pre-commit gate re-run in orchestrator session (per
+      ORCHESTRATOR_PROMPT.md "Pre-commit gate rule" — the only safety net
+      after Dispatch 3):
+        - npm run test:modules → 0  (calculate_cross_market_spread_tool:
+          6 passed, 0 failed; all module + registry tests passed)
+        - npm run test:build    → 0  (routing coverage 48/48, param-fidelity
+          29/29, generic-builder 32/32; all build-folder tests passed)
+        - npm run typecheck     → 0  (tsc -p tsconfig.app.json --noEmit clean)
+      ALL THREE exit 0 → proceeded to Mirrors + commit per ORCHESTRATOR_PROMPT
+      Case D step 6.
+
+      Mirrors:
+        - docs_revamped/02_components/surface_contract.md §4.1 row updated
+          (typed-result-renderer → dual-view-bridge; typed-renderer-built →
+          dual-view-built; monitor cell preserved verbatim: 2 widgets
+          CrossMarketSpreads + CrossMarketSpread).
+        - §11 v41 changelog entry appended.
+        - graphify update — skipped, not on PATH on this VM (fallback per
+          ORCHESTRATOR_PROMPT Mirrors §2).
+
+      Catalog state post-commit:
+        - tool 34 sovereign__cross_market_spread__migrate → status: done,
+          last_review_heading: APPROVED-AFTER-FIX, last_gate_result: pass.
+        - done: 33 → 34; remaining: 2 → 1.
+        - Next eligible: build_order 35 sovereign__scan_extremes__migrate
+          (the final entry of batch-4).
+
+      Runtime state advanced to tool 35 with current_step: pre_flight,
+      dispatch_round: 0; last_successful_commit: PENDING_COMMIT (will be
+      patched with the actual sha post-commit, then next cron wake will
+      proceed to tool 35 pre-flight + builder dispatch).
+
+  - at: "2026-06-10T16:53:00Z"
+    kind: tool_34_cross_market_spread_migration_round3_fix_dispatched
+    text: |
+      Wake-entry at 2026-06-10T16:52Z (cron 450aa21c-625d-4ad7-b3da-ef39a6ba7784).
+      Resumed catalog work on tool 34 (sovereign__cross_market_spread__migrate /
+      calculate_cross_market_spread_tool, build_mode=migration).
+
+      Round 2 reviewer dispatch from prior wake (15:41Z) had finished by 15:51Z
+      (reviewer PID 1208474 absent, log /tmp/claude_frontend_reviewer_run_
+      sovereign__cross_market_spread__migrate_round2.log mtime 15:51Z, 7362
+      bytes).  parse_reviewer_log.py → {ok:true, heading: 'CHANGES REQUIRED',
+      environment_failure:false, reviewer_quota_exhausted:false}.
+
+      Reviewer findings adjudication (SINGLE_REVIEW_ROUND_POLICY.md §3):
+        - 8 findings, all concrete (file:line, exact assertion change / tool
+          substitution requested).
+        - No STRUCTURAL prefix.  No vague language ("consider"/"perhaps"/
+          "refactor"/"could be cleaner").
+        - Files touched outside the module folder: 3 (routingCoverage.test.ts,
+          genericBuilder.test.ts, paramFidelity.test.ts) — within the ≤4
+          blast-radius limit.
+        - Findings do not contradict the committed mockup (Section B praised
+          mockup conformance for both Compact + Extended).
+        - No hallucinated references — all 3 test files exist on disk; commit
+          758c7d0 (curve_spread migration precedent) verified via git log.
+        - Module-folder build APPROVED on H1-H11, H13 + Section B + Section E.
+          Only H12 fails — central routing tests still assert kind=='cross_market'
+          for the migrated tool, same in-scope edit the curve_spread migration
+          applied in 758c7d0.
+        - Verdict: PROCEED to Dispatch 3 (builder fix pass).  All 8 findings
+          actionable.
+
+      Dispatch 3 prompt assembled to
+        /tmp/builder_prompt_sovereign__cross_market_spread__migrate_round3.md
+        (58315 bytes; built by copying the 51151-byte Round 1 builder prompt
+        + appending a `# Dispatch 3 — Reviewer findings to apply (FIX PASS)`
+        section with: context summary, hard scope constraint "do NOT touch
+        files inside src/modules/primitives/calculate_cross_market_spread_tool/",
+        guidance on the typed-view substitute choice (prefer scan_extremes_tool
+        but check if it's also under migration in this batch), the reviewer's
+        8 findings verbatim, and the done definition for this fix dispatch
+        (npm run test:build must exit 0, test:modules + typecheck must not
+        regress)).  58315 bytes is well below the wrapper's 131072 MAX_ARG_STRLEN.
+
+      Builder dispatched at 16:53Z via run_claude_builder.sh in background.
+      Wrapper + claude PIDs captured for orchestrator monitoring.
+        Log path /tmp/claude_frontend_builder_run_sovereign__cross_market_spread__migrate_round3.log.
+      Branch verified frontend_automation before dispatch.
+
+      Runtime state set this wake (post-dispatch):
+        current_tool: sovereign__cross_market_spread__migrate
+        current_tool_backend_name: calculate_cross_market_spread_tool
+        current_step: fix_dispatched
+        dispatch_round: 3
+        last_dispatch_at: 2026-06-10T16:53:00Z
+        last_successful_tool: sovereign__butterfly__migrate
+        last_successful_commit: b70b9d9
+        last_reviewer_heading: CHANGES REQUIRED
+        last_gate_result: pass
+        last_stop_reason: tool_34_cross_market_spread_migration_round3_fix_dispatched
+        done: 33 / blocked: 0 / remaining: 2
+
+      Next cron wake will:
+        - observe Round 3 builder exit (when log writes a final BUILDER REPORT
+          block + wrapper PID is no longer present)
+        - run the pre-commit gate (npm run test:modules + test:build + typecheck)
+        - on ALL THREE exit 0 → mirrors (surface_contract.md + graphify) + commit
+          with last_reviewer_heading = APPROVED-AFTER-FIX, advance to tool 35
+          (sovereign__scan_extremes__migrate)
+        - on ANY gate fail → mark human_required per SINGLE_REVIEW_ROUND_POLICY
+          (no Dispatch 4, no re-review)
+
+  - at: "2026-06-10T15:41:00Z"
+    kind: tool_34_cross_market_spread_migration_round2_reviewer_dispatched
+    text: |
+      Wake-entry at 2026-06-10T15:37Z (cron 450aa21c-625d-4ad7-b3da-ef39a6ba7784).
+      Resumed catalog work on tool 34 (sovereign__cross_market_spread__migrate /
+      calculate_cross_market_spread_tool, build_mode=migration).
+
+      Wake-entry inspection of tool 34 state from prior wake (12:10Z):
+        - Builder Round 1 prompt at /tmp/builder_prompt_sovereign__cross_market_spread__migrate_round1.md
+          (51151 bytes) was dispatched 12:10Z via run_claude_builder.sh
+          (wrapper PID 1136669, claude PID 1136677).
+        - The builder log
+          /tmp/claude_frontend_builder_run_sovereign__cross_market_spread__migrate_round1.log
+          was last modified 12:36Z and contains only 45 bytes —
+          "You've hit your limit · resets 3:20pm (UTC)".
+        - HOWEVER, the working tree shows a COMPLETE builder output already
+          materialised (file mtimes 12:27Z-12:32Z, before the quota refusal):
+            * DELETED: surfaces/ResultRenderer.tsx (-149 lines)
+            * MODIFIED: module.ts (+70 / -... lines) — typedView 'cross_market' → null;
+              workspaceLabel removed; surfaces: { build, buildExtended, buildCompact };
+              tiers preserved [generic_runnable, custom_build_surface, monitor_surface];
+              both monitor widgets preserved verbatim (CrossMarketSpreadsWidget id
+              'cross_market_spreads' + CrossMarketSpreadWidget id 'cross_market_spread')
+            * MODIFIED: THESIS.md — chapter restructure for dual-view+bridge
+            * MODIFIED: __tests__/module.spec.ts (+110 / -0) — dual-view contract checks
+              + migration backward-compat assertions
+            * MODIFIED: types/rates.ts (+12) — CrossMarketSpreadOutput field-by-field
+              verification against Pydantic
+            * NEW: surfaces/BuildExtended.tsx (299 lines)
+            * NEW: surfaces/BuildCompact.tsx (102 lines)
+            * NEW: surfaces/crossMarketSpreadShared.ts (675 lines)
+          Total builder diff: 75225 bytes (+1313 / -193).  No central-route
+          duplicates added (api/routes/rates/detail.py:/detail/cross-market REUSED;
+          services/ratesApi.ts:fetchDetailCrossMarket REUSED;
+          types/rates.ts:CrossMarketSpreadOutput REUSED + extended).
+        - Interpretation: the builder finished its 9 file mutations between
+          12:27Z-12:32Z, then a follow-up `claude` invocation (or an extra-turn
+          report) hit a transient quota refusal at 12:36Z and was caught in
+          the log.  Provider window resets at 15:20Z were 17 min before this
+          wake; quota is live again.
+        - Builder output evaluated complete for the migration contract; no
+          re-dispatch needed.  Advancing to Dispatch 2 (reviewer).
+
+      Dispatch 2 (reviewer) prompt assembled to
+        /tmp/reviewer_prompt_sovereign__cross_market_spread__migrate_round2.md
+        (121510 bytes; CLAUDE_REVIEWER_PROMPT + MIGRATION_RULES full body +
+        catalog entry verbatim + resolved mockup paths + builder diff).
+      Used the SAME wrapper-bug workaround as the butterfly wake (11:55Z) —
+      first attempt via `run_claude_reviewer.sh` had `claude --print` failing
+      to spawn from `"$(cat $PROMPT_FILE)"` argv even at 121510 bytes (below
+      the 131072 MAX_ARG_STRLEN documented for butterfly).  Wrapper bash + tee
+      survived without claude.  Killed wrapper PIDs 1207732 / 1207740 cleanly.
+      Re-dispatched via:
+        nohup bash -c 'claude --print --model opus --effort xhigh \
+          --permission-mode bypassPermissions \
+          < /tmp/reviewer_prompt_sovereign__cross_market_spread__migrate_round2.md \
+          2>&1 | tee /tmp/claude_frontend_reviewer_run_sovereign__cross_market_spread__migrate_round2.log'
+      Reviewer claude PID 1208474 spawned 15:41Z.  Log path
+        /tmp/claude_frontend_reviewer_run_sovereign__cross_market_spread__migrate_round2.log.
+      Branch verified frontend_automation before dispatch.
+
+      Runtime state set this wake (post-dispatch):
+        current_tool: sovereign__cross_market_spread__migrate
+        current_tool_backend_name: calculate_cross_market_spread_tool
+        current_step: reviewer_dispatched
+        dispatch_round: 2
+        last_dispatch_at: 2026-06-10T15:41:00Z
+        last_successful_tool: sovereign__butterfly__migrate
+        last_successful_commit: b70b9d9
+        last_reviewer_heading: APPROVED
+        last_gate_result: pass
+        last_stop_reason: tool_34_cross_market_spread_migration_round2_reviewer_dispatched
+        done: 33 / blocked: 0 / remaining: 2
+
+  - at: "2026-06-10T12:10:00Z"
+    kind: tool_34_cross_market_spread_migration_round1_builder_dispatched
+    text: |
+      After tool 33 ship + commit b70b9d9, this same wake proceeded
+      to advance the catalog per ORCHESTRATOR_PROMPT "Do not
+      intentionally stop after a single completed tool if more
+      eligible catalog work remains."
+
+      Tool 34 (sovereign__cross_market_spread__migrate /
+      calculate_cross_market_spread_tool, build_mode=migration)
+      pre-flight backend audit ran read-only at 12:09Z; all 5 checks
+      passed:
+        1. backend folder rates_agent/sovereign_bonds/tools/cross_market_spread/
+           has canonical 4-file shape (__init__.py, compute.py,
+           config.yaml, schemas.py) ✓
+        2. MCP wrapper at rates_agent/sovereign_bonds/mcp_server.py
+           imports calculate_cross_market_spread (line 50) +
+           registers calculate_cross_market_spread_tool (comment
+           "TOOL 3" line 502) ✓
+        3. DB tool_metadata probe: psql exited with "role 'root'
+           does not exist" — non-interactive shell access issue;
+           the migration-file branch of the OR clause satisfies
+           the check per PRE_FLIGHT_BACKEND_AUDIT.md.  Migration
+           file present: database/migrations/2026-06-09_phase1_
+           calculate_cross_market_spread_curated.sql (2010 bytes) ✓
+        4. Mockups present: mockups/Compact.png (1354053 bytes) +
+           mockups/Extended.png (1702219 bytes) ✓
+        5. Legacy pattern detected (migration mode): module.ts has
+           typedView: 'cross_market' (line 29), surfaces: {
+           resultRenderer: ResultRenderer } (line 31);
+           surfaces/ResultRenderer.tsx exists (4736 bytes) ✓
+
+      Builder Round 1 prompt assembled:
+        - /tmp/builder_prompt_sovereign__cross_market_spread__migrate_round1.md
+          (51151 bytes; CLAUDE_BUILDER_PROMPT + MIGRATION_RULES +
+          catalog entry verbatim + resolved mockup paths +
+          reference frontend module path + pre-flight audit output)
+
+      Builder dispatched at 12:10Z via run_claude_builder.sh in
+      background.  Wrapper PID 1136669; claude --print PID 1136677;
+      log path /tmp/claude_frontend_builder_run_sovereign__cross_market_spread__migrate_round1.log
+      (will be written via tee).  Prompt size 51151 bytes is well
+      below the wrapper's MAX_ARG_STRLEN = 131072 byte threshold
+      (the butterfly wake hit this at 132079 bytes — see prior
+      wrapper-bug note in 11:53Z status entry).
+
+      Next cron wake will:
+        - observe builder Round 1 exit (when log writes a final
+          BUILDER REPORT block + the wrapper PID is no longer
+          present)
+        - assemble reviewer Round 2 prompt and dispatch via
+          run_claude_reviewer.sh
+        - parse reviewer log heading
+        - run pre-commit gate on APPROVED / APPROVED-AFTER-FIX path
+        - commit + advance to tool 35 (sovereign__scan_extremes__migrate)
+        - backfill tool 33 catalog commit_sha: PENDING_COMMIT →
+          b70b9d9... (full SHA — same backfill pattern this wake
+          applied for tool 32)
+
+      Runtime state set this wake (post-dispatch):
+        current_tool: sovereign__cross_market_spread__migrate
+        current_tool_backend_name: calculate_cross_market_spread_tool
+        current_step: builder_dispatched
+        dispatch_round: 1
+        last_dispatch_at: 2026-06-10T12:10:00Z
+        last_successful_tool: sovereign__butterfly__migrate
+        last_successful_commit: b70b9d9
+        last_reviewer_heading: APPROVED
+        last_gate_result: pass
+        last_stop_reason: tool_34_cross_market_spread_migration_round1_builder_dispatched
+        done: 33 / blocked: 0 / remaining: 2
+
   - at: "2026-06-10T12:08:00Z"
     kind: tool_33_shipped_butterfly_migration_approved
     text: |

@@ -1703,11 +1703,11 @@ tools:
         - "manifest_typed_view tier preserved (backend _PRIMITIVE_SPECS membership unchanged)"
 
   - id: sovereign__cross_market_spread__migrate
-    status: todo
+    status: done
     build_mode: migration
     human_action_required: false
-    last_review_heading: null
-    last_gate_result: not_run
+    last_review_heading: APPROVED-AFTER-FIX
+    last_gate_result: pass
     build_order: 34
     backend_tool_name: calculate_cross_market_spread_tool
     instrument_family: sovereign_bonds

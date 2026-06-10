@@ -1,12 +1,22 @@
 // ============================================================================
-// src/modules/primitives/calculate_cross_market_spread_tool/module.ts — Stage 4d.
+// src/modules/primitives/calculate_cross_market_spread_tool/module.ts
 // ----------------------------------------------------------------------------
-// Stage 4a — typed-view module: ``custom_build_surface`` ships at
-// ``surfaces/BuildSurface.tsx``; routes via
-// ``MODULE.typedView = 'cross_market'``.
+// Migration dispatch — converted from the legacy typed-renderer pattern
+// (``typedView: 'cross_market'`` + ``surfaces.resultRenderer``) to the new
+// dual-view + standalone-bridge contract under:
+//   - methodology_exposure.md §5 standalone-bridge (own typed-detail endpoint
+//     at /api/v1/rates/detail/cross-market + own surfaces; no shared typedView)
+//   - rendering_density.md §1 dual-view mandate (buildExtended + buildCompact
+//     both REQUIRED)
 //
-// Stage 4d — Monitor catalog: two widgets — a pre-aggregated G3
-// cross-market dashboard and a parameterised single-pair chart.
+// Backward-compat lock (per MIGRATION_RULES §6): the two existing Monitor
+// widgets — ``cross_market_spreads`` (pre-aggregated G3 cross-sovereign
+// dashboard) and ``cross_market_spread`` (parameterised single-pair chart) —
+// are preserved verbatim.  Their ids + paramFields names + default values
+// are unchanged so dashboards that persisted these widgets keep rendering.
+//
+// Design reference: mockups/Compact.png + mockups/Extended.png.
+// Per FM7 (pure-spec assembly): exports a pure value; no side effects.
 // ============================================================================
 
 import type { PrimitiveModuleSpec } from '../../types';
@@ -15,20 +25,47 @@ import {
   LOOKBACK_OPTIONS,
   TENOR_OPTIONS,
 } from '@/lib/monitorParamOptions';
-import ResultRenderer from './surfaces/ResultRenderer';
+import BuildExtended from './surfaces/BuildExtended';
+import BuildCompact from './surfaces/BuildCompact';
 import { CrossMarketSpreadsWidget } from './surfaces/monitor/CrossMarketSpreadsWidget';
 import { CrossMarketSpreadWidget } from './surfaces/monitor/CrossMarketSpreadWidget';
 
 export const MODULE: PrimitiveModuleSpec = {
+  // FM1 — identity (folder name === toolName)
   toolName: 'calculate_cross_market_spread_tool',
+
+  // FM3 — tier claims (unchanged from the pre-migration set; the backend's
+  // _PRIMITIVE_SPECS membership is unchanged so the tier set mirrors backend
+  // reality):
+  //   * generic_runnable — backend ships in _PRIMITIVE_SPECS
+  //   * custom_build_surface — dual-view Build (rendering_density.md §1)
+  //   * monitor_surface — two preserved Monitor widgets (pre-aggregated +
+  //     parameterised) — backward-compat lock
   tiers: ['generic_runnable', 'custom_build_surface', 'monitor_surface'],
+
+  // FM5 — display metadata
   displayName: 'Cross Market Spread',
   category: 'cross_market_rv',
   oneLineSummary:
     'Yield differential between the same tenor on two sovereign curves (e.g. BTP-Bund 10Y), in basis points, with rolling 252-day z-score, daily / weekly / monthly change, trailing range, and full time series.',
-  typedView: 'cross_market',
-  workspaceLabel: 'Cross-market chart',
-  surfaces: { resultRenderer: ResultRenderer },
+
+  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared typedView.
+  typedView: null,
+  richModel: false,
+
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build`` is
+  // kept === buildExtended for the legacy VirtualPrimitiveCanvas dispatcher.
+  surfaces: {
+    build: BuildExtended,
+    buildExtended: BuildExtended,
+    buildCompact: BuildCompact,
+  },
+
+  // FM5c — Monitor catalog widgets — PRESERVED VERBATIM per MIGRATION_RULES §6.
+  // The ids (``cross_market_spreads``, ``cross_market_spread``) are the
+  // backward-compat lock — dashboards persist these ids.  The paramFields
+  // field names + default values are also unchanged so persisted dashboard
+  // configs hydrate identically.
   monitorWidgets: [
     {
       id: 'cross_market_spreads',
@@ -84,4 +121,17 @@ export const MODULE: PrimitiveModuleSpec = {
       component: CrossMarketSpreadWidget,
     },
   ],
+
+  // FM5 — defaults mirror the structural inputs the backend Pydantic schema
+  // requires.  Mockup default: UST-Bund 10Y (transatlantic sovereign-rate
+  // differential — the desk-canonical cross-market spread).  ``field_name``
+  // defaults to 'YLD_YTM_MID' — the YAML's default_field_name (mid
+  // yield-to-maturity).
+  defaultParams: {
+    curve_family_1: 'UST',
+    curve_family_2: 'DE_BUND',
+    tenor: '10Y',
+    lookback_days: '365',
+    field_name: 'YLD_YTM_MID',
+  },
 };
