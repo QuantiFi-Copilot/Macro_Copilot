@@ -1,42 +1,46 @@
 version: '1.0'
 branch: frontend_automation
 backend: claude-cli
-orchestrator_status: waiting_quota
+orchestrator_status: processing
 current_tool: sovereign__scan_extremes__migrate
 current_tool_backend_name: scan_extremes_tool
 current_step: builder_dispatched
 dispatch_round: 1
-last_dispatch_at: "2026-06-10T17:16:00Z"
+last_dispatch_at: "2026-06-10T17:53:00Z"
 last_successful_tool: sovereign__cross_market_spread__migrate
 last_successful_commit: c0bf1ee
 last_reviewer_heading: APPROVED-AFTER-FIX
 last_gate_result: pass
-last_stop_reason: builder_claude_quota_exhausted_tool35_round1
+last_stop_reason: tool_35_scan_extremes_migration_round1_builder_in_flight
 last_error: null
-last_updated: "2026-06-10T17:38:00Z"
+last_updated: "2026-06-10T17:54:00Z"
 done: 34
 blocked: 0
 remaining: 1
 catalog_exhausted_at: null
 human_required: null
-quota_state: waiting_quota
-quota_reset_at: "2026-06-10T20:30:00Z"
+quota_state: probe_unavailable
+quota_reset_at: null
 quota_snapshot: null
-quota_snapshot_at: '2026-06-10T17:38:00Z'
+quota_snapshot_at: '2026-06-10T17:54:00Z'
 quota_snapshot_fresh: true
 quota_note: |
-  Prior wake's builder Round 1 dispatch for tool 26 (03:34 UTC)
-  captured a quota refusal envelope to the builder log:
-  "You've hit your limit · resets 6:40am (UTC)".  Current wake
-  entered at 2026-06-08T07:37Z (cron id 450aa21c-625d-4ad7-b3da-ef39a6ba7784,
-  the second fire from this cron entry).  Provider reset at
-  2026-06-08T06:40:00Z opened the window 57 min before wake
-  entry.  Runtime-enforced quota mode per QUOTA_AND_RESUME_POLICY.md §3:
-  re-dispatching builder Round 1 with the existing prompt at
-  /tmp/builder_prompt_inflation_indexed_bonds__cross_country_breakeven_spread_round1.md
-  (26274B, unchanged since 03:34 UTC).  Background wrapper PID
-  74946, claude --print PID 74953.  Stop only on a fresh provider
-  refusal envelope.
+  Prior wake (2026-06-10T17:16Z dispatch, 17:19Z provider refusal)
+  recorded envelope "You've hit your limit · resets 8:30pm (UTC)"
+  → quota_reset_at 2026-06-10T20:30:00Z.  Current wake entered at
+  2026-06-10T17:52Z (cron 450aa21c-625d-4ad7-b3da-ef39a6ba7784).
+  Re-dispatched builder Round 1 via documented stdin workaround at
+  17:53Z from the preserved prompt file /tmp/builder_prompt_
+  sovereign__scan_extremes__migrate_round1.md (50857 bytes, unchanged
+  since 17:15Z).  Builder claude PID 1263463 (parent shell PID 1263462,
+  nohup wrapper PID 1263456) sustained at 85s wall / 5s CPU with 0-byte
+  log — strongly inconsistent with the prior instant quota refusal (45B
+  / 1 line / immediate).  Provider has admitted the request → quota
+  window reset EARLIER than the 20:30Z envelope predicted.  Stop wake
+  cleanly per BACKGROUND_EXECUTION_POLICY (long-running builder in
+  flight); next cron wake picks up Round 1 completion and dispatches
+  Round 2 reviewer.  Set quota_state probe_unavailable (runtime-enforced
+  mode); quota_reset_at cleared since the recorded envelope was stale.
 reviewer_mode: claude_only
 reviewer_mode_history:
   - at: '2026-05-29T00:00:00Z'
@@ -47,6 +51,81 @@ reviewer_mode_history:
       dispatch triggers a clean waiting_quota stop; the next cron wake
       retries.
 status_notes:
+  - at: "2026-06-10T17:54:00Z"
+    kind: tool_35_scan_extremes_migration_round1_builder_redispatched_quota_reset_early
+    text: |
+      Wake-entry 2026-06-10T17:52Z (cron 450aa21c-625d-4ad7-b3da-ef39a6ba7784,
+      next fire after the 17:36Z wake stopped waiting_quota on the 20:30Z
+      provider envelope).  Per ORCHESTRATOR_PROMPT: read source-of-truth docs,
+      ran branch check (OK: frontend_automation), inspected prior wake state.
+
+      Prior wake summary (17:38Z status_notes):
+        - last_stop_reason: builder_claude_quota_exhausted_tool35_round1
+        - quota_reset_at: 2026-06-10T20:30:00Z (from provider envelope at 17:19Z)
+        - prompt preserved at /tmp/builder_prompt_sovereign__scan_extremes
+          __migrate_round1.md (50857B, unchanged since 17:15Z)
+        - tool 35 status: in_progress, dispatch_round 1, current_step
+          builder_dispatched
+        - working tree: clean (HEAD = d1f3a20 "automation(frontend): tool 35
+          round 1 builder quota stop — waiting_quota")
+
+      Quota probe approach: per QUOTA_AND_RESUME_POLICY.md §3 (runtime-enforced
+      mode) and §6 (Resume rule), re-dispatched the builder from the preserved
+      prompt at 17:53Z.  The prior dispatch's quota refusal exited within
+      seconds with a 45B log; sustained CPU consumption past the
+      instant-refusal window is the authoritative signal that the provider
+      has admitted the request.
+
+      Dispatch via documented stdin workaround (wrapper's argv path stalls
+      on prompts >~30KB per prior wake's documented bug — observed again on
+      butterfly + cross_market_spread):
+        nohup bash -c 'claude --print --model opus --effort xhigh \
+          --permission-mode bypassPermissions \
+          < /tmp/builder_prompt_sovereign__scan_extremes__migrate_round1.md \
+          2>&1 | tee /tmp/claude_frontend_builder_run_sovereign__scan_extremes
+          __migrate_round1.log'
+      Builder PIDs: nohup wrapper 1263456, parent shell 1263462, claude
+      --print 1263463, tee 1263464.  Branch reverified frontend_automation.
+
+      Observation at 17:54Z (~85s post-dispatch):
+        - PID 1263463 alive, 5s CPU, log 0 bytes (expected for --print which
+          buffers all output until generation completes).
+        - PRIOR refusal at 17:19Z: 0s wall, 45B log, immediate exit.
+        - CURRENT run: 85s wall, sustained CPU → provider admitted request.
+        - Quota window reset earlier than the 20:30Z envelope predicted.
+
+      Runtime state set this wake:
+        orchestrator_status: processing
+        current_tool: sovereign__scan_extremes__migrate
+        current_tool_backend_name: scan_extremes_tool
+        current_step: builder_dispatched
+        dispatch_round: 1
+        last_dispatch_at: 2026-06-10T17:53:00Z
+        last_stop_reason: tool_35_scan_extremes_migration_round1_builder_in_flight
+        quota_state: probe_unavailable (runtime-enforced, envelope stale)
+        quota_reset_at: null (cleared since 20:30Z envelope was stale)
+        done: 34 / blocked: 0 / remaining: 1
+
+      Stopping wake cleanly per BACKGROUND_EXECUTION_POLICY (long-running
+      builder is in-flight; next cron wake picks up Round 1 completion and
+      advances to Round 2 reviewer per single-round policy).  Expected
+      Round 1 duration ~15-30 min based on prior migration tools.  Builder
+      output will be visible at:
+        /tmp/claude_frontend_builder_run_sovereign__scan_extremes__migrate_round1.log
+      with module folder writes at:
+        UI/macro-copilot-dashboard-polished/src/modules/primitives/scan_sovereign_extremes_tool/
+
+      Special considerations for tool 35 (unchanged from prior wake's notes):
+        - Scanner shape (top-N + sparklines + threshold strip), reference
+          scan_inflation_swaps_extremes_tool.
+        - PRESERVE manifest_typed_view tier (backend _PRIMITIVE_SPECS has no
+          scan_extremes_tool → MIGRATION_RULES §8 forbids generic_runnable swap).
+        - PRESERVE ScannerWidget (id 'scanner').
+        - DELETE surfaces/ResultRenderer.tsx (7312B).
+        - REUSE existing /api/v1/rates/detail/scanner endpoint.
+        - Possible workspaceLabel/unsupportedReason tension with __test-utils.ts
+          invariant 8 (reviewer will adjudicate as on butterfly).
+
   - at: "2026-06-10T17:38:00Z"
     kind: tool_35_scan_extremes_round1_quota_exhausted_waiting_quota
     text: |
