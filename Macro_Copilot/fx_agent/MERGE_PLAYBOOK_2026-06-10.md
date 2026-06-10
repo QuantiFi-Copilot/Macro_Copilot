@@ -4,6 +4,8 @@
 
 Still a **planning doc, not an instruction to merge now.** Hard rules from the 05-28 playbook carry over unchanged: no merge without a coordinated window, no live rebase/force-push of any stack branch until ready to cascade the whole chain in one session, `revamp`/`build` never touched.
 
+**REVAMP IS READ-ONLY (Sacha rule, 2026-06-10).** `revamp` is Sreeram's branch: we never push, force-push, or merge INTO it. Allowed: fetching and reading it (`git log/diff/show/ls-tree origin/revamp`) to keep this playbook fresh, and rebasing OUR branches onto it (rewrites our branches only). The final "merge into revamp" step in §4 is **executed by Sreeram** — our job ends at "stack rebased clean, tests green, PRs ready".
+
 ---
 
 ## 1. What changed on the mainline (verified 2026-06-10)
@@ -43,7 +45,7 @@ The cascade-rebase plan from 05-28 therefore stands, with `origin/revamp` substi
 1. **Align with Sreeram first** (see ping below): confirm rebase target = revamp; fate of #241/#242; FX frontend via his factory.
 2. **Throwaway dry-run**: rebase a copy of #178's branch onto `origin/revamp`, document the 8 resolutions, delete the branch. No force-push.
 3. **Cascade-rebase the stack bottom-up in ONE session** (#178 → … → #240 (+#243/#244 if kept)), force-with-lease each, re-run the FX suites.
-4. **Merge bottom-up** into revamp. Close #241 (and possibly #242) instead of merging.
+4. **Merge bottom-up** into revamp — **performed by Sreeram** (revamp is read-only for us; we deliver a clean, green, rebased stack and he merges). #241/#242: closed 2026-06-10 instead of merging (see §7).
 5. **Post-merge**: re-ingest FX data in the target env (the 695 instruments / 9.15M rows live in the local dev DB; OIS 1.14M rows were local-only), run his frontend factory over the FX tools, then resume the tools backlog (`FX_TOOLS_BACKLOG_2026-05-28.md` — fully valid, fx_agent untouched).
 
 ## 5. Sreeram ping (3 questions, evidence-backed)
