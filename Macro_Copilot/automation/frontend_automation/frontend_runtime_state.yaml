@@ -13,7 +13,7 @@ last_reviewer_heading: APPROVED
 last_gate_result: pass
 last_stop_reason: catalog_exhausted
 last_error: null
-last_updated: "2026-06-10T18:25:00Z"
+last_updated: "2026-06-10T18:52:00Z"
 done: 35
 blocked: 0
 remaining: 0
@@ -51,6 +51,39 @@ reviewer_mode_history:
       dispatch triggers a clean waiting_quota stop; the next cron wake
       retries.
 status_notes:
+  - at: "2026-06-10T18:52:00Z"
+    kind: wake_catalog_exhausted_clean_short_circuit_32nd_fire
+    text: |
+      Thirty-second cron fire of cron id 450aa21c-625d-4ad7-b3da-ef39a6ba7784
+      (entry at 2026-06-10T18:52Z, 27 min after the 18:25Z tool-35 commit
+      and catalog re-exhaustion).  This is the first post-batch-4 no-op
+      fire — the 28th–31st fires were the prior catalog_exhausted streak
+      before batch-4 (the 7-tool migration queue) opened on 2026-06-09;
+      the productive wakes during batch-4 did not carry a fire counter.
+      Resuming the counter at 32 since the cron id is unchanged.
+
+      Per ORCHESTRATOR_PROMPT.md "Catalog-exhaustion rule" + BACKGROUND_
+      EXECUTION_POLICY.md §8 the correct action is a clean no-op: no
+      builder dispatch, no reviewer dispatch, no gate run, no tool commit.
+      Read source-of-truth docs, ran check_branch.sh (OK: frontend_automation),
+      sanity-checked the catalog (35 entries, all status: done, 0 blocked,
+      0 remaining) and the working tree (clean against HEAD 6e1a7ee, the
+      tool-35 commit_sha backfill).
+
+      Housekeeping written THIS wake:
+        - frontend_runtime_state.yaml last_updated bumped 18:25 → 18:52
+        - this 32nd-fire status_note prepended
+      No other surfaces touched.  Committed as a single housekeeping commit
+      ("automation: wake 18:52Z clean stop — catalog_exhausted (32nd fire)")
+      to mirror the 28th/30th/31st-fire pattern.
+
+      Flagging (again): the cron entry-point script (per BACKGROUND_EXECUTION_
+      POLICY.md §8) is supposed to read orchestrator_status BEFORE invoking
+      this prompt and short-circuit on catalog_exhausted; that early-exit
+      branch is still apparently missing — each fire incurs orchestrator-
+      prompt context cost.  Pattern was first noted on the 28th fire and
+      has now repeated on the 29th, 30th, 31st, and 32nd.  Human attention
+      on the entry-point script would eliminate the recurring no-op cost.
   - at: "2026-06-10T18:25:00Z"
     kind: tool_35_scan_extremes_migration_shipped_approved_catalog_exhausted
     text: |
