@@ -206,11 +206,11 @@ check('row 6: ?context=<curve_spread> → generic_builder', () => {
   assertEqual(out!.kind, 'generic_builder', 'kind');
 });
 
-check('row 7: ?context=<yield_levels> → yield typed view', () => {
+check('row 7: ?context=<yield_levels> → generic_builder (post-migration)', () => {
   const out = decodePrimitiveContext(
     encodeContext([{ tool: 'get_yield_levels_tool' }]),
   );
-  assertEqual(out!.kind, 'yield', 'kind');
+  assertEqual(out!.kind, 'generic_builder', 'kind');
 });
 
 // ----------------------------------------------------------------------------
@@ -283,8 +283,8 @@ check('row 14: Ask multi-tool handoff → list with multiple entries', () => {
     ]),
   );
   assertEqual(list.length, 3, 'three entries');
-  assertEqual(list[0].kind, 'yield', 'first: typed view');
-  assertEqual(list[1].kind, 'yield', 'second: typed view');
+  assertEqual(list[0].kind, 'generic_builder', 'first: generic builder');
+  assertEqual(list[1].kind, 'generic_builder', 'second: generic builder');
   assertEqual(list[2].kind, 'generic_builder', 'third: generic builder');
 });
 

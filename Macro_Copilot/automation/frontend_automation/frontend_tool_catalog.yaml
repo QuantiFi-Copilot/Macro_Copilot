@@ -1510,7 +1510,7 @@ tools:
     human_action_required: false
     last_review_heading: APPROVED-AFTER-FIX
     last_gate_result: pass
-    commit_sha: PENDING_COMMIT
+    commit_sha: 758c7d0
     build_order: 31
     backend_tool_name: calculate_curve_spread_tool
     instrument_family: sovereign_bonds
@@ -1573,11 +1573,13 @@ tools:
         - "Ask handoff via KNOWN_BACKEND_TOOLS unchanged"
 
   - id: sovereign__yield_levels__migrate
-    status: todo
+    status: done
     build_mode: migration
     human_action_required: false
-    last_review_heading: null
-    last_gate_result: not_run
+    last_review_heading: APPROVED
+    last_gate_result: pass
+    commit_sha: PENDING_COMMIT
+    committed_at: "2026-06-10T11:24:00Z"
     build_order: 32
     backend_tool_name: get_yield_levels_tool
     instrument_family: sovereign_bonds
