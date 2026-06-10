@@ -1,0 +1,161 @@
+# =============================================================================
+# scan_extremes_tool — tool configuration
+# =============================================================================
+# This file is the canonical record of the tool's conventions and methodology.
+# It is loaded by `shared.config.load_tool_config` at compute() time; the
+# parameter resolution path is:
+#
+#   query-time inputs    → ScannerInput (Pydantic, LLM-facing)
+#   conventions          → this YAML
+#
+# In V1 deterministic mode there is NO LLM-facing override path for
+# conventions; the LLM cannot ask for a non-standard z-score window.
+# That changes in advanced mode.  See
+# docs/architecture/tool_architecture.md.
+#
+# Bumping any value in `conventions:` is a deliberate methodology change.
+# Do not edit casually.
+#
+# Migration provenance
+# --------------------
+# Migrated 2026-06-10 from the legacy flat file
+# `rates_agent/sovereign_bonds/tools/scanner.py` as part of PR-10G gap-#4
+# closure.  Convention default values reproduce the legacy hardcoded
+# constants bit-for-bit.  The legacy values came from:
+#
+#   Z_SCORE_WINDOW         = 252    (shared.analytics.spreads constant)
+#   Z_SCORE_MIN_PERIODS    = 60     (shared.analytics.spreads constant)
+#   buffer multiplier      = 1.5    (hardcoded in scanner.py:107)
+#   ffill_limit_days       = 5      (hardcoded in scanner.py:148)
+#   trailing range decimals= 4      (hardcoded call kwarg in scanner.py:78)
+#   instrument_type        = "sovereign_benchmark"  (module-level constant)
+# =============================================================================
+
+tool:
+  name: scan_extremes_tool
+  domain: sovereign_bonds
+  category: scanner
+  description: |
+    Scans across ALL sovereign yield curve instruments in the database
+    and returns the most statistically extreme observations — ranked by
+    absolute 252-day z-score.  Thin orchestration layer over the same
+    shared analytics primitives that power the per-instrument
+    yield_levels tool; the scanner is essentially a yield_levels loop
+    over every (curve_family, tenor) group with a ranking step on top.
+
+methodology:
+  what_it_does: |
+    For every sovereign-benchmark (curve_family, tenor) group in the
+    database, computes a rolling 252-day z-score, daily bps change,
+    trailing 252-day range stats, and an EXTREME_HIGH / EXTREME_LOW
+    signal label based on the sign of the z-score.  The full set is
+    then thresholded by `min_abs_z_score`, ranked by absolute z-score,
+    and truncated to the top `top_n`.  The output is a scan_summary
+    string plus a list of ranked result rows.  No expected_inflation
+    decomposition, no curve-shape attribution — this is a pure z-score
+    screen at the per-(curve, tenor) leaf level.
+  assumptions:
+    - "The universe is the set of sovereign benchmark instruments
+       loaded into the substrate for the requested `field_name`
+       (default YLD_YTM_MID).  Curves with no data for that field are
+       silently absent from the universe."
+    - "Per-group history must reach at least `z_score_min_periods`
+       observations or the group is dropped from the scan; a sparse
+       curve will not appear even if it has a recent extreme value."
+    - "The signal labels are mechanical (sign of z-score) — they do
+       not encode bull/bear conviction or any economic interpretation."
+    - "Curves are scoped by an optional `curve_families` filter; when
+       absent, every curve in the universe is scanned."
+  known_caveats:
+    - "Z-score is rolling, not cross-sectional — a curve sitting at
+       2σ on its own history may not be an outlier relative to peers.
+       Use breakeven_curve_spread / cross_market_spread for relative-
+       value comparisons across curves at a fixed tenor."
+    - "Trailing 252-day high / low ignore the warm-up period —
+       extremes before the rolling window fully populates are not
+       reported."
+    - "Forward-fill across calendar gaps is capped at
+       `ffill_limit_days` (default 5) — gaps longer than that surface
+       as dropped trade dates, not as carry-forward extremes."
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Instrument-type filter passed to fetch_scan_universe
+  # ---------------------------------------------------------------------------
+  instrument_type:
+    value: sovereign_benchmark
+    source: tool_design_intent
+    rationale: >-
+      The scanner is the sovereign-bonds-domain morning sweep; its
+      universe is ``sovereign_benchmark`` rows in the substrate.  The
+      OIS-equivalent sibling at
+      ``rates_agent.ois.tools.scan_ois_extremes`` reuses the same
+      fetch_scan_universe helper with ``ois_swap`` instead.
+
+  # ---------------------------------------------------------------------------
+  # Z-score window length (trading days)
+  # ---------------------------------------------------------------------------
+  z_score_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      Trading-day count for a 1-year rolling window.  Matches
+      Bloomberg's default rolling window for percentile and z-score
+      metrics; consistent with desk convention across UST, Bund,
+      Gilt curves AND with the sibling per-instrument yield_levels
+      tool.  Cross-config lint enforces value-agreement across all
+      sovereign tools that declare this convention.
+    valid_range: [60, 1260]
+
+  # ---------------------------------------------------------------------------
+  # Minimum observations before the rolling stat is emitted
+  # ---------------------------------------------------------------------------
+  z_score_min_periods:
+    value: 60
+    source: team_judgment_pending_review
+    rationale: >-
+      ~3 months of observations before the rolling mean / std are
+      deemed trustworthy.  Smaller min_periods would emit noisy
+      z-scores at the start of a series; larger would suppress
+      legitimate early signal and exclude recently-listed instruments
+      from the scan universe.
+    valid_range: [20, 252]
+
+  # ---------------------------------------------------------------------------
+  # Calendar-day buffer multiplier for the fetch window
+  # ---------------------------------------------------------------------------
+  z_score_buffer_multiplier:
+    value: 1.5
+    source: derived_from_window
+    rationale: >-
+      Calendar-day buffer added to the fetch window so the rolling
+      z-score is fully populated from the first displayed trading day.
+      1.5x the trading-day window covers weekends, holidays, and the
+      occasional missing observation without over-fetching.
+    valid_range: [1.2, 2.0]
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for missing observations
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday
+      gaps.  Larger values would silently extrapolate stale prices
+      into active trading days; smaller values would leave many
+      holidays unfilled and shrink the comparable observation set.
+    valid_range: [1, 10]
+
+  # ---------------------------------------------------------------------------
+  # Trailing range rounding precision (decimals)
+  # ---------------------------------------------------------------------------
+  trailing_range_round_decimals:
+    value: 4
+    source: shared_analytics_default
+    rationale: >-
+      Round the trailing 252-day high / low / percentile to 4
+      decimals (so percent-scale values are honest to 1 bp).  Matches
+      the per-instrument yield_levels rounding convention.
+    valid_range: [2, 6]

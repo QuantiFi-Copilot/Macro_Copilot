@@ -130,6 +130,39 @@ Concretely:
 
 If the reviewer cannot verify backward compatibility (e.g. the widget IDs were renamed; the monitor widget file was deleted; the Pydantic Output shape changed and the TS type was not updated to match), the reviewer emits `STRUCTURAL: <description>` and the orchestrator routes to `human_required`.
 
+
+### 5.1 The three-surface module (Compact != Monitor)
+
+A common confusion: the `surfaces/BuildCompact.tsx` and the `surfaces/monitor/<X>Widget.tsx` are **TWO DIFFERENT FILES** that serve **TWO DIFFERENT SURFACES**.  Migration entries that have a `monitor_widgets_to_preserve` list MUST keep BOTH files distinct.
+
+The framework (from `docs_revamped/02_components/surface_contract.md` §3.4 + `docs_revamped/03_standards/rendering_density.md` §8):
+
+| | `surfaces/BuildCompact.tsx` | `surfaces/monitor/<X>Widget.tsx` |
+|---|---|---|
+| **Surface it serves** | Build (multi-tool DAG node) | Monitor (bento board card) |
+| **Cardinality** | exactly ONE per tool (`MODULE.surfaces.buildCompact`) | 0..N per tool (`MODULE.monitorWidgets[]` array) |
+| **Affordance** | expand-back-to-Extended via `onExpand` prop | none — it is the terminal monitor view |
+| **Size envelope** | ~400 x 280 px at `size='small'`, ~600 x 420 px at `size='medium'` | Monitor bento sizes (small/medium/tall) |
+| **Data fetch** | always per-widget via `fetchDetail<X>` | two modes: shared `RatesDataContext` for pre-aggregated grids OR per-widget `fetchDetail<X>` for parameterised |
+| **Param editing** | NOT editable inline (params inherited from parent DAG node) | inline via `paramFields` schema |
+| **Dashboard persistence** | none (DAG nodes are ephemeral) | dashboards persist `id` + `paramFields` values → widget `id` is the backward-compat lock |
+
+A monitor-eligible tool ships **THREE distinct surface files**:
+
+1. `surfaces/BuildExtended.tsx` — Build, full canvas
+2. `surfaces/BuildCompact.tsx` — Build, DAG node (different from Monitor widget!)
+3. `surfaces/monitor/<X>Widget.tsx` — Monitor bento card (one or more)
+
+Migration entries with `monitor_widgets_to_preserve` MUST NOT collapse Compact + Monitor into the same file or share the same `id`.  The Compact view's component is exported as `BuildCompact`; the Monitor widget's component is exported as `<X>Widget` and named in `MODULE.monitorWidgets[].component`.
+
+### 5.2 Monitor eligibility (when does a tool deserve a monitor widget?)
+
+Per `surface_contract.md` §3.4 (load-bearing rule):
+
+> A tool gets a Monitor widget **only** if a desk user would park it on their board and read it through the trading day.  Single-fire event reads (CPI / NFP / PPI releases), one-off scenario calculations, and rich-model fits do NOT belong on Monitor.  They are Ask / Build affairs.
+
+For migration entries: PRESERVE the existing `monitor_surface` claim if the legacy tool already had it.  Migration does NOT re-evaluate the eligibility decision — the decision was made when the original tool was built.  For new-build entries (`build_mode: new_build`), the catalog author makes the call; the factory follows.
+
 ## 6. The monitor widget identity rule
 
 For every entry in the catalog's `legacy_migration.monitor_widgets_to_preserve`:

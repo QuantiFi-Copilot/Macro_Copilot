@@ -1,43 +1,39 @@
 """
-scanner.py — Deterministic OIS Extreme-Move / Z-Score Scanner
-===============================================================
+compute.py — Deterministic sovereign z-score scanner (config-driven).
 
-OIS equivalent of the sovereign scanner.  Sweeps every OIS curve in the
-database and returns the most statistically stretched (curve_family,
-tenor) observations by absolute 252-day z-score.
+Migrated 2026-06-10 from
+``rates_agent/sovereign_bonds/tools/scanner.py`` (flat file) to the
+canonical per-tool-folder layout.  Closes PR-10G gap #4.
 
-The morning-sweep tool for the OIS side: "anything unusual in swaps
-space?"  Symmetric with the sovereign scanner — near-trivial port
-thanks to ``fetch_scan_universe(instrument_type='ois_swap')``, which
-was generalized in the sovereign analytics refactor specifically to
-make this tool a one-line change.
+The math is unchanged from the legacy file — convention defaults in
+``config.yaml`` reproduce the legacy Python-module constants
+bit-for-bit.  The only observable change for existing callers is that
+``scan_extremes`` now accepts an optional ``config: ToolConfig`` kwarg
+that defaults to None (auto-load from bundled YAML).
 
-Thin orchestration layer over ``shared/analytics/`` primitives:
-
-- ``fetch_scan_universe(instrument_type='ois_swap', ...)``
-                                     — DB query across the whole OIS universe
-- ``rolling_zscore``                 — 252-day z-score per instrument
-- ``bps_change``                     — daily bps delta per instrument
-- ``trailing_high_low_percentile``   — 252d range stats per instrument
-- ``safe_float``                     — None/NaN-safe numeric coercion
-
-Domain-specific responsibilities that stay in this module: input
-validation, the groupby / threshold / ranking workflow, and
-output-schema assembly.
+Test seam
+---------
+``fetch_scan_universe`` and ``date`` are imported here at module level
+so unit tests can mock both via
+``patch("rates_agent.sovereign_bonds.tools.scan_extremes.compute.X")``.
+The package ``__init__.py`` re-exports ``scan_extremes`` for
+convenience but does NOT re-export those test seams; tests must target
+this module's namespace directly.
 """
 
 from __future__ import annotations
 
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
 from sqlalchemy.engine import Engine
 
-from rates_agent.ois.tools.schemas import (
-    OISScannerInput,
-    OISScannerOutput,
-    OISScannerResultRow,
+from rates_agent.sovereign_bonds.tools.scan_extremes.schemas import (
+    ScannerInput,
+    ScannerOutput,
+    ScannerResultRow,
 )
 from shared.analytics.levels import (
     bps_change,
@@ -45,55 +41,59 @@ from shared.analytics.levels import (
 )
 from shared.analytics.rates_fetch import fetch_scan_universe
 from shared.analytics.spreads import (
-    Z_SCORE_WINDOW,
-    Z_SCORE_MIN_PERIODS,
     rolling_zscore,
     safe_float,
 )
+from shared.config import ToolConfig, load_tool_config
+
+
+CONFIG_PATH = Path(__file__).parent / "config.yaml"
 
 
 # ============================================================================
-# INSTRUMENT TYPE — filter passed to fetch_scan_universe
+# PER-GROUP METRICS  (config-driven)
 # ============================================================================
 
-_INSTRUMENT_TYPE = "ois_swap"
-
-
-# ============================================================================
-# PER-GROUP METRICS
-# ============================================================================
-
-def _compute_group_metrics(rates: pd.Series) -> Optional[Dict[str, Any]]:
+def _compute_group_metrics(
+    yields: pd.Series,
+    *,
+    z_window: int,
+    z_min_periods: int,
+    trailing_range_decimals: int,
+) -> Optional[Dict[str, Any]]:
     """Compute z-score + context metrics for a single (curve_family, tenor)
-    group's clean rate series.  Same shape as the sovereign scanner — we
-    reuse the shared helpers to guarantee byte-identical per-group math.
+    group's clean yield series.
+
+    Returns None when the group has insufficient history to compute a
+    meaningful z-score (< ``z_min_periods`` observations) or when the
+    z-score itself resolves to NaN.
     """
-    if len(rates) < Z_SCORE_MIN_PERIODS:
+    if len(yields) < z_min_periods:
         return None
 
-    current_rate = float(rates.iloc[-1])
+    current_yield = float(yields.iloc[-1])
 
     daily_change = None
-    if len(rates) >= 2:
-        daily_change = bps_change(current_rate, rates.iloc[-2])
+    if len(yields) >= 2:
+        daily_change = bps_change(current_yield, yields.iloc[-2])
 
-    z_series = rolling_zscore(rates)
+    z_series = rolling_zscore(yields)
     current_z = safe_float(z_series.iloc[-1])
     if current_z is None:
         return None
 
     high_252, low_252, percentile = trailing_high_low_percentile(
-        rates, window=Z_SCORE_WINDOW, decimals=4,
+        yields, window=z_window, decimals=trailing_range_decimals,
     )
 
     return {
-        "current_rate": safe_float(current_rate),
+        "current_yield": safe_float(current_yield),
         "daily_change_bps": daily_change,
         "z_score": current_z,
         "high_252d": high_252,
         "low_252d": low_252,
         "percentile_252d": percentile,
-        "as_of_date": rates.index[-1].strftime("%Y-%m-%d"),
+        "as_of_date": yields.index[-1].strftime("%Y-%m-%d"),
     }
 
 
@@ -101,39 +101,58 @@ def _compute_group_metrics(rates: pd.Series) -> Optional[Dict[str, Any]]:
 # PUBLIC API
 # ============================================================================
 
-def scan_ois_extremes(
+def scan_extremes(
     engine: Engine,
-    params: OISScannerInput,
+    params: ScannerInput,
+    *,
+    config: Optional[ToolConfig] = None,
 ) -> Dict[str, Any]:
-    """Scan all OIS swap instruments for z-score extremes.
+    """
+    Scan all sovereign benchmark instruments for z-score extremes.
 
     Parameters
     ----------
     engine : Engine
         Live SQLAlchemy engine connected to TimescaleDB.
-    params : OISScannerInput
+    params : ScannerInput
         Validated input with optional curve_families filter, top_n,
         min_abs_z_score, and field_name.
+    config : Optional[ToolConfig]
+        Tool config carrying conventions (z_score_window_days,
+        z_score_min_periods, z_score_buffer_multiplier,
+        ffill_limit_days, instrument_type, trailing_range_round_decimals).
+        Defaults to None (auto-load from bundled config.yaml).
 
     Returns
     -------
     dict
-        Serialized ``OISScannerOutput``.  On failure, returns a dict
+        Serialized ``ScannerOutput``.  On failure, returns a dict
         with an ``"error"`` key.
     """
+    if config is None:
+        config = load_tool_config(CONFIG_PATH)
+
+    instrument_type = config.convention_value("instrument_type")
+    z_window = int(config.convention_value("z_score_window_days"))
+    z_min_periods = int(config.convention_value("z_score_min_periods"))
+    z_buffer_multiplier = float(config.convention_value("z_score_buffer_multiplier"))
+    ffill_limit = int(config.convention_value("ffill_limit_days"))
+    trailing_range_decimals = int(
+        config.convention_value("trailing_range_round_decimals")
+    )
 
     # ------------------------------------------------------------------
     # 1. Date window — enough for z-score warm-up plus ~1 year display
     # ------------------------------------------------------------------
-    buffer_calendar_days = int(Z_SCORE_WINDOW * 1.5)
+    buffer_calendar_days = int(z_window * z_buffer_multiplier)
     start_date = date.today() - timedelta(days=365 + buffer_calendar_days)
 
     # ------------------------------------------------------------------
-    # 2. Fetch (every OIS swap series in the universe)
+    # 2. Fetch (every sovereign benchmark series in the universe)
     # ------------------------------------------------------------------
     raw_df = fetch_scan_universe(
         engine=engine,
-        instrument_type=_INSTRUMENT_TYPE,
+        instrument_type=instrument_type,
         field_name=params.field_name,
         start_date=start_date,
         curve_families=params.curve_families,
@@ -142,9 +161,9 @@ def scan_ois_extremes(
     if raw_df.empty:
         return {
             "error": (
-                "No OIS swap data found for "
+                f"No {instrument_type} data found for "
                 f"field='{params.field_name}' since {start_date.isoformat()}.  "
-                "Please verify the database contains ois_swap instruments."
+                f"Please verify the database contains {instrument_type} instruments."
             )
         }
 
@@ -167,9 +186,14 @@ def scan_ois_extremes(
     for (curve_family, tenor), group in raw_df.groupby(["curve_family", "tenor"]):
         group_count += 1
         group = group.set_index("trade_date").sort_index()
-        group = group.ffill(limit=5)
+        group = group.ffill(limit=ffill_limit)
 
-        metrics = _compute_group_metrics(group["field_value"])
+        metrics = _compute_group_metrics(
+            group["field_value"],
+            z_window=z_window,
+            z_min_periods=z_min_periods,
+            trailing_range_decimals=trailing_range_decimals,
+        )
         if metrics is None:
             continue
 
@@ -188,7 +212,7 @@ def scan_ois_extremes(
             filter_desc = f" for curves {params.curve_families}"
         return {
             "error": (
-                f"No OIS instruments found with |z-score| >= {params.min_abs_z_score}"
+                f"No instruments found with |z-score| >= {params.min_abs_z_score}"
                 f"{filter_desc}.  Try lowering min_abs_z_score."
             )
         }
@@ -203,12 +227,12 @@ def scan_ois_extremes(
     # 6. Build output
     # ------------------------------------------------------------------
     result_rows = [
-        OISScannerResultRow(
+        ScannerResultRow(
             rank=i + 1,
             curve_family=r["curve_family"],
             tenor=r["tenor"],
             as_of_date=r["as_of_date"],
-            current_rate_pct=r["current_rate"],
+            current_yield_pct=r["current_yield"],
             daily_change_bps=r["daily_change_bps"],
             z_score=r["z_score"],
             high_252d_pct=r["high_252d"],
@@ -219,9 +243,9 @@ def scan_ois_extremes(
         for i, r in enumerate(top_results)
     ]
 
-    output = OISScannerOutput(
+    output = ScannerOutput(
         scan_summary=(
-            f"Scanned {group_count} OIS instruments.  "
+            f"Scanned {group_count} instruments.  "
             f"Found {len(all_results)} with |z-score| >= {params.min_abs_z_score}.  "
             f"Showing top {len(top_results)} by absolute z-score."
         ),

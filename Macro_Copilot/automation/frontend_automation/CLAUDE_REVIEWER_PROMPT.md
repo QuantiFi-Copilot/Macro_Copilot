@@ -153,6 +153,15 @@ The catalog entry's `legacy_migration` block names every file to delete and ever
 
 - **H12 — Pre-commit gate.** All three gates pass: `npm run test:modules`, `npm run test:build`, `npm run typecheck` — exit 0. (Same as Section G.)
 
+
+- **H13 — Compact != Monitor (separation of concerns).** Verify the `surfaces/BuildCompact.tsx` and `surfaces/monitor/<X>Widget.tsx` are TWO DIFFERENT files with TWO DIFFERENT exported components.  Specifically:
+  - `module.ts.surfaces.buildCompact` references an import from `./surfaces/BuildCompact`
+  - `module.ts.monitorWidgets[].component` references an import from `./surfaces/monitor/<X>Widget`
+  - The two import paths MUST be different
+  - The exported component names MUST be different (typically `BuildCompact` vs `<X>Widget`)
+
+  A migration that collapses the two surfaces into one (e.g. uses `BuildCompact` as the monitor widget's `component`) is `STRUCTURAL:` — the two surfaces have incompatible contracts (Compact has `onExpand`; Monitor widgets do not; different size envelopes; different data-fetch patterns per `MIGRATION_RULES.md` §5.1).
+
 ### Migration-mode finding routing
 
 - H1, H2, H4 (widget identity drift), H5–H7 (duplicate central entries), H11 (tier-set mismatch) → ALL `STRUCTURAL:` (route to `human_required`; the migration honestly didn't migrate)

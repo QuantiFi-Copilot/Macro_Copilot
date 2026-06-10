@@ -112,7 +112,7 @@ from rates_agent.sovereign_bonds.tools.nfp_surprise import (  # noqa: E402
     calculate_nfp_surprise,
 )
 from shared.schemas import PastedPcaLoadings  # noqa: E402
-from rates_agent.sovereign_bonds.tools.scanner import scan_extremes  # noqa: E402
+from rates_agent.sovereign_bonds.tools.scan_extremes import scan_extremes  # noqa: E402
 from shared.schemas import (  # noqa: E402
     PairSpec, PastedTimeSeries, SeriesSpec,
 )

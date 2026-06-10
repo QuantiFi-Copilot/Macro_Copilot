@@ -189,6 +189,18 @@ Monitor widgets are inherently compact (per `rendering_density.md §8`). They:
 
 Registered in `MODULE.monitorWidgets[]` array inline in `module.ts`.
 
+
+
+### 6.1 Monitor eligibility decision
+
+The decision about whether a tool deserves the `monitor_surface` tier (and therefore a `surfaces/monitor/<X>Widget.tsx` file) is made by the catalog author per the load-bearing rule in `docs_revamped/02_components/surface_contract.md` §3.4:
+
+> A tool gets a Monitor widget **only** if a desk user would park it on their board and read it through the trading day.  Single-fire event reads (CPI / NFP / PPI releases), one-off scenario calculations, and rich-model fits do NOT belong on Monitor.  They are Ask / Build affairs.
+
+The catalog entry's `required_tiers` field carries the decision.  The factory builds what the catalog says — it does NOT re-evaluate eligibility.  If a tool ships `monitor_surface` in `required_tiers`, the builder MUST ship a corresponding `surfaces/monitor/<X>Widget.tsx` file AND register it in `MODULE.monitorWidgets[]`.  Claiming the tier without delivering is the containment-principle violation flagged in §12 anti-patterns.
+
+The Compact view and the Monitor widget are **two different files** with **two different contracts** — see `MIGRATION_RULES.md` §5.1 for the per-surface comparison table.  They MUST NOT be collapsed into a single component.
+
 ## 7. THESIS.md contract  *(FM10)*
 
 Copy `docs_revamped/02_components/frontend_module/thesis_template.md` verbatim and answer all five questions:

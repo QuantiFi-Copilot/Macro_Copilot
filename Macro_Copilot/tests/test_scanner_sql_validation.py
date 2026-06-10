@@ -21,7 +21,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from database.database import get_db_engine  # noqa: E402
-from rates_agent.sovereign_bonds.tools.scanner import scan_extremes  # noqa: E402
+from rates_agent.sovereign_bonds.tools.scan_extremes import scan_extremes  # noqa: E402
 from rates_agent.sovereign_bonds.tools.schemas import ScannerInput  # noqa: E402
 from tests.sql_validation_common import (  # noqa: E402
     add_exact_field_mismatches,

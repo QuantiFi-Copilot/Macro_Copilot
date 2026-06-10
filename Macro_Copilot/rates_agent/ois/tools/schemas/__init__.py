@@ -79,7 +79,7 @@ from rates_agent.ois.tools.swap_spread.schemas import (
 )
 
 # Scanner (z-score extremes across the OIS universe)
-from rates_agent.ois.tools.schemas.scanner import (
+from rates_agent.ois.tools.scan_ois_extremes.schemas import (
     OISScannerInput,
     OISScannerOutput,
     OISScannerResultRow,
