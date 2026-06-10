@@ -8,7 +8,12 @@ Your job is NOT to build frontends yourself. Your job is to run the process corr
 
 You are orchestrating exactly one vertical slice: **frontend module building** for backend primitive tools that already exist on this branch but lack a real dual-view frontend.
 
-You are not orchestrating: backend primitive work (the `primitive_automation` branch owns that), operators, workflow templates, legacy frontend module migrations, or generic repo maintenance.
+You orchestrate TWO modes for the catalog's eligible work, distinguished by the catalog entry's `build_mode` field:
+
+- **`build_mode: new_build`** (default; absent = new_build) — for tools whose folder has only a Stage-3 scaffold (stub `module.ts` with `tiers: ['generic_runnable']`, v2 `THESIS.md`, placeholder test). The builder writes the full module from scratch.
+- **`build_mode: migration`** — for tools currently shipping a legacy typed-renderer surface (`surfaces/ResultRenderer.tsx`, `module.ts.typedView: '<string>'`, working monitor widgets) that need conversion to the standalone-bridge dual-view contract. The builder deletes the legacy file, transforms `module.ts`, and PRESERVES the existing monitor widget identities for backward compatibility. See `MIGRATION_RULES.md` for the full migration contract.
+
+You are not orchestrating: backend primitive work (the `primitive_automation` branch owns that), operators, workflow templates, rich-model (`BuildSurface + PreviewWidget`) tool redesigns, or generic repo maintenance.
 
 ## Branch rule
 
@@ -27,6 +32,7 @@ Before processing a tool, read:
 
 - `automation/frontend_automation/DESIGN_PRINCIPLES.md`
 - `automation/frontend_automation/STANDARD_MODULE_RULES.md`
+- `automation/frontend_automation/MIGRATION_RULES.md`  *(migration mode only — read when the catalog entry has `build_mode: migration`)*
 - `automation/frontend_automation/FRONTEND_BUILD_RULES.md`
 - `automation/frontend_automation/TESTING_POLICY.md`
 - `automation/frontend_automation/PRE_FLIGHT_BACKEND_AUDIT.md`
@@ -139,6 +145,36 @@ For each tool about to be built:
 
 This check is read-only. Do NOT seed, scaffold, or backfill anything to satisfy the pre-flight.
 
+## Build mode rule
+
+After the pre-flight backend audit passes (see above), the orchestrator dispatches the builder with a mode-aware preamble determined by the catalog entry's `build_mode` field.
+
+### Mode: `new_build` (default)
+
+Standard dispatch flow:
+1. Assemble the builder prompt: `CLAUDE_BUILDER_PROMPT.md` body + the catalog entry verbatim + the resolved mockup paths + the reference frontend module path + the pre-flight audit output.
+2. Dispatch via `run_claude_builder.sh` (per the "Required loop" step 5 below).
+
+The builder assumes the target folder contains the Stage-3 scaffold (stub `module.ts`, v2 `THESIS.md`, placeholder `__tests__/module.spec.ts`) — these get overwritten with the dual-view + standalone-bridge implementation.
+
+### Mode: `migration`
+
+Pre-dispatch addendum + mode-aware preamble:
+
+1. **Run Check 5 (legacy pattern detection)** per `PRE_FLIGHT_BACKEND_AUDIT.md` §11. The tool's current `module.ts` must declare `typedView: '<string>'` AND have `surfaces.resultRenderer` AND the file `surfaces/ResultRenderer.tsx` must exist on disk. If any condition is false, mark `blocked` with reason `legacy_pattern_not_detected` and advance.
+
+2. Assemble the builder prompt: `CLAUDE_BUILDER_PROMPT.md` body **plus the full body of `MIGRATION_RULES.md`** + the catalog entry verbatim (including its `legacy_migration` block) + the resolved mockup paths + the reference frontend module path + the pre-flight audit output.
+
+3. Dispatch via `run_claude_builder.sh` (same wrapper; the prompt's `## Migration mode` section activates the migration-specific instructions).
+
+4. After the builder finishes, dispatch the reviewer with `CLAUDE_REVIEWER_PROMPT.md` body **plus the full body of `MIGRATION_RULES.md`** + the catalog entry + the resolved mockup paths + the `git diff` of the builder's changes. The reviewer's Section H runs the migration-specific checks (12 of them — see `CLAUDE_REVIEWER_PROMPT.md` §H).
+
+The reviewer result rule (Cases A–F below) applies identically. A `STRUCTURAL:` finding on H1–H7 (legacy file not deleted, duplicate central type/service/route added, monitor widget identity drift) routes to `human_required` per `SINGLE_REVIEW_ROUND_POLICY.md` §3.
+
+### Mode dispatch invariant
+
+The orchestrator MUST NOT mix modes within a single dispatch — never include `MIGRATION_RULES.md` for a `new_build` entry, never omit it for a `migration` entry. The catalog entry's `build_mode` field is the single source of truth.
+
 ## Required loop
 
 Process the catalog, not just one tool.
@@ -155,13 +191,13 @@ For each selected tool:
 2. Confirm it is a single tool task and not already done/blocked.
 3. **Run the pre-flight backend audit** (see above). On a miss, block the tool and advance.
 4. Update runtime state: `current_tool`, `dispatch_round: 1`, `current_step: builder_dispatched`.
-5. **Dispatch 1 (builder)** — write the builder prompt (`CLAUDE_BUILDER_PROMPT.md` body + the catalog entry verbatim + the resolved mockup paths + the reference frontend module + the pre-flight audit output) to `/tmp/builder_prompt_<tool_id>_round1.md` and dispatch via:
+5. **Dispatch 1 (builder)** — write the builder prompt (`CLAUDE_BUILDER_PROMPT.md` body + **the full body of `MIGRATION_RULES.md` if `build_mode: migration`** + the catalog entry verbatim + the resolved mockup paths + the reference frontend module + the pre-flight audit output) to `/tmp/builder_prompt_<tool_id>_round1.md` and dispatch via:
    ```bash
    bash automation/frontend_automation/run_claude_builder.sh \
      /tmp/builder_prompt_<tool_id>_round1.md \
      /tmp/claude_frontend_builder_run_<tool_id>_round1.log
    ```
-6. After the builder finishes, update `dispatch_round: 2`, `current_step: reviewer_dispatched`. **Dispatch 2 (reviewer)** — write the reviewer prompt (`CLAUDE_REVIEWER_PROMPT.md` body + the catalog entry + the resolved mockup paths + `git diff` of the builder's changes) to `/tmp/reviewer_prompt_<tool_id>_round2.md` and dispatch via:
+6. After the builder finishes, update `dispatch_round: 2`, `current_step: reviewer_dispatched`. **Dispatch 2 (reviewer)** — write the reviewer prompt (`CLAUDE_REVIEWER_PROMPT.md` body + **the full body of `MIGRATION_RULES.md` if `build_mode: migration`** + the catalog entry + the resolved mockup paths + `git diff` of the builder's changes) to `/tmp/reviewer_prompt_<tool_id>_round2.md` and dispatch via:
    ```bash
    bash automation/frontend_automation/run_claude_reviewer.sh \
      /tmp/reviewer_prompt_<tool_id>_round2.md \

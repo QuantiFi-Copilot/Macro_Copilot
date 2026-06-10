@@ -1,23 +1,23 @@
 version: '1.0'
 branch: frontend_automation
 backend: claude-cli
-orchestrator_status: catalog_exhausted
+orchestrator_status: processing
 current_tool: null
 current_tool_backend_name: null
-current_step: committed
-dispatch_round: 2
-last_dispatch_at: "2026-06-08T18:15:00Z"
+current_step: ready_to_dispatch
+dispatch_round: 0
+last_dispatch_at: null
 last_successful_tool: ois__swap_spread
 last_successful_commit: d78fffa
 last_reviewer_heading: APPROVED
 last_gate_result: pass
-last_stop_reason: catalog_exhausted
+last_stop_reason: batch_4_queued_with_migration_mode_setup
 last_error: null
-last_updated: "2026-06-08T19:22:00Z"
+last_updated: "2026-06-09T01:00:00Z"
 done: 28
 blocked: 0
-remaining: 0
-catalog_exhausted_at: "2026-06-08T18:20:00Z"
+remaining: 7
+catalog_exhausted_at: null
 human_required: null
 quota_state: live
 quota_snapshot: null
@@ -7164,3 +7164,34 @@ status_notes:
       that accumulated during the human_required idle period (0acbc2e to
       somewhere earlier).  Re-enable after this commit lands so the
       orchestrator picks up tool 27 with the new guardrails.
+
+  - at: "2026-06-09T01:00:00Z"
+    kind: batch_4_queued_two_mode_factory_setup
+    text: |
+      Batch 4 queued: 7 new tool entries appended (build_order 29-35).
+      2 new builds (cross_country_real_yield_spread; otr_ofr_spread)
+      + 5 migrations (curve_spread, yield_levels, butterfly,
+      cross_market_spread, scan_extremes).
+
+      Factory instructions revamped to support a TWO-MODE dispatch:
+        - build_mode: new_build  (default; original factory behavior)
+        - build_mode: migration  (NEW; replaces legacy ResultRenderer
+          tools with dual-view + standalone-bridge while preserving
+          monitor widget identities for backward compat)
+
+      Doc changes:
+        - NEW: automation/frontend_automation/MIGRATION_RULES.md
+          (~400 lines; procedure, anti-patterns, central-file rules)
+        - ORCHESTRATOR_PROMPT.md: scope, inputs, build-mode-rule section
+        - CLAUDE_BUILDER_PROMPT.md: mode-aware scaffold pre-state +
+          new Migration mode section
+        - CLAUDE_REVIEWER_PROMPT.md: new Section H (12 migration checks)
+        - STANDARD_MODULE_RULES.md: appended §14 cross-reference
+        - PRE_FLIGHT_BACKEND_AUDIT.md: appended §11 Check 5 (legacy
+          pattern detection)
+
+      classify_curve_move_tool DEFERRED from Batch 4 — categorical
+      regime-state output does not fit the 3-KPI Compact contract;
+      needs its own classifier-shell design pass.
+
+      Counters: done:28  blocked:0  remaining:7.

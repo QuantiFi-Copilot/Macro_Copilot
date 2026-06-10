@@ -322,3 +322,22 @@ The reviewer scores conformance against the same mockups.
 - `docs_revamped/02_components/frontend_module/thesis_template.md` — THESIS template
 - `UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_breakeven_inflation_simple_tool/` — the canonical reference module
 - `UI/macro-copilot-dashboard-polished/src/modules/__test-utils.ts` — `assertStandardModuleInvariants`
+
+---
+
+## 14. Migration-mode addendum
+
+This file describes the **new-build** / steady-state contract for a standard frontend module — the shape every tool ends up at after the factory ships it.
+
+For the special case of **converting** an existing legacy typed-renderer tool (`surfaces/ResultRenderer.tsx` + `module.ts.typedView: '<string>'`) into a standard module, the catalog entry sets `build_mode: migration` and the builder + reviewer follow `MIGRATION_RULES.md` IN ADDITION to this file.
+
+The end-state shape (per §1) is identical between `new_build` and `migration` tools. The DIFFERENCE is the pre-state of the folder and the procedure to get from pre-state to end-state. Specifically, migration mode:
+
+- DELETES the legacy `surfaces/ResultRenderer.tsx` (rather than overwriting a Stage-3 stub)
+- TRANSFORMS the existing `module.ts` (typedView → null, removes legacy fields, replaces surfaces keys) rather than overwriting a stub
+- PRESERVES the existing monitor widget identities (the `id` and `paramFields` shape in `MODULE.monitorWidgets[]`) for backward compatibility — see `MIGRATION_RULES.md` §6
+- REUSES the existing central type / service / route entries (does NOT add parallel entries)
+
+When reading this file for a migration entry, treat §1 as the END-STATE specification; treat `MIGRATION_RULES.md` §4 (the migration procedure) as the path from legacy → end-state.
+
+See also `PRE_FLIGHT_BACKEND_AUDIT.md` §11 — Check 5 (legacy pattern detection) — which the orchestrator runs as a migration-only pre-flight step.

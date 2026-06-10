@@ -18,6 +18,7 @@ Read these files **first** — they are not optional:
 - `docs_revamped/03_standards/lifecycle_checklist_template.md` Stages 4–6 (the per-tool checklist you operationalise).
 - `automation/frontend_automation/DESIGN_PRINCIPLES.md`
 - `automation/frontend_automation/STANDARD_MODULE_RULES.md`
+- `automation/frontend_automation/MIGRATION_RULES.md`  **(REQUIRED only when the catalog entry has `build_mode: migration`)**
 - `automation/frontend_automation/FRONTEND_BUILD_RULES.md`
 - `automation/frontend_automation/TESTING_POLICY.md`
 - `automation/frontend_automation/PRE_FLIGHT_BACKEND_AUDIT.md`
@@ -132,9 +133,71 @@ npm run typecheck
 ```
 ALL THREE must exit 0 or the commit is refused. Your `__tests__/module.spec.ts` MUST pass; your TS types MUST be sound; your import paths MUST be valid.
 
+## Migration mode (`build_mode: migration` only)
+
+Read this section ONLY when the catalog entry has `build_mode: migration`. For `new_build` entries, skip directly to "Required outputs from your work" below.
+
+### The migration contract (summary; full body in `MIGRATION_RULES.md`)
+
+You are converting a tool from the legacy typed-renderer pattern (`surfaces/ResultRenderer.tsx` + `typedView: '<string>'`) to the standalone-bridge dual-view pattern (`surfaces/BuildExtended.tsx` + `surfaces/BuildCompact.tsx` + `typedView: null`).
+
+The catalog entry carries a `legacy_migration` block telling you EXACTLY:
+- which files to DELETE (`files_to_delete`)
+- which `module.ts` fields to REMOVE (`module_ts_changes.remove_fields`)
+- which `module.ts` surface keys to REPLACE (`module_ts_changes.remove_surface_keys` → `add_surface_keys`)
+- which monitor widgets to PRESERVE (`monitor_widgets_to_preserve` — IDs are the backward-compat lock)
+- which central files ALREADY HAVE the needed entries (`central_files_already_have` — do NOT duplicate)
+- which backward-compatibility assertions the reviewer will verify (`backward_compat_assertions`)
+
+### Migration mode required outputs
+
+Override the "Required outputs from your work" section below for migration entries:
+
+- **DELETE** `surfaces/ResultRenderer.tsx` (named in `legacy_migration.files_to_delete`)
+- **TRANSFORM** `module.ts` per `legacy_migration.module_ts_changes` — change `typedView` to `null`, remove `workspaceLabel` / `unsupportedReason` if present, replace `surfaces: { resultRenderer: ResultRenderer }` with `surfaces: { build: BuildExtended, buildExtended: BuildExtended, buildCompact: BuildCompact }`, add `richModel: false`
+- **PRESERVE** the existing `monitor_widgets_to_preserve[].path` files at their current locations; preserve each `id` + `paramFields` shape in `MODULE.monitorWidgets[]` array verbatim. You MAY refactor a widget's internals to import from the new `<tool_slug>Shared.ts` helper, BUT the widget's RENDERED behavior (visible KPIs, data source) MUST stay equivalent.
+- **NEW** `surfaces/BuildExtended.tsx` (full canvas; the reference twin is your template)
+- **NEW** `surfaces/BuildCompact.tsx` (3-KPI compact card per `rendering_density.md` §2.2)
+- **NEW** `surfaces/<tool_slug>Shared.ts` (cross-surface helper — data hook, KPI builders, tone helpers)
+- **OVERWRITE** `THESIS.md` (full 5-question template; Q1 enumerates BOTH new buildExtended + buildCompact PLUS preserved monitor widgets)
+- **OVERWRITE** `__tests__/module.spec.ts` (dual-view contract test per `STANDARD_MODULE_RULES.md` §8)
+- **VERIFY (do NOT grow)** the central files listed in `legacy_migration.central_files_already_have`:
+  - `src/types/rates.ts` — the `<X>Output` TS type EXISTS. Open it; verify each field matches the Pydantic Output. If a Pydantic field has been added since the type was authored, ADD it to the existing TS type — do NOT create a parallel type.
+  - `src/services/ratesApi.ts` — `fetchDetail<X>` EXISTS. Verify params type matches Pydantic Input. Add fields if missing; do NOT add a parallel function.
+  - `api/routes/rates/detail.py` — the route at the catalog's `endpoint_slug` EXISTS. Verify signature mirrors Pydantic Input. Add fields if missing; do NOT add a parallel route.
+  - `src/modules/index.ts` — entry EXISTS. Verify alphabetical position; do NOT add a duplicate.
+  - `src/lib/toolNames.ts` — entry EXISTS. Do NOT duplicate.
+
+### Migration-mode BUILDER REPORT additions
+
+In addition to the standard BUILDER REPORT (see "BUILDER REPORT format" below), include a "**## Migration audit**" subsection listing:
+
+- **Files DELETED**: list verbatim from `git status` (should include `surfaces/ResultRenderer.tsx`)
+- **Files PRESERVED**: list each `monitor_widgets_to_preserve[].path` and confirm:
+  - file still exists on disk
+  - widget `id` still appears in `MODULE.monitorWidgets[]`
+  - widget `paramFields` field names + defaults unchanged
+- **Central files VERIFIED** (no duplicates added): list each `central_files_already_have[]` entry and what you verified
+- **Backward-compat assertions** (per the catalog): confirm each held
+- **Legacy `module.ts` fields removed**: list each (typedView, workspaceLabel, unsupportedReason if present)
+
+### Migration-mode anti-patterns (the reviewer auto-flags as STRUCTURAL)
+
+- `surfaces/ResultRenderer.tsx` still present after the build (not deleted)
+- A parallel `<X>Output` / `fetchDetail<X>` / `/detail/<slug>` added in central files (duplicates the existing one)
+- A monitor widget `id` changed (breaks every dashboard that mounted it)
+- A monitor widget deleted without replacement
+- The `monitor_surface` tier removed when the tool was previously claiming it
+- `module.ts.tiers` swapped from `manifest_typed_view` → `generic_runnable` (the backend's `_PRIMITIVE_SPECS` membership is unchanged; the tier set must mirror backend reality — preserve `manifest_typed_view` if it was there)
+- `module.ts.typedView` kept as a string (the migration's whole point is to remove the typed-view dispatch)
+
 ## Required outputs from your work
 
-> **CRITICAL — OVERWRITE the existing scaffolds.** Every target module folder ALREADY contains a Stage-3 scaffold: a stub `module.ts` (claims `tiers: ['generic_runnable']` only — no surfaces), a stale `THESIS.md` (v2 — explicitly says "no bespoke surface today"), and a placeholder `__tests__/module.spec.ts`. You MUST replace each of these three files completely with the factory's dual-view + standalone-bridge versions. Do NOT skip a file because it "already exists" — the existing one is a Stage-3 placeholder, NOT the final shape.
+> **CRITICAL — Build-mode-aware folder pre-state.** The pre-state of the target module folder depends on the catalog entry's `build_mode` field.
+>
+> **If `build_mode: new_build` (default):** The folder contains a Stage-3 scaffold — a stub `module.ts` (claims `tiers: ['generic_runnable']` only — no surfaces), a stale `THESIS.md` (v2 — explicitly says "no bespoke surface today"), and a placeholder `__tests__/module.spec.ts`. You MUST replace each of these three files completely with the factory's dual-view + standalone-bridge versions. Do NOT skip a file because it "already exists" — the existing one is a Stage-3 placeholder, NOT the final shape.
+>
+> **If `build_mode: migration`:** The folder ships a working legacy typed-renderer module — `module.ts` with `typedView: '<string>'` and `surfaces.resultRenderer`, a v2 `THESIS.md`, a legacy `__tests__/module.spec.ts`, a populated `surfaces/ResultRenderer.tsx`, and one or more populated `surfaces/monitor/<Widget>.tsx` files. You MUST follow the migration procedure in `MIGRATION_RULES.md` §4: delete `surfaces/ResultRenderer.tsx`, transform `module.ts` (typedView → null, remove `workspaceLabel` / `unsupportedReason` legacy fields, change `surfaces` keys), write the new dual-view surface files, overwrite `THESIS.md` + test, AND **preserve every existing monitor widget's `id` and `paramFields` shape verbatim** (the backward-compat lock — see `MIGRATION_RULES.md` §6). Do NOT add a parallel `<X>Output` type / `fetchDetail<X>` / `/detail/<slug>` route — those already exist in the central files; verify and reuse.
 
 Where applicable, you must create / update:
 
