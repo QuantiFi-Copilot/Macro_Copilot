@@ -2,10 +2,14 @@
 // ============================================================================
 // src/modules/primitives/calculate_curve_spread_tool/__tests__/module.spec.ts
 // ----------------------------------------------------------------------------
-// Stage 3 per-module round-trip — calls assertStandardModuleInvariants
-// from src/modules/__test-utils.ts.  Catches FM11 invariants 1-8 in
-// one check.  Identical boilerplate across every module; per-module
-// customisation belongs in additional ``check(...)`` blocks below.
+// Per-module round-trip — calls assertStandardModuleInvariants from
+// src/modules/__test-utils.ts.  Catches FM11 invariants 1-8 in one check.
+// Extends the standard boilerplate with the dual-view rendering-density
+// contract checks (rendering_density.md §11): every primitive claiming
+// custom_build_surface MUST ship BOTH surfaces.buildExtended AND
+// surfaces.buildCompact, AND typedView MUST be null under the standalone-
+// bridge contract.  Identical shape to the OIS curve-spread sibling test
+// (the migration reference).
 // ============================================================================
 
 import { assertStandardModuleInvariants } from '../../../__test-utils';
@@ -32,6 +36,82 @@ check('module satisfies the standard invariants', async () => {
     folderName: FOLDER,
     moduleFolderPath: `${cwd()}/src/modules/primitives/${FOLDER}`,
   });
+});
+
+// ----------------------------------------------------------------------------
+// Dual-view rendering-density contract (rendering_density.md §11): every
+// primitive claiming custom_build_surface MUST ship BOTH
+// surfaces.buildExtended AND surfaces.buildCompact.
+// ----------------------------------------------------------------------------
+
+check('claims custom_build_surface tier', () => {
+  if (!MODULE.tiers.includes('custom_build_surface')) {
+    throw new Error(
+      `tiers missing 'custom_build_surface'; the migrated dual-view module must claim it per rendering_density.md.  Got tiers=${JSON.stringify(MODULE.tiers)}`,
+    );
+  }
+});
+
+check('surfaces.buildExtended is populated', () => {
+  if (!MODULE.surfaces?.buildExtended) {
+    throw new Error(
+      'surfaces.buildExtended is missing.  Dual-view contract requires both buildExtended + buildCompact for every primitive claiming custom_build_surface.',
+    );
+  }
+});
+
+check('surfaces.buildCompact is populated', () => {
+  if (!MODULE.surfaces?.buildCompact) {
+    throw new Error(
+      'surfaces.buildCompact is missing.  Dual-view contract requires both buildExtended + buildCompact for every primitive claiming custom_build_surface.',
+    );
+  }
+});
+
+check('typedView is null (standalone-bridge pattern)', () => {
+  if (MODULE.typedView != null) {
+    throw new Error(
+      `typedView must be null under the standalone-bridge contract; got '${MODULE.typedView}'.  See methodology_exposure.md §5.`,
+    );
+  }
+});
+
+check('legacy surfaces.resultRenderer is NOT populated', () => {
+  const s = MODULE.surfaces as Record<string, unknown> | undefined;
+  if (s && 'resultRenderer' in s && s.resultRenderer != null) {
+    throw new Error(
+      'surfaces.resultRenderer is populated; the migration must REMOVE the legacy typed-renderer surface (see MIGRATION_RULES §4).',
+    );
+  }
+});
+
+check('monitor widget ids preserved (backward-compat lock)', () => {
+  const ids = (MODULE.monitorWidgets ?? []).map((w) => w.id);
+  for (const requiredId of ['curve_spreads', 'spread_chart']) {
+    if (!ids.includes(requiredId)) {
+      throw new Error(
+        `Monitor widget id '${requiredId}' is missing.  MIGRATION_RULES §6 requires the two pre-migration widget ids be preserved verbatim; got ids=${JSON.stringify(ids)}.`,
+      );
+    }
+  }
+});
+
+check('mockups folder exists alongside the module', async () => {
+  try {
+    const fs = await import('node:fs/promises');
+    const path = `${cwd()}/src/modules/primitives/${FOLDER}/mockups`;
+    const entries = await fs.readdir(path);
+    const required = ['Compact.png', 'Extended.png'];
+    const missing = required.filter((r) => !entries.includes(r));
+    if (missing.length > 0) {
+      throw new Error(`mockups/ missing required PNGs: ${missing.join(', ')}`);
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ERR_MODULE_NOT_FOUND') {
+      return;
+    }
+    throw err;
+  }
 });
 
 export async function runAllModuleSpecTests(): Promise<void> {

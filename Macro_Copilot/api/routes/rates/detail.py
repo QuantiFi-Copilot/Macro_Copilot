@@ -157,6 +157,33 @@ from rates_agent.inflation_indexed_bonds.tools.cross_country_breakeven_spread_si
     CrossCountryBreakevenSpreadSimpleOutput,
     calculate_cross_country_breakeven_spread_simple,
 )
+# Standalone-bridge endpoint for the same-tenor cross-country linker REAL-
+# YIELD spread primitive (e.g. USD_TIPS 10Y real yield minus GBP_LINKER 10Y
+# real yield).  Two-curve, single-tenor primitive; each leg is a sovereign
+# linker real-yield level at the shared tenor.  Per
+# ``docs_revamped/03_standards/methodology_exposure.md §5`` every new tool
+# ships its OWN typed-detail endpoint consumed by both the extended and
+# compact Build views (rendering_density dual-view) + the Monitor tile.
+# Cross-country invariant (first_curve_family != second_curve_family)
+# enforced by the Pydantic schema layer; both-legs-must-be-linker invariant
+# enforced at compute time against macro_data.instrument_master.  Output is
+# a SPREAD — ships in PERCENT (real yields are quoted in PERCENT, NOT BPS;
+# this is the key shape delta from the sibling cross-country BREAKEVEN
+# spread which ships in BPS).  Daily / weekly / monthly *changes* are
+# reported in BPS per desk convention.  Sign convention POSITIVE = first
+# curve real yield > second curve real yield; wire-locked.  Surfaces the
+# LOAD-BEARING index-family AND market-structure mismatch caveats (CPI-U /
+# RPI / HICPxT / Canada CPI; cross-country linker liquidity / issuance-
+# size differences) via ``current_metrics.methodology_label`` (sourced
+# from YAML at runtime, NOT a hardcoded Python literal).  Rolling-z-score
+# conventions are YAML-locked — only ``lookback_days`` + ``field_name`` are
+# exposed at the API layer.
+from rates_agent.inflation_indexed_bonds.tools.cross_country_real_yield_spread_simple import (
+    CONFIG_PATH as CROSS_COUNTRY_REAL_YIELD_SPREAD_SIMPLE_CONFIG_PATH,
+    CrossCountryRealYieldSpreadSimpleInput,
+    CrossCountryRealYieldSpreadSimpleOutput,
+    calculate_cross_country_real_yield_spread_simple,
+)
 # Standalone-bridge endpoint for the same-tenor cross-market ZCIS spread
 # primitive (e.g. USD_ZCIS 5Y minus EUR_ZCIS 5Y).  First inflation_swaps tool
 # under the standalone-bridge contract — per
@@ -185,6 +212,21 @@ from rates_agent.inflation_swaps.tools.inflation_swap_butterfly import (
     InflationSwapButterflyInput,
     InflationSwapButterflyOutput,
     calculate_inflation_swap_butterfly,
+)
+# Standalone-bridge endpoint for the universe-wide SOVEREIGN yield-extremes
+# scanner (``scan_extremes_tool``).  Migration target — the legacy
+# ``manifest_typed_view`` typed-renderer is being replaced by the dual-view +
+# standalone-bridge surface pair on the frontend, and this endpoint is the
+# typed-detail bridge that feeds both views.  The MCP wrapper / aggregated
+# dashboard endpoint at ``/api/v1/rates/scanner`` is unchanged; this is a
+# NEW route exposing the full Pydantic Output (no field renaming).  Rolling-
+# z-score conventions are YAML-locked on this primitive — only ``curve_families``
+# / ``top_n`` / ``min_abs_z_score`` / ``field_name`` are exposed.
+from rates_agent.sovereign_bonds.tools.scan_extremes import (
+    CONFIG_PATH as SCAN_EXTREMES_CONFIG_PATH,
+    ScannerInput,
+    ScannerOutput,
+    scan_extremes,
 )
 # Standalone-bridge endpoint for the universe-wide ZCIS rate-extremes scanner.
 # First SCANNER-shape primitive under the dual-view contract — the wire
@@ -536,6 +578,12 @@ from rates_agent.policy_futures.tools.futures_pack_average_simple import (
     FuturesPackAverageSimpleInput,
     FuturesPackAverageSimpleOutput,
     calculate_futures_pack_average_simple,
+)
+from rates_agent.sovereign_bonds.tools.otr_ofr_spread import (
+    CONFIG_PATH as OTR_OFR_SPREAD_CONFIG_PATH,
+    OtrOfrSpreadInput,
+    OtrOfrSpreadOutput,
+    calculate_otr_ofr_spread,
 )
 from rates_agent.sovereign_bonds.tools.zscore_custom import (
     CONFIG_PATH as ZSCORE_CUSTOM_CONFIG_PATH,
@@ -2473,6 +2521,113 @@ def swap_breakeven_basis_detail(
 
 
 # ----------------------------------------------------------------------------
+# /detail/scanner  — universe-wide SOVEREIGN yield-extremes scanner bridge
+# ----------------------------------------------------------------------------
+# Migration-mode bridge for ``scan_extremes_tool`` — the legacy frontend
+# typed-renderer (``manifest_typed_view`` tier, ``surfaces/ResultRenderer.tsx``)
+# is being replaced by the dual-view + standalone-bridge surface pair.  This
+# endpoint feeds BOTH the per-tool ``surfaces/BuildExtended.tsx`` (universe
+# scan + full ranked detail) and ``surfaces/BuildCompact.tsx`` (top-N table)
+# per ``docs_revamped/03_standards/rendering_density.md §1`` + the standalone-
+# bridge contract (``methodology_exposure.md §5``).  Returns the backend
+# Pydantic ``ScannerOutput`` verbatim — distinct from the legacy aggregated-
+# dashboard endpoint at ``/api/v1/rates/scanner`` (different shape:
+# ``ScannerResponse`` with abbreviated fields for the RatesPage).  Rolling-
+# z-score conventions are YAML-locked on this primitive — only
+# ``curve_families`` / ``top_n`` / ``min_abs_z_score`` / ``field_name`` are
+# exposed at the API layer.
+# ============================================================================
+@router.get(
+    "/detail/scanner",
+    response_model=ScannerOutput,
+    summary="Sovereign Universe Extremes Scan (standalone bridge)",
+)
+def scanner_detail(
+    engine: Engine = Depends(get_engine),
+    curve_families: Optional[str] = Query(
+        default=None,
+        description=(
+            "Comma-separated list of sovereign curve families to scan (e.g. "
+            "'UST,DE_BUND,UK_GILT').  Omit (None) for the full sovereign-"
+            "benchmark universe."
+        ),
+    ),
+    top_n: Optional[int] = Query(
+        default=None,
+        ge=1,
+        le=50,
+        description=(
+            "Number of extreme stems to return.  Omit (None) to fall "
+            "through to the YAML default (currently 10)."
+        ),
+    ),
+    min_abs_z_score: Optional[float] = Query(
+        default=None,
+        ge=0.0,
+        description=(
+            "Minimum absolute z-score threshold for inclusion.  Omit "
+            "(None) to fall through to the YAML default (currently 1.5)."
+        ),
+    ),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg observation field to scan.  Omit (None) to fall "
+            "through to the schema default ('YLD_YTM_MID')."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the frontend
+    module's ``surfaces/BuildExtended.tsx`` (universe scan + ranked detail)
+    AND ``surfaces/BuildCompact.tsx`` (top-N table) per the rendering-
+    density dual-view contract.  The preserved ``ScannerWidget`` continues
+    to read the pre-aggregated dashboard feed (non-parameterised) — both
+    paths return the same underlying scan but from different endpoints.
+
+    The rolling-z-score conventions are YAML-locked on this primitive —
+    only scope / threshold / field-name inputs are exposed at the API layer.
+    """
+    parsed_families: Optional[List[str]] = None
+    if curve_families and curve_families.strip():
+        parsed_families = [
+            cf.strip() for cf in curve_families.split(",") if cf.strip()
+        ]
+
+    # The Pydantic ScannerInput has positive defaults (top_n=10,
+    # min_abs_z_score=1.5, field_name='YLD_YTM_MID') so None falls through
+    # cleanly via the optional construction below.
+    try:
+        input_kwargs: dict = {}
+        if parsed_families is not None:
+            input_kwargs["curve_families"] = parsed_families
+        if top_n is not None:
+            input_kwargs["top_n"] = top_n
+        if min_abs_z_score is not None:
+            input_kwargs["min_abs_z_score"] = min_abs_z_score
+        if field_name is not None:
+            input_kwargs["field_name"] = field_name
+        params = ScannerInput(**input_kwargs)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        scan_config = load_tool_config(SCAN_EXTREMES_CONFIG_PATH)
+        result = scan_extremes(engine=engine, params=params, config=scan_config)
+    except Exception as exc:
+        logger.exception(
+            "detail/scanner: tool failed for curve_families=%s",
+            parsed_families,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Sovereign universe scan ({', '.join(parsed_families) if parsed_families else 'full universe'})",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
 # /detail/zcis-scanner  — universe-wide ZCIS rate-extremes scanner bridge
 # ----------------------------------------------------------------------------
 # First SCANNER-shape primitive under the standalone-bridge contract.  Wire
@@ -4212,6 +4367,112 @@ def cross_country_breakeven_spread_detail(
     return result
 
 
+# ----------------------------------------------------------------------------
+# /detail/cross-country-real-yield-spread — same-tenor cross-country
+# linker REAL-YIELD differential bridge
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# cross_country_real_yield_spread_simple primitive ships its OWN typed-
+# detail endpoint.  Two-curve, single-tenor primitive — each leg is a
+# sovereign linker real-yield level at the shared tenor (e.g. USD_TIPS 10Y
+# real yield minus GBP_LINKER 10Y real yield).  Schema layer rejects
+# ``first_curve_family == second_curve_family``; for same-country curve-
+# shape work, see /detail/real-yield-curve-spread.  The same payload feeds
+# BOTH the extended and compact Build views and the Monitor tile
+# (rendering_density.md §10).  Rolling-z-score conventions are YAML-locked
+# (no input-layer overrides); only ``lookback_days`` + ``field_name`` are
+# exposed.  Spread units are PERCENT (real yields are quoted in PERCENT —
+# NOT BPS); daily / weekly / monthly *changes* are BPS per desk convention.
+# ============================================================================
+@router.get(
+    "/detail/cross-country-real-yield-spread",
+    response_model=CrossCountryRealYieldSpreadSimpleOutput,
+    summary="Cross-Country Linker Real-Yield Spread Detail (standalone bridge)",
+)
+def cross_country_real_yield_spread_detail(
+    engine: Engine = Depends(get_engine),
+    first_curve_family: str = Query(
+        ...,
+        description=(
+            "First linker curve family identifier (e.g. 'USD_TIPS', "
+            "'GBP_LINKER', 'EUR_FR_LINKER', 'CAD_RRB').  Must differ "
+            "from second_curve_family (cross-country invariant)."
+        ),
+    ),
+    second_curve_family: str = Query(
+        ...,
+        description=(
+            "Second linker curve family identifier.  Must differ from "
+            "first_curve_family.  Sign convention is first_curve_family "
+            "minus second_curve_family — fixed; the tool never silently "
+            "flips the sign."
+        ),
+    ),
+    tenor: str = Query(
+        ...,
+        description=(
+            "Single tenor pillar applied to BOTH linker legs (e.g. "
+            "'5Y', '10Y', '30Y').  Cross-country real-yield spread is "
+            "evaluated at the same tenor on each side."
+        ),
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg observation field used for BOTH endpoint real-"
+            "yield series (first_curve at tenor, second_curve at tenor).  "
+            "Omit (None) to use the tool's bundled ``default_field_name`` "
+            "convention (currently 'YLD_YTM_MID')."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the frontend
+    module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
+    AND the Monitor widget per the rendering-density dual-view + monitor
+    contract.
+
+    The cross-country real-yield spread primitive intentionally does NOT
+    expose the z-score conventions at its Input layer — its rolling-
+    z-score conventions are sourced from the YAML at compute() time only.
+    Mirrors the sibling cross_country_breakeven_spread_simple bridge.
+    """
+    try:
+        params = CrossCountryRealYieldSpreadSimpleInput(
+            first_curve_family=first_curve_family,
+            second_curve_family=second_curve_family,
+            tenor=tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        xcry_config = load_tool_config(
+            CROSS_COUNTRY_REAL_YIELD_SPREAD_SIMPLE_CONFIG_PATH,
+        )
+        result = calculate_cross_country_real_yield_spread_simple(
+            engine=engine, params=params, config=xcry_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/cross-country-real-yield-spread: tool failed for "
+            "%s - %s %s",
+            first_curve_family, second_curve_family, tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        (
+            f"Cross-country real-yield spread for "
+            f"{first_curve_family} - {second_curve_family} {tenor}"
+        ),
+    )
+    return result
+
+
 # ============================================================================
 # /detail/financing-rate — Standalone-bridge endpoint with ROUTE-SIDE SYNTHESIS
 # ----------------------------------------------------------------------------
@@ -4506,3 +4767,88 @@ def financing_rate_detail(
         time_series=time_series,
         methodology_disclosure=methodology_disclosure,
     )
+
+
+# ----------------------------------------------------------------------------
+# /detail/otr-ofr-spread — sovereign cash-bond OTR/OFR yield-spread bridge
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# otr_ofr_spread primitive ships its OWN typed-detail endpoint.  Single-
+# slot primitive — one (country, tenor) sovereign cash-bond OTR vs first-
+# off-the-run yield spread (e.g. US 10Y OTR/OFR).  Sign convention
+# POSITIVE = OTR yield ABOVE OFR (OTR cheap to OFR — inverted-liquidity-
+# premium signature); typical signature is NEGATIVE (OTR rich, freshly
+# auctioned premium).  The same payload feeds BOTH the extended and
+# compact Build views and the Monitor tile (rendering_density.md §10).
+# Rolling-z-score conventions are YAML-locked (no input-layer overrides);
+# only ``lookback_days`` + ``field_name`` are exposed.
+# ============================================================================
+@router.get(
+    "/detail/otr-ofr-spread",
+    response_model=OtrOfrSpreadOutput,
+    summary="Sovereign OTR/OFR Yield Spread Detail (standalone bridge)",
+)
+def otr_ofr_spread_detail(
+    engine: Engine = Depends(get_engine),
+    country: str = Query(
+        ...,
+        description=(
+            "Sovereign country code as stored in macro_data.otr_history.  "
+            "Convention: uppercase ISO-3166-alpha-2 — e.g. 'US', 'DE', "
+            "'GB', 'JP', 'FR', 'IT', 'ES', 'CA', 'AU'."
+        ),
+    ),
+    tenor: str = Query(
+        ...,
+        description=(
+            "Canonical slot tenor as stored in macro_data.otr_history.  "
+            "Convention: integer-Y matching sovereign_cash_bonds.yml — "
+            "'2Y', '3Y', '5Y', '7Y', '10Y', '20Y', '30Y'."
+        ),
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg observation field for the cash-bond yield.  Omit "
+            "(None) to use the tool's bundled ``default_field_name`` "
+            "convention (currently 'YLD_YTM_MID')."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the frontend
+    module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
+    AND the Monitor widget per the rendering-density dual-view + monitor
+    contract.
+
+    The OTR/OFR spread primitive intentionally does NOT expose the z-score
+    conventions at its Input layer — its rolling-z-score conventions are
+    sourced from the YAML at compute() time only.  Mirrors the sibling
+    curve_spread / cross_country_real_yield_spread bridges.
+    """
+    try:
+        params = OtrOfrSpreadInput(
+            country=country,
+            tenor=tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        otr_config = load_tool_config(OTR_OFR_SPREAD_CONFIG_PATH)
+        result = calculate_otr_ofr_spread(
+            engine=engine, params=params, config=otr_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/otr-ofr-spread: tool failed for %s %s",
+            country, tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result, f"OTR/OFR spread for {country} {tenor}",
+    )
+    return result

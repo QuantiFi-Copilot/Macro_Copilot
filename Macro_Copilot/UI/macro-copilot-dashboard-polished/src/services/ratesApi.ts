@@ -32,6 +32,7 @@ import type {
   InflationSwapForwardOutput,
   InflationSwapRateLevelOutput,
   InflationSwapCurveSpreadOutput,
+  ScanExtremesOutput,
   ScanInflationSwapsExtremesOutput,
   ScanInflationLinkersExtremesOutput,
   SwapBreakevenBasisSimpleOutput,
@@ -44,7 +45,9 @@ import type {
   FuturesCrossMarketSpreadOutput,
   FuturesPackAverageSimpleOutput,
   CrossCountryBreakevenSpreadSimpleOutput,
+  CrossCountryRealYieldSpreadSimpleOutput,
   FinancingRateDetailResponse,
+  OtrOfrSpreadOutput,
 } from '@/types/rates';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
@@ -641,6 +644,45 @@ export function fetchDetailInflationSwapCurveSpread(
 }
 
 // ---------------------------------------------------------------------------
+// /detail/scanner  — universe-wide SOVEREIGN yield-extremes scanner bridge
+// ---------------------------------------------------------------------------
+// SCANNER-shape primitive under the standalone-bridge contract.  Wire returns
+// a ranked LIST of (curve_family, tenor) sovereign-benchmark extremes — the
+// per-tool BuildCompact renders a top-N table (NOT a sparkline), the
+// BuildExtended renders the universe scan + full ranked detail, and the
+// preserved ``ScannerWidget`` keeps reading the pre-aggregated RatesPage feed
+// (legacy, non-parameterised).  Rolling-z-score conventions are YAML-locked
+// on this primitive (mirrors the sibling ZCIS / linker / bond-futures /
+// policy-futures scanners); ``curve_families`` / ``top_n`` / ``min_abs_z_score``
+// / ``field_name`` remain exposed.
+//
+// Distinct from the legacy ``fetchScanner`` above — that targets the
+// pre-aggregated dashboard endpoint at ``/api/v1/rates/scanner``; this hits
+// the typed-detail endpoint at ``/api/v1/rates/detail/scanner`` and returns
+// the full ``ScannerOutput`` Pydantic mirror.
+
+export type ScanExtremesDetailParams = {
+  /** Comma-separated list of sovereign curve families to scan (e.g.
+   *  "UST,DE_BUND,UK_GILT"). Omit for the full sovereign-benchmark universe. */
+  curve_families?: string;
+  /** Number of extreme stems to return; omit for the YAML default (10). */
+  top_n?: number;
+  /** Minimum absolute z-score threshold; omit for the YAML default (1.5). */
+  min_abs_z_score?: number;
+  /** Bloomberg observation field to scan.  Omit for the YAML default
+   *  (YLD_YTM_MID). */
+  field_name?: string;
+};
+
+export function fetchDetailScanner(
+  params: ScanExtremesDetailParams,
+): Promise<ScanExtremesOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/scanner${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // /detail/zcis-scanner  — universe-wide ZCIS rate-extremes scanner bridge
 // ---------------------------------------------------------------------------
 // First SCANNER-shape primitive under the standalone-bridge contract.  Wire
@@ -1100,6 +1142,38 @@ export function fetchDetailCrossCountryBreakevenSpread(
 }
 
 // ---------------------------------------------------------------------------
+// /detail/cross-country-real-yield-spread  — same-tenor cross-country
+// linker REAL-YIELD differential bridge
+// ---------------------------------------------------------------------------
+// Two-curve, single-tenor primitive (e.g. USD_TIPS 10Y real yield minus
+// GBP_LINKER 10Y real yield).  Each leg is a sovereign linker real-yield
+// level at the shared tenor.  Sign convention POSITIVE = first_curve real
+// yield > second_curve real yield; wire-locked at first minus second.
+// Output spread is in PERCENT (not BPS — real yields are quoted in
+// PERCENT); daily / weekly / monthly *changes* are reported in BPS per
+// desk convention.  Own typed helper per the standalone-bridge contract;
+// consumed by BOTH Build views and the Monitor tile.  Cross-country
+// invariant enforced at the schema layer (first_curve_family !=
+// second_curve_family).  Rolling-z-score conventions are YAML-locked —
+// only ``lookback_days`` + ``field_name`` are exposed at the API layer.
+
+export type CrossCountryRealYieldSpreadDetailParams = {
+  first_curve_family: string;
+  second_curve_family: string;
+  tenor: string;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailCrossCountryRealYieldSpread(
+  params: CrossCountryRealYieldSpreadDetailParams,
+): Promise<CrossCountryRealYieldSpreadSimpleOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/cross-country-real-yield-spread${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // /detail/financing-rate — standalone bridge with ROUTE-SIDE SYNTHESIS
 // ---------------------------------------------------------------------------
 // FIRST-OF-ITS-KIND architectural deviation in this factory.  The backend
@@ -1123,5 +1197,32 @@ export function fetchDetailFinancingRate(
 ): Promise<FinancingRateDetailResponse> {
   return fetchJSON(
     `${RATES_PREFIX}/detail/financing-rate${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/otr-ofr-spread  — sovereign cash-bond OTR/OFR yield-spread bridge
+// ---------------------------------------------------------------------------
+// On-the-run vs first-off-the-run yield spread for one (country, tenor)
+// sovereign cash-bond slot (e.g. US 10Y OTR/OFR).  Own typed helper per the
+// standalone-bridge contract; consumed by BOTH Build views and the Monitor
+// tile.  Sign convention POSITIVE = OTR yield ABOVE OFR (OTR cheap to OFR —
+// the inverted-liquidity-premium signature); typical signature is NEGATIVE
+// (OTR rich, freshly auctioned premium).  Rolling-z-score conventions are
+// YAML-locked on this primitive (no input-layer overrides); only structural
+// (country, tenor) plus ``lookback_days`` + ``field_name`` are exposed.
+
+export type OtrOfrSpreadDetailParams = {
+  country: string;
+  tenor: string;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailOtrOfrSpread(
+  params: OtrOfrSpreadDetailParams,
+): Promise<OtrOfrSpreadOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/otr-ofr-spread${buildQuery(params)}`,
   );
 }

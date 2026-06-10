@@ -1,19 +1,22 @@
 // ============================================================================
-// src/modules/primitives/calculate_curve_spread_tool/module.ts — Stage 4d.
+// src/modules/primitives/calculate_curve_spread_tool/module.ts
 // ----------------------------------------------------------------------------
-// Stage 4a — typed-view module: ``custom_build_surface`` ships at
-// ``surfaces/BuildSurface.tsx`` and routes via
-// ``MODULE.typedView = 'spread'`` through the context decoder's
-// TOOL_TO_VIEW derivation.
+// Migration dispatch — converted from the legacy typed-renderer pattern
+// (``typedView: 'spread'`` + ``surfaces.resultRenderer``) to the new dual-
+// view + standalone-bridge contract under:
+//   - methodology_exposure.md §5 standalone-bridge (own typed-detail endpoint
+//     at /api/v1/rates/detail/spread + own surfaces; no shared typedView)
+//   - rendering_density.md §1 dual-view mandate (buildExtended + buildCompact
+//     both REQUIRED)
 //
-// Stage 4d — Monitor catalog: this primitive contributes TWO widgets
-// to the Monitor bento catalog:
-//   * ``curve_spreads`` — pre-aggregated 2s10s slope monitor across
-//                         G4 (UST, Bund, Gilt, JGB).
-//   * ``spread_chart`` — parameterised single-pair curve-spread chart
-//                        (user picks curve + short_tenor + long_tenor
-//                        + lookback).
-// Multi-variant ⇒ uses ``monitorWidgets`` (not ``surfaces.monitor``).
+// Backward-compat lock (per MIGRATION_RULES §6): the two existing Monitor
+// widgets — ``curve_spreads`` (pre-aggregated G4 2s10s slope monitor) and
+// ``spread_chart`` (parameterised single-pair chart) — are preserved
+// verbatim.  Their ids + paramFields names + default values are unchanged so
+// dashboards that persisted these widgets keep rendering.
+//
+// Design reference: mockups/Compact.png + mockups/Extended.png.
+// Per FM7 (pure-spec assembly): exports a pure value; no side effects.
 // ============================================================================
 
 import type { PrimitiveModuleSpec } from '../../types';
@@ -22,20 +25,47 @@ import {
   LOOKBACK_OPTIONS,
   TENOR_OPTIONS,
 } from '@/lib/monitorParamOptions';
-import ResultRenderer from './surfaces/ResultRenderer';
+import BuildExtended from './surfaces/BuildExtended';
+import BuildCompact from './surfaces/BuildCompact';
 import { CurveSpreadsWidget } from './surfaces/monitor/CurveSpreadsWidget';
 import { SpreadChartWidget } from './surfaces/monitor/SpreadChartWidget';
 
 export const MODULE: PrimitiveModuleSpec = {
+  // FM1 — identity (folder name === toolName)
   toolName: 'calculate_curve_spread_tool',
+
+  // FM3 — tier claims (unchanged from the pre-migration set; the backend's
+  // _PRIMITIVE_SPECS membership is unchanged so the tier set mirrors backend
+  // reality):
+  //   * generic_runnable — backend ships in _PRIMITIVE_SPECS
+  //   * custom_build_surface — dual-view Build (rendering_density.md §1)
+  //   * monitor_surface — two preserved Monitor widgets (pre-aggregated +
+  //     parameterised) — backward-compat lock
   tiers: ['generic_runnable', 'custom_build_surface', 'monitor_surface'],
+
+  // FM5 — display metadata
   displayName: 'Curve Spread',
   category: 'curve_shape',
   oneLineSummary:
     'Basis-point spread between two tenors on the same sovereign yield curve, with a fixed 1-year rolling z-score and full chartable time series.',
-  typedView: 'spread',
-  workspaceLabel: 'Spread chart & history',
-  surfaces: { resultRenderer: ResultRenderer },
+
+  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared typedView.
+  typedView: null,
+  richModel: false,
+
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build`` is
+  // kept === buildExtended for the legacy VirtualPrimitiveCanvas dispatcher.
+  surfaces: {
+    build: BuildExtended,
+    buildExtended: BuildExtended,
+    buildCompact: BuildCompact,
+  },
+
+  // FM5c — Monitor catalog widgets — PRESERVED VERBATIM per MIGRATION_RULES §6.
+  // The ids (``curve_spreads``, ``spread_chart``) are the backward-compat
+  // lock — dashboards persist these ids.  The paramFields field names +
+  // default values are also unchanged so persisted dashboard configs hydrate
+  // identically.
   monitorWidgets: [
     {
       id: 'curve_spreads',
@@ -91,4 +121,16 @@ export const MODULE: PrimitiveModuleSpec = {
       component: SpreadChartWidget,
     },
   ],
+
+  // FM5 — defaults mirror the structural inputs the backend Pydantic schema
+  // requires.  Mockup default: UST 2s10s (sovereign-canonical slope focus).
+  // ``field_name`` defaults to 'YLD_YTM_MID' — the YAML's
+  // default_field_name (mid yield-to-maturity).
+  defaultParams: {
+    curve_family: 'UST',
+    short_tenor: '2Y',
+    long_tenor: '10Y',
+    lookback_days: '365',
+    field_name: 'YLD_YTM_MID',
+  },
 };

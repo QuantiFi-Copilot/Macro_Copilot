@@ -78,7 +78,7 @@ from rates_agent.sovereign_bonds.tools.curve_move_classifier.schemas import (
 )
 
 # Scanner
-from rates_agent.sovereign_bonds.tools.schemas.scanner import (
+from rates_agent.sovereign_bonds.tools.scan_extremes.schemas import (
     ScannerInput,
     ScannerResultRow,
     ScannerOutput,

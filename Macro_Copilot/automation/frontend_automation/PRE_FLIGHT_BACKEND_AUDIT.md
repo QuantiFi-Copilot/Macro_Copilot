@@ -207,3 +207,48 @@ Both gates exist for the same architectural reason: do not dispatch a builder ag
 - `frontend_tool_catalog.yaml` — the `pre_flight_backend_audit` block per tool
 - `ORCHESTRATOR_PROMPT.md` §"Pre-flight backend audit rule" — the operational embodiment
 - `SINGLE_REVIEW_ROUND_POLICY.md` §3 — why this gate is load-bearing (a missing mockup escalates to `human_required` via the reviewer's mockup-conformance check)
+
+---
+
+## 11. Migration-mode pre-flight addendum *(applies only when catalog entry has `build_mode: migration`)*
+
+In addition to Checks 1–4 above, migration-mode entries require ONE extra read-only check before builder dispatch.
+
+### Check 5 — Legacy pattern detected on disk
+
+The orchestrator verifies the target tool currently ships the legacy typed-renderer pattern. All three of the following must return TRUE:
+
+```bash
+# (a) module.ts declares a string typedView
+grep -q "typedView: '" \
+  UI/macro-copilot-dashboard-polished/src/modules/primitives/<verb>_<slug>_tool/module.ts
+
+# (b) module.ts has a resultRenderer surface
+grep -q "resultRenderer:" \
+  UI/macro-copilot-dashboard-polished/src/modules/primitives/<verb>_<slug>_tool/module.ts
+
+# (c) the legacy ResultRenderer.tsx file exists on disk
+test -f \
+  UI/macro-copilot-dashboard-polished/src/modules/primitives/<verb>_<slug>_tool/surfaces/ResultRenderer.tsx
+```
+
+If ANY check returns FALSE, the catalog entry is misclassified — the tool is either already migrated (typedView already null, surfaces.resultRenderer absent, file deleted) or it was never on the legacy pattern. The orchestrator marks `blocked` with reason `legacy_pattern_not_detected` and continues to the next eligible tool. This is NOT an error condition — it just means the migration is unnecessary or was already completed.
+
+Check 5 is read-only. The orchestrator does NOT modify the legacy files before dispatch — that's the builder's job per `MIGRATION_RULES.md` §4.
+
+### Catalog-entry shape for migration entries
+
+A migration catalog entry carries an additional top-level `build_mode: migration` field PLUS a nested `legacy_migration:` block (full schema in `MIGRATION_RULES.md` §7). The `pre_flight_backend_audit:` block remains the standard 4-check shape (since the backend itself is already fully shipped for migration targets).
+
+### Anti-patterns specific to migration mode
+
+- The orchestrator dispatching a migration build on a tool whose `module.ts` already has `typedView: null` (the check 5 (a) failure would have flagged this — do NOT bypass)
+- The orchestrator silently auto-rewriting a misclassified `new_build` → `migration` entry (the catalog's `build_mode` field is canonical; correct the catalog and re-run rather than auto-flipping)
+- Skipping Check 5 entirely when the catalog says `build_mode: migration` (the legacy-pattern detection is the orchestrator's defence against catalog drift)
+
+### Links
+
+- `MIGRATION_RULES.md` — the migration contract (procedure, anti-patterns, central-file rules)
+- `CLAUDE_BUILDER_PROMPT.md` "Migration mode" — the builder's migration-specific section
+- `CLAUDE_REVIEWER_PROMPT.md` "H. Migration-mode review" — the reviewer's 12 migration checks
+- `STANDARD_MODULE_RULES.md` §14 — the cross-reference to migration rules

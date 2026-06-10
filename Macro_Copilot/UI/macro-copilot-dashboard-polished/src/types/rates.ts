@@ -1841,6 +1841,45 @@ export type ScanPolicyFuturesExtremesOutput = {
   methodology_disclosure: string;
 };
 
+// --- /detail/scanner ---
+// Standalone-bridge type for the universe-wide SOVEREIGN yield-extremes
+// scanner (``scan_extremes_tool``).  SCANNER shape — the wire returns a
+// ranked LIST of (curve_family, tenor) extremes ordered by |z| of the
+// 252d-rolling YLD_YTM_MID z-score across the sovereign-benchmark universe
+// (UST / DE_BUND / UK_GILT / FR_OAT / IT_BTP / ES_BONO / JP_JGB / AU_GOVT /
+// CANADA_GOVT).  Mirrors the backend ``ScannerOutput`` from
+// rates_agent/sovereign_bonds/tools/scan_extremes/schemas.py field-for-field.
+//
+// Distinct from the legacy aggregated-dashboard ``ScannerResponse`` (above —
+// the pre-aggregated RatesPage payload with abbreviated field names).  This
+// is the TYPED-DETAIL mirror consumed by the per-tool BuildExtended +
+// BuildCompact surfaces via ``/api/v1/rates/detail/scanner``.
+
+/** One ranked extreme on the sovereign yield universe scan.  Mirrors
+ *  ``ScannerResultRow``. */
+export type ScanExtremesResultRow = {
+  rank: number;
+  curve_family: string;
+  tenor: string;
+  as_of_date: string;
+  current_yield_pct: number | null;
+  daily_change_bps: number | null;
+  z_score: number | null;
+  high_252d_pct: number | null;
+  low_252d_pct: number | null;
+  percentile_252d: number | null;
+  /** Closed enum derived from z-score sign on rows that pass the
+   *  ``min_abs_z_score`` filter. */
+  signal: 'EXTREME_HIGH' | 'EXTREME_LOW';
+};
+
+export type ScanExtremesOutput = {
+  /** Human-readable one-line summary (e.g. "Scanned 36 instruments.  Found
+   *  6 with |z-score| >= 1.5.  Showing top 5 by absolute z-score."). */
+  scan_summary: string;
+  results: ScanExtremesResultRow[];
+};
+
 // --- /detail/real_yield_curve_spread ---
 // Standalone-bridge type for the same-country linker real-yield curve-spread
 // primitive.  Own type — the object is the term structure of REAL YIELDS
@@ -1924,7 +1963,16 @@ export type CurveSpreadTimeSeriesRow = {
 
 export type CurveSpreadOutput = {
   current_metrics: CurveSpreadCurrentMetrics;
+  /** Wire-frozen bespoke shape — kept for legacy ResultRenderer-era
+   *  consumers and the SpreadChartWidget Monitor tile.  The dual-view
+   *  surfaces consume ``time_series_spread`` (canonical TimeSeries BPS)
+   *  instead. */
   time_series: CurveSpreadTimeSeriesRow[];
+  /** Canonical TimeSeries (BPS) — spread series in chronological order.
+   *  Optional defensively; the REST detail endpoint always returns it. */
+  time_series_spread?: TimeSeries;
+  /** Canonical TimeSeries (Z_SCORE) — rolling z-score series. */
+  time_series_zscore?: TimeSeries;
 };
 
 // --- /detail/cross-market ---
@@ -1956,7 +2004,19 @@ export type CrossMarketSpreadTimeSeriesRow = {
 
 export type CrossMarketSpreadOutput = {
   current_metrics: CrossMarketSpreadCurrentMetrics;
+  /** Wire-frozen bespoke shape — kept for legacy ResultRenderer-era
+   *  consumers and the parameterised Monitor tile (CrossMarketSpreadWidget).
+   *  The dual-view surfaces consume ``time_series_spread`` (canonical
+   *  TimeSeries BPS) instead. */
   time_series: CrossMarketSpreadTimeSeriesRow[];
+  /** Canonical TimeSeries (BPS) — cross-market spread series in
+   *  chronological order.  Optional defensively; the REST detail endpoint
+   *  always returns it (mirrors the Pydantic Output where the field is
+   *  non-optional — added by the legacy-TimeSeries tech-debt cleanup). */
+  time_series_spread?: TimeSeries;
+  /** Canonical TimeSeries (Z_SCORE) — rolling z-score series.  Values
+   *  match ``time_series[i].z_score`` 1-to-1 (null for warmup rows). */
+  time_series_zscore?: TimeSeries;
 };
 
 // --- /detail/butterfly ---
@@ -1988,6 +2048,15 @@ export type ButterflyTimeSeriesRow = {
 export type ButterflyOutput = {
   current_metrics: ButterflyCurrentMetrics;
   time_series: ButterflyTimeSeriesRow[];
+  /** Canonical TimeSeriesUnits.BPS series of the butterfly value.  Mirror of
+   *  the Pydantic Output's ``time_series_butterfly`` field added by the
+   *  legacy-TimeSeries tech-debt cleanup; values match ``time_series[i].
+   *  butterfly_bps`` 1-to-1 by construction. */
+  time_series_butterfly: TimeSeries;
+  /** Canonical TimeSeriesUnits.Z_SCORE series of the rolling z-score.  Mirror
+   *  of the Pydantic Output's ``time_series_zscore``; values match
+   *  ``time_series[i].z_score`` 1-to-1 (null for warmup rows). */
+  time_series_zscore: TimeSeries;
 };
 
 // --- /detail/regime --- (no time_series — classification only)
@@ -2711,6 +2780,128 @@ export type CrossCountryBreakevenSpreadSimpleOutput = {
   time_series_zscore: TimeSeries;
 };
 
+// --- /detail/cross-country-real-yield-spread (standalone bridge) ---
+//
+// Mirrors rates_agent/inflation_indexed_bonds/tools/cross_country_real_yield_spread_simple/schemas.py
+// (CrossCountryRealYieldSpreadSimpleOutput / CrossCountryRealYieldSpreadSimpleCurrentMetrics /
+// CrossCountryRealYieldSpreadSimpleTimeSeriesRow).  Per the methodology-
+// exposure standalone-bridge contract (docs_revamped/03_standards/
+// methodology_exposure.md §5) this tool ships its OWN typed-detail endpoint
+// at /api/v1/rates/detail/cross-country-real-yield-spread and its OWN
+// frontend type — distinct from the sibling cross-country BREAKEVEN spread
+// (which differences two nominal-minus-linker breakevens — inflation
+// compensation, BPS units) and the same-country curve-shape real-yield
+// curve spread.
+//
+// CRITICAL SHAPE DELTA from the breakeven sibling: the cross-country REAL-
+// YIELD spread is in PERCENT (not BPS).  Real yields are quoted in PERCENT
+// so a difference of two real-yield levels stays in PERCENT.  Daily /
+// weekly / monthly *changes* are in BPS per desk convention (change of a
+// percent-units spread reported in bps).  The LOAD-BEARING index-family
+// AND market-structure mismatch caveats (CPI-U vs HICP vs RPI vs Canada
+// CPI; cross-country linker-liquidity / issuance-size differences) surface
+// verbatim via ``current_metrics.methodology_label`` (sourced from YAML at
+// runtime, NOT a hardcoded TS literal).
+
+export type CrossCountryRealYieldSpreadSimpleCurrentMetrics = {
+  as_of_date: string;
+  /** First linker curve family (e.g. 'USD_TIPS', 'GBP_LINKER',
+   *  'EUR_FR_LINKER', 'CAD_RRB'). */
+  first_curve_family: string;
+  /** Second linker curve family.  Must differ from first_curve_family
+   *  (cross-country invariant). */
+  second_curve_family: string;
+  /** Single tenor pillar applied to BOTH curves (e.g. '5Y', '10Y', '30Y'). */
+  tenor: string;
+  /** Year fraction of ``tenor`` (e.g. 10.0 for '10Y'). */
+  tenor_years: number;
+  /** Human-readable label, e.g.
+   *  'USD_TIPS - GBP_LINKER 10Y XC real-yield'. */
+  spread_label: string;
+  /** Current cross-country real-yield spread in PERCENT
+   *  (first_curve_real_yield_pct - second_curve_real_yield_pct).  Cross-
+   *  country REAL-RATE differential — distinct from a cross-country
+   *  breakeven differential (inflation compensation) and from a sovereign
+   *  nominal cross-market spread (nominal-yield divergence).  Subject to
+   *  index-family AND market-structure mismatch caveats — see
+   *  methodology_label. */
+  current_spread_pct: number | null;
+  /** 1-trading-day change of the cross-country real-yield spread (BPS).
+   *  Daily change of a percent-units spread is reported in bps per desk
+   *  convention. */
+  daily_change_bps: number | null;
+  /** 5-trading-day change of the spread (BPS). */
+  weekly_change_bps: number | null;
+  /** 22-trading-day (~1 month) change of the spread (BPS). */
+  monthly_change_bps: number | null;
+  /** Rolling 252-trading-day z-score of the percent-units spread.
+   *  YAML-locked on this primitive (no input-layer overrides). */
+  current_z_score: number | null;
+  rolling_window_days: number;
+  /** Highest cross-country real-yield spread over trailing 252 trading
+   *  days (PERCENT — NOT BPS; the schema field name embeds the units). */
+  high_252d_pct: number | null;
+  /** Lowest cross-country real-yield spread over trailing 252 trading
+   *  days (PERCENT). */
+  low_252d_pct: number | null;
+  /** Percentile rank within trailing 252-day range (0-100). */
+  percentile_252d: number | null;
+  /** Latest first_curve real yield (PERCENT) at ``tenor`` — exposed so
+   *  the desk can audit the cross-country spread decomposition end-to-end
+   *  without a second tool call. */
+  first_curve_real_yield_pct: number | null;
+  /** Latest second_curve real yield (PERCENT) at ``tenor``. */
+  second_curve_real_yield_pct: number | null;
+  /** Country identifier resolved from instrument_master for
+   *  first_curve_family (e.g. 'US', 'UK', 'France', 'Canada'). */
+  first_curve_country: string;
+  /** Currency identifier resolved from instrument_master for
+   *  first_curve_family (e.g. 'USD', 'GBP', 'EUR', 'CAD'). */
+  first_curve_currency: string;
+  /** Country identifier resolved from instrument_master for
+   *  second_curve_family. */
+  second_curve_country: string;
+  /** Currency identifier resolved from instrument_master for
+   *  second_curve_family. */
+  second_curve_currency: string;
+  /** Wire-honesty disclosure threaded from
+   *  config.yaml:methodology.what_it_does.  Carries the explicit spread
+   *  formula (first_curve_real_yield_pct - second_curve_real_yield_pct),
+   *  the sign convention (first minus second), the index-family mismatch
+   *  caveat (CPI-U vs HICP vs RPI vs CAN_CPI), AND the market-structure
+   *  mismatch caveat (cross-country linker-liquidity / issuance-size
+   *  differences).  Sourced from YAML at runtime; NOT a hardcoded TS
+   *  literal. */
+  methodology_label: string;
+};
+
+/** Bespoke wire-frozen cross-country real-yield-spread time-series row. */
+export type CrossCountryRealYieldSpreadSimpleTimeSeriesRow = {
+  date: string;
+  /** Cross-country real-yield spread in PERCENT (not bps). */
+  spread_pct: number;
+  /** Rolling z-score (None for rows in the rolling-window warmup). */
+  z_score: number | null;
+};
+
+export type CrossCountryRealYieldSpreadSimpleOutput = {
+  current_metrics: CrossCountryRealYieldSpreadSimpleCurrentMetrics;
+  /** Bespoke wire-frozen history (spread pct + z-score per row). */
+  time_series: CrossCountryRealYieldSpreadSimpleTimeSeriesRow[];
+  /** Canonical historical cross-country real-yield-spread series.
+   *  Closed-enum TimeSeriesUnits.PERCENT — the spread is in PERCENT
+   *  because real yields are quoted in PERCENT (NOT BPS).  This is the
+   *  key shape delta from the cross-country BREAKEVEN spread sibling.
+   *  series_name pattern:
+   *  '<first>_<second>_<tenor>_xc_real_yield_spread'.  Values match
+   *  time_series[i].spread_pct 1-to-1 by construction. */
+  time_series_spread: TimeSeries;
+  /** Canonical historical rolling z-score series.  Closed-enum
+   *  TimeSeriesUnits.Z_SCORE.  Values match time_series[i].z_score
+   *  1-to-1 (None for rows in the rolling-window warmup). */
+  time_series_zscore: TimeSeries;
+};
+
 // --- /detail/financing-rate (standalone bridge, ROUTE-SIDE SYNTHESIS) ---
 //
 // FIRST-OF-ITS-KIND architectural deviation in this factory.  The backend
@@ -2780,5 +2971,119 @@ export type FinancingRateDetailResponse = {
    *  card + compact caveat.  NEVER hardcode prose on the frontend
    *  side; this is the source-of-truth. */
   methodology_disclosure: string;
+};
+
+// --- /detail/otr-ofr-spread (standalone bridge, sovereign cash-bond) ---
+//
+// Mirrors rates_agent/sovereign_bonds/tools/otr_ofr_spread/schemas.py
+// (OtrOfrSpreadOutput / OtrOfrSpreadCurrentMetrics / OtrOfrSpreadTimeSeriesRow).
+// Per the methodology-exposure standalone-bridge contract
+// (docs_revamped/03_standards/methodology_exposure.md §5) this tool ships
+// its OWN typed-detail endpoint at /api/v1/rates/detail/otr-ofr-spread and
+// its OWN frontend type.
+//
+// Object shape: single-slot OTR/OFR yield spread for one (country, tenor)
+// sovereign cash-bond slot.  spread_bps = (otr_yield - ofr_yield) × 100,
+// sign convention POSITIVE = OTR yield ABOVE OFR = OTR trading CHEAP to
+// OFR (the inverted-liquidity-premium signature).  The typical signature
+// is NEGATIVE = OTR rich (newly auctioned bond commands a liquidity
+// premium / trades at a tighter yield).
+//
+// Honest-absence shape (per backend P5 + P6): when the resolver has not
+// yet observed a slot's prior SCD2 window (the slot's very first observed
+// window), ``ofr_*`` identity fields AND ``ofr_yield_pct`` are null on
+// the wire — render N/A / em-dash, never fabricate.
+//
+// Wire-honesty quirk: ``methodology_note`` lives on the TOP-LEVEL Output
+// (NOT on current_metrics) — mirrors the financing-rate pattern
+// (data.methodology_disclosure), NOT the breakeven-spread pattern
+// (cm.methodology_label).  Surfaces TD #27 forward-only + detection-date
+// disclosure verbatim on all three surfaces.
+
+export type OtrOfrSpreadCurrentMetrics = {
+  as_of_date: string;
+  /** Uppercase ISO-3166-alpha-2 (or alpha-3) sovereign country code as
+   *  stored in macro_data.otr_history (e.g. 'US', 'DE', 'GB', 'JP',
+   *  'FR', 'IT', 'ES', 'CA', 'AU'). */
+  country: string;
+  /** Integer-Y canonical slot tenor (e.g. '2Y', '5Y', '10Y', '30Y'). */
+  tenor: string;
+  /** Human-readable slot label, e.g. 'US 10Y OTR/OFR'. */
+  slot_label: string;
+  /** (otr_yield - ofr_yield) × 100 at the as_of_date, in bps.  Sign
+   *  convention POSITIVE = OTR yield ABOVE OFR (OTR cheap to OFR —
+   *  inverted-liquidity signature).  NEGATIVE = OTR rich (typical
+   *  signature).  None when the slot's most recent window has no prior
+   *  OFR observation (honest absence). */
+  current_spread_bps: number | null;
+  /** 1-day change in the OTR/OFR spread (bps). */
+  daily_change_bps: number | null;
+  /** Rolling z-score of the spread vs its own trailing 252-trading-day
+   *  window.  None during the rolling-window warmup. */
+  current_z_score: number | null;
+  /** Window used for the z-score calculation (matches config convention
+   *  z_score_window_days — wire-frozen at 252). */
+  rolling_window_days: number;
+  /** Highest OTR/OFR spread (bps) over trailing 252 trading days. */
+  high_252d_bps: number | null;
+  /** Lowest OTR/OFR spread (bps) over trailing 252 trading days. */
+  low_252d_bps: number | null;
+  /** Percentile rank of the current spread within its trailing 252d
+   *  range (0-100).  0 = at-or-below low, 100 = at-or-above high. */
+  percentile_252d: number | null;
+  /** OTR bond yield at the as_of_date (PERCENT).  Decomposition leg A. */
+  otr_yield_pct: number | null;
+  /** OFR bond yield at the as_of_date (PERCENT).  Decomposition leg B.
+   *  None when no prior SCD2 window exists for the slot, or the prior
+   *  bond has no observation that date — honest absence. */
+  ofr_yield_pct: number | null;
+  /** OTR bond identifiers at the as_of_date.  CUSIP is NULL for non-US
+   *  sovereigns whose instrument_master row carries ISIN only. */
+  otr_instrument_id: number | null;
+  otr_cusip: string | null;
+  otr_isin: string | null;
+  otr_vendor_ticker: string | null;
+  /** OFR bond identifiers — null on the slot's first observed window
+   *  (no prior SCD2 window yet).  Honest absence, never fabricated. */
+  ofr_instrument_id: number | null;
+  ofr_cusip: string | null;
+  ofr_isin: string | null;
+  ofr_vendor_ticker: string | null;
+  /** Count of trading-day observations in the display time series. */
+  observation_count: number;
+};
+
+/** Bespoke wire-frozen OTR/OFR spread time-series row.  ``spread_bps`` is
+ *  null on dates where the OFR bond has no observation (the slot's first
+ *  observed window has no prior, or the prior bond has dropped out of
+ *  market_data_daily). */
+export type OtrOfrSpreadTimeSeriesRow = {
+  date: string;
+  spread_bps: number | null;
+  z_score: number | null;
+  otr_yield_pct: number | null;
+  ofr_yield_pct: number | null;
+};
+
+export type OtrOfrSpreadOutput = {
+  current_metrics: OtrOfrSpreadCurrentMetrics;
+  /** Bespoke wire-frozen history (spread + z + per-leg yields per row). */
+  time_series: OtrOfrSpreadTimeSeriesRow[];
+  /** Canonical historical OTR/OFR spread series.  Closed-enum
+   *  TimeSeriesUnits.BPS; series_name pattern
+   *  '<country_lower>_<tenor_lower>_otr_ofr_spread'.  Values match
+   *  time_series[i].spread_bps 1-to-1 by construction. */
+  time_series_spread: TimeSeries;
+  /** Canonical historical rolling z-score series.  Closed-enum
+   *  TimeSeriesUnits.Z_SCORE.  Values match time_series[i].z_score
+   *  1-to-1 (null for rows in the rolling-window warmup). */
+  time_series_zscore: TimeSeries;
+  /** Wire-honesty disclosure threaded from the resolver's TD #27
+   *  forward-only + detection-date limits.  Lives on the TOP-LEVEL
+   *  Output (NOT on current_metrics — mirrors the financing-rate
+   *  pattern).  Surfaced verbatim on the Extended methodology card +
+   *  Compact caveat footer + Monitor widget tooltip.  Sourced from the
+   *  resolver/config at runtime; NOT a hardcoded TS literal. */
+  methodology_note: string;
 };
 

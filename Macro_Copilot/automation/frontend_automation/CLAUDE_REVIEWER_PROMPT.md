@@ -26,6 +26,7 @@ Read these files first — they are not optional:
 - `docs_revamped/03_standards/frontend_test_patterns.md`
 - `automation/frontend_automation/DESIGN_PRINCIPLES.md`
 - `automation/frontend_automation/STANDARD_MODULE_RULES.md`
+- `automation/frontend_automation/MIGRATION_RULES.md`  **(REQUIRED only when the catalog entry has `build_mode: migration`)**
 - `automation/frontend_automation/FRONTEND_BUILD_RULES.md`
 - `automation/frontend_automation/TESTING_POLICY.md`
 - `automation/frontend_automation/PRE_FLIGHT_BACKEND_AUDIT.md`
@@ -116,6 +117,60 @@ Review the frontend module for ALL of:
 29. Does `npm run test:build` pass?
 30. Does `npm run typecheck` pass (no NEW errors beyond pre-existing baseline)?
 31. If any of these fail, you cannot APPROVE.
+
+### H. Migration-mode review *(only when catalog entry has `build_mode: migration`)*
+
+Apply these 12 checks IN ADDITION to A–G. Skip Section H entirely for `new_build` entries.
+
+The catalog entry's `legacy_migration` block names every file to delete and every monitor-widget identity to preserve. You verify these were honored.
+
+- **H1 — Legacy file deleted.** `git diff --name-only --diff-filter=D` includes `surfaces/ResultRenderer.tsx` for this tool. If not, prefix the finding with `STRUCTURAL:` — the migration partially landed (new dual-view files exist BUT the legacy ResultRenderer is still in the tree, which means the typed-view dispatch is still possible at runtime).
+
+- **H2 — `typedView` is null.** The migrated `module.ts` no longer contains `typedView: '<string>'`; it now has `typedView: null` (or omits the field entirely). Verify by opening the file. If the legacy string is still present, prefix with `STRUCTURAL:`.
+
+- **H3 — Legacy `module.ts` fields removed.** The migrated `module.ts` does NOT contain `workspaceLabel:` or `unsupportedReason:`. If either is present, file a concrete finding to remove them.
+
+- **H4 — Monitor widget identity preserved.** For each entry in `legacy_migration.monitor_widgets_to_preserve`:
+  - the widget file at `path:` MUST still exist (verify it's NOT in `git diff --name-only --diff-filter=D`)
+  - the widget's `id:` MUST still appear in `MODULE.monitorWidgets[]` array exactly as named (do NOT accept a renamed `id`)
+  - the widget's `paramFields:` field `name`s and `defaultValue`s MUST be unchanged
+
+  Any drift on widget identity is `STRUCTURAL:` (breaks existing dashboards).
+
+- **H5 — `src/types/rates.ts` not duplicated.** The Pydantic-mirror `<X>Output` type appears EXACTLY ONCE in the file (the existing one). If a parallel type was added, file a concrete finding to remove the duplicate.
+
+- **H6 — `src/services/ratesApi.ts` not duplicated.** The `fetchDetail<X>` function appears EXACTLY ONCE. If a parallel fetcher was added, file a concrete finding to remove the duplicate.
+
+- **H7 — `api/routes/rates/detail.py` not duplicated.** The endpoint at `<endpoint_slug>` is defined EXACTLY ONCE. If a parallel route was added (e.g. `/detail/spread-2` alongside the existing `/detail/spread`), prefix with `STRUCTURAL:` — duplicate routes are a runtime bug.
+
+- **H8 — Dual-view surface files NEW.** `surfaces/BuildExtended.tsx`, `surfaces/BuildCompact.tsx`, `surfaces/<tool_slug>Shared.ts` all exist and are NEW (in `git diff --name-only --diff-filter=A`). If `BuildCompact.tsx` is missing, file a concrete finding to add it.
+
+- **H9 — `THESIS.md` updated.** Q1 enumerates BOTH `buildExtended` AND `buildCompact` (the migration target), PLUS any preserved monitor widgets. The v2 "no bespoke surface today" stub MUST be replaced with the full 5-question template.
+
+- **H10 — Test file updated.** `__tests__/module.spec.ts` calls `assertStandardModuleInvariants` AND the dual-view contract checks (per `STANDARD_MODULE_RULES.md` §8). The legacy test shape MUST be replaced.
+
+- **H11 — Tier set consistent.** `module.ts.tiers` matches the catalog entry's `required_tiers`. If the catalog says `[manifest_typed_view, custom_build_surface, ...]`, the module keeps `manifest_typed_view` (backend `_PRIMITIVE_SPECS` membership is unchanged). Swapping `manifest_typed_view` → `generic_runnable` is `STRUCTURAL:` — the tier set doesn't match backend reality.
+
+- **H12 — Pre-commit gate.** All three gates pass: `npm run test:modules`, `npm run test:build`, `npm run typecheck` — exit 0. (Same as Section G.)
+
+
+- **H13 — Compact != Monitor (separation of concerns).** Verify the `surfaces/BuildCompact.tsx` and `surfaces/monitor/<X>Widget.tsx` are TWO DIFFERENT files with TWO DIFFERENT exported components.  Specifically:
+  - `module.ts.surfaces.buildCompact` references an import from `./surfaces/BuildCompact`
+  - `module.ts.monitorWidgets[].component` references an import from `./surfaces/monitor/<X>Widget`
+  - The two import paths MUST be different
+  - The exported component names MUST be different (typically `BuildCompact` vs `<X>Widget`)
+
+  A migration that collapses the two surfaces into one (e.g. uses `BuildCompact` as the monitor widget's `component`) is `STRUCTURAL:` — the two surfaces have incompatible contracts (Compact has `onExpand`; Monitor widgets do not; different size envelopes; different data-fetch patterns per `MIGRATION_RULES.md` §5.1).
+
+### Migration-mode finding routing
+
+- H1, H2, H4 (widget identity drift), H5–H7 (duplicate central entries), H11 (tier-set mismatch) → ALL `STRUCTURAL:` (route to `human_required`; the migration honestly didn't migrate)
+- H3, H4 (param shape drift only — same id but different paramFields), H8, H9, H10 → concrete actionable findings (route to Dispatch 3 fix pass)
+- H12 → auto-block per the standard pre-commit gate rule
+
+### Migration-mode mockup conformance
+
+Section B (Mockup conformance) applies UNCHANGED to migration mode. The mockups under `mockups/Compact.png` + `mockups/Extended.png` are the design source-of-truth for the NEW dual-view surfaces. The pre-existing typed-renderer's appearance is NOT the baseline — the mockups are.
 
 ## Finding hygiene (REQUIRED — per SINGLE_REVIEW_ROUND_POLICY.md §3)
 

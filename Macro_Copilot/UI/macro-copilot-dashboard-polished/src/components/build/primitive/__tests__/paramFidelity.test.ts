@@ -122,7 +122,7 @@ check('§A · scalar-only params survive in both projections', () => {
   });
   const list = decodePrimitiveList(ctx);
   assertEqual(list.length, 1, 'one decoded entry');
-  assertEqual(list[0].kind, 'cross_market', 'cross_market kind');
+  assertEqual(list[0].kind, 'generic_builder', 'generic_builder kind');
   assertEqual(
     list[0].params,
     {
@@ -298,11 +298,11 @@ check('§B · handoffQueryFragment composes correctly', () => {
 // §C — requiredParamsFor / missingRequiredTypedParams
 // ============================================================================
 
-check('§C · cross_market requires curve_family_1, curve_family_2, tenor', () => {
+check('§C · regime requires curve_family, front_tenor, back_tenor', () => {
   assertEqual(
-    [...requiredParamsFor('cross_market')].sort(),
-    ['curve_family_1', 'curve_family_2', 'tenor'],
-    'cross_market required',
+    [...requiredParamsFor('regime')].sort(),
+    ['back_tenor', 'curve_family', 'front_tenor'],
+    'regime required',
   );
 });
 
@@ -320,19 +320,19 @@ check('§C · scanner / forward have no required params', () => {
 });
 
 check('§C · missingRequiredTypedParams flags every empty required field', () => {
-  const out = missingRequiredTypedParams('cross_market', {
-    curve_family_1: 'UST',
-    // curve_family_2 missing
-    tenor: '10Y',
+  const out = missingRequiredTypedParams('regime', {
+    curve_family: 'UST',
+    // front_tenor missing
+    back_tenor: '10Y',
   });
-  assertEqual(out, ['curve_family_2'], 'one missing');
+  assertEqual(out, ['front_tenor'], 'one missing');
 });
 
 check('§C · missingRequiredTypedParams returns [] when all present', () => {
-  const out = missingRequiredTypedParams('cross_market', {
-    curve_family_1: 'UST',
-    curve_family_2: 'DE_BUND',
-    tenor: '10Y',
+  const out = missingRequiredTypedParams('regime', {
+    curve_family: 'UST',
+    front_tenor: '2Y',
+    back_tenor: '10Y',
   });
   assertEqual(out, [], 'all present');
 });
@@ -517,15 +517,13 @@ check('§F · realistic multi-tool Ask handoff round-trips with structured fidel
   );
 });
 
-check('§F · empty cross_market params → missing-param check would fire', () => {
-  // The exact bug pattern from the audit screenshots: an Ask trace
-  // captured a cross_market call with NO curve_family_1 /
-  // curve_family_2.  Without PR-B-β this defaults to IT_BTP-DE_BUND
-  // silently.  PR-B-β reports the missing fields explicitly.
-  const out = missingRequiredTypedParams('cross_market', {});
+check('§F · empty regime params → missing-param check would fire', () => {
+  // Empty params for a typed view (regime: classify_curve_move) → without
+  // PR-B-β this defaults silently.  PR-B-β reports the missing fields explicitly.
+  const out = missingRequiredTypedParams('regime', {});
   assertEqual(
     out.sort(),
-    ['curve_family_1', 'curve_family_2', 'tenor'],
+    ['back_tenor', 'curve_family', 'front_tenor'],
     'all three required fields flagged',
   );
 });

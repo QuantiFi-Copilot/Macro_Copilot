@@ -46,7 +46,7 @@ from rates_agent.sovereign_bonds.tools.cross_market_spread import (
     CONFIG_PATH as CROSS_MARKET_CONFIG_PATH,
     calculate_cross_market_spread,
 )
-from rates_agent.sovereign_bonds.tools.scanner import scan_extremes
+from rates_agent.sovereign_bonds.tools.scan_extremes import scan_extremes
 from shared.analytics.levels import compute_level_metrics
 from shared.config import load_tool_config
 

@@ -80,7 +80,7 @@ from rates_agent.ois.tools.rate_level import (  # noqa: E402
     CONFIG_PATH as OIS_RATE_LEVEL_CONFIG_PATH,
     get_ois_rate_level,
 )
-from rates_agent.ois.tools.scanner import scan_ois_extremes  # noqa: E402
+from rates_agent.ois.tools.scan_ois_extremes import scan_ois_extremes  # noqa: E402
 from rates_agent.ois.tools.swap_spread import (  # noqa: E402
     CONFIG_PATH as SWAP_SPREAD_CONFIG_PATH,
     calculate_swap_spread,

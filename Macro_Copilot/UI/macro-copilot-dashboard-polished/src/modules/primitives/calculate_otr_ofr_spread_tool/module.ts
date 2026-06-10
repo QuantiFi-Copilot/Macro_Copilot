@@ -1,40 +1,107 @@
 // ============================================================================
 // src/modules/primitives/calculate_otr_ofr_spread_tool/module.ts
 // ----------------------------------------------------------------------------
-// Surface-contract retraction (2026-05-26): the Stage 6 ``monitor_surface``
-// claim was retracted because the shipped widget was a stub (no real
-// fetch, no chart, only placeholder text).  Per the surface contract's
-// containment principle, a module's ``tiers`` array MUST match delivery
-// — claiming a tier you don't fully ship is "half-built state for the
-// system", which the principle forbids.
+// Sovereign cash-bond OTR/OFR yield spread brought to parity with the
+// Phase-1 pilot calculate_breakeven_inflation_simple_tool under the
+// dual-view + standalone-bridge contracts:
+//   - methodology_exposure.md §5 standalone-bridge (own typed-detail
+//     endpoint at /api/v1/rates/detail/otr-ofr-spread + own surfaces;
+//     no shared typedView)
+//   - rendering_density.md §1 dual-view mandate (buildExtended +
+//     buildCompact both REQUIRED)
 //
-// OTR-OFR Spread IS Monitor-eligible per the contract — it's the
-// desk-standard cash-bond rich-cheap / liquidity-premium signal that
-// the desk parks on the board across (curve, tenor) variants and reads
-// through the day.  But shipping a real parameterised widget requires
-// the typed-detail endpoint to expose OTR-OFR series data first.  Once
-// the backend ships that endpoint, a real ``monitor_surface`` claim
-// + non-stub widget can land in a single PR.
-//
-// Currently surfaced via:
-//   * Build — generic schema-driven builder + AutoRenderer for the
-//     per-trade-date spread series.
-//   * Ask — generic AssistantResearchCard (once Supervisor routing for
-//     OTR-OFR queries lands in a separate orchestration session).
-//   * Library — auto-derived from the backend manifest.
-//   * Monitor — ELIGIBLE but DEFERRED.  Tracked in the surface contract
-//     registry; will be claimed when the typed-detail endpoint ships +
-//     a real widget is built inside this module folder.
+// Design reference: mockups/Compact.png + mockups/Extended.png.
+// Per FM7 (pure-spec assembly): exports a pure value; no side effects.
 // ============================================================================
 
 import type { PrimitiveModuleSpec } from '../../types';
+import { LOOKBACK_OPTIONS } from '@/lib/monitorParamOptions';
+import BuildExtended from './surfaces/BuildExtended';
+import BuildCompact from './surfaces/BuildCompact';
+import { OtrOfrSpreadWidget } from './surfaces/monitor/OtrOfrSpreadWidget';
+import {
+  COUNTRY_OPTIONS,
+  TENOR_OPTIONS,
+} from './surfaces/otrOfrSpreadShared';
 
 export const MODULE: PrimitiveModuleSpec = {
+  // FM1 — identity (folder name === toolName)
   toolName: 'calculate_otr_ofr_spread_tool',
-  tiers: ['generic_runnable'],
+
+  // FM3 — tier claims (parity with the breakeven Phase-1 pilot):
+  //   * generic_runnable — backend ships in _PRIMITIVE_SPECS
+  //   * custom_build_surface — dual-view Build (rendering_density.md §1)
+  //   * monitor_surface — OTR/OFR is a canonical morning-briefing /
+  //     desk-board read (cash-bond rich-cheap / liquidity-premium proxy)
+  //     per surface_contract.md §3.4 eligibility.
+  tiers: ['generic_runnable', 'custom_build_surface', 'monitor_surface'],
+
+  // FM5 — display metadata
   displayName: 'OTR-OFR Spread',
   category: 'curve_shape',
   oneLineSummary:
-    'Basis-point yield spread between the on-the-run (OTR) bond and the first-off-the-run (OFR) bond for one (country, tenor) sovereign cash-bond slot — the desk-standard rich-cheap / liquidity-premium signal — plus its 252-trading-day rolling z-score and full chartable time series.',
-  workspaceLabel: 'OTR-OFR spread chart + history',
+    "On-the-run vs first-off-the-run sovereign bond yield spread for one (country, tenor) slot — the desk-standard liquidity-premium PROXY: spread_bps = (OTR yield − OFR yield) × 100, with today's move and how stretched it is vs the trailing year.  Sign POSITIVE = OTR cheap to OFR (inverted-liquidity signature); NEGATIVE = OTR rich (typical signature).  Liquidity-premium proxy, not a clean liquidity read — deviations can also reflect bond-specific scarcity / squeeze / repo-rate differences.",
+
+  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared typedView.
+  typedView: null,
+  richModel: false,
+
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build`` is
+  // kept === buildExtended for the legacy VirtualPrimitiveCanvas dispatcher.
+  surfaces: {
+    build: BuildExtended,
+    buildExtended: BuildExtended,
+    buildCompact: BuildCompact,
+  },
+
+  // FM5c — Monitor catalog widget.  Inherently compact (rendering_density.md
+  // §8).  Single-slot primitive — exposes (country, tenor) plus the
+  // lookback selector.  Fetches the SAME /api/v1/rates/detail/otr-ofr-spread
+  // endpoint the Build views use (standalone bridge §5.4).
+  monitorWidgets: [
+    {
+      id: 'otr_ofr_spread',
+      label: 'OTR-OFR Spread',
+      description:
+        'On-the-run vs first-off-the-run sovereign bond yield spread for one (country, tenor) slot.  Liquidity-premium PROXY; sign POSITIVE = OTR cheap to OFR.',
+      category: 'data',
+      defaultSize: 'small',
+      allowedSizes: ['small', 'medium'],
+      parameterized: true,
+      paramFields: [
+        {
+          kind: 'select',
+          name: 'country',
+          label: 'Country',
+          defaultValue: 'US',
+          options: COUNTRY_OPTIONS,
+        },
+        {
+          kind: 'select',
+          name: 'tenor',
+          label: 'Tenor',
+          defaultValue: '10Y',
+          options: TENOR_OPTIONS,
+        },
+        {
+          kind: 'select',
+          name: 'lookback_days',
+          label: 'Lookback',
+          defaultValue: '252',
+          options: LOOKBACK_OPTIONS,
+        },
+      ],
+      component: OtrOfrSpreadWidget,
+    },
+  ],
+
+  // FM5 — defaults mirror the mockup (US 10Y at 365d).  ``field_name``
+  // defaults to the YAML's default_field_name (YLD_YTM_MID) so the wire
+  // sentinel pattern is honoured.
+  defaultParams: {
+    country: 'US',
+    tenor: '10Y',
+    lookback_days: '365',
+    field_name: 'YLD_YTM_MID',
+  },
 };

@@ -199,18 +199,18 @@ check('row 5: ?workflow=unknown_id → unknown status', () => {
 // MATRIX ROWS 6-7 — Library typed-view tools
 // ----------------------------------------------------------------------------
 
-check('row 6: ?context=<curve_spread> → spread typed view', () => {
+check('row 6: ?context=<curve_spread> → generic_builder', () => {
   const out = decodePrimitiveContext(
     encodeContext([{ tool: 'calculate_curve_spread_tool' }]),
   );
-  assertEqual(out!.kind, 'spread', 'kind');
+  assertEqual(out!.kind, 'generic_builder', 'kind');
 });
 
-check('row 7: ?context=<yield_levels> → yield typed view', () => {
+check('row 7: ?context=<yield_levels> → generic_builder (post-migration)', () => {
   const out = decodePrimitiveContext(
     encodeContext([{ tool: 'get_yield_levels_tool' }]),
   );
-  assertEqual(out!.kind, 'yield', 'kind');
+  assertEqual(out!.kind, 'generic_builder', 'kind');
 });
 
 // ----------------------------------------------------------------------------
@@ -260,7 +260,7 @@ check('row 12: ?context=<scan_ois_extremes_tool> → unsupported_known (paused)'
 // MATRIX ROWS 13-14 — Ask handoffs (single + multi)
 // ----------------------------------------------------------------------------
 
-check('row 13: Ask single-tool handoff → typed view + params preserved', () => {
+check('row 13: Ask single-tool handoff → generic_builder + params preserved', () => {
   const out = decodePrimitiveContext(
     encodeContext([
       {
@@ -269,7 +269,7 @@ check('row 13: Ask single-tool handoff → typed view + params preserved', () =>
       },
     ]),
   );
-  assertEqual(out!.kind, 'spread', 'kind');
+  assertEqual(out!.kind, 'generic_builder', 'kind');
   assertEqual(out!.params.curve_family, 'UST', 'params preserved');
   assertEqual(out!.params.short_tenor, '2Y', 'short_tenor preserved');
 });
@@ -283,8 +283,8 @@ check('row 14: Ask multi-tool handoff → list with multiple entries', () => {
     ]),
   );
   assertEqual(list.length, 3, 'three entries');
-  assertEqual(list[0].kind, 'yield', 'first: typed view');
-  assertEqual(list[1].kind, 'yield', 'second: typed view');
+  assertEqual(list[0].kind, 'generic_builder', 'first: generic builder');
+  assertEqual(list[1].kind, 'generic_builder', 'second: generic builder');
   assertEqual(list[2].kind, 'generic_builder', 'third: generic builder');
 });
 

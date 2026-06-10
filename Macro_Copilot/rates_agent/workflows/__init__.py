@@ -70,21 +70,23 @@ from rates_agent.ois.tools.swap_spread import (
     SwapSpreadOutput,
     calculate_swap_spread,
 )
-# PR-10G gap #4 — two flat-file scanners (predating the per-tool-folder
-# convention) registered as TERMINAL_ONLY_SNAPSHOT entries.
-from rates_agent.sovereign_bonds.tools.scanner import (
+# PR-10G gap #4 — the two flat-file scanners were migrated to the
+# canonical per-tool-folder layout (scan_extremes/ + scan_ois_extremes/)
+# on the frontend_automation branch; import from the canonical packages.
+# Still registered as TERMINAL_ONLY_SNAPSHOT entries (output_field_units={}).
+from rates_agent.sovereign_bonds.tools.scan_extremes import (
     CONFIG_PATH as SOV_SCANNER_CONFIG_PATH,
     scan_extremes,
 )
-from rates_agent.sovereign_bonds.tools.schemas.scanner import (
+from rates_agent.sovereign_bonds.tools.scan_extremes import (
     ScannerInput,
     ScannerOutput,
 )
-from rates_agent.ois.tools.scanner import (
+from rates_agent.ois.tools.scan_ois_extremes import (
     CONFIG_PATH as OIS_SCANNER_CONFIG_PATH,
     scan_ois_extremes,
 )
-from rates_agent.ois.tools.schemas.scanner import (
+from rates_agent.ois.tools.scan_ois_extremes import (
     OISScannerInput,
     OISScannerOutput,
 )

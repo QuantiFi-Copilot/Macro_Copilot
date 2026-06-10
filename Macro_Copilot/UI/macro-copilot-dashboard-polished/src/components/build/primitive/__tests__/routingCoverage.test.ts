@@ -279,28 +279,28 @@ check('unsupportedKnownReasonFor: scan_ois_extremes_tool has explicit copy', () 
 // decodePrimitiveContext — single-best lookup per matrix row.
 // ----------------------------------------------------------------------------
 
-check('decode: calculate_curve_spread_tool → spread typed view', () => {
+check('decode: calculate_curve_spread_tool → generic_builder', () => {
   const ctx = encodeContext([
     { tool: 'calculate_curve_spread_tool', params: { curve_family: 'UST' } },
   ]);
   const out = decodePrimitiveContext(ctx);
   assertTruthy(out, 'decode result');
-  assertEqual(out!.kind, 'spread', 'kind');
+  assertEqual(out!.kind, 'generic_builder', 'kind');
   assertEqual(out!.toolName, 'calculate_curve_spread_tool', 'toolName');
 });
 
-check('decode: calculate_cross_market_spread_tool → cross_market typed view', () => {
+check('decode: calculate_cross_market_spread_tool → generic_builder', () => {
   const out = decodePrimitiveContext(
     encodeContext([{ tool: 'calculate_cross_market_spread_tool' }]),
   );
-  assertEqual(out!.kind, 'cross_market', 'kind');
+  assertEqual(out!.kind, 'generic_builder', 'kind');
 });
 
-check('decode: get_yield_levels_tool → yield typed view', () => {
+check('decode: get_yield_levels_tool → generic_builder', () => {
   const out = decodePrimitiveContext(
     encodeContext([{ tool: 'get_yield_levels_tool' }]),
   );
-  assertEqual(out!.kind, 'yield', 'kind');
+  assertEqual(out!.kind, 'generic_builder', 'kind');
 });
 
 check('decode: calculate_pca_yield_curve_tool (canonical) → builder', () => {
@@ -368,14 +368,14 @@ check('decode: builder + primitive → builder wins (priority)', () => {
 check('decode: typed primitive + generic_builder → typed wins (priority)', () => {
   // PR2 priority: BUILDER > typed view > generic_builder > unsupported_known.
   // A typed chart conveys more information than a configure-and-run
-  // form, so curve_spread wins over swap_spread (generic_builder).
+  // form, so classify_curve_move (typed view 'regime') wins over swap_spread (generic_builder).
   const out = decodePrimitiveContext(
     encodeContext([
       { tool: 'calculate_swap_spread_tool' }, // generic_builder
-      { tool: 'calculate_curve_spread_tool' }, // typed view
+      { tool: 'classify_curve_move_tool' }, // typed view
     ]),
   );
-  assertEqual(out!.kind, 'spread', 'spread wins over generic_builder');
+  assertEqual(out!.kind, 'regime', 'regime wins over generic_builder');
 });
 
 check('decode: generic_builder + unsupported_known → generic_builder wins (priority)', () => {
@@ -394,23 +394,23 @@ check('decode: generic_builder + unsupported_known → generic_builder wins (pri
 // decodePrimitiveList — multi-card layout source.
 // ----------------------------------------------------------------------------
 
-check('decodeList: three yield calls → three typed entries in order', () => {
+check('decodeList: three cross_market calls → three generic_builder entries in order', () => {
   const list = decodePrimitiveList(
     encodeContext([
-      { tool: 'get_yield_levels_tool', params: { curve_family: 'UST' } },
-      { tool: 'get_yield_levels_tool', params: { curve_family: 'DE_BUND' } },
-      { tool: 'get_yield_levels_tool', params: { curve_family: 'UK_GILT' } },
+      { tool: 'calculate_cross_market_spread_tool', params: { curve_a: 'UST' } },
+      { tool: 'calculate_cross_market_spread_tool', params: { curve_a: 'DE_BUND' } },
+      { tool: 'calculate_cross_market_spread_tool', params: { curve_a: 'UK_GILT' } },
     ]),
   );
   assertEqual(list.length, 3, 'three entries');
   for (const item of list) {
-    assertEqual(item.kind, 'yield', `each: yield`);
+    assertEqual(item.kind, 'generic_builder', `each: generic_builder`);
   }
   // Order preserved
   assertEqual(
-    list.map((d: DecodedPrimitive) => d.params.curve_family),
+    list.map((d: DecodedPrimitive) => d.params.curve_a),
     ['UST', 'DE_BUND', 'UK_GILT'],
-    'curve_family order preserved',
+    'curve_a order preserved',
   );
 });
 
@@ -435,13 +435,13 @@ check('decodeList: generic_builder + unsupported_known are both retained', () =>
   // tiles + unsupported tiles together.  Builders alone are filtered.
   const list = decodePrimitiveList(
     encodeContext([
-      { tool: 'calculate_curve_spread_tool' }, // typed view
+      { tool: 'calculate_curve_spread_tool' }, // generic_builder
       { tool: 'calculate_swap_spread_tool' },  // generic_builder
       { tool: 'scan_ois_extremes_tool' },      // unsupported_known
     ]),
   );
   assertEqual(list.length, 3, 'all three retained');
-  assertEqual(list[0].kind, 'spread', 'first: typed view');
+  assertEqual(list[0].kind, 'generic_builder', 'first: generic_builder');
   assertEqual(list[1].kind, 'generic_builder', 'second: generic_builder');
   assertEqual(list[2].kind, 'unsupported_known', 'third: unsupported_known');
 });
@@ -663,24 +663,24 @@ check('decode: typed-view + workflow_incompatible → typed-view wins (priority)
   // A real chart beats every unsupported card.
   const out = decodePrimitiveContext(
     encodeContext([
-      { tool: 'get_otr_history_tool' },             // workflow_incompatible
-      { tool: 'calculate_curve_spread_tool' },      // typed view 'spread'
+      { tool: 'get_otr_history_tool' },                     // workflow_incompatible
+      { tool: 'classify_curve_move_tool' },                 // typed view 'regime'
     ]),
   );
-  assertEqual(out!.kind, 'spread', 'typed-view beats workflow_incompatible');
+  assertEqual(out!.kind, 'regime', 'typed-view beats workflow_incompatible');
 });
 
 check('decodeList: workflow_incompatible entries retained in order', () => {
   const list = decodePrimitiveList(
     encodeContext([
-      { tool: 'calculate_curve_spread_tool' },       // typed view
-      { tool: 'get_otr_history_tool' },              // workflow_incompatible
+      { tool: 'classify_curve_move_tool' },            // typed view
+      { tool: 'get_otr_history_tool' },                // workflow_incompatible
       { tool: 'calculate_wirp_meeting_pricing_tool' }, // workflow_incompatible
-      { tool: 'scan_ois_extremes_tool' },            // unsupported_known
+      { tool: 'scan_ois_extremes_tool' },              // unsupported_known
     ]),
   );
   assertEqual(list.length, 4, 'four entries');
-  assertEqual(list[0].kind, 'spread', '0: typed view');
+  assertEqual(list[0].kind, 'regime', '0: typed view');
   assertEqual(list[1].kind, 'workflow_incompatible', '1: workflow_incompatible');
   assertEqual(list[2].kind, 'workflow_incompatible', '2: workflow_incompatible');
   assertEqual(list[3].kind, 'unsupported_known', '3: unsupported_known');

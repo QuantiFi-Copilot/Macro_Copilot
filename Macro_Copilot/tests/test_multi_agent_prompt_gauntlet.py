@@ -58,7 +58,7 @@ from rates_agent.ois.tools.cross_market_spread import calculate_ois_cross_market
 from rates_agent.ois.tools.curve_spread import calculate_ois_curve_spread  # noqa: E402
 from rates_agent.ois.tools.forward_rate import calculate_ois_forward_rate  # noqa: E402
 from rates_agent.ois.tools.rate_level import get_ois_rate_level  # noqa: E402
-from rates_agent.ois.tools.scanner import scan_ois_extremes  # noqa: E402
+from rates_agent.ois.tools.scan_ois_extremes import scan_ois_extremes  # noqa: E402
 from rates_agent.ois.tools.schemas import (  # noqa: E402
     OISCrossMarketSpreadInput,
     OISCurveSpreadInput,
