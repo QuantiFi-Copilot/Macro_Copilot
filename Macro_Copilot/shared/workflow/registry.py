@@ -76,6 +76,10 @@ from shared.operators.event_windows import (
     event_windows, EventWindowsParams,
     CONFIG_PATH as _EVENT_WINDOWS_CONFIG_PATH,
 )
+from shared.operators.lead_lag import (
+    lead_lag, LeadLagParams,
+    CONFIG_PATH as _LEAD_LAG_CONFIG_PATH,
+)
 from shared.operators.rolling_regression import (
     rolling_regression,
     RollingRegressionParams,
@@ -987,6 +991,67 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "of the input Series's index.  Drop-in input for "
                 "summarize_series, percentile_rank, or further "
                 "subsetting."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — statistical_relationship: the
+    # cross-correlation function corr(left_t, right_{t+k}) for
+    # k ∈ [−max_lag, +max_lag].  Two Series in, one Series out on the
+    # substrate's synthetic offset-anchor index (the
+    # conditional_aggregate precedent; integer lags recorded in
+    # lineage).  Sign convention: positive k = left LEADS right.
+    "lead_lag": OperatorSpec(
+        operator_name="lead_lag",
+        callable=lead_lag,
+        params_class=LeadLagParams,
+        config_path=_LEAD_LAG_CONFIG_PATH,
+        input_slots={
+            "left": SlotDescriptor.of(
+                "Series",
+                (
+                    "The candidate LEADER of the pair — positive output "
+                    "lags mean THIS series leads 'right' by k rows.  "
+                    "Single-artifact slot expecting a typed Series that "
+                    "shares an IDENTICAL DatetimeIndex with 'right' "
+                    "(align_series -> select_from_series_set upstream on "
+                    "both arms).  USE when the user asks whether one "
+                    "series moves BEFORE another, or at which lag the "
+                    "relationship peaks.  Unit-invariant (correlation is "
+                    "dimensionless; PERCENT vs BPS is fine).  Swapping "
+                    "the arms mirrors the profile (lag k ↔ lag −k) — "
+                    "documented, not an error.  DO NOT use for the "
+                    "contemporaneous correlation number (use "
+                    "correlation), the correlation's evolution over time "
+                    "(use rolling_correlation), or causal claims (this "
+                    "is descriptive)."
+                ),
+            ),
+            "right": SlotDescriptor.of(
+                "Series",
+                (
+                    "The candidate FOLLOWER of the pair.  Same artifact "
+                    "type, same DatetimeIndex requirement (align "
+                    "upstream), same unit-invariance.  DO NOT bind both "
+                    "arms to the same upstream Series (the profile is "
+                    "the series' autocorrelation — ask for that "
+                    "explicitly if wanted) and DO NOT pass a scalar "
+                    "literal here (artifact-only slot)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            (
+                "The CCF profile: one correlation (RATIO units, in "
+                "[-1, 1]) per integer lag k ∈ [−max_lag, +max_lag], "
+                "encoded on the substrate's synthetic offset-anchor "
+                "DatetimeIndex (lag k → 1970-01-01 + k days; "
+                "frequency=None).  The integer lags, sign convention "
+                "(positive k = left leads), per-lag overlap counts and "
+                "both inputs' units ride in lineage params.  A lag with "
+                "insufficient overlap or zero variance is NaN; an "
+                "all-NaN profile raises LeadLagError.  Typically the "
+                "terminal artifact, or reduced via summarize_series."
             ),
         ),
     ),

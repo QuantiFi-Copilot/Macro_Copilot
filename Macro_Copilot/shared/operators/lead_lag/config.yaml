@@ -1,0 +1,102 @@
+operator:
+  name: lead_lag
+  method_family: statistical_relationship
+  version: "1.0.0"
+  description: >-
+    Cross-correlation function between two index-aligned numeric
+    Series: corr(left_t, right_{t+k}) at every integer lag k in
+    [-max_lag, +max_lag] (lags in rows of the shared index), emitting
+    one Series whose position k carries the correlation at lag k —
+    the "who moves first" profile. Finance-blind and unit-invariant
+    (a correlation is dimensionless; output RATIO). Sign convention:
+    positive k means LEFT LEADS RIGHT by k rows. The lag axis rides
+    the substrate's synthetic offset-anchor DatetimeIndex (the
+    conditional_aggregate precedent); the integer lags are recorded
+    in lineage so the encoding is never reverse-engineered.
+
+# Every user-choosable method choice is offloaded here so the operator
+# is not opinionated and the caller can switch seamlessly (OPR7/OPR8).
+# The schema defaults in schemas.py mirror these values and a test
+# asserts they do not diverge.
+defaults:
+  max_lag:
+    value: 10
+    source: operator_v1_default
+    rationale: >-
+      +/-10 rows of the shared index covers the short-horizon
+      lead/lag structure most pairwise questions probe while keeping
+      the per-lag overlap large; raise it for longer-horizon
+      questions at the cost of fewer overlapping pairs per lag.
+  method:
+    value: pearson
+    source: operator_v1_default
+    rationale: >-
+      Pearson is the desk-default linear correlation; Spearman (rank)
+      captures monotonic non-linear association. Kendall is declared
+      in valid_values as a planned extension but is not yet
+      implemented — mirrors the correlation/rolling_correlation set
+      so the family is directly substitutable.
+    valid_values: [pearson, spearman, kendall]
+  min_periods:
+    value: 2
+    source: operator_v1_default
+    rationale: >-
+      A correlation coefficient is undefined with fewer than two
+      overlapping non-NaN pairs; 2 is the mathematical floor, applied
+      AT EACH LAG (a lag below the floor emits NaN for that lag, not
+      a refusal). Raise it for statistically meaningful per-lag
+      estimates.
+
+methodology:
+  what_it_does: >-
+    Computes the cross-correlation function corr(left_t, right_{t+k})
+    for every integer lag k in [-max_lag, +max_lag], pairing each
+    left observation with the right observation k rows later on the
+    shared index. Positive k therefore means left LEADS right by k
+    rows; negative k means right leads. The two inputs MUST share an
+    identical DatetimeIndex (align upstream with align_series — this
+    operator does NOT align). Strict-by-default on frequency and
+    missingness (OPR11); unit-invariant (both inputs' units recorded
+    in lineage; every output value is a dimensionless RATIO). A lag
+    with fewer than min_periods overlapping pairs, or a zero-variance
+    arm over its overlap, emits NaN at that lag (legitimate per-lag
+    missingness); an all-NaN profile raises LeadLagError. The output
+    rides the substrate's synthetic offset-anchor DatetimeIndex
+    (anchor 1970-01-01 + k days, frequency=None) with the integer
+    lags, sign convention, and per-lag overlap counts recorded in
+    lineage params. Reversal property: lead_lag(left, right) at lag k
+    equals lead_lag(right, left) at lag -k.
+  planned_extensions:
+    - "method='kendall' (Kendall's tau per lag): declared in valid_values but not yet implemented; raises NotImplementedError (OPR8 honest refusal)."
+    - "windowed / rolling CCF (a profile per date): a different output shape — its own operator if the toolbox ever needs it, never a flag here (OPR2)."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Cross-correlation profile between two Series across leads and lags — who moves first, and by how many rows.
+  when_to_use:
+    - "User asks whether one series LEADS or LAGS another ('does X move before Y?'), or at which lag the relationship peaks."
+    - "A relationship question needs the full lead/lag profile, not just the contemporaneous correlation number."
+  when_not_to_use:
+    - "User wants the contemporaneous (lag-0) correlation number — use correlation (one ScalarMetric)."
+    - "User wants the correlation's evolution over TIME — use rolling_correlation (per-date Series); lead_lag is per-LAG, not per-date."
+    - "User wants causality language — this is descriptive cross-correlation, not a causal test."
+  upstream_requirements:
+    - "Both Series must share an identical DatetimeIndex.  Canonical upstream: align_series → select_from_series_set ×2."
+    - "Sign convention: wire the candidate LEADER into 'left' — positive output lags mean left leads right."
+  downstream_pattern:
+    - "Output is a Series on the substrate's offset-anchor index (lag k → 1970-01-01 + k days; integer lags + per-lag overlap counts in lineage).  Typically surfaced directly, or reduced with summarize_series."
+  knobs_quick_ref:
+    max_lag: "10 by default — the profile spans k = −max_lag..+max_lag rows of the shared index."
+    method: "pearson (default) | spearman (rank) | kendall (declared, refuses)."
+    min_periods: "2 by default (mathematical floor, applied per lag); raise for statistically meaningful per-lag estimates."
+  example_shapes:
+    - description: "Lead/lag profile of series A versus series B at ±10 rows."
+      shape: "[Series A, Series B] -> align_series -> select_from_series_set ×2 -> lead_lag -> Series (per-lag profile)"
+  sibling_operators:
+    - correlation: "The contemporaneous (lag-0) number only — one ScalarMetric.  Use when no lead/lag structure is asked for."
+    - rolling_correlation: "Correlation per DATE over a trailing window.  Use for 'how has the relationship evolved', not 'who moves first'."
+    - cointegration: "Stationarity of the level relationship (Engle-Granger).  Use for 'is this pair tradeable', not lead/lag timing."
+  intent_hints: [relationship]

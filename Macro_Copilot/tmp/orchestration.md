@@ -53,7 +53,7 @@ Cited from the project-owner handoff. Every PR below must respect these; reviewe
 
 ## 2. Confirmed catalogue
 
-### 2.1 Operators (19 — 16 at PoC + covariance, rolling_covariance & regression_residual added by the Track-A fable_build; finance-blind, in `OPERATOR_REGISTRY` at [shared/workflow/registry.py:324](../shared/workflow/registry.py:324))
+### 2.1 Operators (21 — 16 at PoC + covariance, rolling_covariance, regression_residual, beta & lead_lag added by the Track-A fable_build; finance-blind, in `OPERATOR_REGISTRY` at [shared/workflow/registry.py:324](../shared/workflow/registry.py:324))
 
 Grouped by purpose; wiring fact each one carries.
 
@@ -658,7 +658,7 @@ class DomainAgentSession:
 - Each intent_tag → composer picks an operator from the right family (eval set per `IntentTag`).
 - Repair: given an `E_UNIT_MISMATCH` error pointing at an edge, composer emits `AddAdapter(convert_units)` on that edge — not a new shape.
 - Refusal-on-impossible: prompt asks for an analysis that no registered operator/artifact path can express → composer returns a structured refusal reason before assembly. It does NOT emit a fake `LeafHole` to force the pipeline onward.
-- Token-budget audit: composer's prompt input ≤ 25K tokens (catalogue + few-shots + L1 output + prompt).
+- Token-budget audit: composer's prompt input ≤ 45K tokens (catalogue + few-shots + L1 output + prompt). [Originally ≤25K, sized for the 16-operator PoC catalogue; re-sized by the Track-A fable_build for the ≈25–35-operator target toolbox — 35 cards × ≤1,000-token per-card cap + ~8k instructions; prompt is byte-stable / Anthropic-cache-pinned.]
 
 **Acceptance criteria.**
 1. Composer emits a structurally valid `ShapeSpec` for each canonical query in the eval set.

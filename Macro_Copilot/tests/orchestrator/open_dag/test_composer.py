@@ -281,6 +281,7 @@ class TestComposerPromptContent:
             "correlation",
             "covariance",
             "event_windows",
+            "lead_lag",
             "percentile_rank",
             "regression_residual",
             "rolling_correlation",
@@ -322,22 +323,33 @@ class TestComposerPromptContent:
             "primitive-blind per acceptance criterion #3."
         )
 
-    def test_prompt_token_budget_under_25k(self, composer_system_text):
-        # Per ``tmp/orchestration.md`` §PR-7 acceptance: "Composer's
-        # prompt input ≤ 25K tokens".  chars/4 approximation suffices.
+    # Per ``tmp/orchestration.md`` §PR-7 acceptance, originally
+    # "Composer's prompt input ≤ 25K tokens" — sized for the
+    # 16-operator PoC catalogue.  Track-A (fable_build) re-sized the
+    # budget for the growing toolbox exactly like the catalogue's
+    # _TOTAL_CATALOGUE_TOKEN_CAP (16k→36k): the plan targets ≈25–35
+    # operators; at the 1,000-token per-card hard cap, 35 cards bound
+    # the catalogue portion at ≤35k, plus ~8k of instructions → 45k
+    # bounds the worst case while leaving >150k for tool messages on a
+    # 200k window.  The prompt is byte-stable (Anthropic-cache-pinned),
+    # so the marginal cost of the larger prefix amortizes across calls.
+    # orchestration.md §PR-7's acceptance line is updated in lock-step.
+    _COMPOSER_PROMPT_TOKEN_CAP = 45_000
+
+    def test_prompt_token_budget(self, composer_system_text):
         token_count = approx_tokens(composer_system_text)
-        assert token_count <= 25_000, (
+        assert token_count <= self._COMPOSER_PROMPT_TOKEN_CAP, (
             f"Composer system prompt is {token_count} approx tokens; "
-            "budget is 25K"
+            f"budget is {self._COMPOSER_PROMPT_TOKEN_CAP}"
         )
 
-    def test_repair_prompt_token_budget_under_25k(
+    def test_repair_prompt_token_budget(
         self, composer_repair_system_text,
     ):
         token_count = approx_tokens(composer_repair_system_text)
-        assert token_count <= 25_000, (
+        assert token_count <= self._COMPOSER_PROMPT_TOKEN_CAP, (
             f"Composer repair prompt is {token_count} approx tokens; "
-            "budget is 25K"
+            f"budget is {self._COMPOSER_PROMPT_TOKEN_CAP}"
         )
 
     def test_prompt_mentions_pair_stats_discipline(self, composer_system_text):
