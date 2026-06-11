@@ -165,11 +165,16 @@ check('§A · nested objects survive in paramsStructured, drop from params', () 
     tool_count: 1,
   });
   const list = decodePrimitiveList(ctx);
-  // builders are excluded from list, BUT regression IS a builder
-  // (hasModelMetadata).  Use decodePrimitiveContext instead.
+  // Consolidation G-3.2: rolling regression is a dual-view module now
+  // (modelMetadata retired) — it decodes 'generic_builder'; the
+  // structured-params fidelity below is unchanged.
   const decoded = decodePrimitiveContext(ctx);
   assertTruthy(decoded, 'decoded non-null');
-  assertEqual(decoded!.kind, 'builder', 'rolling_regression → builder');
+  assertEqual(
+    decoded!.kind,
+    'generic_builder',
+    'rolling_regression → generic_builder (migrated)',
+  );
   // Flat projection drops nested entries (backward-compat).
   assertEqual(
     decoded!.params,
@@ -234,7 +239,11 @@ check('§A · arrays of primitives survive in paramsStructured', () => {
   });
   const decoded = decodePrimitiveContext(ctx);
   assertTruthy(decoded, 'decoded');
-  assertEqual(decoded!.kind, 'builder', 'PCA → builder');
+  assertEqual(
+    decoded!.kind,
+    'generic_builder',
+    'PCA → generic_builder (migrated)',
+  );
   assertEqual(
     decoded!.paramsStructured.tenors,
     ['2Y', '5Y', '10Y', '30Y'],
@@ -492,10 +501,17 @@ check('§F · realistic multi-tool Ask handoff round-trips with structured fidel
   };
   const ctx = encodeContext(wc);
   const list = decodePrimitiveList(ctx);
-  // Rolling regression is a builder → filtered out of the list path.
-  assertEqual(list.length, 2, 'two non-builder entries in list');
+  // Consolidation G-3.2: rolling regression is a dual-view module —
+  // it stays IN the multi-card list (renders its compact card) instead
+  // of being filtered as a canvas-owning builder.
+  assertEqual(list.length, 3, 'all three entries retained in list');
   assertEqual(list[0].toolName, 'calculate_cross_market_spread_tool', 'first');
   assertEqual(list[1].toolName, 'calculate_cross_market_spread_tool', 'second');
+  assertEqual(
+    list[2].toolName,
+    'calculate_rolling_regression_tool',
+    'third (migrated rich-model retained)',
+  );
   assertEqual(
     (list[0] as { params: Record<string, string> }).params.curve_family_2,
     'DE_BUND',
@@ -506,9 +522,9 @@ check('§F · realistic multi-tool Ask handoff round-trips with structured fidel
     'UK_GILT',
     'second card preserves Gilt',
   );
-  // Builder (rolling regression) accessible via decodePrimitiveContext.
+  // Single-best lookup still surfaces structured fidelity.
   const best = decodePrimitiveContext(ctx);
-  assertEqual(best!.kind, 'builder', 'builder wins single-best lookup');
+  assertTruthy(best!.kind !== 'builder', 'builder kind never decodes');
   assertEqual(
     (best!.paramsStructured.target_spec as Record<string, unknown>)
       .curve_family,

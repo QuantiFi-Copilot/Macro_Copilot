@@ -44,6 +44,7 @@ import {
   unsupportedKnownReasonFor,
 } from '@/lib/toolNames';
 import { ALL_PRIMITIVE_MODULES } from '@/modules';
+import { listModels } from '@/lib/modelRegistry';
 
 // ----------------------------------------------------------------------------
 // Tiny test shim — works under vitest OR as a plain Node script.
@@ -303,19 +304,25 @@ check('decode: get_yield_levels_tool → generic_builder', () => {
   assertEqual(out!.kind, 'generic_builder', 'kind');
 });
 
-check('decode: calculate_pca_yield_curve_tool (canonical) → builder', () => {
+// Consolidation (G-3.2): the five rich-models migrated to the dual-view
+// standard — ``modelMetadata`` is retired, so the decode no longer
+// returns the legacy 'builder' kind for them.  They decode
+// 'generic_builder' and VirtualPrimitiveCanvas's module-first dispatch
+// mounts ``surfaces.buildExtended`` (the canvas override, not the kind,
+// carries the bespoke surface now).
+check('decode: calculate_pca_yield_curve_tool (canonical) → generic_builder (migrated)', () => {
   const out = decodePrimitiveContext(
     encodeContext([{ tool: 'calculate_pca_yield_curve_tool' }]),
   );
-  assertEqual(out!.kind, 'builder', 'kind');
+  assertEqual(out!.kind, 'generic_builder', 'kind');
   assertEqual(out!.toolName, 'calculate_pca_yield_curve_tool', 'toolName');
 });
 
-check('decode: pca_yield_curve_tool (shorthand) → builder', () => {
+check('decode: pca_yield_curve_tool (shorthand) → generic_builder (migrated)', () => {
   const out = decodePrimitiveContext(
     encodeContext([{ tool: 'pca_yield_curve_tool' }]),
   );
-  assertEqual(out!.kind, 'builder', 'kind');
+  assertEqual(out!.kind, 'generic_builder', 'kind');
   assertEqual(
     out!.toolName,
     'calculate_pca_yield_curve_tool',
@@ -323,11 +330,11 @@ check('decode: pca_yield_curve_tool (shorthand) → builder', () => {
   );
 });
 
-check('decode: half_life_tool (shorthand) → builder', () => {
+check('decode: half_life_tool (shorthand) → generic_builder (migrated)', () => {
   const out = decodePrimitiveContext(
     encodeContext([{ tool: 'half_life_tool' }]),
   );
-  assertEqual(out!.kind, 'builder', 'kind');
+  assertEqual(out!.kind, 'generic_builder', 'kind');
   assertEqual(out!.toolName, 'calculate_half_life_tool', 'normalised toolName');
 });
 
@@ -355,14 +362,20 @@ check('decode: truly unknown tool → null', () => {
   assertNull(out, 'unknown tool returns null');
 });
 
-check('decode: builder + primitive → builder wins (priority)', () => {
+check('decode: NO tool produces the legacy builder kind (G-3.2 lock)', () => {
+  // The rich-model migration retired ``modelMetadata`` on every
+  // module — the model registry is EMPTY and the 'builder' decode
+  // branch is dead code awaiting deletion (consolidation target #5).
+  // This lock makes a regression (a module re-adding modelMetadata)
+  // loud.
+  assertEqual(listModels().length, 0, 'model registry is empty');
   const out = decodePrimitiveContext(
     encodeContext([
       { tool: 'calculate_curve_spread_tool' },
       { tool: 'calculate_pca_yield_curve_tool' },
     ]),
   );
-  assertEqual(out!.kind, 'builder', 'builder wins over spread');
+  assertTruthy(out!.kind !== 'builder', 'builder kind never decodes');
 });
 
 check('decode: typed primitive + generic_builder → typed wins (priority)', () => {
@@ -414,19 +427,27 @@ check('decodeList: three cross_market calls → three generic_builder entries in
   );
 });
 
-check('decodeList: builder entry filtered out', () => {
+check('decodeList: migrated rich-model is RETAINED in the multi-card list', () => {
+  // Pre-migration the rich-model decoded 'builder' and was filtered
+  // out of the multi-card grid (it owned the whole canvas).  Post
+  // G-3.2 it is an ordinary dual-view module — it stays in the list
+  // and renders its compact card like every sibling.
   const list = decodePrimitiveList(
     encodeContext([
       { tool: 'calculate_curve_spread_tool' },
-      { tool: 'calculate_pca_yield_curve_tool' }, // builder — filtered
+      { tool: 'calculate_pca_yield_curve_tool' },
       { tool: 'get_yield_levels_tool' },
     ]),
   );
-  assertEqual(list.length, 2, 'builder filtered out');
+  assertEqual(list.length, 3, 'all three retained');
   assertEqual(
     list.map((d: DecodedPrimitive) => d.toolName),
-    ['calculate_curve_spread_tool', 'get_yield_levels_tool'],
-    'order preserved minus builder',
+    [
+      'calculate_curve_spread_tool',
+      'calculate_pca_yield_curve_tool',
+      'get_yield_levels_tool',
+    ],
+    'order preserved',
   );
 });
 

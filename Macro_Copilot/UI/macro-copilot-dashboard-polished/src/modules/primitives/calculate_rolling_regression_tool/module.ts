@@ -1,21 +1,46 @@
 // ============================================================================
-// src/modules/primitives/calculate_rolling_regression_tool/module.ts — Stage 4b rich-model module.
+// src/modules/primitives/calculate_rolling_regression_tool/module.ts
 // ----------------------------------------------------------------------------
-// Stage 4b — claims ``custom_build_surface`` + ``custom_preview_widget``;
-// sets ``richModel: true``; carries the full ``ModelMetadata`` block
-// that the central ``modelRegistry.MODELS`` array now derives from.
+// Migrated to the dual-view rendering-density standard (consolidation
+// target #4 — the rich models join the standalone-bridge + dual-view
+// contract the breakeven pilot established):
+//   - methodology_exposure.md §5 standalone bridge — own typed-detail
+//     endpoint at GET /api/v1/rates/detail/rolling-regression, consumed
+//     by BOTH Build views via ``fetchDetailRollingRegression``.
+//   - rendering_density.md §1 dual-view mandate — buildExtended +
+//     buildCompact both REQUIRED, composed from the shared rich-model
+//     grammar at @/components/shared/build/model.
+//
+// ``modelMetadata`` is intentionally ABSENT (it used to live here):
+// contextDecoder routes ``kind: 'builder'`` (the legacy BuilderCanvas
+// playground) whenever a tool has a model-registry entry, which is
+// derived from this field.  Removing it + setting ``richModel: false``
+// lets dispatch fall through to ``surfaces.buildExtended`` (single-tool
+// queries) and ``surfaces.buildCompact`` (multi-tool DAG nodes).  The
+// PM-read copy the legacy interpretation cards carried is preserved on
+// the spec's top-level ``interpretationCards`` and threaded through the
+// extended view's panel descriptions + methodology zone.
+//
+// The PERSISTED-ARTIFACT path is unchanged: ``modelAdapter`` +
+// ``surfaces.preview`` (RichModelWidget) keep rendering persisted
+// Series artifacts in completed workspaces — that path never depended
+// on modelMetadata.
+//
+// Per FM7 (pure-spec assembly): exports a pure value; no side effects.
 // ============================================================================
 
 import type { PrimitiveModuleSpec } from '../../types';
-import type { ModelMetadata } from '@/lib/modelRegistry';
-import type { ModelAdapter } from '@/components/build/widgets/shared/persistedModelAdapters';
 import {
   DEFAULT_LOOKBACK_PRESETS,
   DEFAULT_WINDOW_PRESETS,
 } from '@/lib/modelPresets';
-import BuildSurface from './surfaces/BuildSurface';
+import type { ModelAdapter } from '@/components/build/widgets/shared/persistedModelAdapters';
+import BuildExtended from './surfaces/BuildExtended';
+import BuildCompact from './surfaces/BuildCompact';
 import PreviewWidget from './surfaces/PreviewWidget';
 
+// FM5d — persisted-artifact adapter (UNCHANGED by the dual-view
+// migration; consumed by RichModelWidget via getModelAdapter).
 const MODEL_ADAPTER: ModelAdapter = {
   toolName: 'calculate_rolling_regression_tool',
   displayName: 'Rolling regression',
@@ -32,23 +57,36 @@ const MODEL_ADAPTER: ModelAdapter = {
     'Peer rolling series not lifted as the artifact',
   ],
   builderHint:
-    'Re-run from the model builder to inspect the snapshot panel + the peer coefficient series.',
+    'Open the Build surface to inspect the latest-fit snapshot + the peer coefficient series.',
 };
 
-const MODEL_METADATA: ModelMetadata = {
+export const MODULE: PrimitiveModuleSpec = {
+  // FM1 — identity (folder name === toolName)
   toolName: 'calculate_rolling_regression_tool',
+
+  // FM3 — tier claims:
+  //   * generic_runnable — backend ships in _PRIMITIVE_SPECS
+  //   * custom_build_surface — dual-view Build (rendering_density.md §1)
+  //   * custom_preview_widget — persisted-artifact RichModelWidget card
+  tiers: ['generic_runnable', 'custom_build_surface', 'custom_preview_widget'],
+
+  // FM5 — display metadata
   displayName: 'Rolling Regression',
-  category: 'regression',
-  modelKind: 'time_series_model',
-  outputRenderer: 'rolling_regression',
+  category: 'rolling_analytics',
   oneLineSummary:
-    'Trailing-window OLS of one sovereign yield series on one or more regressor yield series. Single methodological knob: window length.',
-  defaultParams: {
-    target_spec: { curve_family: 'UST', tenor: '10Y' },
-    regressor_specs: [{ curve_family: 'UST', tenor: '5Y' }],
-    regression_window_days: '60',
-    lookback_days: '730',
-  },
+    'Rolling OLS regression of one sovereign yield on one or more regressor yields via numpy.linalg.lstsq, returning per-regressor betas, alpha, residual, in-window R², and a condition-number quality flag.',
+
+  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared
+  // typedView, no rich-model builder route (see header note).
+  typedView: null,
+  richModel: false,
+
+  // FM5 — flat-wire defaults; keys match the typed-detail endpoint's
+  // query params.  The regressor lists are COMMA-JOINED strings — the
+  // convention is documented in surfaces/rollingRegressionShared.ts.
+  // FM5 — control hints for the generic builder / Ask-handoff seeding
+  // (moved off the retired modelMetadata block; same content —
+  // paramHintFor reads the spec first).
   paramHints: {
     target_spec: {
       control: 'series_spec',
@@ -73,6 +111,20 @@ const MODEL_METADATA: ModelMetadata = {
       presets: DEFAULT_LOOKBACK_PRESETS,
     },
   },
+
+  defaultParams: {
+    target_curve_family: 'UST',
+    target_tenor: '10Y',
+    regressor_curve_families: 'UST',
+    regressor_tenors: '5Y',
+    regression_window_days: '60',
+    lookback_days: '730',
+    field_name: 'YLD_YTM_MID',
+  },
+
+  // PM-read interpretation copy preserved from the retired
+  // modelMetadata block (the extended view threads the same reads into
+  // its panel descriptions + methodology rows).
   interpretationCards: [
     {
       headline: 'How to read the betas',
@@ -87,21 +139,19 @@ const MODEL_METADATA: ModelMetadata = {
       body: 'A row flagged 1 means the design matrix was near-singular (e.g. two regressors became collinear) — that fit was suppressed and the row should be masked from interpretation.',
     },
   ],
-};
 
-export const MODULE: PrimitiveModuleSpec = {
-  toolName: 'calculate_rolling_regression_tool',
-  tiers: ['generic_runnable', 'custom_build_surface', 'custom_preview_widget'],
-  displayName: 'Rolling Regression',
-  category: 'rolling_analytics',
-  oneLineSummary:
-    'Rolling OLS regression of one sovereign yield on one or more regressor yields via numpy.linalg.lstsq, returning per-regressor betas, alpha, residual, in-window R², and a condition-number quality flag.',
-  richModel: true,
-  modelMetadata: MODEL_METADATA,
+  // FM5d — persisted-artifact path, untouched by the migration.
   modelAdapter: MODEL_ADAPTER,
-  workspaceLabel: 'Rolling regression playground',
+  workspaceLabel: 'Rolling regression — betas, R², residual',
+
+  // FM8 — dual Build-side surfaces (rendering_density.md §5) + the
+  // persisted preview.  ``build`` is a transitional alias kept ===
+  // buildExtended for the legacy dispatchers (BuildShell ``?builder=``
+  // branch + assertStandardModuleInvariants' capability mapping).
   surfaces: {
-    build: BuildSurface,
+    build: BuildExtended,
+    buildExtended: BuildExtended,
+    buildCompact: BuildCompact,
     preview: PreviewWidget,
   },
 };

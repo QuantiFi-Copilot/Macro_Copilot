@@ -6,6 +6,14 @@
 // from src/modules/__test-utils.ts.  Catches FM11 invariants 1-8 in
 // one check.  Identical boilerplate across every module; per-module
 // customisation belongs in additional ``check(...)`` blocks below.
+//
+// Copied from the calculate_breakeven_inflation_simple_tool pilot with
+// FOLDER changed.  Deviation from the pilot copy: the mockups-folder
+// check is replaced by rich-model-demotion checks — this migration
+// ships NO mockups (the surfaces compose the established rich-model
+// grammar at @/components/shared/build/model), and the migration's
+// load-bearing routing contract (modelMetadata removed + richModel
+// false + persisted-preview retention) deserves a pin instead.
 // ============================================================================
 
 import { assertStandardModuleInvariants } from '../../../__test-utils';
@@ -32,6 +40,79 @@ check('module satisfies the standard invariants', async () => {
     folderName: FOLDER,
     moduleFolderPath: `${cwd()}/src/modules/primitives/${FOLDER}`,
   });
+});
+
+// ----------------------------------------------------------------------------
+// Phase-1 dual-view rendering-density contract (rendering_density.md §11):
+// every new primitive claiming custom_build_surface MUST ship BOTH
+// surfaces.buildExtended AND surfaces.buildCompact.
+// ----------------------------------------------------------------------------
+
+check('claims custom_build_surface tier', () => {
+  if (!MODULE.tiers.includes('custom_build_surface')) {
+    throw new Error(
+      `tiers missing 'custom_build_surface'; Phase-1 pilot tools must claim it per rendering_density.md.  Got tiers=${JSON.stringify(MODULE.tiers)}`,
+    );
+  }
+});
+
+check('surfaces.buildExtended is populated', () => {
+  if (!MODULE.surfaces?.buildExtended) {
+    throw new Error(
+      'surfaces.buildExtended is missing.  Phase-1 dual-view contract requires both buildExtended + buildCompact for every primitive claiming custom_build_surface.',
+    );
+  }
+});
+
+check('surfaces.buildCompact is populated', () => {
+  if (!MODULE.surfaces?.buildCompact) {
+    throw new Error(
+      'surfaces.buildCompact is missing.  Phase-1 dual-view contract requires both buildExtended + buildCompact for every primitive claiming custom_build_surface.',
+    );
+  }
+});
+
+check('typedView is null (standalone-module pattern)', () => {
+  if (MODULE.typedView != null) {
+    throw new Error(
+      `typedView must be null for new modules under the standalone-bridge contract; got '${MODULE.typedView}'.  See methodology_exposure.md §5.`,
+    );
+  }
+});
+
+// ----------------------------------------------------------------------------
+// Rich-model demotion contract (this migration's load-bearing routing
+// mechanics): modelMetadata removed + richModel false take the tool out
+// of the legacy BuilderCanvas route (contextDecoder reads the
+// modelRegistry, which derives from modelMetadata).  The persisted-
+// artifact path is RETAINED: modelAdapter + surfaces.preview +
+// custom_preview_widget are orthogonal to Build routing.
+// ----------------------------------------------------------------------------
+
+check('legacy BuilderCanvas routing is OFF (no modelMetadata, richModel false)', () => {
+  if (MODULE.modelMetadata != null) {
+    throw new Error(
+      'modelMetadata must be REMOVED post-migration — its presence re-derives a modelRegistry entry and routes Build back to the legacy BuilderCanvas.',
+    );
+  }
+  if (MODULE.richModel !== false) {
+    throw new Error(
+      `richModel must be explicitly false post-migration; got ${String(MODULE.richModel)}.`,
+    );
+  }
+});
+
+check('persisted-artifact path is retained (modelAdapter + preview)', () => {
+  if (MODULE.modelAdapter == null) {
+    throw new Error(
+      'modelAdapter must be KEPT — the persisted-artifact RichModelWidget still dispatches on the per-tool copy.',
+    );
+  }
+  if (!MODULE.surfaces?.preview || !MODULE.tiers.includes('custom_preview_widget')) {
+    throw new Error(
+      'surfaces.preview + the custom_preview_widget tier must be KEPT untouched by the dual-view migration.',
+    );
+  }
 });
 
 export async function runAllModuleSpecTests(): Promise<void> {

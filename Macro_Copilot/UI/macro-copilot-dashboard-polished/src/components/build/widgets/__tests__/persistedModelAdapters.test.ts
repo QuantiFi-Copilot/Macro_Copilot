@@ -224,7 +224,10 @@ check('detailUnavailable: beta-adjusted spread names the missing rich fields', (
   assertTruthy(a.detailUnavailable.length >= 1, '≥ 1 missing field');
 });
 
-check('builderHint: every time-series adapter points at the live builder', () => {
+check('builderHint: every time-series adapter points at the live Build surface', () => {
+  // Consolidation G-3.2: the live destination is the dual-view Build
+  // surface (the rich-model "builder" chassis is retired) — the hint
+  // must still point the user somewhere actionable.
   for (const t of [
     'calculate_pca_yield_curve_tool',
     'calculate_rolling_regression_tool',
@@ -233,8 +236,8 @@ check('builderHint: every time-series adapter points at the live builder', () =>
     const a = getModelAdapter(t);
     assertTruthy(a.builderHint.length > 0, `${t}: builder hint`);
     assertTruthy(
-      a.builderHint.toLowerCase().includes('builder'),
-      `${t}: mentions builder`,
+      a.builderHint.toLowerCase().includes('build'),
+      `${t}: points at the Build surface`,
     );
   }
 });

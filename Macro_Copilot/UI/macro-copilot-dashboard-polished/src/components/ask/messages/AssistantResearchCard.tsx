@@ -23,7 +23,7 @@
 // ============================================================================
 
 import { AlertCircle } from 'lucide-react';
-import type { CopilotMessage } from '@/types/copilot';
+import type { CopilotMessage, TraceStep } from '@/types/copilot';
 import { RoutingStrip } from './RoutingStrip';
 import { ProseAnswer } from './ProseAnswer';
 import { ResultCanvas } from './ResultCanvas';
@@ -33,6 +33,47 @@ import { ActionRow } from './ActionRow';
 import { FollowUps } from './FollowUps';
 import { ToolTrace } from './ToolTrace';
 import { ThinkingState } from './ThinkingState';
+
+// Consolidation target #3 — open-DAG statuses that are HONEST halts
+// (the gate / composer / assembler / router refused or asked to
+// clarify, and the streamed prose carries that message verbatim).
+// These must NOT render the coral "EXECUTION FAILED" panel — that
+// panel is reserved for genuine pipeline errors.  Closed set mirrors
+// the backend's PipelineStatus family.
+const HONEST_HALT_STATUSES = new Set([
+  'GATE_REFUSE',
+  'GATE_CLARIFY',
+  'COMPOSER_REFUSE',
+  'ASSEMBLY_REFUSE',
+  'ROUTER_CLARIFY',
+]);
+
+/** Consolidation target #3 — synthesize step chips for the open-DAG
+ *  lane from the executor's ``workflow_lineage_summary`` string
+ *  (``"workflow <id>: leaf_a → align → correlation"``).  The open-DAG
+ *  lane emits no per-tool ``tool_call`` events (the substrate executes
+ *  the whole DAG in one call), so the ToolTrace zone would otherwise
+ *  sit empty while the direct lane shows its chip strip — the two
+ *  lanes must read identically.  Display-only: each chip is a
+ *  completed node in topological execution order. */
+function synthesizeTraceFromLineage(
+  summary: string | undefined,
+): TraceStep[] {
+  if (!summary) return [];
+  const colon = summary.indexOf(':');
+  const path = colon >= 0 ? summary.slice(colon + 1) : summary;
+  return path
+    .split(/→|->/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .map((nodeId, i) => ({
+      id: `lineage-${i}-${nodeId}`,
+      tool: nodeId,
+      label: nodeId,
+      status: 'complete' as const,
+      startedAt: 0,
+    }));
+}
 
 type Props = {
   message: CopilotMessage;
@@ -50,12 +91,33 @@ export function AssistantResearchCard({
   pairedUserPrompt,
 }: Props) {
   const hasContent = message.content.length > 0;
-  const hasTrace = message.traceSteps.length > 0;
   const hasWorkflow = !!message.workflow;
+
+  // Consolidation target #3 — an honest open-DAG refusal /
+  // clarification is NOT an execution failure: the prose already
+  // carries the gate's message, so the card renders it like any
+  // other answer (no coral panel, no error rail).
+  const isHonestHalt =
+    message.openDagStatus != null &&
+    HONEST_HALT_STATUSES.has(message.openDagStatus);
+
   const isErrored =
-    message.phase === 'error' ||
-    message.workflow?.result?.ok === false ||
-    message.workflow?.status === 'error';
+    !isHonestHalt &&
+    (message.phase === 'error' ||
+      message.workflow?.result?.ok === false ||
+      message.workflow?.status === 'error');
+
+  // Open-DAG lane: no tool_call events stream (the substrate executes
+  // the DAG in one call) — synthesize the step-chip strip from the
+  // executor's topological lineage summary so both lanes show the
+  // same trace zone.
+  const traceSteps =
+    message.traceSteps.length > 0
+      ? message.traceSteps
+      : synthesizeTraceFromLineage(
+          message.workflow?.result?.workflow_lineage_summary,
+        );
+  const hasTrace = traceSteps.length > 0;
 
   const showThinkingState =
     !hasContent && !hasTrace && !hasWorkflow && !isErrored;
@@ -68,7 +130,7 @@ export function AssistantResearchCard({
     ? 'rgba(255, 107, 126, 0.55)'
     : message.workflow?.routeDecision.template_id
       ? 'rgba(122, 162, 255, 0.55)'
-      : message.traceSteps.length > 0
+      : hasTrace
         ? 'rgba(155, 140, 255, 0.45)'
         : 'rgba(155, 140, 255, 0.30)';
 
@@ -96,11 +158,13 @@ export function AssistantResearchCard({
           </>
         )}
 
-        {/* Tool trace (collapsed-by-default once done) */}
+        {/* Tool trace (collapsed-by-default once done).  For the
+            open-DAG lane the steps are synthesized from the lineage
+            summary — same chip strip either way (one Ask card). */}
         {hasTrace && (
           <>
             {hasContent && <Divider />}
-            <ToolTrace steps={message.traceSteps} phase={message.phase} />
+            <ToolTrace steps={traceSteps} phase={message.phase} />
           </>
         )}
 
@@ -109,7 +173,11 @@ export function AssistantResearchCard({
           <ResultCanvas message={message} />
         )}
 
-        {/* Errored workflow block */}
+        {/* Errored workflow block.  De-duplicated (consolidation
+            target #3): when the streamed prose already explains the
+            failure (open-DAG turns stream the structured failure
+            message as content), the panel is a slim banner pointing
+            at the prose instead of repeating the same text. */}
         {isErrored && (
           <div className="border-t border-line-subtle px-5 py-3">
             <div className="flex items-start gap-2.5 rounded-md border border-coral-400/25 bg-coral-400/[0.05] px-3 py-2.5">
@@ -120,8 +188,10 @@ export function AssistantResearchCard({
               <div className="min-w-0">
                 <p className="kicker text-coral-300">EXECUTION FAILED</p>
                 <p className="mt-1 text-[12px] leading-[1.55] text-coral-300/85">
-                  {message.workflow?.result?.error ??
-                    "The orchestrator hit an error before producing a result."}
+                  {hasContent && message.openDagStatus != null
+                    ? 'The pipeline halted with an error — details above.'
+                    : message.workflow?.result?.error ??
+                      'The orchestrator hit an error before producing a result.'}
                 </p>
               </div>
             </div>

@@ -1,22 +1,41 @@
 // ============================================================================
-// src/modules/primitives/calculate_yield_change_attribution_pca_tool/module.ts — Stage 4b rich-model module.
+// src/modules/primitives/calculate_yield_change_attribution_pca_tool/module.ts
 // ----------------------------------------------------------------------------
-// Stage 4b — claims ``custom_build_surface`` + ``custom_preview_widget``;
-// sets ``richModel: true``; carries the full ``ModelMetadata`` block
-// that the central ``modelRegistry.MODELS`` array now derives from.
+// Dual-view migration (rendering_density.md §1) — attribution leaves
+// the legacy rich-model BuilderCanvas route and ships its own
+// BuildExtended/BuildCompact pair composed from the shared rich-model
+// grammar (@/components/shared/build/model).
 //
-// Attribution registers the per-tool preview widget against TWO
-// artifact types (``Series`` AND ``Panel``).  The widgets/index.ts
-// barrel handles the dual registration by walking
-// ``ALL_PRIMITIVE_MODULES`` and reading per-module hints — see the
-// barrel's per-tool override block for attribution's dual-type entry.
+// ROUTING MECHANICS (THESIS Q3)
+// -----------------------------
+// ``modelMetadata`` is REMOVED and ``richModel`` is false: the central
+// contextDecoder routes kind='builder' (legacy BuilderCanvas) whenever
+// ``hasModelMetadata(toolName)`` is true, so dropping the block is what
+// lets the decode fall through to the module-first dual-view dispatch
+// (VirtualPrimitiveCanvas mounts surfaces.buildExtended).
+//
+// ``modelAdapter`` + ``surfaces.preview`` + ``previewArtifactTypes``
+// are KEPT EXACTLY AS-IS — the persisted-artifact RichModelWidget path
+// reads them (attribution registers under BOTH Series AND Panel);
+// reconciling that path onto the grammar is a separate workstream.
+//
+// The PM-facing Interpretation / Sign-convention copy moved from
+// modelMetadata.interpretationCards onto the spec's top-level
+// ``interpretationCards`` field (sourced from the shared per-tool
+// constant so the Extended surface renders the same copy).
+//
+// Per FM7 (pure-spec assembly): exports a pure value; no side effects.
+// The legacy spec computed a default date window via a module-eval
+// IIFE — that moved into the surfaces' render-time ``defaultWindow()``
+// helper so this file stays a pure value.
 // ============================================================================
 
 import type { PrimitiveModuleSpec } from '../../types';
-import type { ModelMetadata } from '@/lib/modelRegistry';
 import type { ModelAdapter } from '@/components/build/widgets/shared/persistedModelAdapters';
-import BuildSurface from './surfaces/BuildSurface';
+import BuildExtended from './surfaces/BuildExtended';
+import BuildCompact from './surfaces/BuildCompact';
 import PreviewWidget from './surfaces/PreviewWidget';
+import { ATTRIBUTION_INTERPRETATION_CARDS } from './surfaces/yieldChangeAttributionShared';
 
 const MODEL_ADAPTER: ModelAdapter = {
   toolName: 'calculate_yield_change_attribution_pca_tool',
@@ -40,28 +59,67 @@ const MODEL_ADAPTER: ModelAdapter = {
     'Open the attribution builder to view the live decomposition.  A future PR may extend the substrate to persist a snapshot row.',
 };
 
-const MODEL_METADATA: ModelMetadata = {
+export const MODULE: PrimitiveModuleSpec = {
+  // FM1 — identity (folder name === toolName)
   toolName: 'calculate_yield_change_attribution_pca_tool',
+
+  // FM3 — tier claims:
+  //   * generic_runnable — backend ships in _PRIMITIVE_SPECS
+  //   * custom_build_surface — dual-view Build (rendering_density.md §1)
+  //   * custom_preview_widget — persisted-artifact RichModelWidget card
+  tiers: ['generic_runnable', 'custom_build_surface', 'custom_preview_widget'],
+
+  // FM5 — display metadata
   displayName: 'Yield-Change Attribution · PCA',
-  category: 'attribution',
-  modelKind: 'snapshot_model',
-  outputRenderer: 'attribution',
+  category: 'model_fits',
   oneLineSummary:
-    "Decomposes a single tenor's yield change between two dates into per-PCA-component contributions in basis points.",
-  defaultParams: (() => {
-    // Default window: ~last quarter, ending today.  ISO YYYY-MM-DD.
-    const today = new Date();
-    const start = new Date(today);
-    start.setDate(start.getDate() - 90);
-    const fmt = (d: Date) => d.toISOString().slice(0, 10);
-    return {
-      curve_family: 'UST',
-      target_tenor: '10Y',
-      start_date: fmt(start),
-      end_date: fmt(today),
-      n_components: '3',
-    };
-  })(),
+    'Decompose a sovereign yield change at a given tenor over a window into per-PCA-component contributions in bps.  Loadings come from an inline PCA fit or a caller-supplied pasted payload.',
+
+  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared
+  // typedView; richModel false so the contextDecoder falls through to
+  // the module-first dual-view dispatch instead of the legacy
+  // BuilderCanvas redirect.
+  typedView: null,
+  richModel: false,
+
+  // PM-facing interpretation copy retained from the retired
+  // modelMetadata block (THESIS Q3) — the Extended surface renders the
+  // same cards in its methodology zone via the shared constant.
+  interpretationCards: ATTRIBUTION_INTERPRETATION_CARDS,
+
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
+  // ``build`` is a TRANSITIONAL ALIAS kept === buildExtended for the
+  // legacy dispatchers (BuildShell's ?builder= branch +
+  // VirtualPrimitiveCanvas's fallback chain) until they are retired.
+  surfaces: {
+    build: BuildExtended,
+    buildExtended: BuildExtended,
+    buildCompact: BuildCompact,
+    // KEPT UNCHANGED — persisted-artifact RichModelWidget path.
+    preview: PreviewWidget,
+  },
+
+  // FM5d — persisted-artifact adapter, KEPT UNCHANGED (the
+  // RichModelWidget dispatcher reads MODULE.modelAdapter).
+  modelAdapter: MODEL_ADAPTER,
+
+  workspaceLabel: 'PCA-based attribution decomposition',
+
+  // FM5e — KEPT UNCHANGED.  Attribution registers under BOTH ``Series``
+  // and ``Panel`` because either artifact type can materialise
+  // depending on what the bridge lifts.  ``Series`` is the default;
+  // ``Panel`` is the addition.
+  previewArtifactTypes: ['Panel'],
+
+  // FM5 — static defaults for the GET-bridged Input subset
+  // (api/routes/rates/detail.py /detail/yield-change-attribution).
+  // The default change window (~trailing quarter) is render-time
+  // state in the surfaces (defaultWindow() in
+  // surfaces/yieldChangeAttributionShared.ts), NOT a spec value —
+  // FM7 forbids the legacy module-eval date computation.
+  // FM5 — control hints for the generic builder / Ask-handoff seeding
+  // (moved off the retired modelMetadata block; same content —
+  // paramHintFor reads the spec first).
   paramHints: {
     curve_family: { control: 'curve_family', label: 'Curve family' },
     target_tenor: { control: 'tenor', label: 'Target tenor' },
@@ -89,35 +147,11 @@ const MODEL_METADATA: ModelMetadata = {
       hidden: true,
     },
   },
-  interpretationCards: [
-    {
-      headline: 'Interpretation',
-      body: "Total change at the target tenor = sum of component contributions + residual. A residual >5bp on a 3-component decomposition signals atypical curve behaviour the level/slope/curvature basis cannot capture.",
-    },
-    {
-      headline: 'Sign convention',
-      body: "Each PC's loading at the longest tenor is locked non-negative. So a positive PC1 contribution on a 10Y means the level component drove a yield rise; a negative PC2 contribution means the slope component compressed (flattening).",
-    },
-  ],
-};
 
-export const MODULE: PrimitiveModuleSpec = {
-  toolName: 'calculate_yield_change_attribution_pca_tool',
-  tiers: ['generic_runnable', 'custom_build_surface', 'custom_preview_widget'],
-  displayName: 'Yield-Change Attribution · PCA',
-  category: 'model_fits',
-  oneLineSummary:
-    'Decompose a sovereign yield change at a given tenor over a window into per-PCA-component contributions in bps.  Loadings come from an inline PCA fit or a caller-supplied pasted payload.',
-  richModel: true,
-  modelMetadata: MODEL_METADATA,
-  modelAdapter: MODEL_ADAPTER,
-  workspaceLabel: 'PCA-based attribution decomposition',
-  // Attribution registers under BOTH ``Series`` and ``Panel`` because
-  // either artifact type can materialise depending on what the bridge
-  // lifts.  ``Series`` is the default; ``Panel`` is the addition.
-  previewArtifactTypes: ['Panel'],
-  surfaces: {
-    build: BuildSurface,
-    preview: PreviewWidget,
+  defaultParams: {
+    curve_family: 'UST',
+    target_tenor: '10Y',
+    n_components: '3',
+    change_frequency: 'daily',
   },
 };

@@ -159,7 +159,7 @@ const _HAND_AUTHORED_MODELS: ModelMetadata[] = [
   // ----------------------------------------------------------------
 ];
 
-import { ALL_PRIMITIVE_MODULES } from '@/modules';
+import { ALL_PRIMITIVE_MODULES, getPrimitiveModule } from '@/modules';
 
 // ---------------------------------------------------------------------------
 // Lazy registry initialisation (Stage 4b)
@@ -241,6 +241,16 @@ export function paramHintFor(
   toolName: string,
   fieldName: string,
 ): ParamHint {
+  // Consolidation (G-3.2): the dual-view-migrated modules carry their
+  // control hints on the SPEC's own ``paramHints`` field (FM5) — the
+  // rich-model ``modelMetadata`` block is retired on those tools.
+  // Spec hints take priority; the registry path remains for any
+  // not-yet-migrated entry; field-name inference is the floor.
+  const mod = getPrimitiveModule(normalizeToolName(toolName));
+  const specHint = (
+    mod?.paramHints as Record<string, ParamHint> | undefined
+  )?.[fieldName];
+  if (specHint) return specHint;
   const meta = getRegistry()[normalizeToolName(toolName)];
   const explicit = meta?.paramHints?.[fieldName];
   if (explicit) return explicit;

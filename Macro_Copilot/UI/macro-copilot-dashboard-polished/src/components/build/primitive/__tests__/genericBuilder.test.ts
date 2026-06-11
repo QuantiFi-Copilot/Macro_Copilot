@@ -324,11 +324,12 @@ check('decode: params dict is forwarded into the generic_builder variant', () =>
 // Decoder priority + model-builder safety
 // ----------------------------------------------------------------------------
 
-check('decode: builder beats generic_builder (rich model wins)', () => {
-  // PCA is a runnable primitive, but it ALSO has a model-registry
-  // entry, so the decoder must surface the rich playground rather
-  // than the generic builder.  Same for half-life / regression /
-  // attribution / beta-adjusted-spread — every model tool below.
+check('decode: migrated rich-models route module-first, not builder (G-3.2)', () => {
+  // Consolidation G-3.2: the five rich-models are dual-view modules —
+  // ``modelMetadata`` is retired, so they decode 'generic_builder' and
+  // VirtualPrimitiveCanvas's module-first dispatch mounts their
+  // ``surfaces.buildExtended``.  The decode kind no longer carries the
+  // bespoke surface; the module spec does.
   for (const t of [
     'calculate_pca_yield_curve_tool',
     'calculate_rolling_regression_tool',
@@ -337,7 +338,7 @@ check('decode: builder beats generic_builder (rich model wins)', () => {
     'calculate_beta_adjusted_spread_tool',
   ]) {
     const out = decodePrimitiveContext(encodeContext([{ tool: t }]));
-    assertEqual(out!.kind, 'builder', `${t}: kind`);
+    assertEqual(out!.kind, 'generic_builder', `${t}: kind`);
     assertEqual(out!.toolName, normalizeToolName(t), `${t}: toolName`);
   }
 });

@@ -621,6 +621,30 @@ from rates_agent.sovereign_bonds.tools.yield_change_attribution_pca import (
     YieldChangeAttributionPcaOutput,
     calculate_yield_change_attribution_pca,
 )
+from rates_agent.inflation_swaps.tools.cpi_surprise import (
+    CONFIG_PATH as CPI_SURPRISE_CONFIG_PATH,
+    CpiSurpriseInput,
+    CpiSurpriseOutput,
+    calculate_cpi_surprise,
+)
+from rates_agent.sovereign_bonds.tools.nfp_surprise import (
+    CONFIG_PATH as NFP_SURPRISE_CONFIG_PATH,
+    NfpSurpriseInput,
+    NfpSurpriseOutput,
+    calculate_nfp_surprise,
+)
+from rates_agent.ois.tools.wirp_meeting_pricing import (
+    CONFIG_PATH as WIRP_MEETING_PRICING_CONFIG_PATH,
+    WirpMeetingPricingInput,
+    WirpMeetingPricingOutput,
+    calculate_wirp_meeting_pricing,
+)
+from rates_agent.bond_futures.tools.futures_volume_oi import (
+    CONFIG_PATH as FUTURES_VOLUME_OI_CONFIG_PATH,
+    FuturesVolumeOIInput,
+    FuturesVolumeOIOutput,
+    calculate_futures_volume_oi,
+)
 from shared.schemas.time_series import PairSpec, SeriesSpec
 from shared.config import load_tool_config
 
@@ -5171,5 +5195,204 @@ def yield_change_attribution_detail(
         result,
         f"Yield-change attribution for {curve_family} {target_tenor} "
         f"({start_date} → {end_date})",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/cpi-surprise — per-release CPI surprise + rolling z (event signal)
+# ----------------------------------------------------------------------------
+# Standalone bridge for ``calculate_cpi_surprise_tool`` (consolidation
+# G-3.1a).  The release-z window is YAML-locked (24 releases);
+# ``lookback_releases`` is a display window only.
+
+
+@router.get(
+    "/detail/cpi-surprise",
+    response_model=CpiSurpriseOutput,
+    summary="CPI Surprise Detail (workspace)",
+)
+def cpi_surprise_detail(
+    engine: Engine = Depends(get_engine),
+    country: str = Query(..., description="'US', 'UK', 'JP', or 'EU'."),
+    lookback_releases: int = Query(default=24, ge=4, le=200),
+):
+    try:
+        params = CpiSurpriseInput(
+            country=country,
+            lookback_releases=lookback_releases,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        cpi_config = load_tool_config(CPI_SURPRISE_CONFIG_PATH)
+        result = calculate_cpi_surprise(
+            engine=engine, params=params, config=cpi_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/cpi-surprise: tool failed for %s", country,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result, f"CPI surprise for {country}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/nfp-surprise — per-release US NFP surprise + rolling z
+# ----------------------------------------------------------------------------
+# Standalone bridge for ``calculate_nfp_surprise_tool`` (consolidation
+# G-3.1a).  Country + event are backend-locked (US NFP); the display
+# window is the only knob.
+
+
+@router.get(
+    "/detail/nfp-surprise",
+    response_model=NfpSurpriseOutput,
+    summary="NFP Surprise Detail (workspace)",
+)
+def nfp_surprise_detail(
+    engine: Engine = Depends(get_engine),
+    lookback_releases: int = Query(default=24, ge=4, le=200),
+):
+    try:
+        params = NfpSurpriseInput(lookback_releases=lookback_releases)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        nfp_config = load_tool_config(NFP_SURPRISE_CONFIG_PATH)
+        result = calculate_nfp_surprise(
+            engine=engine, params=params, config=nfp_config,
+        )
+    except Exception as exc:
+        logger.exception("detail/nfp-surprise: tool failed")
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(result, "US NFP surprise")
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/wirp-meeting-pricing — Bloomberg WIRP per-meeting policy pricing
+# ----------------------------------------------------------------------------
+# Standalone bridge for ``calculate_wirp_meeting_pricing_tool``
+# (consolidation G-3.1a).  The tool is WORKFLOW-incompatible (per-meeting
+# list shape, not bridge-composable) but its Build surfaces work through
+# this typed-detail endpoint — capability tiers free-combine with the
+# runtime-status tier.  Values are Bloomberg INGEST verbatim (P12);
+# ``cumulative_move_prob_pct`` is CUMULATIVE by vendor definition.
+
+
+@router.get(
+    "/detail/wirp-meeting-pricing",
+    response_model=WirpMeetingPricingOutput,
+    summary="WIRP Meeting Pricing Detail (workspace)",
+)
+def wirp_meeting_pricing_detail(
+    engine: Engine = Depends(get_engine),
+    central_bank: str = Query(
+        ..., description="'FOMC', 'ECB', 'BOE', or 'BOJ'.",
+    ),
+    selection_mode: Literal[
+        "next_n_meetings", "specific_meeting_date",
+    ] = Query(default="next_n_meetings"),
+    n_meetings: Optional[int] = Query(
+        default=None,
+        ge=1,
+        le=24,
+        description=(
+            "next_n_meetings mode: how many upcoming meetings.  Omit "
+            "to use the YAML default (6)."
+        ),
+    ),
+    meeting_date: Optional[date] = Query(
+        default=None,
+        description=(
+            "specific_meeting_date mode: the exact meeting date "
+            "(YYYY-MM-DD).  Required in that mode."
+        ),
+    ),
+):
+    try:
+        params = WirpMeetingPricingInput(
+            central_bank=central_bank,
+            selection_mode=selection_mode,
+            n_meetings=n_meetings,
+            meeting_date=meeting_date,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        wirp_config = load_tool_config(WIRP_MEETING_PRICING_CONFIG_PATH)
+        result = calculate_wirp_meeting_pricing(
+            engine=engine, params=params, config=wirp_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/wirp-meeting-pricing: tool failed for %s (%s)",
+            central_bank, selection_mode,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"WIRP meeting pricing for {central_bank} ({selection_mode})",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/futures-volume-oi — bond-futures volume + open-interest read
+# ----------------------------------------------------------------------------
+# Standalone bridge for ``get_futures_volume_oi_tool`` (consolidation
+# G-3.1a).  Rolling-generic stem (e.g. TY1) — the series spans contract
+# rolls; values are contract COUNTS, not notional (the bespoke
+# time-series rows exist because CONTRACTS is outside the closed
+# TimeSeriesUnits enum — P8).
+
+
+@router.get(
+    "/detail/futures-volume-oi",
+    response_model=FuturesVolumeOIOutput,
+    summary="Futures Volume + Open Interest Detail (workspace)",
+)
+def futures_volume_oi_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family: str = Query(..., description="e.g. 'UST_FUT', 'DE_FUT'"),
+    contract_code: str = Query(
+        ..., description="Rolling-generic stem, e.g. 'TY1', 'RX1'.",
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+):
+    try:
+        params = FuturesVolumeOIInput(
+            curve_family=curve_family,
+            contract_code=contract_code,
+            lookback_days=lookback_days,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        voi_config = load_tool_config(FUTURES_VOLUME_OI_CONFIG_PATH)
+        result = calculate_futures_volume_oi(
+            engine=engine, params=params, config=voi_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/futures-volume-oi: tool failed for %s %s",
+            curve_family, contract_code,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Volume/OI for {curve_family} {contract_code}",
     )
     return result

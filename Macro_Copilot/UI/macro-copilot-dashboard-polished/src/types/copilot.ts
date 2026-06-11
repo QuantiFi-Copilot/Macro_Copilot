@@ -38,6 +38,14 @@ export type ServerEvent =
       // SessionEvent protocol.  Frontend rebrands to
       // ``proposedOverrides`` on the React message object.
       proposed_overrides?: ServerProposedOverride[] | null;
+      // Consolidation target #3 — the open-DAG pipeline's terminal
+      // status (PASS / PASS_DRYRUN / GATE_REFUSE / GATE_CLARIFY /
+      // COMPOSER_REFUSE / ASSEMBLY_REFUSE / ROUTER_CLARIFY /
+      // PIPELINE_ERROR).  Lets the Ask card distinguish an HONEST
+      // refusal/clarification (prose carries the message; no
+      // "EXECUTION FAILED" panel) from a genuine pipeline error.
+      // Absent on direct-lane / template-lane turns.
+      open_dag_status?: string | null;
     }
   | { type: 'error'; message: string }
   // PR 10 — workflow events.  Forward-compatible: existing handler
@@ -192,6 +200,12 @@ export type CopilotMessage = {
   // in.  Null on the global Ask surface where no workspace is in
   // scope.
   workspaceSlug?: string | null;
+  // Consolidation target #3 — the open-DAG pipeline status carried on
+  // the ``done`` event.  Null/absent for direct-lane turns.  The Ask
+  // card uses it to render honest refusals/clarifications as prose
+  // (no coral "EXECUTION FAILED" panel — that's reserved for genuine
+  // pipeline errors).
+  openDagStatus?: string | null;
 };
 
 /** A single parameter override the assistant suggests.  Mirrors the

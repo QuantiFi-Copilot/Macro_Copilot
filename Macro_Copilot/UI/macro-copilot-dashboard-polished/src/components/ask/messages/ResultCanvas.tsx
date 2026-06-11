@@ -360,7 +360,13 @@ function UnknownArtifactPanel({
  *
  *  A single big-number + units + metric_key.  Compact (the chat bubble
  *  is narrow) but honest — the L6 prose already mentions the value in
- *  trader lingo; this is the structured echo. */
+ *  trader lingo; this is the structured echo.
+ *
+ *  GAP G02/T6 — when the summary operator recorded a companion
+ *  dispersion (``statistic=mean, dispersion=std``), the wire carries
+ *  ``dispersion_key`` / ``dispersion_value`` and the panel renders the
+ *  second number co-equally ("mean 9.2 bps · std 59.4 bps") instead of
+ *  describing the std with no number. */
 function ScalarMetricPanel({
   artifact,
 }: {
@@ -369,9 +375,15 @@ function ScalarMetricPanel({
   const metricKey = artifact.metric_key ?? 'scalar';
   const units = artifact.units ?? '';
   const value = artifact.value ?? null;
+  const hasDispersion =
+    artifact.dispersion_key != null && artifact.dispersion_value != null;
   return (
     <CanvasFrame
-      title={`Scalar · ${metricKey}`}
+      title={
+        hasDispersion
+          ? `Scalar · ${metricKey} + ${artifact.dispersion_key}`
+          : `Scalar · ${metricKey}`
+      }
       meta={units || undefined}
     >
       <div className="flex items-baseline gap-2">
@@ -380,6 +392,22 @@ function ScalarMetricPanel({
         </span>
         {units && (
           <span className="mono text-[11px] text-fg-faint">{units}</span>
+        )}
+        {hasDispersion && (
+          <>
+            <span className="text-fg-faint" aria-hidden>
+              ·
+            </span>
+            <span className="mono text-[11px] uppercase tracking-wide text-fg-muted">
+              {artifact.dispersion_key}
+            </span>
+            <span className="font-serif-display text-[20px] font-light leading-none text-fg-secondary">
+              {formatNumber(artifact.dispersion_value)}
+            </span>
+            {units && (
+              <span className="mono text-[11px] text-fg-faint">{units}</span>
+            )}
+          </>
         )}
       </div>
       <p className="mt-3 text-[11px] leading-[1.55] text-fg-muted">

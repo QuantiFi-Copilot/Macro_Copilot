@@ -127,6 +127,14 @@ export type WorkflowTerminalArtifact = {
    *  Backend ART11 invariant: never ±Inf / NaN — the operator raises
    *  a typed error rather than emitting a non-finite value. */
   value?: number | null;
+  /** GAP G02/T6 — companion dispersion.  Populated (both fields) when
+   *  the producing summary operator recorded a dispersion in its head
+   *  lineage step (``summarize_series``: ``statistic=mean,
+   *  dispersion=std``), so a "mean and std" answer renders BOTH
+   *  numbers.  ``null`` when no dispersion was computed.  Units match
+   *  the artifact's own ``units`` tag. */
+  dispersion_key?: string | null;
+  dispersion_value?: number | null;
   /** Calendar vs event-relative offset semantics — defaults to
    *  calendar when absent (older backends). */
   index_kind?: SeriesIndexKind;

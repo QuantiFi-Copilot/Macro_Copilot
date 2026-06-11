@@ -71,7 +71,12 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
 
   // ----- Resolve effective params (Record<string,string> boundary) -----
   const centralBank = params.central_bank ?? 'FOMC';
-  const selectionMode = params.selection_mode || DEFAULTS.selection_mode;
+  // URL params arrive as bare strings — narrow to the closed mode
+  // pair (anything unrecognised falls back to the default mode).
+  const selectionMode =
+    params.selection_mode === 'specific_meeting_date'
+      ? ('specific_meeting_date' as const)
+      : ('next_n_meetings' as const);
   const nMeetingsStr = params.n_meetings || DEFAULTS.n_meetings;
   const meetingDate = params.meeting_date || undefined;
   const isSpecificMode = selectionMode === 'specific_meeting_date';

@@ -6,6 +6,11 @@
 // from src/modules/__test-utils.ts.  Catches FM11 invariants 1-8 in
 // one check.  Identical boilerplate across every module; per-module
 // customisation belongs in additional ``check(...)`` blocks below.
+//
+// Copied from the breakeven pilot's spec (the dual-view exemplar) with
+// FOLDER changed.  The pilot's mockups check is intentionally absent —
+// this migration ships no mockups (the visual contract is inherited
+// from the shared rich-model grammar; THESIS Q3 documents the call).
 // ============================================================================
 
 import { assertStandardModuleInvariants } from '../../../__test-utils';
@@ -32,6 +37,89 @@ check('module satisfies the standard invariants', async () => {
     folderName: FOLDER,
     moduleFolderPath: `${cwd()}/src/modules/primitives/${FOLDER}`,
   });
+});
+
+// ----------------------------------------------------------------------------
+// Dual-view rendering-density contract (rendering_density.md §1):
+// every primitive claiming custom_build_surface MUST ship BOTH
+// surfaces.buildExtended AND surfaces.buildCompact.
+// ----------------------------------------------------------------------------
+
+check('claims custom_build_surface tier', () => {
+  if (!MODULE.tiers.includes('custom_build_surface')) {
+    throw new Error(
+      `tiers missing 'custom_build_surface'; dual-view tools must claim it per rendering_density.md.  Got tiers=${JSON.stringify(MODULE.tiers)}`,
+    );
+  }
+});
+
+check('surfaces.buildExtended is populated', () => {
+  if (!MODULE.surfaces?.buildExtended) {
+    throw new Error(
+      'surfaces.buildExtended is missing.  Dual-view contract requires both buildExtended + buildCompact for every primitive claiming custom_build_surface.',
+    );
+  }
+});
+
+check('surfaces.buildCompact is populated', () => {
+  if (!MODULE.surfaces?.buildCompact) {
+    throw new Error(
+      'surfaces.buildCompact is missing.  Dual-view contract requires both buildExtended + buildCompact for every primitive claiming custom_build_surface.',
+    );
+  }
+});
+
+check('typedView is null (standalone-module pattern)', () => {
+  if (MODULE.typedView != null) {
+    throw new Error(
+      `typedView must be null for modules under the standalone-bridge contract; got '${MODULE.typedView}'.  See methodology_exposure.md §5.`,
+    );
+  }
+});
+
+// ----------------------------------------------------------------------------
+// Rich-model migration contract (consolidation target #4): the legacy
+// BuilderCanvas route must be unreachable; the persisted-artifact path
+// must survive untouched.
+// ----------------------------------------------------------------------------
+
+check('modelMetadata removed (no builder-kind routing)', () => {
+  if (MODULE.modelMetadata != null) {
+    throw new Error(
+      "modelMetadata is set — contextDecoder would route kind='builder' (legacy BuilderCanvas) and the dual-view surfaces would never mount.  THESIS Q3 documents the removal.",
+    );
+  }
+  if (MODULE.richModel !== false) {
+    throw new Error(
+      `richModel must be false post-migration; got ${JSON.stringify(MODULE.richModel)}.`,
+    );
+  }
+});
+
+check('persisted-artifact path retained (preview + modelAdapter)', () => {
+  if (!MODULE.surfaces?.preview) {
+    throw new Error(
+      'surfaces.preview is missing — the persisted-artifact RichModelWidget path must survive the dual-view migration untouched.',
+    );
+  }
+  if (!MODULE.tiers.includes('custom_preview_widget')) {
+    throw new Error(
+      "tiers missing 'custom_preview_widget' while surfaces.preview is populated.",
+    );
+  }
+  if (MODULE.modelAdapter?.toolName !== FOLDER) {
+    throw new Error(
+      'modelAdapter missing or mis-keyed — RichModelWidget per-tool copy comes from MODULE.modelAdapter.',
+    );
+  }
+});
+
+check('transitional build alias === buildExtended', () => {
+  if (MODULE.surfaces?.build !== MODULE.surfaces?.buildExtended) {
+    throw new Error(
+      'surfaces.build must alias buildExtended until the legacy dispatchers (BuildShell ?builder= branch, invariant helper) read buildExtended natively.',
+    );
+  }
 });
 
 export async function runAllModuleSpecTests(): Promise<void> {

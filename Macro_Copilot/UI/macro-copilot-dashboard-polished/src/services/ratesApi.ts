@@ -110,10 +110,22 @@ export function fetchRegimes(): Promise<RegimeResponse> {
 // Workspace detail endpoints (full output incl. time_series for charting)
 // ---------------------------------------------------------------------------
 
-function buildQuery(params: Record<string, string | number | undefined>): string {
+function buildQuery(
+  params: Record<
+    string,
+    string | number | undefined | ReadonlyArray<string | number>
+  >,
+): string {
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
     if (v === undefined || v === null || v === '') continue;
+    // Array values render as REPEATED params (?tenors=2Y&tenors=10Y) —
+    // FastAPI's List[str] Query convention used by the PCA /
+    // rolling-regression bridges.  Additive: scalar callers unchanged.
+    if (Array.isArray(v)) {
+      for (const item of v) qs.append(k, String(item));
+      continue;
+    }
     qs.set(k, String(v));
   }
   const s = qs.toString();
@@ -1226,3 +1238,204 @@ export function fetchDetailOtrOfrSpread(
     `${RATES_PREFIX}/detail/otr-ofr-spread${buildQuery(params)}`,
   );
 }
+
+// ============================================================================
+// Consolidation wave — standalone-bridge fetch helpers.
+// One typed helper per /api/v1/rates/detail/<kind> route, consumed by
+// the owning module's Shared.ts hook (BOTH Build views + Monitor read
+// the SAME endpoint — methodology_exposure.md §5).
+// ============================================================================
+
+import type {
+  BetaAdjustedSpreadOutput,
+  CpiSurpriseOutput,
+  FuturesVolumeOiOutput,
+  HalfLifeOutput,
+  NfpSurpriseOutput,
+  PcaYieldCurveOutput,
+  RollingRegressionOutput,
+  WirpMeetingPricingOutput,
+  YieldChangeAttributionPcaOutput,
+  ZscoreCustomOutput,
+} from '@/types/rates';
+
+// --- /detail/half-life (calculate_half_life_tool) ---
+// ``curve_family_2`` set → PAIR mode (the (cf1 − cf2) spread at
+// ``tenor``); omitted → single-series mode.  The pasted-series mode is
+// NOT bridged over GET (orchestrator/MCP affordance only).
+export type HalfLifeDetailParams = {
+  curve_family: string;
+  tenor: string;
+  curve_family_2?: string;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailHalfLife(
+  params: HalfLifeDetailParams,
+): Promise<HalfLifeOutput> {
+  return fetchJSON(`${RATES_PREFIX}/detail/half-life${buildQuery(params)}`);
+}
+
+// --- /detail/cpi-surprise (calculate_cpi_surprise_tool) ---
+export type CpiSurpriseDetailParams = {
+  country: string;
+  lookback_releases?: number;
+};
+
+export function fetchDetailCpiSurprise(
+  params: CpiSurpriseDetailParams,
+): Promise<CpiSurpriseOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/cpi-surprise${buildQuery(params)}`,
+  );
+}
+
+// --- /detail/nfp-surprise (calculate_nfp_surprise_tool) ---
+// US NFP locked on the backend — display window is the only knob.
+export type NfpSurpriseDetailParams = {
+  lookback_releases?: number;
+};
+
+export function fetchDetailNfpSurprise(
+  params: NfpSurpriseDetailParams,
+): Promise<NfpSurpriseOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/nfp-surprise${buildQuery(params)}`,
+  );
+}
+
+// --- /detail/zscore-custom (calculate_zscore_custom_tool) ---
+export type ZscoreCustomDetailParams = {
+  curve_family: string;
+  tenor: string;
+  z_score_window_days: number;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailZscoreCustom(
+  params: ZscoreCustomDetailParams,
+): Promise<ZscoreCustomOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/zscore-custom${buildQuery(params)}`,
+  );
+}
+
+// --- /detail/wirp-meeting-pricing (calculate_wirp_meeting_pricing_tool) ---
+export type WirpMeetingPricingDetailParams = {
+  central_bank: string;
+  selection_mode?: 'next_n_meetings' | 'specific_meeting_date';
+  n_meetings?: number;
+  meeting_date?: string;
+};
+
+export function fetchDetailWirpMeetingPricing(
+  params: WirpMeetingPricingDetailParams,
+): Promise<WirpMeetingPricingOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/wirp-meeting-pricing${buildQuery(params)}`,
+  );
+}
+
+// --- /detail/pca-yield-curve (calculate_pca_yield_curve_tool) ---
+// ``tenors`` renders as repeated params (?tenors=2Y&tenors=10Y).
+export type PcaYieldCurveDetailParams = {
+  curve_family: string;
+  tenors?: ReadonlyArray<string>;
+  lookback_days?: number;
+  n_components?: number;
+  change_frequency?: 'daily' | 'weekly';
+  field_name?: string;
+};
+
+export function fetchDetailPcaYieldCurve(
+  params: PcaYieldCurveDetailParams,
+): Promise<PcaYieldCurveOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/pca-yield-curve${buildQuery(params)}`,
+  );
+}
+
+// --- /detail/rolling-regression (calculate_rolling_regression_tool) ---
+// Regressors flatten to PAIRED repeated lists —
+// ``regressor_curve_families[i]`` pairs with ``regressor_tenors[i]``
+// (the route 422s on a length mismatch).  One ``field_name`` applies
+// to the target AND every regressor leg.
+export type RollingRegressionDetailParams = {
+  target_curve_family: string;
+  target_tenor: string;
+  regressor_curve_families: ReadonlyArray<string>;
+  regressor_tenors: ReadonlyArray<string>;
+  regression_window_days: number;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailRollingRegression(
+  params: RollingRegressionDetailParams,
+): Promise<RollingRegressionOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/rolling-regression${buildQuery(params)}`,
+  );
+}
+
+// --- /detail/futures-volume-oi (get_futures_volume_oi_tool) ---
+export type FuturesVolumeOiDetailParams = {
+  curve_family: string;
+  contract_code: string;
+  lookback_days?: number;
+};
+
+export function fetchDetailFuturesVolumeOi(
+  params: FuturesVolumeOiDetailParams,
+): Promise<FuturesVolumeOiOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/futures-volume-oi${buildQuery(params)}`,
+  );
+}
+
+// --- /detail/beta-adjusted-spread (calculate_beta_adjusted_spread_tool) ---
+export type BetaAdjustedSpreadDetailParams = {
+  target_curve_family: string;
+  target_tenor: string;
+  regressor_curve_family: string;
+  regressor_tenor: string;
+  regression_window_days: number;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailBetaAdjustedSpread(
+  params: BetaAdjustedSpreadDetailParams,
+): Promise<BetaAdjustedSpreadOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/beta-adjusted-spread${buildQuery(params)}`,
+  );
+}
+
+// --- /detail/yield-change-attribution
+//     (calculate_yield_change_attribution_pca_tool) ---
+// Inline-fit bridge only — the ``pasted_loadings`` mode stays on the
+// generic run endpoint / MCP (a loadings matrix doesn't fit query
+// params).
+export type YieldChangeAttributionDetailParams = {
+  curve_family: string;
+  target_tenor: string;
+  start_date: string;
+  end_date: string;
+  pca_lookback_days?: number;
+  n_components?: number;
+  change_frequency?: 'daily' | 'weekly';
+  tenors?: ReadonlyArray<string>;
+  field_name?: string;
+};
+
+export function fetchDetailYieldChangeAttribution(
+  params: YieldChangeAttributionDetailParams,
+): Promise<YieldChangeAttributionPcaOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/yield-change-attribution${buildQuery(params)}`,
+  );
+}
+// === END TEMP SIBLING STUBS ===

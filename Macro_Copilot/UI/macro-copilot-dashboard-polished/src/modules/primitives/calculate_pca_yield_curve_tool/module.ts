@@ -1,21 +1,38 @@
 // ============================================================================
-// src/modules/primitives/calculate_pca_yield_curve_tool/module.ts — Stage 4b rich-model module.
+// src/modules/primitives/calculate_pca_yield_curve_tool/module.ts
 // ----------------------------------------------------------------------------
-// Stage 4b — claims ``custom_build_surface`` (rich-model BuilderCanvas
-// route) AND ``custom_preview_widget`` (per-tool persisted-artifact
-// card driven by ``RichModelWidget``).  Sets ``richModel: true`` so
-// the central decoder treats this tool as a rich-model entry, and
-// carries the full ``ModelMetadata`` block via ``modelMetadata`` —
-// the central ``modelRegistry.MODELS`` array now derives from this
-// field instead of carrying a duplicate hand-authored entry.
+// Dual-view migration (rendering_density.md §1) — PCA leaves the legacy
+// rich-model BuilderCanvas route and ships its own
+// BuildExtended/BuildCompact pair composed from the shared rich-model
+// grammar (@/components/shared/build/model).
+//
+// ROUTING MECHANICS (THESIS Q3)
+// -----------------------------
+// ``modelMetadata`` is REMOVED and ``richModel`` is false: the central
+// contextDecoder routes kind='builder' (legacy BuilderCanvas) whenever
+// ``hasModelMetadata(toolName)`` is true, so dropping the block is what
+// lets the decode fall through to the module-first dual-view dispatch
+// (VirtualPrimitiveCanvas mounts surfaces.buildExtended).
+//
+// ``modelAdapter`` + ``surfaces.preview`` are KEPT EXACTLY AS-IS — the
+// persisted-artifact RichModelWidget path reads them; reconciling that
+// path onto the grammar is a separate workstream.
+//
+// The PM-facing PC1=Level / PC2=Slope / PC3=Curvature interpretation
+// copy moved from modelMetadata.interpretationCards onto the spec's
+// top-level ``interpretationCards`` field (sourced from the shared
+// per-tool constant so the Extended surface renders the same copy).
+//
+// Per FM7 (pure-spec assembly): exports a pure value; no side effects.
 // ============================================================================
 
 import type { PrimitiveModuleSpec } from '../../types';
-import type { ModelMetadata } from '@/lib/modelRegistry';
-import type { ModelAdapter } from '@/components/build/widgets/shared/persistedModelAdapters';
 import { DEFAULT_LOOKBACK_PRESETS } from '@/lib/modelPresets';
-import BuildSurface from './surfaces/BuildSurface';
+import type { ModelAdapter } from '@/components/build/widgets/shared/persistedModelAdapters';
+import BuildExtended from './surfaces/BuildExtended';
+import BuildCompact from './surfaces/BuildCompact';
 import PreviewWidget from './surfaces/PreviewWidget';
+import { PCA_INTERPRETATION_CARDS } from './surfaces/pcaYieldCurveShared';
 
 const MODEL_ADAPTER: ModelAdapter = {
   toolName: 'calculate_pca_yield_curve_tool',
@@ -38,22 +55,59 @@ const MODEL_ADAPTER: ModelAdapter = {
     'Re-run from the model builder to view the full loadings / variance / current-factor-levels panel.',
 };
 
-const MODEL_METADATA: ModelMetadata = {
+export const MODULE: PrimitiveModuleSpec = {
+  // FM1 — identity (folder name === toolName)
   toolName: 'calculate_pca_yield_curve_tool',
+
+  // FM3 — tier claims:
+  //   * generic_runnable — backend ships in _PRIMITIVE_SPECS
+  //   * custom_build_surface — dual-view Build (rendering_density.md §1)
+  //   * custom_preview_widget — persisted-artifact RichModelWidget card
+  tiers: ['generic_runnable', 'custom_build_surface', 'custom_preview_widget'],
+
+  // FM5 — display metadata
   displayName: 'PCA · Yield Curve',
-  category: 'pca',
-  modelKind: 'composite',
-  outputRenderer: 'pca',
+  category: 'model_fits',
   oneLineSummary:
-    "Principal-component decomposition of a sovereign curve's yield changes — surfaces level, slope, and curvature factors plus their daily scores.",
-  defaultParams: {
-    curve_family: 'UST',
-    lookback_days: '1825',
-    n_components: '3',
-    change_frequency: 'daily',
-    // tenors: empty array → use the curve's full tenor universe.
-    tenors: [],
+    'PCA on the yield-CHANGES panel of one sovereign curve.  Returns per-component loadings, variance shares, factor-score time series, and per-component quality metadata (degenerate + sign-anchor flags).',
+
+  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared
+  // typedView; richModel false so the contextDecoder falls through to
+  // the module-first dual-view dispatch instead of the legacy
+  // BuilderCanvas redirect.
+  typedView: null,
+  richModel: false,
+
+  // PM-facing interpretation copy retained from the retired
+  // modelMetadata block (THESIS Q3) — the Extended surface renders the
+  // same cards in its methodology zone via the shared constant.
+  interpretationCards: PCA_INTERPRETATION_CARDS,
+
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
+  // ``build`` is a TRANSITIONAL ALIAS kept === buildExtended for the
+  // legacy dispatchers (BuildShell's ?builder= branch +
+  // VirtualPrimitiveCanvas's fallback chain) until they are retired.
+  surfaces: {
+    build: BuildExtended,
+    buildExtended: BuildExtended,
+    buildCompact: BuildCompact,
+    // KEPT UNCHANGED — persisted-artifact RichModelWidget path.
+    preview: PreviewWidget,
   },
+
+  // FM5d — persisted-artifact adapter, KEPT UNCHANGED (the
+  // RichModelWidget dispatcher reads MODULE.modelAdapter).
+  modelAdapter: MODEL_ADAPTER,
+
+  workspaceLabel: 'PCA loadings, variance, factor scores',
+
+  // FM5 — defaults mirror the GET-bridged Input surface
+  // (api/routes/rates/detail.py /detail/pca-yield-curve).  ``tenors``
+  // is the dual-view comma-joined string form; empty = full playbook
+  // universe.
+  // FM5 — control hints for the generic builder / Ask-handoff seeding
+  // (moved off the retired modelMetadata block; same content —
+  // paramHintFor reads the spec first).
   paramHints: {
     curve_family: {
       control: 'curve_family',
@@ -87,39 +141,12 @@ const MODEL_METADATA: ModelMetadata = {
       help: 'Bloomberg field. Leave blank to use config.yaml default (typically YLD_YTM_MID).',
     },
   },
-  interpretationCards: [
-    {
-      headline: 'PC1 = Level',
-      body: 'The first principal component on a normal sovereign curve loads positive across all tenors — it captures parallel shifts in the entire curve. Daily PC1 score moves correspond to broad rate-level moves.',
-    },
-    {
-      headline: 'PC2 = Slope',
-      body: 'PC2 typically loads positive at the long end and negative at the short end — it captures steepening vs flattening. PC2 moves track 2s10s and 5s30s dynamics.',
-    },
-    {
-      headline: 'PC3 = Curvature',
-      body: 'PC3 typically loads positive at the belly and negative at the wings — it captures butterfly moves. Watch this when belly-rich/cheap views are in play.',
-    },
-    {
-      headline: 'Variance explained',
-      body: 'The first three components typically capture >97% of yield-change variance on a developed sovereign. If they do not, the curve is in an atypical regime and the residuals are themselves the signal.',
-    },
-  ],
-};
 
-export const MODULE: PrimitiveModuleSpec = {
-  toolName: 'calculate_pca_yield_curve_tool',
-  tiers: ['generic_runnable', 'custom_build_surface', 'custom_preview_widget'],
-  displayName: 'PCA · Yield Curve',
-  category: 'model_fits',
-  oneLineSummary:
-    'PCA on the yield-CHANGES panel of one sovereign curve.  Returns per-component loadings, variance shares, factor-score time series, and per-component quality metadata (degenerate + sign-anchor flags).',
-  richModel: true,
-  modelMetadata: MODEL_METADATA,
-  modelAdapter: MODEL_ADAPTER,
-  workspaceLabel: 'PCA loadings, variance, factor scores',
-  surfaces: {
-    build: BuildSurface,
-    preview: PreviewWidget,
+  defaultParams: {
+    curve_family: 'UST',
+    tenors: '',
+    lookback_days: '1825',
+    n_components: '3',
+    change_frequency: 'daily',
   },
 };

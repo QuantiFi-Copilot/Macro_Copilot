@@ -1,19 +1,35 @@
 // ============================================================================
-// src/modules/primitives/calculate_beta_adjusted_spread_tool/module.ts — Stage 4b rich-model module.
+// src/modules/primitives/calculate_beta_adjusted_spread_tool/module.ts
 // ----------------------------------------------------------------------------
-// Stage 4b — claims ``custom_build_surface`` + ``custom_preview_widget``;
-// sets ``richModel: true``; carries the full ``ModelMetadata`` block
-// that the central ``modelRegistry.MODELS`` array now derives from.
+// Consolidation (G-3.2) — migrated from the Stage 4b rich-model route
+// (``richModel: true`` + ``modelMetadata`` → BuilderCanvas /
+// RollingRegressionRenderer) to the dual-view standard:
+//   - methodology_exposure.md §5 standalone bridge (own typed-detail
+//     endpoint at /api/v1/rates/detail/beta-adjusted-spread + own
+//     surfaces composed from the rich-model grammar at
+//     @/components/shared/build/model)
+//   - rendering_density.md §1 dual-view mandate (buildExtended +
+//     buildCompact both REQUIRED)
+//
+// ``modelMetadata`` is REMOVED (its presence routed the decode to the
+// legacy BuilderCanvas, bypassing the module-first dual-view dispatch);
+// its paramHints live on the spec's own ``paramHints`` field so the
+// generic-builder / Ask-handoff control inference keeps its fidelity,
+// and the PM interpretation copy moved to the spec's
+// ``interpretationCards``.  ``modelAdapter`` + ``surfaces.preview``
+// stay UNCHANGED — the persisted-artifact RichModelWidget path still
+// reads them (reconciled in the slug-unification workstream).
+// Per FM7 (pure-spec assembly): exports a pure value; no side effects.
 // ============================================================================
 
 import type { PrimitiveModuleSpec } from '../../types';
-import type { ModelMetadata } from '@/lib/modelRegistry';
 import type { ModelAdapter } from '@/components/build/widgets/shared/persistedModelAdapters';
 import {
   DEFAULT_LOOKBACK_PRESETS,
   DEFAULT_WINDOW_PRESETS,
 } from '@/lib/modelPresets';
-import BuildSurface from './surfaces/BuildSurface';
+import BuildExtended from './surfaces/BuildExtended';
+import BuildCompact from './surfaces/BuildCompact';
 import PreviewWidget from './surfaces/PreviewWidget';
 
 const MODEL_ADAPTER: ModelAdapter = {
@@ -31,23 +47,45 @@ const MODEL_ADAPTER: ModelAdapter = {
     'Peer rolling series not lifted as the artifact',
   ],
   builderHint:
-    'Re-run from the model builder to view the snapshot panel + the peer coefficient series.',
+    'Open the Build surface to view the snapshot panel + the peer coefficient series.',
 };
 
-const MODEL_METADATA: ModelMetadata = {
+export const MODULE: PrimitiveModuleSpec = {
+  // FM1 — identity (folder name === toolName)
   toolName: 'calculate_beta_adjusted_spread_tool',
+
+  // FM3 — tier claims: dual-view Build (rendering_density.md §1) +
+  // the persisted-artifact preview widget (kept until the slug
+  // unification reconciles the persisted path).
+  tiers: ['generic_runnable', 'custom_build_surface', 'custom_preview_widget'],
+
+  // FM5 — display metadata
   displayName: 'Beta-Adjusted Spread',
-  category: 'regression',
-  modelKind: 'time_series_model',
-  outputRenderer: 'series_panel',
+  category: 'rolling_analytics',
   oneLineSummary:
-    'Bivariate beta-adjusted RV: rolling hedge ratio of one yield on another, residual in bps, residual z-score.',
-  defaultParams: {
-    target_spec: { curve_family: 'IT_BTP', tenor: '10Y' },
-    hedge_spec: { curve_family: 'DE_BUND', tenor: '10Y' },
-    regression_window_days: '60',
-    lookback_days: '730',
+    'Bivariate beta-adjusted RV — rolling OLS regresses one sovereign yield (target) on another (regressor); returns hedge ratio (beta), alpha (yield-percent), residual in bps, and a rolling z-score on the residual.',
+
+  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared
+  // typedView; the rich-model route is retired.
+  typedView: null,
+  richModel: false,
+
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
+  // ``build`` is kept === buildExtended for the legacy
+  // VirtualPrimitiveCanvas dispatcher (transitional alias).
+  surfaces: {
+    build: BuildExtended,
+    buildExtended: BuildExtended,
+    buildCompact: BuildCompact,
+    preview: PreviewWidget,
   },
+
+  // FM5d — persisted-artifact adapter (unchanged; the RichModelWidget
+  // path depends on it).
+  modelAdapter: MODEL_ADAPTER,
+
+  // FM5 — control hints for the generic builder / Ask-handoff seeding
+  // (moved off the retired modelMetadata block; same content).
   paramHints: {
     target_spec: { control: 'series_spec', label: 'Target series' },
     hedge_spec: { control: 'series_spec', label: 'Hedge series' },
@@ -62,27 +100,25 @@ const MODEL_METADATA: ModelMetadata = {
       presets: DEFAULT_LOOKBACK_PRESETS,
     },
   },
+
+  // PM interpretation copy (moved off the retired modelMetadata block;
+  // rendered by the Extended methodology zone).
   interpretationCards: [
     {
       headline: 'How to read it',
       body: 'Residual = target - beta × hedge. A residual z-score >2 means the bivariate spread is rich on its own history; <-2 means cheap. The hedge ratio time series itself is the signal when betas drift.',
     },
   ],
-};
 
-export const MODULE: PrimitiveModuleSpec = {
-  toolName: 'calculate_beta_adjusted_spread_tool',
-  tiers: ['generic_runnable', 'custom_build_surface', 'custom_preview_widget'],
-  displayName: 'Beta-Adjusted Spread',
-  category: 'rolling_analytics',
-  oneLineSummary:
-    'Bivariate beta-adjusted RV — rolling OLS regresses one sovereign yield (target) on another (regressor); returns hedge ratio (beta), alpha (yield-percent), residual in bps, and a rolling z-score on the residual.',
-  richModel: true,
-  modelMetadata: MODEL_METADATA,
-  modelAdapter: MODEL_ADAPTER,
-  workspaceLabel: 'Beta-adjusted spread playground',
-  surfaces: {
-    build: BuildSurface,
-    preview: PreviewWidget,
+  workspaceLabel: 'Beta-adjusted spread — residual z & hedge ratio',
+
+  // FM5 — defaults mirror the typed-detail bridge's flat wire shape.
+  defaultParams: {
+    target_curve_family: 'IT_BTP',
+    target_tenor: '10Y',
+    regressor_curve_family: 'DE_BUND',
+    regressor_tenor: '10Y',
+    regression_window_days: '60',
+    lookback_days: '730',
   },
 };

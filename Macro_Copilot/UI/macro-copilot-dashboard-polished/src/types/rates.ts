@@ -3087,3 +3087,337 @@ export type OtrOfrSpreadOutput = {
   methodology_note: string;
 };
 
+
+// ============================================================================
+// Consolidation wave — standalone-bridge Output mirrors (field-for-field
+// Pydantic mirrors; snake_case preserved; Optional[X] → X | null).
+// Verified against model_json_schema() dumps from the macro-env container.
+// ============================================================================
+
+// --- /detail/half-life (calculate_half_life_tool) ---
+// Pure snapshot — no time-series on the wire.  ``*_native`` fields are
+// denominated in ``series_units`` (percent | bps | ...).
+export type HalfLifeMetrics = {
+  as_of_date: string;
+  series_label: string;
+  series_units: string;
+  is_mean_reverting: boolean;
+  half_life_days: number | null;
+  half_life_ci_lower_days: number | null;
+  half_life_ci_upper_days: number | null;
+  long_run_mean_native: number | null;
+  current_value_native: number;
+  current_deviation_native: number | null;
+  beta: number;
+  beta_ci_lower: number | null;
+  beta_ci_upper: number | null;
+  r_squared: number | null;
+  observation_count: number;
+  confidence_level_used: number;
+};
+
+export type HalfLifeOutput = {
+  current_metrics: HalfLifeMetrics;
+};
+
+// --- /detail/cpi-surprise (calculate_cpi_surprise_tool) ---
+export type CpiSurpriseCurrentMetrics = {
+  release_date: string;
+  country: string;
+  event_type: string;
+  period?: string | null;
+  surprise_label: string;
+  current_surprise_pct?: number | null;
+  current_z_score?: number | null;
+  release_z_window_releases: number;
+  current_actual_pct?: number | null;
+  current_consensus_median_pct?: number | null;
+  current_prior_pct?: number | null;
+  observation_count: number;
+};
+
+export type CpiSurpriseTimeSeriesRow = {
+  date: string;
+  period?: string | null;
+  surprise_pct?: number | null;
+  z_score?: number | null;
+  actual_pct?: number | null;
+  consensus_median_pct?: number | null;
+};
+
+export type CpiSurpriseOutput = {
+  current_metrics: CpiSurpriseCurrentMetrics;
+  time_series: CpiSurpriseTimeSeriesRow[];
+  time_series_surprise: TimeSeries;
+  time_series_zscore: TimeSeries;
+  methodology_note: string;
+};
+
+// --- /detail/nfp-surprise (calculate_nfp_surprise_tool) ---
+// Mirrors CPI but in thousands-of-jobs desk-quote units; the canonical
+// ``time_series_surprise`` carries RAW jobs (COUNT units).
+export type NfpSurpriseCurrentMetrics = {
+  release_date: string;
+  country: string;
+  event_type: string;
+  period?: string | null;
+  surprise_label: string;
+  current_surprise_k_jobs?: number | null;
+  current_z_score?: number | null;
+  release_z_window_releases: number;
+  current_actual_k_jobs?: number | null;
+  current_consensus_median_k_jobs?: number | null;
+  current_prior_k_jobs?: number | null;
+  observation_count: number;
+};
+
+export type NfpSurpriseTimeSeriesRow = {
+  date: string;
+  period?: string | null;
+  surprise_k_jobs?: number | null;
+  z_score?: number | null;
+  actual_k_jobs?: number | null;
+  consensus_median_k_jobs?: number | null;
+};
+
+export type NfpSurpriseOutput = {
+  current_metrics: NfpSurpriseCurrentMetrics;
+  time_series: NfpSurpriseTimeSeriesRow[];
+  time_series_surprise: TimeSeries;
+  time_series_zscore: TimeSeries;
+  methodology_note: string;
+};
+
+// --- /detail/zscore-custom (calculate_zscore_custom_tool) ---
+export type ZscoreCustomMetrics = {
+  as_of_date: string;
+  curve_family: string;
+  tenor: string;
+  current_yield_pct?: number | null;
+  current_z_score?: number | null;
+  z_score_window_days_used: number;
+  z_score_min_periods_used: number;
+  z_score_ddof_used: number;
+  observation_count: number;
+};
+
+export type ZscoreCustomOutput = {
+  current_metrics: ZscoreCustomMetrics;
+  /** Legacy field name — identical payload to ``time_series_zscore``. */
+  time_series: TimeSeries;
+  time_series_zscore: TimeSeries;
+};
+
+// --- /detail/wirp-meeting-pricing (calculate_wirp_meeting_pricing_tool) ---
+// Bloomberg WIRP INGEST verbatim (P12).  ``cumulative_move_prob_pct``
+// is CUMULATIVE — NEVER derive per-meeting hike/cut/hold probabilities
+// client-side (FP9; the naive identity does not hold).
+export type WirpMeetingPricingCurrentMetrics = {
+  central_bank: string;
+  selection_mode: string;
+  n_meetings_returned: number;
+  n_meetings_requested?: number | null;
+  requested_meeting_date?: string | null;
+  next_meeting_date?: string | null;
+  next_implied_policy_rate_pct?: number | null;
+  next_cumulative_move_prob_pct?: number | null;
+  next_num_25bp_moves_priced?: number | null;
+  next_rate_change_native?: number | null;
+  next_as_of_date?: string | null;
+};
+
+export type WirpMeetingSnapshot = {
+  central_bank: string;
+  meeting_date: string;
+  meeting_token?: string | null;
+  as_of_date: string;
+  implied_policy_rate_pct?: number | null;
+  cumulative_move_prob_pct?: number | null;
+  num_25bp_moves_priced?: number | null;
+  rate_change_native?: number | null;
+  vendor_ticker: string;
+  bloomberg_ticker_implied_rate?: string | null;
+  bloomberg_ticker_move_prob?: string | null;
+  bloomberg_ticker_num_moves?: string | null;
+  bloomberg_ticker_rate_change?: string | null;
+};
+
+export type WirpMeetingPricingOutput = {
+  current_metrics: WirpMeetingPricingCurrentMetrics;
+  meetings: WirpMeetingSnapshot[];
+  methodology_note: string;
+};
+
+// --- /detail/pca-yield-curve (calculate_pca_yield_curve_tool) ---
+/** One loadings row: ``tenor`` plus one numeric entry per returned
+ *  component (``pc1`` / ``pc2`` / ...) — the Pydantic model is
+ *  extra-allow keyed by component name, so the mirror is an indexed
+ *  record over the dynamic component columns. */
+export type PcaLoadingRow = {
+  tenor: string;
+} & Record<string, string | number | null>;
+
+export type PcaVarianceShareRow = {
+  component_name: string;
+  variance_share: number;
+  cumulative_share: number;
+};
+
+export type PcaComponentMetadata = {
+  component_name: string;
+  quality_flag: 'ok' | 'degenerate' | 'sign_anchor_tied' | string;
+  quality_note?: string | null;
+};
+
+export type PcaYieldCurveMetrics = {
+  as_of_date: string;
+  fit_window_start: string;
+  fit_window_end: string;
+  curve_family: string;
+  tenors_used: string[];
+  lookback_days_used: number;
+  n_components_returned: number;
+  change_frequency_used: string;
+  sign_anchor_used: string;
+  loadings: PcaLoadingRow[];
+  variance_explained: PcaVarianceShareRow[];
+  total_variance_explained: number;
+  current_factor_levels: Record<string, number | null>;
+  component_metadata: PcaComponentMetadata[];
+  observation_count: number;
+};
+
+export type PcaYieldCurveOutput = {
+  current_metrics: PcaYieldCurveMetrics;
+  time_series_factors: TimeSeries[];
+};
+
+// --- /detail/rolling-regression (calculate_rolling_regression_tool) ---
+export type RollingRegressionMetrics = {
+  as_of_date: string;
+  target_label: string;
+  regressor_labels: string[];
+  current_alpha_pct?: number | null;
+  current_betas: Record<string, number | null>;
+  current_residual_pct?: number | null;
+  current_r_squared?: number | null;
+  /** 0 = OK; 1 = near-singular design matrix (fit suspect). */
+  current_condition_flag: number;
+  regression_window_days_used: number;
+  regression_min_periods_used: number;
+  add_constant_used: boolean;
+  observation_count: number;
+};
+
+export type RollingRegressionOutput = {
+  current_metrics: RollingRegressionMetrics;
+  time_series_betas: TimeSeries[];
+  time_series_alpha: TimeSeries;
+  time_series_residual: TimeSeries;
+  time_series_r_squared: TimeSeries;
+  time_series_condition_flag: TimeSeries;
+};
+
+// --- /detail/futures-volume-oi (get_futures_volume_oi_tool) ---
+// Bespoke time-series rows (CONTRACTS units are not in the closed
+// TimeSeriesUnits enum, so the rows do not reuse the canonical
+// TimeSeries shape — P8).  Volume/OI are contract COUNTS, not notional.
+export type FuturesVolumeOiCurrentMetrics = {
+  as_of_date: string;
+  curve_family: string;
+  contract_code: string;
+  tenor: string;
+  contract_size?: number | null;
+  expiry_date?: string | null;
+  security_name?: string | null;
+  current_volume: number;
+  current_open_interest: number;
+  delta_open_interest_1d?: number | null;
+  oi_z_score?: number | null;
+  oi_high_252d?: number | null;
+  oi_low_252d?: number | null;
+  oi_percentile_252d?: number | null;
+  volume_rolling_mean_22d?: number | null;
+  volume_rolling_max_22d?: number | null;
+  observation_count: number;
+};
+
+export type FuturesVolumeOiTimeSeriesRow = {
+  date: string;
+  volume: number;
+  open_interest: number;
+};
+
+export type FuturesVolumeOiOutput = {
+  current_metrics: FuturesVolumeOiCurrentMetrics;
+  time_series: FuturesVolumeOiTimeSeriesRow[];
+  methodology_disclosure: string;
+};
+
+// --- /detail/beta-adjusted-spread (calculate_beta_adjusted_spread_tool) ---
+// Residual sign convention: POSITIVE = target CHEAP (yield above the
+// regression line); NEGATIVE = target RICH.
+export type BetaAdjustedSpreadMetrics = {
+  as_of_date: string;
+  target_curve_family: string;
+  target_tenor: string;
+  regressor_curve_family: string;
+  regressor_tenor: string;
+  spread_label: string;
+  current_beta?: number | null;
+  current_alpha_pct?: number | null;
+  current_residual_bps?: number | null;
+  current_residual_z_score?: number | null;
+  current_r_squared?: number | null;
+  /** 0 = OK; 1 = near-singular design matrix (fit suspect). */
+  current_condition_flag: number;
+  regression_window_days_used: number;
+  regression_min_periods_used: number;
+  z_score_window_days_used: number;
+  add_constant_used: boolean;
+  observation_count: number;
+};
+
+export type BetaAdjustedSpreadOutput = {
+  current_metrics: BetaAdjustedSpreadMetrics;
+  time_series_beta: TimeSeries;
+  time_series_residual: TimeSeries;
+  time_series_residual_z_score: TimeSeries;
+};
+
+// --- /detail/yield-change-attribution
+//     (calculate_yield_change_attribution_pca_tool) ---
+// Pure snapshot — no time-series on the wire.  Component contributions
+// + residual sum to ``total_change_bps``; loadings provenance mirrors
+// the upstream PCA fit.
+export type YieldChangeAttributionComponentContribution = {
+  component_name: string;
+  contribution_bps: number | null;
+  loading_at_target_tenor: number | null;
+  variance_share_in_fit_window: number;
+  quality_flag: 'ok' | 'degenerate' | 'sign_anchor_tied' | string;
+};
+
+export type YieldChangeAttributionPcaMetrics = {
+  start_date_requested: string;
+  start_date_resolved: string;
+  end_date_requested: string;
+  end_date_resolved: string;
+  curve_family: string;
+  target_tenor: string;
+  total_change_bps: number;
+  component_contributions: YieldChangeAttributionComponentContribution[];
+  residual_bps: number;
+  n_components_used: number;
+  loadings_source: 'fit_inline' | 'pasted' | string;
+  loadings_window_start: string;
+  loadings_window_end: string;
+  loadings_change_frequency_used: string;
+  loadings_n_observations_in_fit: number;
+  loadings_sign_anchor_used: string;
+  loadings_change_window_overlap_pct: number;
+};
+
+export type YieldChangeAttributionPcaOutput = {
+  current_metrics: YieldChangeAttributionPcaMetrics;
+};

@@ -34,6 +34,81 @@ check('module satisfies the standard invariants', async () => {
   });
 });
 
+// ----------------------------------------------------------------------------
+// Phase-1 dual-view rendering-density contract (rendering_density.md §11):
+// every new primitive claiming custom_build_surface MUST ship BOTH
+// surfaces.buildExtended AND surfaces.buildCompact.
+// ----------------------------------------------------------------------------
+
+check('claims custom_build_surface tier', () => {
+  if (!MODULE.tiers.includes('custom_build_surface')) {
+    throw new Error(
+      `tiers missing 'custom_build_surface'; Phase-1 pilot tools must claim it per rendering_density.md.  Got tiers=${JSON.stringify(MODULE.tiers)}`,
+    );
+  }
+});
+
+check('surfaces.buildExtended is populated', () => {
+  if (!MODULE.surfaces?.buildExtended) {
+    throw new Error(
+      'surfaces.buildExtended is missing.  Phase-1 dual-view contract requires both buildExtended + buildCompact for every primitive claiming custom_build_surface.',
+    );
+  }
+});
+
+check('surfaces.buildCompact is populated', () => {
+  if (!MODULE.surfaces?.buildCompact) {
+    throw new Error(
+      'surfaces.buildCompact is missing.  Phase-1 dual-view contract requires both buildExtended + buildCompact for every primitive claiming custom_build_surface.',
+    );
+  }
+});
+
+check('typedView is null (standalone-module pattern)', () => {
+  if (MODULE.typedView != null) {
+    throw new Error(
+      `typedView must be null for new modules under the standalone-bridge contract; got '${MODULE.typedView}'.  See methodology_exposure.md §5.`,
+    );
+  }
+});
+
+// ----------------------------------------------------------------------------
+// Dual-view migration invariants (THESIS Q3) — the legacy rich-model
+// BuilderCanvas route is RETIRED for this tool; the persisted-artifact
+// path is RETAINED.  These checks pin both halves so a regression in
+// either direction fails loudly.
+// ----------------------------------------------------------------------------
+
+check('modelMetadata removed + richModel false (legacy builder route retired)', () => {
+  if ((MODULE as any).modelMetadata != null) {
+    throw new Error(
+      'MODULE.modelMetadata must be absent: contextDecoder routes kind=\'builder\' (legacy BuilderCanvas) whenever hasModelMetadata(toolName) is true, which would preempt the dual-view dispatch.',
+    );
+  }
+  if (MODULE.richModel === true) {
+    throw new Error(
+      'MODULE.richModel must be false after the dual-view migration (mutually exclusive with the module-first buildExtended dispatch).',
+    );
+  }
+});
+
+check('persisted-artifact path retained (modelAdapter + surfaces.preview)', () => {
+  if (MODULE.modelAdapter == null) {
+    throw new Error(
+      'MODULE.modelAdapter must be retained — the persisted-artifact RichModelWidget dispatcher reads it.',
+    );
+  }
+  if (!MODULE.surfaces?.preview) {
+    throw new Error(
+      'surfaces.preview must be retained — the widgets/index.ts barrel registers it for persisted-artifact rendering.',
+    );
+  }
+});
+
+// NOTE — no mockups/ check for this module: the dual-view mockups are
+// captured by the integrator post-merge (migration deliverable scope).
+// Restore the pilot's mockups check when the PNGs land.
+
 export async function runAllModuleSpecTests(): Promise<void> {
   let passed = 0;
   let failed = 0;

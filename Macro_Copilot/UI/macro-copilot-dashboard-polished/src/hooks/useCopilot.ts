@@ -291,6 +291,11 @@ export function useCopilot(): UseCopilotResult {
           workspaceContext: event.workspace_context,
           totalDurationMs: event.total_duration_ms,
           proposedOverrides,
+          // Consolidation target #3 — carry the open-DAG pipeline
+          // status so the Ask card can render honest refusals /
+          // clarifications as prose instead of an "EXECUTION FAILED"
+          // panel.  Absent (null) on direct-lane turns.
+          openDagStatus: event.open_dag_status ?? null,
         }));
         streamingMsgId.current = null;
         pendingWorkspaceSlug.current = null;

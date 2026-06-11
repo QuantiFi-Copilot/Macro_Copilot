@@ -46,7 +46,12 @@ const BuildCompact: React.FC<BuildCompactProps> = ({
   callMeta,
 }) => {
   const centralBank = params.central_bank ?? '';
-  const selectionMode = params.selection_mode || 'next_n_meetings';
+  // URL params arrive as bare strings — narrow to the closed mode
+  // pair (anything unrecognised falls back to the default mode).
+  const selectionMode =
+    params.selection_mode === 'specific_meeting_date'
+      ? ('specific_meeting_date' as const)
+      : ('next_n_meetings' as const);
   const isSpecificMode = selectionMode === 'specific_meeting_date';
   const nMeetings =
     params.n_meetings != null && params.n_meetings !== ''

@@ -172,10 +172,15 @@ function encodeContext(
 // MATRIX ROW 2 — Library "Open in builder" on a model tool
 // ----------------------------------------------------------------------------
 
-check('row 2: ?builder=calculate_pca_yield_curve_tool → BuilderCanvas mounts via hasModelMetadata', () => {
+check('row 2: ?builder=calculate_pca_yield_curve_tool → registry entry RETIRED (G-3.2)', () => {
+  // Consolidation G-3.2: PCA migrated to the dual-view standard — its
+  // modelMetadata is gone, hasModelMetadata is false, and the legacy
+  // ?builder= route degrades to BuilderCanvas's honest "no builder"
+  // fallback (the canonical entry point is the module-first Build
+  // surface).  This lock makes a modelMetadata regression loud.
   assertTruthy(
-    hasModelMetadata('calculate_pca_yield_curve_tool'),
-    'PCA is a model-registry tool',
+    !hasModelMetadata('calculate_pca_yield_curve_tool'),
+    'PCA migrated off the model registry',
   );
 });
 

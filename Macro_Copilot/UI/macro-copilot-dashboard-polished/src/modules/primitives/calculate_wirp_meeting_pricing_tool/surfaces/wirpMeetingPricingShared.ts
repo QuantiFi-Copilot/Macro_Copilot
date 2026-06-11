@@ -127,7 +127,9 @@ export const WIRP_COMPACT_CAVEAT =
 
 export interface UseWirpMeetingPricingArgs {
   centralBank: string;
-  selectionMode: string;
+  /** Closed mode pair — mirrors the backend Literal so the typed
+   *  fetch helper's param union holds without a cast. */
+  selectionMode: 'next_n_meetings' | 'specific_meeting_date';
   /** Only sent in 'next_n_meetings' mode; backend forbids it in
    *  'specific_meeting_date' mode (Pydantic model_validator). */
   nMeetings?: number;
