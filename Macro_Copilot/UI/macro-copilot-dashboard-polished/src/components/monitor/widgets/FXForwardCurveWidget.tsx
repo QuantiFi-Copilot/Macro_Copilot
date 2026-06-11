@@ -23,6 +23,7 @@ import {
   WidgetProvenance,
 } from '@/components/monitor/WidgetCard';
 import { WidgetLoading, WidgetError, WidgetEmpty } from './shared';
+import { Sparkline } from '@/components/ui/Sparkline';
 import { cn } from '@/utils/cn';
 
 type Props = {
@@ -78,6 +79,21 @@ export function FXForwardCurveWidget({ params }: Props) {
         {rows.length === 0 ? (
           <WidgetEmpty message={`No forward rows for ${pair}.`} />
         ) : (
+          <>
+            <div className="-mx-1 mb-0.5">
+              <Sparkline
+                data={rows.map((r) => ({ value: r.forward_points, label: r.tenor }))}
+                tone="amber"
+                mode="area"
+                height={118}
+                strokeWidth={1.5}
+              />
+            </div>
+            <div className="mb-3 flex justify-between px-2 font-mono text-[9px] uppercase tracking-[0.14em] text-fg-faint">
+              {rows.map((r) => (
+                <span key={r.tenor}>{r.tenor}</span>
+              ))}
+            </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
@@ -137,6 +153,7 @@ export function FXForwardCurveWidget({ params }: Props) {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </WidgetBody>
       <WidgetProvenance
