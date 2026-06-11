@@ -91,7 +91,7 @@ def _assert_hl_config_passed(call_args) -> None:
 
 
 # ===========================================================================
-# rates_agent/sovereign_bonds/mcp_server.py — half_life_tool
+# rates_agent/sovereign_bonds/mcp_server.py — calculate_half_life_tool
 # ===========================================================================
 
 class TestMcpHalfLifeWrapper:
@@ -106,7 +106,7 @@ class TestMcpHalfLifeWrapper:
             "calculate_half_life",
             return_value=_well_formed_hl_output(),
         ) as mock_hl:
-            output_json = mcp_module.half_life_tool(
+            output_json = mcp_module.calculate_half_life_tool(
                 series_spec=SeriesSpec(curve_family="UST", tenor="10Y"),
                 lookback_days=1825,
             )
@@ -123,7 +123,7 @@ class TestMcpHalfLifeWrapper:
         from rates_agent.sovereign_bonds import mcp_server as mcp_module
         import typing
 
-        fn = mcp_module.half_life_tool
+        fn = mcp_module.calculate_half_life_tool
         underlying = getattr(fn, "fn", fn)
         underlying = getattr(underlying, "__wrapped__", underlying)
         hints = typing.get_type_hints(underlying)
@@ -161,7 +161,7 @@ class TestMcpHalfLifeWrapper:
             "calculate_half_life",
             return_value=_well_formed_hl_output(),
         ) as mock_hl:
-            mcp_module.half_life_tool(
+            mcp_module.calculate_half_life_tool(
                 pair_spec=PairSpec(cf1="IT_BTP", cf2="DE_BUND", tenor="10Y"),
                 lookback_days=1825,
             )
@@ -190,7 +190,7 @@ class TestMcpHalfLifeWrapper:
             "calculate_half_life",
             return_value=_well_formed_hl_output(),
         ) as mock_hl:
-            mcp_module.half_life_tool(pasted_series=pasted)
+            mcp_module.calculate_half_life_tool(pasted_series=pasted)
         params = mock_hl.call_args.kwargs["params"]
         assert params.pasted_series is not None
         assert params.series_spec is None
@@ -230,7 +230,7 @@ class TestMcpHalfLifeWrapper:
             "calculate_half_life",
             return_value=_well_formed_hl_output(),
         ) as mock_compute:
-            output_json = mcp_module.half_life_tool(pasted_series=pasted)
+            output_json = mcp_module.calculate_half_life_tool(pasted_series=pasted)
 
         # No 'Database connection failed' in the response.
         parsed = json.loads(output_json)
@@ -257,7 +257,7 @@ class TestMcpHalfLifeWrapper:
             "calculate_half_life",
             return_value=_well_formed_hl_output(),
         ) as mock_compute:
-            mcp_module.half_life_tool(
+            mcp_module.calculate_half_life_tool(
                 series_spec=SeriesSpec(curve_family="UST", tenor="10Y"),
                 lookback_days=1825,
             )
@@ -289,7 +289,7 @@ class TestMcpHalfLifeWrapper:
             "calculate_half_life",
             return_value=_well_formed_hl_output(),
         ):
-            output_json = mcp_module.half_life_tool(pasted_series=pasted)
+            output_json = mcp_module.calculate_half_life_tool(pasted_series=pasted)
         parsed = json.loads(output_json)
         assert "current_metrics" in parsed
         # Did NOT surface as a DB error.
@@ -305,7 +305,7 @@ class TestMcpHalfLifeWrapper:
         with patch.object(
             mcp_module, "_get_engine", return_value=mock_engine,
         ):
-            output_json = mcp_module.half_life_tool()
+            output_json = mcp_module.calculate_half_life_tool()
         parsed = json.loads(output_json)
         assert "error" in parsed
         assert "exactly one" in parsed["error"].lower()
@@ -371,7 +371,7 @@ class TestNestedMcpTransportExecution:
                 "lookback_days": 1825,
             }
             result = asyncio.run(
-                mcp_module.mcp.call_tool("half_life_tool", args)
+                mcp_module.mcp.call_tool("calculate_half_life_tool", args)
             )
         assert isinstance(result, tuple) and len(result) == 2
         contents, _structured = result
@@ -411,7 +411,7 @@ class TestNestedMcpTransportExecution:
                 },
             }
             result = asyncio.run(
-                mcp_module.mcp.call_tool("half_life_tool", args)
+                mcp_module.mcp.call_tool("calculate_half_life_tool", args)
             )
         assert isinstance(result, tuple) and len(result) == 2
         params = mock_compute.call_args.kwargs["params"]

@@ -625,9 +625,9 @@ class TestWorkflowRegistration:
     def test_registered_in_rates_primitive_resolver(self):
         from rates_agent.workflows import rates_primitive_resolver
         spec = rates_primitive_resolver(
-            "build_policy_futures_strip_panel_tool",
+            "policy_futures_build_policy_futures_strip_panel_tool",
         )
-        assert spec.tool_name == "build_policy_futures_strip_panel_tool"
+        assert spec.tool_name == "policy_futures_build_policy_futures_strip_panel_tool"
         assert spec.config_path == (
             BUILD_POLICY_FUTURES_STRIP_PANEL_CONFIG_PATH
         )
@@ -641,7 +641,7 @@ class TestWorkflowRegistration:
         implied_rate_pct in PERCENT)."""
         from rates_agent.workflows import rates_primitive_resolver
         spec = rates_primitive_resolver(
-            "build_policy_futures_strip_panel_tool",
+            "policy_futures_build_policy_futures_strip_panel_tool",
         )
         assert spec.output_field_units == {"panel": "percent"}
 
@@ -653,7 +653,7 @@ class TestWorkflowRegistration:
         bridge."""
         from rates_agent.workflows import rates_primitive_resolver
         spec = rates_primitive_resolver(
-            "build_policy_futures_strip_panel_tool",
+            "policy_futures_build_policy_futures_strip_panel_tool",
         )
         assert spec.output_artifact_type == "Panel"
 
@@ -664,7 +664,7 @@ class TestWorkflowRegistration:
             BuildPolicyFuturesStripPanelOutput,
         )
         spec = rates_primitive_resolver(
-            "build_policy_futures_strip_panel_tool",
+            "policy_futures_build_policy_futures_strip_panel_tool",
         )
         assert spec.input_class is BuildPolicyFuturesStripPanelInput
         assert spec.output_class is BuildPolicyFuturesStripPanelOutput
@@ -675,7 +675,7 @@ class TestWorkflowRegistration:
         ``test_workflow_event_study.py::TestResolverCompleteness``
         canonical-set check picks it up."""
         from rates_agent.workflows import known_rates_primitives
-        assert "build_policy_futures_strip_panel_tool" in (
+        assert "policy_futures_build_policy_futures_strip_panel_tool" in (
             set(known_rates_primitives())
         )
 

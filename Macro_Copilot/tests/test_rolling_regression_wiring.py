@@ -108,7 +108,7 @@ def _assert_rr_config_passed(call_args) -> None:
 
 
 # ===========================================================================
-# rates_agent/sovereign_bonds/mcp_server.py — rolling_regression_tool
+# rates_agent/sovereign_bonds/mcp_server.py — calculate_rolling_regression_tool
 # ===========================================================================
 
 class TestMcpRollingRegressionWrapper:
@@ -123,7 +123,7 @@ class TestMcpRollingRegressionWrapper:
             "calculate_rolling_regression",
             return_value=_well_formed_rr_output(),
         ) as mock_rr:
-            output_json = mcp_module.rolling_regression_tool(
+            output_json = mcp_module.calculate_rolling_regression_tool(
                 target_spec=SeriesSpec(curve_family="UST", tenor="10Y"),
                 regressor_specs=[
                     SeriesSpec(curve_family="DE_BUND", tenor="10Y"),
@@ -149,7 +149,7 @@ class TestMcpRollingRegressionWrapper:
         from rates_agent.sovereign_bonds import mcp_server as mcp_module
         import typing
 
-        fn = mcp_module.rolling_regression_tool
+        fn = mcp_module.calculate_rolling_regression_tool
         underlying = getattr(fn, "fn", fn)
         underlying = getattr(underlying, "__wrapped__", underlying)
         hints = typing.get_type_hints(underlying)
@@ -180,7 +180,7 @@ class TestMcpRollingRegressionWrapper:
             "calculate_rolling_regression",
             return_value=_well_formed_rr_output(),
         ) as mock_rr:
-            mcp_module.rolling_regression_tool(
+            mcp_module.calculate_rolling_regression_tool(
                 target_spec=SeriesSpec(curve_family="UST", tenor="10Y"),
                 regressor_specs=[
                     SeriesSpec(curve_family="DE_BUND", tenor="10Y"),
@@ -202,7 +202,7 @@ class TestMcpRollingRegressionWrapper:
             "calculate_rolling_regression",
             return_value=_well_formed_rr_output(),
         ) as mock_rr:
-            mcp_module.rolling_regression_tool(
+            mcp_module.calculate_rolling_regression_tool(
                 target_spec=SeriesSpec(
                     curve_family="UST", tenor="10Y", field_name="YLD_BID",
                 ),
@@ -228,7 +228,7 @@ class TestMcpRollingRegressionWrapper:
             "calculate_rolling_regression",
             return_value=_well_formed_rr_output(),
         ):
-            output_json = mcp_module.rolling_regression_tool(
+            output_json = mcp_module.calculate_rolling_regression_tool(
                 target_spec=SeriesSpec(curve_family="UST", tenor="10Y"),
                 regressor_specs=[
                     SeriesSpec(curve_family="DE_BUND", tenor="10Y"),

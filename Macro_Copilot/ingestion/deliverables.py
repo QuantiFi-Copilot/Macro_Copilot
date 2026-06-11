@@ -312,7 +312,15 @@ def group_rows_by_contract(
     for raw in df.to_dict(orient="records"):
         vt = raw.get("vendor_ticker")
         cc = raw.get("contract_code")
-        if not vt or not cc:
+        # ``not vt``/``not cc`` alone is insufficient: pandas surfaces
+        # missing cells as float NaN, which is truthy and would
+        # otherwise be grouped under a 'nan' key.
+        if (
+            not vt
+            or not cc
+            or (isinstance(vt, float) and pd.isna(vt))
+            or (isinstance(cc, float) and pd.isna(cc))
+        ):
             continue
         key = (str(vt), str(cc))
         grouped.setdefault(key, []).append(raw)

@@ -63,8 +63,19 @@ from shared.workflow.operator_catalogue import (
 #   to accommodate it while still keeping the full L3 prompt comfortably
 #   under typical context-window limits (16k cards leave > 184k tokens
 #   for the rest of the L3 prompt + tool messages).
+#
+# Track-A (fable_build) re-sized the TOTAL budget for the growing
+# toolbox: the 16k total was sized for the 16-operator PoC catalogue
+# (~830 avg tokens/card × 16 ≈ 13k + headroom).  The Track-A plan
+# (tmp/fable_plan_2.md §7 / ADR 0016 OPR4) targets ≈25–35 operators;
+# at the measured ~830-token average with the 1,000 per-card hard cap,
+# 35 operators bound the catalogue at ≤35k worst-case (~29k expected).
+# 36k total leaves >160k for the rest of the L3 prompt + tool messages
+# on a 200k window — the same comfort margin the PoC budget assumed.
+# The PER-CARD cap is unchanged: card discipline is enforced per
+# operator, the total is the fleet-size budget.
 _PER_CARD_TOKEN_CAP = 1_000
-_TOTAL_CATALOGUE_TOKEN_CAP = 16_000
+_TOTAL_CATALOGUE_TOKEN_CAP = 36_000
 
 
 # Per the plan's "Decisions enforced" #3:
@@ -117,8 +128,8 @@ class TestEveryOperatorHasCard:
     def test_catalogue_size_matches_registry(
         self, catalogue: Dict[str, OperatorCard],
     ) -> None:
-        assert len(catalogue) == len(OPERATOR_REGISTRY) == 19, (
-            f"Expected 19 registered operators; got "
+        assert len(catalogue) == len(OPERATOR_REGISTRY) == 20, (
+            f"Expected 20 registered operators; got "
             f"registry={len(OPERATOR_REGISTRY)} catalogue={len(catalogue)}.  "
             "If this changed deliberately, update the assertion AND review "
             "tmp/orchestration.md §2.1 for the operator inventory."

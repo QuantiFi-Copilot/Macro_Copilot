@@ -1175,6 +1175,13 @@ class CopilotSession:
                             template_id=None,
                             bound_slot_values=None,
                             parent_workspace_id=None,
+                            # Phase D / D9 — persist the intent-audit
+                            # chain as the non-hashed run_audit sidecar
+                            # (migration 0010) so the build page can
+                            # render "what I understood / checked /
+                            # fixed".  Best-effort: a serialization
+                            # failure must never block persistence.
+                            run_audit=_build_run_audit(outcome),
                         )
                     dag_hash = persisted.dag_hash
                     terminal_artifact_hash = (
@@ -2803,6 +2810,60 @@ def _workspace_name_for(decision) -> str:
     )
     stamp = datetime.now(timezone.utc).strftime("%H:%M UTC")
     return f"{pretty} · {stamp}"
+
+
+def _build_run_audit(outcome: Any) -> Optional[Dict[str, Any]]:
+    """Build the ``run_audit`` sidecar payload from a PASS
+    ``PipelineOutcome`` (Phase D / D9).
+
+    Shape (versioned; mirrors migration 0010's docstring):
+
+        {
+          "schema_version": 1,
+          "intent_chain": <IntentChain.model_dump(mode="json")>,
+          "expected_answer_shape": <str | None>,
+          "recompose_trace": [<RecomposeStep dump>, ...],
+        }
+
+    Returns ``None`` when the outcome carries no IntentChain (the
+    chain is what the audit RENDERS — without it there is nothing to
+    persist) or when serialization fails (best-effort sidecar: an
+    audit-dump bug must never block workspace persistence — the
+    failure is logged loudly instead).  Pure + deterministic for a
+    given outcome.
+    """
+    intent_chain = getattr(outcome, "intent_chain", None)
+    if intent_chain is None:
+        return None
+    try:
+        route_decision = getattr(outcome, "route_decision", None)
+        expected_shape = getattr(
+            route_decision, "expected_answer_shape", None,
+        )
+        if expected_shape is not None and not isinstance(
+            expected_shape, str,
+        ):
+            # Enum-valued on some RouteDecision builds — store the
+            # JSON-friendly value.
+            expected_shape = getattr(
+                expected_shape, "value", str(expected_shape),
+            )
+        recompose_trace = [
+            step.model_dump(mode="json")
+            for step in getattr(outcome, "recompose_trace", ()) or ()
+        ]
+        return {
+            "schema_version": 1,
+            "intent_chain": intent_chain.model_dump(mode="json"),
+            "expected_answer_shape": expected_shape,
+            "recompose_trace": recompose_trace,
+        }
+    except Exception:
+        logger.exception(
+            "Phase D: building run_audit sidecar failed; persisting "
+            "workspace WITHOUT audit (best-effort sidecar)",
+        )
+        return None
 
 
 def _open_dag_answer_text(outcome: Any) -> str:

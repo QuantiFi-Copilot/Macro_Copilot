@@ -138,7 +138,7 @@ def _assert_ycap_config_passed(call_args) -> None:
 
 
 # ===========================================================================
-# rates_agent/sovereign_bonds/mcp_server.py — yield_change_attribution_pca_tool
+# rates_agent/sovereign_bonds/mcp_server.py — calculate_yield_change_attribution_pca_tool
 # ===========================================================================
 
 class TestMcpYcapWrapper:
@@ -153,7 +153,7 @@ class TestMcpYcapWrapper:
             "calculate_yield_change_attribution_pca",
             return_value=_well_formed_ycap_output(),
         ) as mock_ycap:
-            output_json = mcp_module.yield_change_attribution_pca_tool(
+            output_json = mcp_module.calculate_yield_change_attribution_pca_tool(
                 curve_family="UST",
                 target_tenor="10Y",
                 start_date="2026-04-20",
@@ -172,7 +172,7 @@ class TestMcpYcapWrapper:
         from rates_agent.sovereign_bonds import mcp_server as mcp_module
         import typing
 
-        fn = mcp_module.yield_change_attribution_pca_tool
+        fn = mcp_module.calculate_yield_change_attribution_pca_tool
         underlying = getattr(fn, "fn", fn)
         underlying = getattr(underlying, "__wrapped__", underlying)
         hints = typing.get_type_hints(underlying)
@@ -218,7 +218,7 @@ class TestMcpYcapWrapper:
             "calculate_yield_change_attribution_pca",
             return_value=_well_formed_ycap_output(),
         ) as mock_compute:
-            mcp_module.yield_change_attribution_pca_tool(
+            mcp_module.calculate_yield_change_attribution_pca_tool(
                 curve_family="UST",
                 target_tenor="10Y",
                 start_date="2026-04-20",
@@ -242,7 +242,7 @@ class TestMcpYcapWrapper:
             "calculate_yield_change_attribution_pca",
             return_value=_well_formed_ycap_output(),
         ) as mock_compute:
-            mcp_module.yield_change_attribution_pca_tool(
+            mcp_module.calculate_yield_change_attribution_pca_tool(
                 curve_family="UST",
                 target_tenor="10Y",
                 start_date="2026-04-20",
@@ -254,7 +254,7 @@ class TestMcpYcapWrapper:
     def test_field_name_default_is_empty_string_sentinel(self):
         from rates_agent.sovereign_bonds import mcp_server as mcp_module
         import inspect
-        sig = inspect.signature(mcp_module.yield_change_attribution_pca_tool)
+        sig = inspect.signature(mcp_module.calculate_yield_change_attribution_pca_tool)
         default = sig.parameters["field_name"].default
         assert default == "", (
             f"MCP wrapper's field_name default must be '' (empty-"
@@ -272,7 +272,7 @@ class TestMcpYcapWrapper:
             "calculate_yield_change_attribution_pca",
             return_value=_well_formed_ycap_output(),
         ) as mock_compute:
-            mcp_module.yield_change_attribution_pca_tool(
+            mcp_module.calculate_yield_change_attribution_pca_tool(
                 curve_family="UST",
                 target_tenor="10Y",
                 start_date="2026-04-20",
@@ -295,7 +295,7 @@ class TestMcpYcapWrapper:
             "calculate_yield_change_attribution_pca",
             return_value=_well_formed_ycap_output(),
         ):
-            output_json = mcp_module.yield_change_attribution_pca_tool(
+            output_json = mcp_module.calculate_yield_change_attribution_pca_tool(
                 curve_family="UST", target_tenor="10Y",
                 start_date="2026-04-20", end_date="2026-04-30",
             )
@@ -360,7 +360,7 @@ class TestNestedMcpTransportExecution:
             }
             result = asyncio.run(
                 mcp_module.mcp.call_tool(
-                    "yield_change_attribution_pca_tool", args,
+                    "calculate_yield_change_attribution_pca_tool", args,
                 )
             )
         assert isinstance(result, tuple) and len(result) == 2
@@ -397,7 +397,7 @@ class TestNestedMcpTransportExecution:
             }
             result = asyncio.run(
                 mcp_module.mcp.call_tool(
-                    "yield_change_attribution_pca_tool", args,
+                    "calculate_yield_change_attribution_pca_tool", args,
                 )
             )
         assert isinstance(result, tuple)
@@ -422,7 +422,7 @@ class TestNestedMcpTransportExecution:
         }
         result = asyncio.run(
             mcp_module.mcp.call_tool(
-                "yield_change_attribution_pca_tool", args,
+                "calculate_yield_change_attribution_pca_tool", args,
             )
         )
         contents, _ = result

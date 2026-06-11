@@ -264,6 +264,7 @@ async def test_session_emit_workflow_events_persists_and_emits_slug(monkeypatch)
         template_id,
         bound_slot_values,
         parent_workspace_id,
+        run_audit=None,
     ):
         create_workspace_calls.append(
             {
@@ -273,6 +274,9 @@ async def test_session_emit_workflow_events_persists_and_emits_slug(monkeypatch)
                 "template_id": template_id,
                 "bound_slot_values": bound_slot_values,
                 "parent_workspace_id": parent_workspace_id,
+                # Phase D / D9 — the audit sidecar threaded from the
+                # PASS outcome (migration 0010).
+                "run_audit": run_audit,
             },
         )
         return _StubWorkspace()
@@ -364,6 +368,19 @@ async def test_session_emit_workflow_events_persists_and_emits_slug(monkeypatch)
     assert cw["focus_node"] == "summarize_terminal"
     assert cw["dag_hash"] == _StubPersisted.dag_hash
     assert cw["parent_workspace_id"] is None
+
+    # 5b'. Phase D / D9 — the audit sidecar is threaded from the PASS
+    # outcome: versioned shape carrying the IntentChain dump (the
+    # build page renders "what I understood / checked / fixed" from
+    # this).
+    audit = cw["run_audit"]
+    assert audit is not None, (
+        "Phase D: a PASS outcome with an IntentChain must persist a "
+        "run_audit sidecar"
+    )
+    assert audit["schema_version"] == 1
+    assert audit["intent_chain"]["gate"]["status"] == "PASS"
+    assert "recompose_trace" in audit
 
     # 5c. Emitted events: route_decision, status running, status
     #     complete, workflow_result — in this order.

@@ -2,7 +2,7 @@
 test_beta_adjusted_spread_wiring.py — Caller-wiring smoke tests.
 
 Two callers in this sprint:
-  1. rates_agent/sovereign_bonds/mcp_server.py::beta_adjusted_spread_tool
+  1. rates_agent/sovereign_bonds/mcp_server.py::calculate_beta_adjusted_spread_tool
   2. api/routes/rates/detail.py::beta_adjusted_spread_detail
      (/detail/beta-adjusted-spread)
 
@@ -193,7 +193,7 @@ class TestDetailBasEndpointWiring:
 
 
 # ===========================================================================
-# rates_agent/sovereign_bonds/mcp_server.py — beta_adjusted_spread_tool
+# rates_agent/sovereign_bonds/mcp_server.py — calculate_beta_adjusted_spread_tool
 # ===========================================================================
 
 class TestMcpBasWrapper:
@@ -208,7 +208,7 @@ class TestMcpBasWrapper:
             "calculate_beta_adjusted_spread",
             return_value=_well_formed_bas_output(),
         ) as mock_bas:
-            output_json = mcp_module.beta_adjusted_spread_tool(
+            output_json = mcp_module.calculate_beta_adjusted_spread_tool(
                 target_curve_family="IT_BTP", target_tenor="10Y",
                 regressor_curve_family="DE_BUND", regressor_tenor="10Y",
                 regression_window_days=252,
@@ -227,7 +227,7 @@ class TestMcpBasWrapper:
         from rates_agent.sovereign_bonds import mcp_server as mcp_module
         import typing
 
-        fn = mcp_module.beta_adjusted_spread_tool
+        fn = mcp_module.calculate_beta_adjusted_spread_tool
         underlying = getattr(fn, "fn", fn)
         underlying = getattr(underlying, "__wrapped__", underlying)
         hints = typing.get_type_hints(underlying)
@@ -244,7 +244,7 @@ class TestMcpBasWrapper:
     def test_field_name_default_is_empty_string_sentinel(self):
         from rates_agent.sovereign_bonds import mcp_server as mcp_module
         import inspect
-        sig = inspect.signature(mcp_module.beta_adjusted_spread_tool)
+        sig = inspect.signature(mcp_module.calculate_beta_adjusted_spread_tool)
         default = sig.parameters["field_name"].default
         assert default == ""
 
@@ -259,7 +259,7 @@ class TestMcpBasWrapper:
             "calculate_beta_adjusted_spread",
             return_value=_well_formed_bas_output(),
         ) as mock_bas:
-            mcp_module.beta_adjusted_spread_tool(
+            mcp_module.calculate_beta_adjusted_spread_tool(
                 target_curve_family="IT_BTP", target_tenor="10Y",
                 regressor_curve_family="DE_BUND", regressor_tenor="10Y",
                 regression_window_days=252,
@@ -279,7 +279,7 @@ class TestMcpBasWrapper:
             "calculate_beta_adjusted_spread",
             return_value=_well_formed_bas_output(),
         ) as mock_bas:
-            mcp_module.beta_adjusted_spread_tool(
+            mcp_module.calculate_beta_adjusted_spread_tool(
                 target_curve_family="IT_BTP", target_tenor="10Y",
                 regressor_curve_family="DE_BUND", regressor_tenor="10Y",
                 regression_window_days=252,
@@ -299,7 +299,7 @@ class TestMcpBasWrapper:
             "calculate_beta_adjusted_spread",
             return_value=_well_formed_bas_output(),
         ):
-            output_json = mcp_module.beta_adjusted_spread_tool(
+            output_json = mcp_module.calculate_beta_adjusted_spread_tool(
                 target_curve_family="IT_BTP", target_tenor="10Y",
                 regressor_curve_family="DE_BUND", regressor_tenor="10Y",
                 regression_window_days=252,

@@ -463,9 +463,9 @@ class TestWorkflowRegistration:
     def test_registered_in_rates_primitive_resolver(self):
         from rates_agent.workflows import rates_primitive_resolver
         spec = rates_primitive_resolver(
-            "scan_inflation_swaps_extremes_tool"
+            "get_scan_inflation_swaps_extremes_tool"
         )
-        assert spec.tool_name == "scan_inflation_swaps_extremes_tool"
+        assert spec.tool_name == "get_scan_inflation_swaps_extremes_tool"
         assert spec.config_path == (
             SCAN_INFLATION_SWAPS_EXTREMES_CONFIG_PATH
         )
@@ -480,7 +480,7 @@ class TestWorkflowRegistration:
         as the linker / bond_futures scanner."""
         from rates_agent.workflows import rates_primitive_resolver
         spec = rates_primitive_resolver(
-            "scan_inflation_swaps_extremes_tool"
+            "get_scan_inflation_swaps_extremes_tool"
         )
         assert spec.output_field_units == {}
 
@@ -491,7 +491,7 @@ class TestWorkflowRegistration:
             ScanInflationSwapsExtremesOutput,
         )
         spec = rates_primitive_resolver(
-            "scan_inflation_swaps_extremes_tool"
+            "get_scan_inflation_swaps_extremes_tool"
         )
         assert spec.input_class is ScanInflationSwapsExtremesInput
         assert spec.output_class is ScanInflationSwapsExtremesOutput

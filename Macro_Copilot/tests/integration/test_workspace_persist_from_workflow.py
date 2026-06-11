@@ -386,6 +386,12 @@ def test_runner_envelope_carries_workspace_when_persist_succeeds(
         object_storage=storage,
         workspace_name="envelope test",
         workspace_created_by="pytest",
+        # R5.6 forkability guard: template_id and bound_slot_values must
+        # be set together.  The production caller
+        # (``run_template_with_resolver``) always passes
+        # ``bound_slot_values=dict(slot_values or {})`` alongside the
+        # template_id — mirror that here.
+        bound_slot_values={"curve_family": "UST", "tenor": "10Y"},
     )
 
     assert persistence["ok"] is True

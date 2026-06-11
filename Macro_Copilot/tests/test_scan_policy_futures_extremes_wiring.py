@@ -501,10 +501,10 @@ class TestWorkflowRegistration:
     def test_registered_in_rates_primitive_resolver(self):
         from rates_agent.workflows import rates_primitive_resolver
         spec = rates_primitive_resolver(
-            "get_scan_policy_futures_extremes_tool",
+            "policy_futures_get_scan_policy_futures_extremes_tool",
         )
         assert (
-            spec.tool_name == "get_scan_policy_futures_extremes_tool"
+            spec.tool_name == "policy_futures_get_scan_policy_futures_extremes_tool"
         )
         assert (
             spec.config_path
@@ -521,7 +521,7 @@ class TestWorkflowRegistration:
         futures_strip_snapshot."""
         from rates_agent.workflows import rates_primitive_resolver
         spec = rates_primitive_resolver(
-            "get_scan_policy_futures_extremes_tool",
+            "policy_futures_get_scan_policy_futures_extremes_tool",
         )
         assert spec.output_field_units == {}
 
@@ -532,7 +532,7 @@ class TestWorkflowRegistration:
             ScanPolicyFuturesExtremesOutput,
         )
         spec = rates_primitive_resolver(
-            "get_scan_policy_futures_extremes_tool",
+            "policy_futures_get_scan_policy_futures_extremes_tool",
         )
         assert spec.input_class is ScanPolicyFuturesExtremesInput
         assert spec.output_class is ScanPolicyFuturesExtremesOutput

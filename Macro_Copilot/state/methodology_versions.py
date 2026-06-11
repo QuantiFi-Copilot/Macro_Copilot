@@ -93,9 +93,15 @@ _GIT_SHA_LEN = 40
 
 # Sentinel used when the current process has no resolvable git
 # commit (running outside a checkout, or no ``git`` binary on PATH).
-# The sentinel is hex-encoded so it still satisfies the
-# ``length(git_commit) = 40`` CHECK constraint.
-_UNKNOWN_COMMIT_SENTINEL = "u" * _GIT_SHA_LEN
+# We use git's all-zeros "null OID" — it is 40 hex chars, so it
+# passes both ``_looks_like_sha`` (the application-layer gate in
+# ``register_application_version``) and the DB's
+# ``length(git_commit) = 40`` CHECK constraint, while being
+# impossible as a real commit SHA.  (The previous value, "u" * 40,
+# was NOT hex and made ``current_application_version_id`` raise on
+# every process without a checkout — artifacts were silently left
+# with a NULL application_version_id.)
+_UNKNOWN_COMMIT_SENTINEL = "0" * _GIT_SHA_LEN
 
 
 # ============================================================================

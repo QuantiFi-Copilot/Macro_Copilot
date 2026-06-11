@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import AsyncIterator
 
 import pytest
+import pytest_asyncio
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -64,13 +65,23 @@ _DSN = _build_dsn()
 _DB_AVAILABLE = _postgres_reachable(_DSN)
 
 
-pytestmark = pytest.mark.skipif(
-    not _DB_AVAILABLE,
-    reason=(
-        f"Postgres not reachable at {_DSN!r}.  Set DB_USER / DB_PASSWORD "
-        "/ DB_HOST / DB_PORT / DB_NAME, or run the CI migrations job."
+# NOTE on the explicit ``asyncio`` mark: the project-wide pytest.ini
+# (repo root) sets ``asyncio_mode = auto``, but this suite is also run
+# from inside the api-server container with ``cd /app`` where that ini
+# is not on pytest's config-discovery path — pytest-asyncio then falls
+# back to strict mode.  The explicit marker (and the
+# ``@pytest_asyncio.fixture`` decorator below) make the module
+# self-sufficient under both modes.
+pytestmark = [
+    pytest.mark.asyncio,
+    pytest.mark.skipif(
+        not _DB_AVAILABLE,
+        reason=(
+            f"Postgres not reachable at {_DSN!r}.  Set DB_USER / DB_PASSWORD "
+            "/ DB_HOST / DB_PORT / DB_NAME, or run the CI migrations job."
+        ),
     ),
-)
+]
 
 
 # ============================================================================
@@ -117,7 +128,7 @@ async def _make_pool(*, dsn: str = _DSN):
     return pool
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def fresh_pool() -> AsyncIterator:
     """Per-test pool against a freshly-wiped langgraph_checkpoint schema."""
     await _wipe_langgraph_schema(_DSN)

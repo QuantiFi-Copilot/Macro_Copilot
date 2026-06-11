@@ -551,9 +551,14 @@ def _persist_executed_workflow(
     ``bound_slot_values`` is the dict the user / LLM passed to
     ``template.bind()``.  Persisted on the workspace row so the
     fork-with-overrides endpoint can re-bind with a patch.  When
-    None (legacy / synthetic callers), the workspace is created
-    with NULL ``bound_slot_values`` and the fork affordance stays
-    disabled.
+    None, persistence fails the R5.6 pairing guard if
+    ``template_id`` is set (``create_workspace`` raises and the
+    envelope carries ``persistence.ok=False``) — callers that
+    persist a template run must pass the bound dict
+    (``run_template_with_resolver`` passes
+    ``dict(slot_values or {})``).  Open-DAG persists with
+    ``template_id=None`` + ``bound_slot_values=None``, which the
+    guard permits.
 
     ``parent_workspace_id`` lets a fork pass through its parent
     linkage at create time.  ``None`` for top-level workspaces.

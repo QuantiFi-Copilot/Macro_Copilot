@@ -50,7 +50,7 @@ def _make_session_for_test() -> DomainAgentSession:
     ``self._is_open``, and ``self.domain``, so the heavy lifecycle
     methods (``open()`` / ``close()``) aren't needed for this test."""
     session = DomainAgentSession(
-        domain=Domain.RATES,
+        domain=Domain.SOVEREIGN_BONDS,
         system_prompt="(stubbed)",
         mcp_servers={},
         model_name="claude-test-model",

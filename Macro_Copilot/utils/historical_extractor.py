@@ -497,9 +497,15 @@ def _extract_underlying_tickers_from_chain(
             if tickers:
                 return tickers
 
-    # Last-resort fall-back: first string-valued column.
+    # Last-resort fall-back: first string-valued column.  ``dtype ==
+    # object`` alone misses modern pandas (>=3.0 / 2.x with string
+    # inference), where string columns carry the dedicated ``str``
+    # dtype rather than ``object`` — use the dtype-level helper that
+    # covers both.
+    from pandas.api.types import is_object_dtype, is_string_dtype
+
     for col in chain_df.columns:
-        if chain_df[col].dtype == object:
+        if is_string_dtype(chain_df[col]) or is_object_dtype(chain_df[col]):
             tickers = [str(v).strip() for v in chain_df[col].dropna().tolist() if str(v).strip()]
             if tickers:
                 return tickers

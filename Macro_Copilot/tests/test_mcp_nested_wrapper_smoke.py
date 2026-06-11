@@ -22,7 +22,7 @@ wrapper).
 What this test pins
 -------------------
 A. Schema generation — registration + introspection:
-   1. ``rolling_regression_tool`` is registered on the MCP server.
+   1. ``calculate_rolling_regression_tool`` is registered on the MCP server.
    2. Its inputSchema is a well-formed JSON-Schema object with
       nested ``$defs`` for SeriesSpec.
    3. The schema correctly types target_spec as a SeriesSpec ref
@@ -80,8 +80,8 @@ def _find_tool(tools, name: str):
 class TestNestedInputToolRegistered:
     def test_rolling_regression_tool_present(self):
         tools = _list_mcp_tools_sync()
-        tool = _find_tool(tools, "rolling_regression_tool")
-        assert tool.name == "rolling_regression_tool"
+        tool = _find_tool(tools, "calculate_rolling_regression_tool")
+        assert tool.name == "calculate_rolling_regression_tool"
         # FastMCP populates a description from the docstring.
         assert tool.description, "rolling_regression_tool has no description"
 
@@ -93,7 +93,7 @@ class TestNestedInputToolRegistered:
 class TestNestedSchemaShape:
     def test_schema_has_seriesspec_def(self):
         tools = _list_mcp_tools_sync()
-        tool = _find_tool(tools, "rolling_regression_tool")
+        tool = _find_tool(tools, "calculate_rolling_regression_tool")
         schema = tool.inputSchema
         assert isinstance(schema, dict)
         assert schema.get("type") == "object"
@@ -115,7 +115,7 @@ class TestNestedSchemaShape:
 
     def test_target_spec_is_seriesspec_ref(self):
         tools = _list_mcp_tools_sync()
-        tool = _find_tool(tools, "rolling_regression_tool")
+        tool = _find_tool(tools, "calculate_rolling_regression_tool")
         schema = tool.inputSchema
         target_prop = schema["properties"]["target_spec"]
         # Pydantic v2 emits {'$ref': '#/$defs/SeriesSpec'} for nested
@@ -126,7 +126,7 @@ class TestNestedSchemaShape:
 
     def test_regressor_specs_is_array_of_seriesspec(self):
         tools = _list_mcp_tools_sync()
-        tool = _find_tool(tools, "rolling_regression_tool")
+        tool = _find_tool(tools, "calculate_rolling_regression_tool")
         schema = tool.inputSchema
         regressor_prop = schema["properties"]["regressor_specs"]
         assert regressor_prop.get("type") == "array"
@@ -137,7 +137,7 @@ class TestNestedSchemaShape:
 
     def test_central_knob_is_required_integer(self):
         tools = _list_mcp_tools_sync()
-        tool = _find_tool(tools, "rolling_regression_tool")
+        tool = _find_tool(tools, "calculate_rolling_regression_tool")
         schema = tool.inputSchema
         # regression_window_days must be present, integer, required.
         prop = schema["properties"]["regression_window_days"]
@@ -150,7 +150,7 @@ class TestNestedSchemaShape:
 
     def test_top_level_required_set(self):
         tools = _list_mcp_tools_sync()
-        tool = _find_tool(tools, "rolling_regression_tool")
+        tool = _find_tool(tools, "calculate_rolling_regression_tool")
         schema = tool.inputSchema
         required = set(schema.get("required", []))
         # target_spec, regressor_specs, regression_window_days are
@@ -171,7 +171,7 @@ class TestFlatToolsStillFlat:
 
     def test_zscore_custom_schema_is_flat(self):
         tools = _list_mcp_tools_sync()
-        tool = _find_tool(tools, "zscore_custom_tool")
+        tool = _find_tool(tools, "calculate_zscore_custom_tool")
         schema = tool.inputSchema
         # No $defs needed — every property is a primitive type.
         # (Pydantic may still emit an empty $defs; check property types.)
@@ -281,7 +281,7 @@ class TestTransportExecution:
                 "lookback_days": 365,
             }
             result = asyncio.run(
-                mcp_module.mcp.call_tool("rolling_regression_tool", args)
+                mcp_module.mcp.call_tool("calculate_rolling_regression_tool", args)
             )
 
         # FastMCP's call_tool returns (list[TextContent], dict).
@@ -325,7 +325,7 @@ class TestTransportExecution:
         # the user-facing surface the LLM client sees.
         with pytest.raises(Exception) as exc_info:
             asyncio.run(
-                mcp_module.mcp.call_tool("rolling_regression_tool", args)
+                mcp_module.mcp.call_tool("calculate_rolling_regression_tool", args)
             )
         msg = str(exc_info.value)
         assert "tenor" in msg.lower(), (

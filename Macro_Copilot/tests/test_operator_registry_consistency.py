@@ -49,6 +49,7 @@ from shared.workflow.slots import OutputDescriptor, SlotDescriptor
 # The full OPR16 conformance gate runs over this set; Step 3 grew it
 # from {correlation} to include the 8 migrated finance-blind operators.
 _V2_CONFORMANT = {
+    "beta",
     "cointegration",
     "correlation",
     "covariance",
@@ -242,6 +243,7 @@ def test_v2_operator_conforms(name):
 # still be present).  correlation is strict-always by design (no opt-out).
 _MULTI_ARTIFACT_OPS = {
     "align_series",
+    "beta",
     "covariance",
     "regression_residual",
     "rolling_covariance",

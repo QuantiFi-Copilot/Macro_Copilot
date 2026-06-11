@@ -54,9 +54,47 @@ import pytest
 # conftest.py at Macro_Copilot/tests/ already inserts Macro_Copilot/ into
 # sys.path; this is a belt-and-braces add-on.
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_WORKTREE_ROOT = _PROJECT_ROOT.parent  # contains alembic.ini + migrations/
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
+
+
+def _resolve_worktree_root() -> Path | None:
+    """Locate the directory containing ``alembic.ini`` + ``migrations/``.
+
+    On the host the Alembic config lives ONE level above the project
+    (``<repo-root>/alembic.ini`` next to ``<repo-root>/Macro_Copilot/``),
+    so walking this file's parents finds it.  Inside the api-server
+    container, however, the project is mounted at ``/app`` and the repo
+    root at ``/repo-root`` (see docker-compose.yml: ``.:/app`` +
+    ``..:/repo-root``) — they are NOT parent/child there, which is why
+    a naive ``parents[N]`` walk used to resolve to ``/alembic.ini``.
+
+    Resolution order (first hit wins):
+
+    1. ``MACRO_REPO_ROOT`` env var — explicit override for CI or
+       unusual layouts.
+    2. Parents of this test file (host checkouts).
+    3. CWD and its parents (pytest invoked from elsewhere on host).
+    4. ``/repo-root`` — the docker-compose container mount.
+
+    Returns ``None`` when no candidate contains both ``alembic.ini``
+    and a ``migrations/`` directory.
+    """
+    candidates: list[Path] = []
+    env_root = os.getenv("MACRO_REPO_ROOT")
+    if env_root:
+        candidates.append(Path(env_root))
+    candidates.extend(Path(__file__).resolve().parents)
+    cwd = Path.cwd().resolve()
+    candidates.extend([cwd, *cwd.parents])
+    candidates.append(Path("/repo-root"))
+    for cand in candidates:
+        if (cand / "alembic.ini").is_file() and (cand / "migrations").is_dir():
+            return cand
+    return None
+
+
+_WORKTREE_ROOT = _resolve_worktree_root()  # contains alembic.ini + migrations/
 
 
 # Expected table names in the copilot_state schema after `upgrade head`.
@@ -142,6 +180,39 @@ pytestmark = pytest.mark.skipif(
 # ============================================================================
 
 
+@pytest.fixture(scope="module", autouse=True)
+def restore_schema_to_head() -> Iterator[None]:
+    """Guarantee the real ``copilot_state`` schema is rebuilt after this
+    module runs — even when individual tests fail mid-migration.
+
+    These tests intentionally DROP and rebuild ``copilot_state`` (see
+    ``clean_schema``).  A run that ended on a failing test used to
+    leave the schema dropped (or at ``downgrade base``), which cascaded
+    hundreds of errors across every other suite that reads
+    ``copilot_state.*``.  This module-scoped finalizer runs
+    ``alembic upgrade head`` exactly once after the last test in the
+    module, pass or fail — pytest executes fixture finalizers even when
+    tests raise.
+
+    If the restore itself fails it raises (reported as a teardown
+    error): a silently-broken schema is precisely the failure mode this
+    fixture exists to prevent.
+    """
+    yield
+    if _WORKTREE_ROOT is None:
+        # alembic.ini was never found, so ``alembic_config`` failed at
+        # setup and ``clean_schema`` (function-scoped, set up after the
+        # module-scoped config) never dropped anything.  No restore
+        # needed — and none is possible without the config.
+        return
+    from alembic import command
+    from alembic.config import Config
+
+    cfg = Config(str(_WORKTREE_ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(_WORKTREE_ROOT / "migrations"))
+    command.upgrade(cfg, "head")
+
+
 @pytest.fixture(scope="module")
 def alembic_config():
     """Build an Alembic ``Config`` rooted at the worktree's ``alembic.ini``
@@ -154,14 +225,16 @@ def alembic_config():
     """
     from alembic.config import Config
 
-    ini_path = _WORKTREE_ROOT / "alembic.ini"
-    if not ini_path.exists():
+    if _WORKTREE_ROOT is None:
         pytest.fail(
-            f"alembic.ini not found at {ini_path}.  Tests must run from a "
-            "checkout where the worktree root contains the alembic.ini "
-            "file (Phase 0 PR 4 introduced it)."
+            "alembic.ini + migrations/ not found.  Looked in "
+            "$MACRO_REPO_ROOT, the parents of this test file, the CWD "
+            "and its parents, and /repo-root (the docker-compose "
+            "container mount).  Tests must run from a checkout whose "
+            "repo root contains alembic.ini (Phase 0 PR 4 introduced "
+            "it), or set MACRO_REPO_ROOT to that directory."
         )
-    cfg = Config(str(ini_path))
+    cfg = Config(str(_WORKTREE_ROOT / "alembic.ini"))
     cfg.set_main_option("script_location", str(_WORKTREE_ROOT / "migrations"))
     return cfg
 
@@ -188,8 +261,10 @@ def clean_schema() -> Iterator[None]:
         )
     engine.dispose()
     yield
-    # No teardown — tests are responsible for leaving the DB in whatever
-    # state they want.  Subsequent tests reset via this same fixture.
+    # No per-test teardown — subsequent tests reset via this same
+    # fixture, and the module-scoped ``restore_schema_to_head``
+    # finalizer rebuilds the schema (``alembic upgrade head``) after the
+    # last test, even when tests fail.
 
 
 def _table_names_in_schema(schema: str) -> set[str]:
@@ -259,14 +334,15 @@ class TestUpgradeHead:
         finally:
             engine.dispose()
 
-        # Latest head is the workspaces bound_slot_values + template_id
-        # extension (0009, Phase 3 PR B — adds the columns the Build
-        # surface's fork-with-overrides endpoint needs).
+        # Latest head is the workspaces run_audit sidecar (0010,
+        # orchestration-upgrade Phase D / D9 — the non-hashed
+        # intent-audit blob the build page renders "what I understood /
+        # checked / fixed" from).
         # Chains: 0001 -> 0002 -> 0003 -> 0004 -> 0005 -> 0006 -> 0007 ->
-        #         0008 -> 0009.
-        assert version == "0009_workspace_bound_slot_values", (
+        #         0008 -> 0009 -> 0010.
+        assert version == "0010_workspace_run_audit", (
             f"Expected alembic_version to point at "
-            f"0009_workspace_bound_slot_values, got {version!r}.  "
+            f"0010_workspace_run_audit, got {version!r}.  "
             "Either a new migration landed without updating this test, "
             "or the head chain is broken."
         )
@@ -498,15 +574,29 @@ class TestSchemaInvariants:
     ) -> None:
         """``alembic_version`` is created inside ``copilot_state``, not
         in the default ``public`` schema.  This co-locates all of this
-        layer's metadata with its tables."""
+        layer's metadata with its tables.
+
+        NOTE: the shared dev database (``macrodata``) is multi-tenant —
+        Superset's own Alembic manages a ``public.alembic_version``
+        table there (see docker/superset_config.py pointing its
+        metadata DB at the same Postgres).  The invariant under test is
+        therefore NOT "public has no alembic_version table" but rather
+        "OUR migration run neither creates that table nor writes our
+        revision ids into it".
+        """
         from alembic import command
+        from alembic.script import ScriptDirectory
+        from sqlalchemy import create_engine, text
+
+        in_public_before = "alembic_version" in _table_names_in_schema(
+            "public"
+        )
 
         command.upgrade(alembic_config, "head")
 
-        # If alembic_version were in public, EXPECTED_TABLES_AFTER_UPGRADE
-        # would not include it (we'd look for it elsewhere), but
-        # explicitly check it's NOT in public.
-        in_public = "alembic_version" in _table_names_in_schema("public")
+        in_public_after = "alembic_version" in _table_names_in_schema(
+            "public"
+        )
         in_copilot_state = "alembic_version" in _table_names_in_schema(
             COPILOT_STATE_SCHEMA
         )
@@ -514,7 +604,41 @@ class TestSchemaInvariants:
             "alembic_version is not in copilot_state — the env.py "
             "version_table_schema config is not being applied."
         )
-        assert not in_public, (
-            "alembic_version ended up in public — this would pollute the "
-            "shared default schema."
+        assert in_public_after == in_public_before, (
+            "alembic upgrade head CREATED public.alembic_version — this "
+            "pollutes the shared default schema; the env.py "
+            "version_table_schema config is not being applied."
         )
+
+        if in_public_after:
+            # A foreign app (e.g. Superset) owns public.alembic_version
+            # in the shared dev DB.  Verify none of OUR revision ids
+            # were written into it — that would mean our env.py tracked
+            # this project's migrations in the wrong schema.
+            our_revisions = {
+                rev.revision
+                for rev in ScriptDirectory.from_config(
+                    alembic_config
+                ).walk_revisions()
+            }
+            engine = create_engine(_DB_URL)
+            try:
+                with engine.connect() as conn:
+                    public_rows = {
+                        row[0]
+                        for row in conn.execute(
+                            text(
+                                "SELECT version_num FROM "
+                                "public.alembic_version"
+                            )
+                        ).fetchall()
+                    }
+            finally:
+                engine.dispose()
+            leaked = public_rows & our_revisions
+            assert not leaked, (
+                f"This project's revision ids {sorted(leaked)} appear in "
+                "public.alembic_version — our migrations are being "
+                "version-tracked in the shared public schema instead of "
+                "copilot_state."
+            )

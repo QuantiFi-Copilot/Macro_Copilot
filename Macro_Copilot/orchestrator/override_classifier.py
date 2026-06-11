@@ -77,6 +77,16 @@ _DAY_COUNT_PATTERN = re.compile(
 # without LLM grounding).  Listed here for completeness; returns empty.
 
 # 4. "use a <N>-day window" / "with a <N>-day rolling"
+#
+# The context word (window / rolling / lookback / z-score) is REQUIRED.
+# It used to be an optional trailing group, but a lazy gap
+# (``.{0,20}?``) followed by an optional group means the regex engine
+# succeeds immediately with the group unmatched — ``group(2)`` was
+# ALWAYS None, so the handler's "no context word → drop" branch fired
+# on every match and pattern 4 never produced an override.  Requiring
+# the group is behaviour-preserving for the no-context case (those
+# matches were dropped anyway) and makes the documented contexts
+# actually classify.
 _INLINE_WINDOW_PATTERN = re.compile(
     r"""
     \b(?:use|with)\b
@@ -85,7 +95,7 @@ _INLINE_WINDOW_PATTERN = re.compile(
     \s*[-]?
     \s*(?:day|d)\b
     .{0,20}?
-    \b(window|rolling|lookback|z[-\s]?score)?
+    \b(window|rolling|lookback|z[-\s]?score)\b
     """,
     re.IGNORECASE | re.VERBOSE,
 )

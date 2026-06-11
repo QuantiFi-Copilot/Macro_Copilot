@@ -355,7 +355,10 @@ def group_rows_by_vendor_ticker(
     grouped: Dict[str, List[Dict[str, Any]]] = {}
     for raw in df.to_dict(orient="records"):
         vt = raw.get("vendor_ticker")
-        if not vt:
+        # ``not vt`` alone is insufficient: pandas surfaces missing
+        # cells as float NaN, which is truthy and would otherwise be
+        # grouped under the key 'nan' — poisoning the overlap gate.
+        if not vt or (isinstance(vt, float) and pd.isna(vt)):
             continue
         grouped.setdefault(str(vt), []).append(raw)
     return grouped

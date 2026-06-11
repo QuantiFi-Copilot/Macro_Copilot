@@ -125,6 +125,13 @@ class WorkspaceRecord:
     updated_at: datetime
     template_id: Optional[str] = None
     bound_slot_values: Optional[Dict[str, Any]] = None
+    # Phase D / D9 — the open-DAG intent-audit sidecar (migration
+    # 0010).  Non-hashed metadata: the IntentChain +
+    # expected_answer_shape + recompose_trace captured at persist time
+    # so the build page can render "what I understood / checked /
+    # fixed".  None on pre-audit rows and on lanes without an
+    # IntentChain (template / direct-fetch).
+    run_audit: Optional[Dict[str, Any]] = None
 
 
 @dataclass(frozen=True)
@@ -259,6 +266,7 @@ def create_workspace(
     template_id: Optional[str] = None,
     bound_slot_values: Optional[Dict[str, Any]] = None,
     parent_workspace_id: Optional[uuid.UUID] = None,
+    run_audit: Optional[Dict[str, Any]] = None,
 ) -> WorkspaceRecord:
     """Create a workspace pointing at ``dag_hash``.
 
@@ -310,18 +318,20 @@ def create_workspace(
             f"""
             INSERT INTO {_COPILOT_STATE_SCHEMA}.workspaces (
                 id, slug, name, dag_hash, focus_node, created_by,
-                template_id, bound_slot_values, parent_workspace_id
+                template_id, bound_slot_values, parent_workspace_id,
+                run_audit
             )
             VALUES (
                 :id, :slug, :name, :dag_hash, :focus_node, :created_by,
                 :template_id,
                 CAST(:bound_slot_values AS JSONB),
-                :parent_workspace_id
+                :parent_workspace_id,
+                CAST(:run_audit AS JSONB)
             )
             RETURNING id, slug, name, dag_hash, focus_node,
                       parent_workspace_id, schema_version, created_by,
                       created_at, updated_at, template_id,
-                      bound_slot_values
+                      bound_slot_values, run_audit
             """
         ),
         {
@@ -338,6 +348,10 @@ def create_workspace(
                 else None
             ),
             "parent_workspace_id": parent_workspace_id,
+            # Phase D / D9 — non-hashed audit sidecar (migration 0010).
+            "run_audit": (
+                json.dumps(run_audit) if run_audit is not None else None
+            ),
         },
     ).mappings().one()
 
@@ -361,7 +375,7 @@ def get_workspace(
             SELECT id, slug, name, dag_hash, focus_node,
                    parent_workspace_id, schema_version, created_by,
                    created_at, updated_at, template_id,
-                   bound_slot_values
+                   bound_slot_values, run_audit
             FROM {_COPILOT_STATE_SCHEMA}.workspaces
             WHERE id = :id
             """
@@ -395,7 +409,7 @@ def get_workspace_by_slug(
             SELECT id, slug, name, dag_hash, focus_node,
                    parent_workspace_id, schema_version, created_by,
                    created_at, updated_at, template_id,
-                   bound_slot_values
+                   bound_slot_values, run_audit
             FROM {_COPILOT_STATE_SCHEMA}.workspaces
             WHERE slug = :slug
             """
@@ -432,7 +446,7 @@ def rename_workspace(
             RETURNING id, slug, name, dag_hash, focus_node,
                       parent_workspace_id, schema_version, created_by,
                       created_at, updated_at, template_id,
-                      bound_slot_values
+                      bound_slot_values, run_audit
             """
         ),
         {"id": workspace_id, "name": new_name},
@@ -493,7 +507,7 @@ def fork_workspace(
             RETURNING id, slug, name, dag_hash, focus_node,
                       parent_workspace_id, schema_version, created_by,
                       created_at, updated_at, template_id,
-                      bound_slot_values
+                      bound_slot_values, run_audit
             """
         ),
         {
@@ -640,7 +654,7 @@ def list_workspaces(
             SELECT id, slug, name, dag_hash, focus_node,
                    parent_workspace_id, schema_version, created_by,
                    created_at, updated_at, template_id,
-                   bound_slot_values
+                   bound_slot_values, run_audit
             FROM {_COPILOT_STATE_SCHEMA}.workspaces
             {where_clause}
             ORDER BY {order_clause}, id DESC
@@ -712,6 +726,13 @@ def _row_to_record(row) -> WorkspaceRecord:
                 row["bound_slot_values"]
                 if "bound_slot_values" in row
                 else None
+            )
+        ),
+        # Phase D / D9 — nullable audit sidecar (migration 0010); same
+        # tolerant access as the PR-B columns for hand-crafted rows.
+        run_audit=(
+            row.get("run_audit") if hasattr(row, "get") else (
+                row["run_audit"] if "run_audit" in row else None
             )
         ),
     )

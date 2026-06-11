@@ -57,7 +57,7 @@ class TestEventOffsetPreview:
                 },
             },
         }
-        idx, vals = _extract_preview(inline_payload)
+        idx, vals = _extract_preview(inline_payload, max_points=16)
         assert idx == ["Day 0", "Day +1"]
         assert vals == [0.0, -0.06]
 
@@ -73,7 +73,7 @@ class TestEventOffsetPreview:
                 "values": [50.4, 51.1],
             },
         }
-        idx, vals = _extract_preview(inline_payload)
+        idx, vals = _extract_preview(inline_payload, max_points=16)
         assert idx == ["2024-01-02", "2024-01-03"]
         assert vals == [50.4, 51.1]
 
@@ -89,7 +89,7 @@ class TestEventOffsetPreview:
                 "mask_values": [True, False],
             },
         }
-        idx, vals = _extract_preview(inline_payload)
+        idx, vals = _extract_preview(inline_payload, max_points=16)
         assert idx == ["2024-01-02", "2024-01-03"]
         assert vals == [1.0, 0.0]
 
@@ -221,12 +221,25 @@ class TestSupervisorPersistenceHelper:
 
     def test_helper_returns_none_for_non_workspace_tool(self):
         """When the tool isn't workspace-eligible, the helper returns
-        None without hitting the persistence pipeline."""
+        None without hitting the persistence pipeline.
+
+        Note: the workspace-tools set is derived from the live
+        ``_PRIMITIVE_SPECS`` registry, which GROWS over time — a real
+        tool name used here (this test originally used
+        ``get_yield_levels_tool``) eventually becomes workspace-eligible
+        and the test silently changes meaning.  Use a name that can
+        never be registered, and assert that premise explicitly."""
+        from orchestrator.events import is_workspace_tool
         from orchestrator.supervisor_persistence import (
             persist_supervisor_workspace_from_tool_call,
         )
+
+        tool_name = "definitely_not_a_workspace_tool"
+        assert not is_workspace_tool(tool_name), (
+            "test premise broken: chosen tool name is workspace-eligible"
+        )
         result = persist_supervisor_workspace_from_tool_call(
-            tool_name="get_yield_levels_tool",  # not in workspace set
+            tool_name=tool_name,
             params={},
             tool_output={},
             conn=None,  # type: ignore[arg-type]

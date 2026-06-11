@@ -178,6 +178,12 @@ def resolver_factory(monkeypatch):
     return _make
 
 
+# Explicit asyncio marker: the repo-root pytest.ini sets
+# ``asyncio_mode = auto``, but container runs invoke pytest from the
+# Macro_Copilot directory (/app), where that ini is not on the config-
+# discovery path — pytest-asyncio then runs in strict mode and skips
+# unmarked async tests.  The explicit marker works in both modes.
+@pytest.mark.asyncio
 class TestResolverCall:
     async def test_returns_resolved_structure(self, resolver_factory):
         resp = ReferenceResolution(

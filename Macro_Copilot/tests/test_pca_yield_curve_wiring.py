@@ -276,7 +276,7 @@ class TestDetailPcaEndpointWiring:
 
 
 # ===========================================================================
-# rates_agent/sovereign_bonds/mcp_server.py — pca_yield_curve_tool
+# rates_agent/sovereign_bonds/mcp_server.py — calculate_pca_yield_curve_tool
 # ===========================================================================
 
 class TestMcpPcaWrapper:
@@ -291,7 +291,7 @@ class TestMcpPcaWrapper:
             "calculate_pca_yield_curve",
             return_value=_well_formed_pca_output(),
         ) as mock_pca:
-            output_json = mcp_module.pca_yield_curve_tool(
+            output_json = mcp_module.calculate_pca_yield_curve_tool(
                 curve_family="UST",
                 tenors=None,
                 lookback_days=1825,
@@ -307,14 +307,14 @@ class TestMcpPcaWrapper:
     def test_field_name_default_is_empty_string_sentinel(self):
         from rates_agent.sovereign_bonds import mcp_server as mcp_module
         import inspect
-        sig = inspect.signature(mcp_module.pca_yield_curve_tool)
+        sig = inspect.signature(mcp_module.calculate_pca_yield_curve_tool)
         default = sig.parameters["field_name"].default
         assert default == ""
 
     def test_change_frequency_annotation_is_literal(self):
         from rates_agent.sovereign_bonds import mcp_server as mcp_module
 
-        hint = get_type_hints(mcp_module.pca_yield_curve_tool)["change_frequency"]
+        hint = get_type_hints(mcp_module.calculate_pca_yield_curve_tool)["change_frequency"]
         assert get_origin(hint) is Literal
         assert get_args(hint) == ("daily", "weekly")
 
@@ -329,7 +329,7 @@ class TestMcpPcaWrapper:
             "calculate_pca_yield_curve",
             return_value=_well_formed_pca_output(),
         ) as mock_pca:
-            mcp_module.pca_yield_curve_tool(
+            mcp_module.calculate_pca_yield_curve_tool(
                 curve_family="UST",
             )
         params = mock_pca.call_args.kwargs["params"]
@@ -348,7 +348,7 @@ class TestMcpPcaWrapper:
             "calculate_pca_yield_curve",
             return_value=_well_formed_pca_output(),
         ) as mock_pca:
-            mcp_module.pca_yield_curve_tool(
+            mcp_module.calculate_pca_yield_curve_tool(
                 curve_family="UST",
                 field_name="YLD_BID",
             )
@@ -366,7 +366,7 @@ class TestMcpPcaWrapper:
             "calculate_pca_yield_curve",
             return_value=_well_formed_pca_output(),
         ) as mock_pca:
-            mcp_module.pca_yield_curve_tool(
+            mcp_module.calculate_pca_yield_curve_tool(
                 curve_family="UST",
                 tenors=["2Y", "10Y", "30Y"],
             )
@@ -386,7 +386,7 @@ class TestMcpPcaWrapper:
             "calculate_pca_yield_curve",
             return_value=_well_formed_pca_output(),
         ):
-            output_json = mcp_module.pca_yield_curve_tool(
+            output_json = mcp_module.calculate_pca_yield_curve_tool(
                 curve_family="UST",
             )
         parsed = json.loads(output_json)

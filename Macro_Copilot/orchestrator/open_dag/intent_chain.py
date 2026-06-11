@@ -242,8 +242,9 @@ class ComposerIntentRecord(BaseModel):
     Two modes:
       - ``refusal is None``: the Composer emitted a ShapeSpec.  The
         record carries the terminal operator name + the list of
-        operator names in shape topology (sorted by node_id for
-        stability).
+        operator names in TOPOLOGICAL EXECUTION ORDER (deterministic
+        Kahn walk, ties broken by node_id — byte-stable, and the L6
+        "Wired:" line reads in the order the DAG executes).
       - ``refusal is set``: the Composer declined.  ``operator_names``
         is empty + ``terminal_operator_name`` is empty.
     """
@@ -275,8 +276,9 @@ class ComposerIntentRecord(BaseModel):
     operator_names: Tuple[str, ...] = Field(
         default_factory=tuple,
         description=(
-            "Every operator name in the shape, sorted by node_id for "
-            "stability.  Empty on refusal."
+            "Every operator name in the shape, in topological "
+            "execution order (deterministic; ties broken by node_id). "
+            "Empty on refusal."
         ),
     )
     refusal: Optional[str] = Field(
@@ -592,6 +594,54 @@ def _derive_composer_rationale(
     return f"Wired {workflow_id}: {chain}; terminal {terminal_desc}."
 
 
+def _topological_operator_names(
+    shape_or_workflow: Union[ShapeSpec, Workflow],
+) -> List[str]:
+    """Operator names in deterministic topological execution order.
+
+    Kahn's algorithm over ``nodes`` + ``edges``, with the ready set
+    kept as a min-heap on ``node_id`` so ties (parallel branches)
+    break lexicographically — identical graphs always produce the
+    identical tuple (byte-stable record), but the sequence now reads
+    in the order the executor runs the DAG (leaves → terminal), not
+    alphabetical node-id order.  Nodes left over after the walk (a
+    cycle would be rejected upstream by the workflow validator; this
+    is defensive) are appended in node_id order so the record never
+    silently drops an operator.
+    """
+    import heapq
+
+    nodes = shape_or_workflow.nodes
+    edges = getattr(shape_or_workflow, "edges", None) or []
+    indegree: Dict[str, int] = {n.node_id: 0 for n in nodes}
+    downstream: Dict[str, List[str]] = {n.node_id: [] for n in nodes}
+    for e in edges:
+        if e.source_node_id in downstream and e.target_node_id in indegree:
+            downstream[e.source_node_id].append(e.target_node_id)
+            indegree[e.target_node_id] += 1
+
+    ready = sorted(nid for nid, d in indegree.items() if d == 0)
+    heapq.heapify(ready)
+    order: List[str] = []
+    while ready:
+        nid = heapq.heappop(ready)
+        order.append(nid)
+        for target in downstream[nid]:
+            indegree[target] -= 1
+            if indegree[target] == 0:
+                heapq.heappush(ready, target)
+    if len(order) < len(nodes):  # defensive — see docstring
+        seen = set(order)
+        order.extend(nid for nid in sorted(indegree) if nid not in seen)
+
+    node_map = {n.node_id: n for n in nodes}
+    return [
+        node_map[nid].operator_name
+        for nid in order
+        if isinstance(node_map[nid], OperatorNode)
+    ]
+
+
 def _composer_record_from(
     shape_or_workflow: Union[ShapeSpec, Workflow],
     *,
@@ -612,7 +662,6 @@ def _composer_record_from(
     from shared.workflow.registry import OPERATOR_REGISTRY
 
     # Walk nodes — collect operator names, find terminal.
-    operator_names_sorted: List[str] = []
     terminal_operator_name = ""
     terminal_artifact_type = ""
 
@@ -621,10 +670,12 @@ def _composer_record_from(
         shape_or_workflow.terminal_node_id,
     )
 
-    # Sort operators by node_id for byte-stable record.
-    for node in sorted(nodes, key=lambda n: n.node_id):
-        if isinstance(node, OperatorNode):
-            operator_names_sorted.append(node.operator_name)
+    # Operators in TOPOLOGICAL EXECUTION ORDER (deterministic Kahn,
+    # ties broken by node_id) — the L6 "Wired:" line must read in the
+    # order the DAG executes, not alphabetical node-id order (the
+    # FRONTEND_SCORECARD T3 nit).  Still byte-stable: identical graphs
+    # produce identical tuples.
+    operator_names_sorted = _topological_operator_names(shape_or_workflow)
 
     if isinstance(terminal, OperatorNode):
         terminal_operator_name = terminal.operator_name

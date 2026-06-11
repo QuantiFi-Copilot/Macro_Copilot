@@ -603,6 +603,25 @@ from rates_agent.sovereign_bonds.tools.pca_yield_curve import (
     PcaYieldCurveOutput,
     calculate_pca_yield_curve,
 )
+from rates_agent.sovereign_bonds.tools.rolling_regression import (
+    CONFIG_PATH as ROLLING_REGRESSION_CONFIG_PATH,
+    RollingRegressionInput,
+    RollingRegressionOutput,
+    calculate_rolling_regression,
+)
+from rates_agent.sovereign_bonds.tools.half_life import (
+    CONFIG_PATH as HALF_LIFE_CONFIG_PATH,
+    HalfLifeInput,
+    HalfLifeOutput,
+    calculate_half_life,
+)
+from rates_agent.sovereign_bonds.tools.yield_change_attribution_pca import (
+    CONFIG_PATH as YIELD_CHANGE_ATTRIBUTION_PCA_CONFIG_PATH,
+    YieldChangeAttributionPcaInput,
+    YieldChangeAttributionPcaOutput,
+    calculate_yield_change_attribution_pca,
+)
+from shared.schemas.time_series import PairSpec, SeriesSpec
 from shared.config import load_tool_config
 
 logger = logging.getLogger("api.routes.rates.detail")
@@ -4850,5 +4869,307 @@ def otr_ofr_spread_detail(
 
     _tool_result_or_raise(
         result, f"OTR/OFR spread for {country} {tenor}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/rolling-regression — rolling OLS of one sovereign series on others
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# ``calculate_rolling_regression_tool`` primitive ships its OWN typed-detail
+# endpoint (consolidation target #4 — the rich-models join the standalone-
+# bridge standard; pre-consolidation they ran only through the generic
+# ``POST /tools/{name}/run``).  The Input's nested SeriesSpec list is
+# flattened to parallel query lists (``regressor_curve_families`` +
+# ``regressor_tenors``) — the same flattening discipline as the panel
+# tools' leg specs.
+
+
+@router.get(
+    "/detail/rolling-regression",
+    response_model=RollingRegressionOutput,
+    summary="Rolling Regression Detail (workspace)",
+)
+def rolling_regression_detail(
+    engine: Engine = Depends(get_engine),
+    target_curve_family: str = Query(..., description="e.g. 'UST'"),
+    target_tenor: str = Query(..., description="e.g. '10Y'"),
+    regressor_curve_families: List[str] = Query(
+        ...,
+        description=(
+            "One entry per regressor, paired index-wise with "
+            "``regressor_tenors``.  Repeat the param: "
+            "``?regressor_curve_families=DE_BUND&regressor_curve_families=UK_GILT``."
+        ),
+    ),
+    regressor_tenors: List[str] = Query(
+        ...,
+        description=(
+            "One entry per regressor, paired index-wise with "
+            "``regressor_curve_families``."
+        ),
+    ),
+    regression_window_days: int = Query(
+        ...,
+        ge=10,
+        le=2520,
+        description=(
+            "Trailing-window length in trading-day rows for each "
+            "rolling fit.  Central methodological choice — set per "
+            "request.  Typical desk values: 60 (tactical), 252 "
+            "(annual), 504 (two-year)."
+        ),
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic — applies to the target AND "
+            "every regressor leg (the per-leg override stays a "
+            "builder/MCP affordance).  Omit to use the tool's bundled "
+            "``default_field_name`` from rolling_regression/config.yaml "
+            "(currently 'YLD_YTM_MID')."
+        ),
+    ),
+):
+    """Flattening contract: ``regressor_curve_families[i]`` pairs with
+    ``regressor_tenors[i]``; a length mismatch is a 422.  All other
+    methodology knobs (``min_periods``, ``add_constant``, condition
+    thresholds, rounding) are YAML-locked and not exposed at the route
+    — see A13 in docs/architecture/tool_architecture.md."""
+    if len(regressor_curve_families) != len(regressor_tenors):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "regressor_curve_families and regressor_tenors must "
+                f"pair index-wise; got {len(regressor_curve_families)} "
+                f"vs {len(regressor_tenors)}."
+            ),
+        )
+    try:
+        params = RollingRegressionInput(
+            target_spec=SeriesSpec(
+                curve_family=target_curve_family,
+                tenor=target_tenor,
+                field_name=field_name,
+            ),
+            regressor_specs=[
+                SeriesSpec(curve_family=cf, tenor=tn, field_name=field_name)
+                for cf, tn in zip(regressor_curve_families, regressor_tenors)
+            ],
+            regression_window_days=regression_window_days,
+            lookback_days=lookback_days,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        rr_config = load_tool_config(ROLLING_REGRESSION_CONFIG_PATH)
+        result = calculate_rolling_regression(
+            engine=engine, params=params, config=rr_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/rolling-regression: tool failed for %s_%s on %d "
+            "regressors window=%d",
+            target_curve_family, target_tenor,
+            len(regressor_curve_families), regression_window_days,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Rolling regression of {target_curve_family}_{target_tenor} on "
+        f"{len(regressor_curve_families)} regressor(s) "
+        f"(window={regression_window_days}d)",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/half-life — OU/AR(1) mean-reversion half-life snapshot
+# ----------------------------------------------------------------------------
+# Standalone bridge for ``calculate_half_life_tool`` (consolidation
+# target #4).  The Input's one-of-three source modes flatten as:
+#   - series mode (default): ``curve_family`` + ``tenor``
+#   - pair mode:             add ``curve_family_2`` — the spread
+#                            (curve_family − curve_family_2) at ``tenor``
+# The third mode (``pasted_series``) is an orchestrator/builder paste
+# affordance and is intentionally NOT bridged over GET — pasted rows
+# don't fit query params; that path stays on the generic run endpoint.
+
+
+@router.get(
+    "/detail/half-life",
+    response_model=HalfLifeOutput,
+    summary="Mean-Reversion Half-Life Detail (workspace)",
+)
+def half_life_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family: str = Query(
+        ...,
+        description=(
+            "Series mode: the curve family.  Pair mode: the FIRST leg "
+            "(numerator) of the spread."
+        ),
+    ),
+    tenor: str = Query(..., description="e.g. '10Y'"),
+    curve_family_2: Optional[str] = Query(
+        default=None,
+        description=(
+            "When set, switches to PAIR mode: the half-life of the "
+            "(curve_family − curve_family_2) spread at ``tenor`` in "
+            "bps, matching the cross_market_spread direction "
+            "convention."
+        ),
+    ),
+    lookback_days: int = Query(default=1825, ge=252, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic (both legs in pair mode).  Omit "
+            "to use the tool's bundled ``default_field_name`` from "
+            "half_life/config.yaml (currently 'YLD_YTM_MID')."
+        ),
+    ),
+):
+    """All other methodology knobs (confidence level, CI method,
+    rounding) are YAML-locked and not exposed at the route — see A13 in
+    docs/architecture/tool_architecture.md."""
+    try:
+        if curve_family_2:
+            params = HalfLifeInput(
+                pair_spec=PairSpec(
+                    cf1=curve_family,
+                    cf2=curve_family_2,
+                    tenor=tenor,
+                    field_name=field_name,
+                ),
+                lookback_days=lookback_days,
+            )
+        else:
+            params = HalfLifeInput(
+                series_spec=SeriesSpec(
+                    curve_family=curve_family,
+                    tenor=tenor,
+                    field_name=field_name,
+                ),
+                lookback_days=lookback_days,
+            )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        hl_config = load_tool_config(HALF_LIFE_CONFIG_PATH)
+        result = calculate_half_life(
+            engine=engine, params=params, config=hl_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/half-life: tool failed for %s%s %s",
+            curve_family,
+            f"-{curve_family_2}" if curve_family_2 else "",
+            tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Half-life for "
+        f"{curve_family}{('-' + curve_family_2) if curve_family_2 else ''} "
+        f"{tenor} (lookback={lookback_days}d)",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/yield-change-attribution — PCA attribution of a yield change
+# ----------------------------------------------------------------------------
+# Standalone bridge for ``calculate_yield_change_attribution_pca_tool``
+# (consolidation target #4).  The inline-fit path is bridged; the
+# ``pasted_loadings`` mode (orchestrator paste of a prior PCA's
+# loadings) is intentionally NOT bridged over GET — a loadings matrix
+# doesn't fit query params; that path stays on the generic run
+# endpoint / MCP.
+
+
+@router.get(
+    "/detail/yield-change-attribution",
+    response_model=YieldChangeAttributionPcaOutput,
+    summary="Yield-Change PCA Attribution Detail (workspace)",
+)
+def yield_change_attribution_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family: str = Query(..., description="Sovereign curve, e.g. 'UST'"),
+    target_tenor: str = Query(..., description="e.g. '10Y'"),
+    start_date: str = Query(
+        ...,
+        description="Attribution window start, YYYY-MM-DD (resolved to the trading day on/after).",
+    ),
+    end_date: str = Query(
+        ...,
+        description="Attribution window end, YYYY-MM-DD (resolved to the trading day on/before).",
+    ),
+    pca_lookback_days: int = Query(default=1825, ge=400, le=7300),
+    n_components: int = Query(default=3, ge=1, le=8),
+    change_frequency: Literal["daily", "weekly"] = Query(default="daily"),
+    tenors: Optional[List[str]] = Query(
+        default=None,
+        description=(
+            "Subset of tenor labels for the inline PCA fit.  Repeat "
+            "the param: ``?tenors=2Y&tenors=10Y&tenors=30Y``.  Omit to "
+            "use all playbook-configured tenors of the curve_family."
+        ),
+    ),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic.  Omit to use the tool's bundled "
+            "``default_field_name`` from "
+            "yield_change_attribution_pca/config.yaml (currently "
+            "'YLD_YTM_MID')."
+        ),
+    ),
+):
+    """Inline-fit bridge: the upstream PCA is fit inside the call with
+    the supplied knobs; loadings provenance comes back on
+    ``current_metrics.loadings_*``.  All other methodology knobs (sign
+    anchor, degenerate thresholds, rounding) are YAML-locked — see A13
+    in docs/architecture/tool_architecture.md."""
+    try:
+        params = YieldChangeAttributionPcaInput(
+            curve_family=curve_family,
+            target_tenor=target_tenor,
+            start_date=start_date,
+            end_date=end_date,
+            pca_lookback_days=pca_lookback_days,
+            n_components=n_components,
+            change_frequency=change_frequency,
+            tenors=tenors,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        attr_config = load_tool_config(
+            YIELD_CHANGE_ATTRIBUTION_PCA_CONFIG_PATH,
+        )
+        result = calculate_yield_change_attribution_pca(
+            engine=engine, params=params, config=attr_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/yield-change-attribution: tool failed for %s %s "
+            "%s..%s",
+            curve_family, target_tenor, start_date, end_date,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Yield-change attribution for {curve_family} {target_tenor} "
+        f"({start_date} → {end_date})",
     )
     return result

@@ -187,6 +187,20 @@ class WorkspaceDetailResponse(BaseModel):
             "fork endpoint to apply a patch; None on legacy rows."
         ),
     )
+    run_audit: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "Phase D / D9 — the open-DAG intent-audit sidecar "
+            "(migration 0010): the IntentChain + "
+            "expected_answer_shape + recompose_trace captured at "
+            "persist time, so the build page can render 'what I "
+            "understood / checked / fixed'.  Non-hashed metadata "
+            "(P4-safe); None on pre-audit rows and on lanes without "
+            "an IntentChain (template / direct-fetch).  ADDITIVE: "
+            "existing consumers that ignore the field render "
+            "byte-unchanged."
+        ),
+    )
 
 
 class ForkWorkspaceRequest(BaseModel):
@@ -612,6 +626,8 @@ def get_workspace_endpoint(slug: str) -> WorkspaceDetailResponse:
         edges=edges,
         template_id=ws.template_id,
         bound_slot_values=ws.bound_slot_values,
+        # Phase D / D9 — additive audit sidecar (migration 0010).
+        run_audit=ws.run_audit,
     )
 
 

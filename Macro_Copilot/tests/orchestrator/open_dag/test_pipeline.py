@@ -157,7 +157,11 @@ class _MockGate:
 
 class _MockAnswerRenderer:
     """Mimics ``AnswerRenderer`` — returns a sentinel markdown so
-    tests can assert L6 fired."""
+    tests can assert L6 fired.  Tracks the real renderer's contract:
+    the pipeline calls ``render_parts`` (consolidation target #3 —
+    structured ``RenderedAnswer`` carrying the bare ``answer_prose``
+    alongside the assembled markdown); ``render`` remains as the
+    string-only delegate for legacy callers."""
 
     def __init__(self, markdown: str = "RENDERED_MARKDOWN_SENTINEL"):
         self._md = markdown
@@ -165,11 +169,21 @@ class _MockAnswerRenderer:
         self.last_intent_chain: Any = None
         self.last_lineage_hash: Optional[str] = None
 
-    async def render(self, **kw) -> str:
+    async def render_parts(self, **kw):
+        from orchestrator.open_dag.answer import RenderedAnswer
+
         self.calls += 1
         self.last_intent_chain = kw.get("intent_chain")
         self.last_lineage_hash = kw.get("lineage_head_hash")
-        return self._md
+        return RenderedAnswer(
+            markdown=self._md,
+            answer_prose="PROSE_SENTINEL",
+            kind="answer",
+        )
+
+    async def render(self, **kw) -> str:
+        parts = await self.render_parts(**kw)
+        return parts.markdown
 
 
 def _selector_returning(leaf_id_to_role: Dict[str, str]):

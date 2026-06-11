@@ -274,6 +274,7 @@ class TestComposerPromptContent:
         assert sorted(OPERATOR_REGISTRY.keys()) == [
             "align_series",
             "apply_mask",
+            "beta",
             "cointegration",
             "conditional_aggregate",
             "convert_units",
