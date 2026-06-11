@@ -119,7 +119,7 @@ def scan_ois_extremes(
     if config is None:
         config = load_tool_config(CONFIG_PATH)
 
-    instrument_type = config.convention_value("instrument_type")
+    instrument_type = config.convention_value("ois_scan_instrument_type")
     z_window = int(config.convention_value("z_score_window_days"))
     z_min_periods = int(config.convention_value("z_score_min_periods"))
     z_buffer_multiplier = float(config.convention_value("z_score_buffer_multiplier"))

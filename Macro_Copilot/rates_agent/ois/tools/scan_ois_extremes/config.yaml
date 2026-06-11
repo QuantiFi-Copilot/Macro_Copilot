@@ -52,7 +52,7 @@ conventions:
   # ---------------------------------------------------------------------------
   # Instrument-type filter passed to fetch_scan_universe
   # ---------------------------------------------------------------------------
-  instrument_type:
+  ois_scan_instrument_type:
     value: ois_swap
     source: tool_design_intent
     rationale: >-
@@ -60,7 +60,10 @@ conventions:
       The sovereign-domain sibling at
       ``rates_agent.sovereign_bonds.tools.scan_extremes`` reuses the
       same fetch_scan_universe helper with ``sovereign_benchmark``
-      instead.
+      instead.  Named domain-qualified (not plain ``instrument_type``)
+      per PR13: the cross-config lint compares same-named conventions
+      globally, and each scanner's universe value legitimately differs
+      by design.
 
   # ---------------------------------------------------------------------------
   # Z-score window length (trading days)

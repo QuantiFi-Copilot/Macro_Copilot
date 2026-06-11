@@ -83,7 +83,7 @@ conventions:
   # ---------------------------------------------------------------------------
   # Instrument-type filter passed to fetch_scan_universe
   # ---------------------------------------------------------------------------
-  instrument_type:
+  sovereign_scan_instrument_type:
     value: sovereign_benchmark
     source: tool_design_intent
     rationale: >-
@@ -91,7 +91,10 @@ conventions:
       universe is ``sovereign_benchmark`` rows in the substrate.  The
       OIS-equivalent sibling at
       ``rates_agent.ois.tools.scan_ois_extremes`` reuses the same
-      fetch_scan_universe helper with ``ois_swap`` instead.
+      fetch_scan_universe helper with ``ois_swap`` instead.  Named
+      domain-qualified (not plain ``instrument_type``) per PR13: the
+      cross-config lint compares same-named conventions globally, and
+      each scanner's universe value legitimately differs by design.
 
   # ---------------------------------------------------------------------------
   # Z-score window length (trading days)
