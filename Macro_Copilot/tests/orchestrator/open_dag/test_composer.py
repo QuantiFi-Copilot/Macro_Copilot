@@ -285,6 +285,7 @@ class TestComposerPromptContent:
             "cross_sectional_zscore",
             "demean_cross_section",
             "event_windows",
+            "ewm_statistic",
             "granger_causality",
             "lead_lag",
             "pairwise_spread_matrix",

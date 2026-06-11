@@ -80,6 +80,10 @@ from shared.operators.event_windows import (
     event_windows, EventWindowsParams,
     CONFIG_PATH as _EVENT_WINDOWS_CONFIG_PATH,
 )
+from shared.operators.ewm_statistic import (
+    ewm_statistic, EwmStatisticParams,
+    CONFIG_PATH as _EWM_STATISTIC_CONFIG_PATH,
+)
 from shared.operators.cross_sectional_rank import (
     cross_sectional_rank, CrossSectionalRankParams,
     CONFIG_PATH as _CROSS_SECTIONAL_RANK_CONFIG_PATH,
@@ -1508,6 +1512,50 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "the rolling beta the user usually asks for; or all "
                 "three for full diagnostic.  Beta is in (lhs_units / "
                 "rhs_units); alpha in lhs_units; r_squared in RATIO."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — single_series_transform: exponentially-
+    # weighted mean (EWMA) or std of one Series.  One Series in, one
+    # Series out (units passthrough).  Decay via span only; adjust=True
+    # and debiased std design-locked.
+    "ewm_statistic": OperatorSpec(
+        operator_name="ewm_statistic",
+        callable=ewm_statistic,
+        params_class=EwmStatisticParams,
+        config_path=_EWM_STATISTIC_CONFIG_PATH,
+        input_slots={
+            "series": SlotDescriptor.of(
+                "Series",
+                (
+                    "The single typed Series to recency-weight.  USE "
+                    "when the user asks for an exponentially-weighted / "
+                    "smoothed level (statistic=mean — the EWMA) or "
+                    "recency-weighted dispersion of the SERIES VALUES "
+                    "(statistic=std, debiased, in the input's units).  "
+                    "Decay is the pandas span (≈2/(span+1) per row); "
+                    "warmup below min_periods is NaN.  For dispersion "
+                    "of CHANGES, difference upstream first "
+                    "(series_arithmetic diff/pct_change).  DO NOT use "
+                    "for a flat equal-weight trailing window (use "
+                    "rolling_statistic), for z-scores (use "
+                    "rolling_zscore), or for ANNUALIZED return vol "
+                    "(calendar scaling is finance math — primitives "
+                    "own it)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            (
+                "The EW statistic per date (NaN during warmup), in the "
+                "input's units (passthrough for both statistics).  "
+                "Lineage records span, the resolved min_periods, and "
+                "the design-locked adjust/bias choices.  Drop-in input "
+                "for series_arithmetic, threshold_events, "
+                "rolling_zscore, or direct surface.  Raises "
+                "EwmStatisticError on a non-Series input or an all-NaN "
+                "output."
             ),
         ),
     ),

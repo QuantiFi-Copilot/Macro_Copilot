@@ -1,0 +1,116 @@
+operator:
+  name: ewm_statistic
+  method_family: single_series_transform
+  version: "1.0.0"
+  description: >-
+    Exponentially-weighted mean (the EWMA level) or standard deviation
+    (the EW dispersion) of one Series, emitting a Series in the
+    input's units. Finance-blind. Decay is parameterised by the
+    pandas span only; adjust=True and the debiased std (bias=False)
+    are design-locked. Recency-weighted alternative to the flat
+    rolling window (rolling_statistic).
+
+# Every user-choosable method choice is offloaded here so the operator
+# is not opinionated and the caller can switch seamlessly (OPR7/OPR8).
+# The schema defaults in schemas.py mirror these values and a test
+# asserts they do not diverge.
+#
+# DESIGN LOCKS (OPR7, documented in operator.py/schemas.py, recorded
+# in lineage): (1) decay via span ONLY — halflife/alpha are bijective
+# re-parameterisations of the SAME decay; exposing them would let one
+# computation be expressed multiple ways and fracture replay identity
+# (genuine aliasing).  (2) adjust=True + std bias=False — NOT aliases
+# (different settings give different outputs); locked as the single
+# canonical estimator (textbook finitely-truncated weighting, debiased
+# std — both pandas defaults); the biased recursive flavour is a
+# finance-desk convention that belongs in a primitive's YAML.
+# (3) ignore_na=False — absolute-position weights across interior
+# NaNs; output-affecting, so locked + lineage-stamped rather than
+# silently inherited from pandas.
+defaults:
+  statistic:
+    value: mean
+    source: operator_v1_default
+    rationale: >-
+      The exponentially-weighted mean (EWMA) is the canonical
+      recency-weighted level read; std (the EW dispersion) is the
+      explicit alternative.
+    valid_values: [mean, std]
+  span:
+    value: 20
+    source: operator_v1_default
+    rationale: >-
+      span=20 (decay ~2/21 per row; roughly one trading month of
+      half-weight on daily data) is the conventional short-horizon
+      EWMA span; raise for slower decay, lower for faster.
+  min_periods:
+    value: null
+    source: operator_v1_default
+    rationale: >-
+      null defers to ``span`` at runtime — the strict choice (no
+      noisy early-warmup values), mirroring the rolling family's
+      null→window convention.  Lower it explicitly to emit earlier
+      values at the cost of unstable estimates.
+  look_ahead_safe:
+    value: false
+    source: operator_v1_default
+    rationale: >-
+      Default ``false``: an EW mean/std is a SMOOTHING transform —
+      the natural reading at time t includes t itself (the
+      rolling_statistic convention).  Set ``true`` to shift the
+      result by one period so the value at t reflects only data up
+      to t-1 (event-study hygiene; the rolling family's shared knob).
+    valid_values: [true, false]
+
+methodology:
+  what_it_does: >-
+    Applies pandas ewm(span, min_periods, adjust=True,
+    ignore_na=False) to the input Series and reduces with the chosen
+    statistic — mean (EWMA) or the debiased exponentially-weighted
+    std (bias=False); when look_ahead_safe=true the result is shifted
+    one period so the value at t reflects only data up to t-1. Warmup
+    positions (fewer than min_periods observations) emit NaN —
+    legitimate missingness; an overflowing EW std (squared deviations
+    of extreme values exceed the float range inside the accumulator)
+    is converted to NaN-missingness (the rolling_statistic windowed-
+    reduction precedent); an all-NaN output raises EwmStatisticError.
+    Units, frequency and missingness policy pass through (the
+    transform is recency-weighting, not cleaning — the rolling-family
+    convention); the decay (span), resolved min_periods,
+    look_ahead_safe, and the design-locked adjust/bias/ignore_na
+    choices are recorded in lineage. Annualization or any calendar
+    scaling of the EW std is finance math and lives in primitives,
+    never here.
+  planned_extensions:
+    - "ewm var / ewm correlation-covariance forms: distinct reductions — their own operators or variants when the toolbox needs them."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Exponentially-weighted mean (EWMA) or std of one Series — the recency-weighted alternative to a flat rolling window.
+  when_to_use:
+    - "User asks for a smoothed, recency-weighted level ('the EWMA of X', 'exponentially smoothed') — statistic=mean."
+    - "User asks for recency-weighted dispersion ('exponentially-weighted vol of the SERIES VALUES') — statistic=std (note: unannualized, in the input's units)."
+  when_not_to_use:
+    - "User wants a flat trailing-window statistic — use rolling_statistic (equal weights over the window)."
+    - "User wants z-scores against recent history — use rolling_zscore."
+    - "User wants ANNUALIZED volatility of returns — that is calendar finance math: compose series_arithmetic(pct_change/diff) → this or rolling_statistic(std), and let a finance-aware primitive own the annualization."
+  upstream_requirements:
+    - "Input is ONE Series (any units).  For dispersion-of-CHANGES, difference upstream first (series_arithmetic diff/pct_change)."
+  downstream_pattern:
+    - "Output is a Series in the input's units (NaN during warmup).  Drop-in input for series_arithmetic, threshold_events, rolling_zscore, or direct surface."
+  knobs_quick_ref:
+    statistic: "mean (default; the EWMA) | std (debiased EW dispersion)."
+    span: "20 by default (decay ≈ 2/(span+1) per row); raise for slower decay."
+    min_periods: "null → span (strict, no noisy warmup); lower to emit earlier values."
+    look_ahead_safe: "false (default — at t the statistic includes t).  Set true when combining with same-day raw values (event-study hygiene)."
+  example_shapes:
+    - description: "EWMA-smoothed series, then thresholded."
+      shape: "[Series] -> ewm_statistic(statistic=mean) -> threshold_events -> EventSet"
+  sibling_operators:
+    - rolling_statistic: "Flat trailing-window reductions (mean/std/min/max/sum) — equal weights.  Use when the window should weight all observations equally."
+    - rolling_zscore: "Trailing-window standardisation (sigma units)."
+    - series_arithmetic: "diff/pct_change upstream when the EW statistic should apply to CHANGES rather than levels."
+  intent_hints: [transform]
