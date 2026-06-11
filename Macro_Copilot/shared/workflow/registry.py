@@ -47,6 +47,10 @@ from shared.operators.apply_mask import (
     apply_mask, ApplyMaskParams,
     CONFIG_PATH as _APPLY_MASK_CONFIG_PATH,
 )
+from shared.operators.beta import (
+    beta, BetaParams,
+    CONFIG_PATH as _BETA_CONFIG_PATH,
+)
 from shared.operators.conditional_aggregate import (
     conditional_aggregate,
     ConditionalAggregateParams,
@@ -983,6 +987,65 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "of the input Series's index.  Drop-in input for "
                 "summarize_series, percentile_rank, or further "
                 "subsetting."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — statistical_relationship: full-sample OLS
+    # slope of lhs on rhs.  Two Series in, one ScalarMetric out (the
+    # single sensitivity number).  NOT commutative.  Unit-invariant
+    # across inputs (β absorbs the regressor's units); output tagged
+    # RATIO with the true dimension (lhs_units/rhs_units) + fitted
+    # α/R²/n_obs recorded in lineage.
+    "beta": OperatorSpec(
+        operator_name="beta",
+        callable=beta,
+        params_class=BetaParams,
+        config_path=_BETA_CONFIG_PATH,
+        input_slots={
+            "lhs": SlotDescriptor.of(
+                "Series",
+                (
+                    "Dependent / target Series — the y in y = α + βx + "
+                    "ε.  NOT commutative with 'rhs' (swapping fits a "
+                    "different line).  Must share an IDENTICAL "
+                    "DatetimeIndex with 'rhs' (align_series -> "
+                    "select_from_series_set upstream on both arms).  "
+                    "USE when the user asks for the sensitivity of one "
+                    "series to another as ONE number — how much lhs "
+                    "moves per unit move in rhs.  Unit-invariant across "
+                    "inputs (β absorbs the regressor's units; no "
+                    "convert_units coercion required).  DO NOT use for "
+                    "the TIME-VARYING slope (use rolling_regression -> "
+                    "select 'beta'), the residual series (use "
+                    "regression_residual), or normalised co-movement "
+                    "strength (use correlation)."
+                ),
+            ),
+            "rhs": SlotDescriptor.of(
+                "Series",
+                (
+                    "The single explanatory / driver Series — the x in "
+                    "y = α + βx + ε (V1 is single-regressor).  Same "
+                    "DatetimeIndex requirement as 'lhs' (align "
+                    "upstream).  DO NOT pass a constant-valued Series "
+                    "(the slope is undefined — typed refusal) and DO "
+                    "NOT bind the same upstream Series to both arms "
+                    "(the slope is identically 1)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "ScalarMetric",
+            (
+                "The full-sample OLS slope β (a single number) wrapped "
+                "as a typed ScalarMetric.  Tagged RATIO because the "
+                "closed unit enum has no quotient unit — the TRUE "
+                "dimension (lhs_units / rhs_units) is recorded in "
+                "lineage with the fitted α, R², n_obs and both inputs' "
+                "units, so the fit is fully auditable.  Feeds the "
+                "terminal answer directly.  Raises BetaError on "
+                "insufficient overlap, a zero-variance rhs, an "
+                "ill-conditioned fit, or a non-finite result."
             ),
         ),
     ),

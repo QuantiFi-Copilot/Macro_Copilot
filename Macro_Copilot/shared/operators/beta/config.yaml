@@ -1,0 +1,95 @@
+operator:
+  name: beta
+  method_family: statistical_relationship
+  version: "1.0.0"
+  description: >-
+    Full-sample OLS slope of one Series regressed on another: fits
+    lhs = alpha + beta*rhs over the overlapping non-NaN observations
+    and emits the slope beta as a single ScalarMetric — the
+    sensitivity of lhs to rhs. Finance-blind ("beta" is the standard
+    statistics name for an OLS slope). Unit-invariant across inputs
+    (beta absorbs the regressor's units); the slope's semantic
+    dimension is lhs_units / rhs_units, which the closed unit enum
+    cannot express — output tagged RATIO with both inputs' units and
+    the fitted alpha/R-squared recorded in lineage. NOT commutative.
+
+# Every user-choosable method choice is offloaded here so the operator
+# is not opinionated and the caller can switch seamlessly (OPR7/OPR8).
+# The schema defaults in schemas.py mirror these values and a test
+# asserts they do not diverge.
+defaults:
+  add_constant:
+    value: true
+    source: operator_v1_default
+    rationale: >-
+      Fitting an intercept is the standard OLS form; the slope then
+      measures co-movement around the means rather than through the
+      origin. add_constant=false (through-the-origin) is the explicit
+      alternative.
+    valid_values: [true, false]
+  min_periods:
+    value: 3
+    source: operator_v1_default
+    rationale: >-
+      With an intercept the fit estimates two parameters; n = 2 fits
+      the line exactly, so 3 is the smallest n at which the slope
+      carries information beyond the raw points. Callers wanting
+      statistically meaningful fits should raise this.
+  condition_number_threshold:
+    value: 1.0e10
+    source: operator_v1_default
+    rationale: >-
+      Refuse fits whose design-matrix condition number indicates a
+      numerically meaningless solution (near-constant regressor) —
+      the same guard threshold the rolling_regression and
+      regression_residual operators use.
+
+methodology:
+  what_it_does: >-
+    Fits a single ordinary-least-squares line lhs = alpha + beta*rhs
+    (optionally through the origin) over the dates where both inputs
+    are present and returns the slope beta as one ScalarMetric. The
+    two inputs MUST share an identical DatetimeIndex (align upstream
+    with align_series — this operator does NOT align). Strict-by-
+    default on frequency and missingness (OPR11); unit-invariant
+    across the inputs (beta absorbs units — regressing a PERCENT
+    series on a BPS series is meaningful), with the output tagged
+    RATIO and the true dimension (lhs_units / rhs_units) plus the
+    fitted alpha, R-squared and n_obs recorded in lineage so the fit
+    is fully auditable. Typed refusals (BetaError): insufficient
+    overlap, a zero-variance regressor (undefined slope), an
+    ill-conditioned design matrix, or a non-finite result.
+  planned_extensions:
+    - "multi-regressor slopes (lhs on N regressors): a distinct design-matrix shape — its own operator when the toolbox needs it, not a flag here."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Full-sample OLS slope of one Series on another — the single sensitivity number (how much lhs moves per unit of rhs).
+  when_to_use:
+    - "User asks for the sensitivity of one series to another as ONE number ('how much does X move per unit of Y', a hedge ratio)."
+    - "A downstream answer needs the slope itself, not the residuals (regression_residual) or the windowed slope paths (rolling_regression)."
+  when_not_to_use:
+    - "User wants the TIME-VARYING slope — use rolling_regression (emits {beta, alpha, r_squared} SeriesSet; extract 'beta' via select_from_series_set)."
+    - "User wants the distance-from-fitted-line series — use regression_residual (emits the residual Series from the same fit)."
+    - "User wants normalised co-movement strength — use correlation (dimensionless [-1, 1]); beta is scale-bearing, correlation is not."
+  upstream_requirements:
+    - "Both Series must share an identical DatetimeIndex.  Canonical upstream: align_series → select_from_series_set ×2."
+    - "NOT commutative: wire the dependent series into 'lhs' and the driver into 'rhs' — swapping fits a different line."
+  downstream_pattern:
+    - "Output is a ScalarMetric (RATIO-tagged; true dimension lhs_units/rhs_units recorded in lineage with the fitted alpha, R², n_obs).  Feeds the terminal answer directly."
+  knobs_quick_ref:
+    add_constant: "true (default; intercept fitted) | false (through-the-origin slope)."
+    min_periods: "3 by default (mathematical floor); raise it for statistically meaningful fits."
+    condition_number_threshold: "1e10 — refuse numerically meaningless fits (near-constant rhs)."
+  example_shapes:
+    - description: "The full-sample slope of series A on series B."
+      shape: "[Series A, Series B] -> align_series -> select_from_series_set ×2 -> beta -> ScalarMetric"
+  sibling_operators:
+    - rolling_regression: "The windowed coefficient-path form — {beta, alpha, r_squared} SeriesSet per date.  Use for 'how has the sensitivity evolved'."
+    - regression_residual: "The residual Series from the same full-sample fit.  Use for 'how far from the fitted line is each date'."
+    - correlation: "Normalised, scale-free co-movement strength (one ScalarMetric in [-1,1]).  Use for 'how related', not 'how much per unit'."
+    - covariance: "The raw, unit-bearing co-movement number (beta = covariance / variance of rhs).  Use when the unscaled ingredient is wanted."
+  intent_hints: [relationship]
