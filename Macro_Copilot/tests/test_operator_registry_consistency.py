@@ -53,6 +53,7 @@ _V2_CONFORMANT = {
     "cointegration",
     "correlation",
     "covariance",
+    "cross_sectional_rank",
     "align_series",
     "apply_mask",
     "conditional_aggregate",

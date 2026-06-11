@@ -1,0 +1,105 @@
+operator:
+  name: cross_sectional_rank
+  method_family: cross_sectional
+  version: "1.0.0"
+  description: >-
+    Per-date rank of each member of an aligned SeriesSet among the
+    cross-section of all members. Finance-blind. Emits a SeriesSet
+    with the same keys whose payloads are the per-date ranks —
+    ordinal positions 1..N (COUNT units) or normalized percentiles
+    0-100 (PCT_RANK units). All members must share one unit (ranking
+    compares values; mixed units are refused with the convert_units
+    remedy). The morning-screen / "ranked across the universe" core.
+
+# Every user-choosable method choice is offloaded here so the operator
+# is not opinionated and the caller can switch seamlessly (OPR7/OPR8).
+# The schema defaults in schemas.py mirror these values and a test
+# asserts they do not diverge.
+defaults:
+  rank_method:
+    value: ordinal
+    source: operator_v1_default
+    rationale: >-
+      Ordinal positions (1..N, COUNT units) are the plain mathematical
+      rank a "ranked across the universe" screen reads directly;
+      normalized (0-100 percentile within the cross-section, PCT_RANK
+      units) is the explicit alternative when set sizes vary over
+      time and ranks must be comparable across dates.
+    valid_values: [ordinal, normalized]
+  ascending:
+    value: true
+    source: operator_v1_default
+    rationale: >-
+      Smallest value = rank 1 is the unopinionated mathematical
+      default (pandas' default); set false for largest-first screens
+      ("richest first") at the call site.
+    valid_values: [true, false]
+  ties:
+    value: average
+    source: operator_v1_default
+    rationale: >-
+      Average tie-ranking is pandas' default and keeps the rank sum
+      invariant; min/max/first/dense are the explicit alternatives.
+    valid_values: [average, min, max, first, dense]
+  min_members:
+    value: 2
+    source: operator_v1_default
+    rationale: >-
+      A cross-sectional rank with fewer than two non-NaN members is
+      degenerate (every member ranks first); 2 is the mathematical
+      floor, applied PER DATE — a date below the floor emits NaN for
+      every member. Raise it for screens that need a deeper universe.
+
+methodology:
+  what_it_does: >-
+    Builds the [date x member] frame from an aligned SeriesSet and
+    ranks each row with pandas DataFrame.rank(axis=1) under the
+    configured tie method and direction — ordinal positions 1..N
+    (COUNT units) or normalized percentiles 0-100 (PCT_RANK units,
+    pandas pct=True x 100: rank divided by the count of non-NaN
+    members for average/min/max/first ties, or by the count of
+    DISTINCT values under ties=dense). A member that is NaN at a date
+    receives a
+    NaN rank there and the remaining members are ranked among
+    themselves; a date with fewer than min_members non-NaN members
+    emits NaN for every member (legitimate per-date missingness); an
+    all-NaN output raises CrossSectionalRankError. All members must
+    share one unit — mixed units are refused outright (ranking
+    compares values; there is no honest opt-out) with convert_units
+    named as the upstream remedy. Output missingness is fresh
+    (RawNoCleaning: ranks are fresh derivations); set frequency
+    passes through; the set-level lineage extends the input's chain.
+  planned_extensions:
+    - "grouped ranking (rank within caller-declared sub-groups of the set): a distinct keying shape — its own operator if the toolbox needs it, never a flag here."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Per-date rank of every member of an aligned SeriesSet among the cross-section — the "ranked across the universe" screen.
+  when_to_use:
+    - "User asks to RANK a universe of series against each other at each date ('which points are richest/cheapest', 'rank the curve by z-score')."
+    - "The final step of a screen: compute a signal per member (residual, z-score), align them, then rank the members cross-sectionally."
+  when_not_to_use:
+    - "User wants each series ranked against its OWN history — use percentile_rank (single-Series, time-series rank)."
+    - "User wants the top/bottom members only — extract with select_from_series_set and threshold downstream (a planned top_n operator will subset per date directly)."
+    - "User wants a cross-sectional summary number per date (mean/median/dispersion) — a planned cross_sectional_statistic operator covers that; until it lands there is no per-date cross-member reducer."
+  upstream_requirements:
+    - "Input is ONE aligned SeriesSet — canonical upstream: align_series over the member Series (N >= 2)."
+    - "All members must share one unit; insert convert_units on offending members first (mixed-unit ranking is refused, no opt-out)."
+  downstream_pattern:
+    - "Output is a SeriesSet (same keys; payloads = per-date ranks; COUNT units for ordinal, PCT_RANK for normalized).  Typical follow-on: select_from_series_set to extract one member's rank path, or direct surface of the screen."
+  knobs_quick_ref:
+    rank_method: "ordinal (default; positions 1..N, COUNT) | normalized (0-100 within-date percentile, PCT_RANK)."
+    ascending: "true (default; smallest = rank 1) | false (largest first — 'richest first' screens)."
+    ties: "average (default) | min | max | first | dense (pandas rank methods)."
+    min_members: "2 by default — dates with fewer non-NaN members emit NaN for every member."
+  example_shapes:
+    - description: "Rank a universe of residuals cross-sectionally at each date (the North-Star tail)."
+      shape: "[Series x N] -> align_series -> cross_sectional_rank -> SeriesSet (per-member rank paths)"
+  sibling_operators:
+    - percentile_rank: "Ranks ONE series against its OWN history (time-series percentile).  Use for 'vs its past', not 'vs peers'."
+    - select_from_series_set: "Extracts one member Series from the ranked output by key."
+    - align_series: "Builds the aligned SeriesSet this operator consumes."
+  intent_hints: [cross_sectional, ranking]

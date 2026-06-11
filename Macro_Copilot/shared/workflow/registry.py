@@ -76,6 +76,10 @@ from shared.operators.event_windows import (
     event_windows, EventWindowsParams,
     CONFIG_PATH as _EVENT_WINDOWS_CONFIG_PATH,
 )
+from shared.operators.cross_sectional_rank import (
+    cross_sectional_rank, CrossSectionalRankParams,
+    CONFIG_PATH as _CROSS_SECTIONAL_RANK_CONFIG_PATH,
+)
 from shared.operators.granger_causality import (
     granger_causality, GrangerCausalityParams,
     CONFIG_PATH as _GRANGER_CAUSALITY_CONFIG_PATH,
@@ -995,6 +999,56 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "of the input Series's index.  Drop-in input for "
                 "summarize_series, percentile_rank, or further "
                 "subsetting."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — cross_sectional: per-date rank of every
+    # member of an aligned SeriesSet among the cross-section.  One
+    # SeriesSet in, one SeriesSet out (same keys; rank payloads; COUNT
+    # units for ordinal, PCT_RANK for normalized).  Same-units-across-
+    # members required outright (ranking compares values).
+    "cross_sectional_rank": OperatorSpec(
+        operator_name="cross_sectional_rank",
+        callable=cross_sectional_rank,
+        params_class=CrossSectionalRankParams,
+        config_path=_CROSS_SECTIONAL_RANK_CONFIG_PATH,
+        input_slots={
+            "series_set": SlotDescriptor.of(
+                "SeriesSet",
+                (
+                    "An aligned SeriesSet of N >= 2 members sharing ONE "
+                    "unit — canonical upstream is align_series over the "
+                    "universe's Series (insert convert_units on "
+                    "offending members first; mixed-unit ranking is "
+                    "refused outright, no opt-out).  USE for the "
+                    "morning-screen / 'ranked across the universe' "
+                    "step: at each date every member is ranked among "
+                    "the cross-section (a member NaN at a date gets a "
+                    "NaN rank; dates with fewer than params.min_members "
+                    "non-NaN members emit NaN for all).  DO NOT use to "
+                    "rank ONE series against its own history (use "
+                    "percentile_rank); top-members-only subsetting and "
+                    "per-date cross-member summary reducers are planned "
+                    "siblings (top_n, cross_sectional_statistic) — "
+                    "until they land, extract members with "
+                    "select_from_series_set and reduce downstream."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "SeriesSet",
+            (
+                "A SeriesSet with the SAME keys and common index; each "
+                "member's payload is its per-date rank among the "
+                "non-NaN members — ordinal positions 1..N in COUNT "
+                "units (default) or normalized 0–100 percentiles in "
+                "PCT_RANK units (params.rank_method).  Missingness is "
+                "fresh (ranks are fresh derivations); frequency passes "
+                "through; the set-level lineage extends the input's "
+                "chain.  Typical follow-on: select_from_series_set to "
+                "extract one member's rank path.  Raises "
+                "CrossSectionalRankError on <2 members, mixed units, "
+                "or an all-NaN output."
             ),
         ),
     ),

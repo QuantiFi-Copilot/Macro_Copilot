@@ -280,6 +280,7 @@ class TestComposerPromptContent:
             "convert_units",
             "correlation",
             "covariance",
+            "cross_sectional_rank",
             "event_windows",
             "granger_causality",
             "lead_lag",
