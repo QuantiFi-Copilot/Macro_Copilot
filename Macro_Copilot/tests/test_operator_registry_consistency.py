@@ -56,6 +56,7 @@ _V2_CONFORMANT = {
     "cross_sectional_rank",
     "cross_sectional_statistic",
     "cross_sectional_zscore",
+    "demean_cross_section",
     "align_series",
     "apply_mask",
     "conditional_aggregate",

@@ -72,6 +72,10 @@ from shared.operators.convert_units import (
     convert_units, ConvertUnitsParams,
     CONFIG_PATH as _CONVERT_UNITS_CONFIG_PATH,
 )
+from shared.operators.demean_cross_section import (
+    demean_cross_section, DemeanCrossSectionParams,
+    CONFIG_PATH as _DEMEAN_CROSS_SECTION_CONFIG_PATH,
+)
 from shared.operators.event_windows import (
     event_windows, EventWindowsParams,
     CONFIG_PATH as _EVENT_WINDOWS_CONFIG_PATH,
@@ -1057,6 +1061,54 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "extract one member's rank path.  Raises "
                 "CrossSectionalRankError on <2 members, mixed units, "
                 "or an all-NaN output."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — cross_sectional: per-date demeaning of an
+    # aligned SeriesSet (member − cross-mean; the "vs peers" relative
+    # series).  One SeriesSet in, one SeriesSet out (units passthrough).
+    # Same-units-across-members required outright.
+    "demean_cross_section": OperatorSpec(
+        operator_name="demean_cross_section",
+        callable=demean_cross_section,
+        params_class=DemeanCrossSectionParams,
+        config_path=_DEMEAN_CROSS_SECTION_CONFIG_PATH,
+        input_slots={
+            "series_set": SlotDescriptor.of(
+                "SeriesSet",
+                (
+                    "An aligned SeriesSet of N >= 2 members sharing ONE "
+                    "unit — canonical upstream is align_series (insert "
+                    "convert_units on offending members first; "
+                    "mixed-unit demeaning is refused outright, no "
+                    "opt-out).  USE when the user asks for each member "
+                    "RELATIVE TO THE UNIVERSE AVERAGE per date ('vs "
+                    "peers') while KEEPING the input's units — the "
+                    "level-preserving alternative to "
+                    "cross_sectional_zscore.  A member NaN at a date "
+                    "stays NaN; dates with fewer than "
+                    "params.min_members non-NaN members emit NaN for "
+                    "all; an all-EQUAL date demeans to a legitimate "
+                    "0.0 row.  DO NOT use for sigma-scaled deviations "
+                    "(use cross_sectional_zscore), peer positions (use "
+                    "cross_sectional_rank), or the average itself (use "
+                    "cross_sectional_statistic)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "SeriesSet",
+            (
+                "A SeriesSet with the SAME keys and common index; each "
+                "member's payload is member − cross-sectional mean per "
+                "date, in the members' common unit (passthrough — BPS "
+                "in, BPS out).  Missingness is fresh; frequency passes "
+                "through; the set-level lineage extends the input's "
+                "chain.  Typical follow-ons: cross_sectional_rank, "
+                "select_from_series_set, threshold_events on an "
+                "extracted member.  Raises DemeanCrossSectionError on "
+                "<2 members, mixed units, overflow, or an all-NaN "
+                "output."
             ),
         ),
     ),

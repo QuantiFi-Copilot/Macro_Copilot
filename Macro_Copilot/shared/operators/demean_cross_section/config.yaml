@@ -1,0 +1,76 @@
+operator:
+  name: demean_cross_section
+  method_family: cross_sectional
+  version: "1.0.0"
+  description: >-
+    Per-date demeaning of an aligned SeriesSet: subtracts the
+    cross-sectional mean of the non-NaN members from each member,
+    emitting a SeriesSet with the same keys whose payloads are the
+    "vs peers" relative values, in the members' own unit (passthrough
+    — BPS minus BPS is BPS). Finance-blind. All members must share
+    one unit (subtracting a cross-member mean compares values; mixed
+    units are refused with the convert_units remedy).
+
+# Every user-choosable method choice is offloaded here so the operator
+# is not opinionated and the caller can switch seamlessly (OPR7/OPR8).
+# The schema defaults in schemas.py mirror these values and a test
+# asserts they do not diverge.
+defaults:
+  min_members:
+    value: 2
+    source: operator_v1_default
+    rationale: >-
+      Demeaning against fewer than 2 non-NaN members is degenerate (a
+      single member demeans identically to zero); 2 is the floor,
+      applied PER DATE — a date below it emits NaN for every member.
+      Raise it for screens that need a deeper universe.
+
+methodology:
+  what_it_does: >-
+    Builds the [date x member] frame from an aligned SeriesSet and
+    subtracts each row's mean over the non-NaN members from every
+    member (pandas frame.sub(frame.mean(axis=1), axis=0)). A member
+    that is NaN at a date stays NaN; a date with fewer than
+    min_members non-NaN members emits NaN for every member; an
+    all-EQUAL date demeans to a legitimate all-0.0 row — there is no
+    dispersion barrier (deliberate divergence from
+    cross_sectional_zscore, where zero dispersion makes the z
+    undefined). An overflowing demeaned value (subtraction of extreme
+    finite values can exceed the float range) and an all-NaN output
+    each raise DemeanCrossSectionError. All
+    members must share one unit — mixed units are refused outright
+    with convert_units named as the upstream remedy; the output
+    passes that common unit through. Output missingness is fresh
+    (RawNoCleaning); set frequency passes through; the set-level
+    lineage extends the input's chain.
+  planned_extensions:
+    - "robust centering (median): a distinct estimator — declared here so the mean-only surface stays honest; lands as a center variant when the toolbox needs it."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Per-date demeaning of an aligned SeriesSet — each member minus its peer-group average, in the members' own unit.
+  when_to_use:
+    - "User asks for each member RELATIVE TO THE AVERAGE of the universe ('each point's spread vs the curve average', 'vs peers')."
+    - "A screen needs level-preserving peer-relative series (still in BPS/PERCENT) before thresholding or further arithmetic — unlike z-scores, demeaned values keep the input's units."
+  when_not_to_use:
+    - "User wants sigma-scaled peer-relative values — use cross_sectional_zscore (dimensionless Z_SCORE)."
+    - "User wants per-member positions / percentiles among peers — use cross_sectional_rank."
+    - "User wants the universe's per-date average itself — use cross_sectional_statistic(statistic=mean)."
+  upstream_requirements:
+    - "Input is ONE aligned SeriesSet — canonical upstream: align_series over the member Series (N >= 2)."
+    - "All members must share one unit; insert convert_units on offending members first (mixed-unit demeaning is refused, no opt-out)."
+  downstream_pattern:
+    - "Output is a SeriesSet (same keys; units passthrough).  Typical follow-ons: cross_sectional_rank (rank the deviations), select_from_series_set (one member's vs-peers path), threshold_events on an extracted member."
+  knobs_quick_ref:
+    min_members: "2 by default — dates with fewer non-NaN members emit NaN for every member."
+  example_shapes:
+    - description: "Each universe member vs the universe average, then ranked."
+      shape: "[Series x N] -> align_series -> demean_cross_section -> cross_sectional_rank -> SeriesSet"
+  sibling_operators:
+    - cross_sectional_zscore: "The sigma-scaled sibling — divides the deviation by the cross-std (Z_SCORE out).  Use when comparability across dates matters more than keeping units."
+    - cross_sectional_statistic: "The per-date summary itself (mean/median/std/min/max/sum → Series)."
+    - cross_sectional_rank: "Per-member positions among peers per date."
+  intent_hints: [cross_sectional]
