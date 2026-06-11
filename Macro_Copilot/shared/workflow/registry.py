@@ -76,6 +76,10 @@ from shared.operators.event_windows import (
     event_windows, EventWindowsParams,
     CONFIG_PATH as _EVENT_WINDOWS_CONFIG_PATH,
 )
+from shared.operators.granger_causality import (
+    granger_causality, GrangerCausalityParams,
+    CONFIG_PATH as _GRANGER_CAUSALITY_CONFIG_PATH,
+)
 from shared.operators.lead_lag import (
     lead_lag, LeadLagParams,
     CONFIG_PATH as _LEAD_LAG_CONFIG_PATH,
@@ -991,6 +995,66 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "of the input Series's index.  Drop-in input for "
                 "summarize_series, percentile_rank, or further "
                 "subsetting."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — statistical_relationship: the Granger
+    # F-test (do left's lags improve an OLS of right on its own lags).
+    # Two Series in, one ScalarMetric out (the F statistic; p-value +
+    # dfs in lineage).  Descriptive historical test — no forecast, no
+    # causal claim.  NOT commutative.
+    "granger_causality": OperatorSpec(
+        operator_name="granger_causality",
+        callable=granger_causality,
+        params_class=GrangerCausalityParams,
+        config_path=_GRANGER_CAUSALITY_CONFIG_PATH,
+        input_slots={
+            "left": SlotDescriptor.of(
+                "Series",
+                (
+                    "The candidate DRIVER of the pair — the test asks "
+                    "whether THIS series' lagged values improve an OLS "
+                    "of 'right' on right's own lags.  NOT commutative "
+                    "(swapping tests the reverse direction).  Must share "
+                    "an IDENTICAL DatetimeIndex with 'right' "
+                    "(align_series -> select_from_series_set upstream on "
+                    "both arms).  USE when the user asks whether one "
+                    "series' HISTORY adds explanatory power for another "
+                    "— a single hypothesis-test number, descriptive "
+                    "only (never a forecast or causal proof).  "
+                    "Unit-invariant (the F statistic is dimensionless).  "
+                    "DO NOT use for the per-lag correlation profile "
+                    "(use lead_lag), contemporaneous strength (use "
+                    "correlation), or level-relationship stationarity "
+                    "(use cointegration)."
+                ),
+            ),
+            "right": SlotDescriptor.of(
+                "Series",
+                (
+                    "The RESPONSE series being explained.  Same artifact "
+                    "type, same DatetimeIndex requirement (align "
+                    "upstream).  DO NOT bind both arms to the same "
+                    "upstream Series (the unrestricted fit is perfectly "
+                    "collinear and the operator refuses) and DO NOT "
+                    "pass a scalar literal here (artifact-only slot)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "ScalarMetric",
+            (
+                "The Granger F statistic (dimensionless, RATIO units).  "
+                "Larger F = stronger evidence that left's history adds "
+                "explanatory power for right.  Lineage records the "
+                "p-value, df1 = n_lags, df2 = n − 2·n_lags − 1, the "
+                "complete-case n_obs, the direction tested, and both "
+                "inputs' units.  The substrate does NOT auto-translate "
+                "the statistic to a yes/no — the answer layer "
+                "interprets it.  Raises GrangerCausalityError on too "
+                "few complete-case rows for the lag order, a "
+                "zero-variance arm, an ill-conditioned design, or a "
+                "perfect unrestricted fit (unbounded F)."
             ),
         ),
     ),

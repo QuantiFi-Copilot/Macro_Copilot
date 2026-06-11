@@ -1,0 +1,92 @@
+operator:
+  name: granger_causality
+  method_family: statistical_relationship
+  version: "1.0.0"
+  description: >-
+    Single-equation Granger F-test between two index-aligned numeric
+    Series: do the lagged values of 'left' improve an OLS of 'right'
+    on its own lagged values? Two nested least-squares fits over the
+    complete-case rows; the classical F statistic is emitted as one
+    ScalarMetric (dimensionless, RATIO) with the p-value and degrees
+    of freedom recorded in lineage. DESCRIPTIVE temporal-association
+    test on historical data — not a forecast and not a causal proof;
+    "Granger" is the statistic's standard name. NOT commutative.
+
+# Every user-choosable method choice is offloaded here so the operator
+# is not opinionated and the caller can switch seamlessly (OPR7/OPR8).
+# The schema defaults in schemas.py mirror these values and a test
+# asserts they do not diverge.  The observation floor (df2 = n − 2p − 1
+# >= 1) is a mathematical invariant of the lag order and lives in code,
+# not here.
+defaults:
+  n_lags:
+    value: 5
+    source: operator_v1_default
+    rationale: >-
+      Five lags of the shared index (one trading week on daily data)
+      is the conventional default order for short-horizon Granger
+      screens; raise it for slower-moving relationships at the cost
+      of degrees of freedom (the test needs n >= 2*n_lags + 2
+      complete-case rows).
+  condition_number_threshold:
+    value: 1.0e10
+    source: operator_v1_default
+    rationale: >-
+      Refuse tests whose unrestricted design matrix is numerically
+      unstable (highly collinear lags) — the same guard threshold the
+      regression-family operators use.
+
+methodology:
+  what_it_does: >-
+    Fits two nested OLS models on the complete-case rows of the shared
+    index — restricted: right_t on a constant and right's own p lags;
+    unrestricted: the same plus left's p lags — and emits the
+    classical F statistic F = ((SSR_r - SSR_u)/p) / (SSR_u/(n-2p-1))
+    as one ScalarMetric. The p-value (from the F distribution), df1=p,
+    df2=n-2p-1, the complete-case n_obs and both inputs' units are
+    recorded in lineage. The substrate does NOT auto-translate the
+    statistic into a yes/no verdict — the answer layer interprets it
+    (larger F / smaller p-value = stronger evidence that left's
+    history adds explanatory power for right). The two inputs MUST
+    share an identical DatetimeIndex (align upstream with
+    align_series). Strict-by-default on frequency and missingness
+    (OPR11); unit-invariant (an F statistic is dimensionless). Typed
+    refusals: too few complete-case rows for the lag order, a
+    zero-variance arm, an ill-conditioned design, a perfect
+    unrestricted fit (unbounded F), or a non-finite statistic. This is
+    a descriptive test of historical incremental information — it
+    forecasts nothing and proves no causation.
+  planned_extensions:
+    - "rolling Granger F (a statistic per date over a trailing window): a different output shape — its own operator if the toolbox ever needs it, never a flag here (OPR2)."
+    - "asymmetric lag orders (p_left != p_right): a distinct design-matrix shape; declared here so the single-p surface stays honest."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Granger F-test — does one series' history add explanatory power for another's realized values (descriptive lead/follow evidence as one number).
+  when_to_use:
+    - "User asks whether one series' PAST values carry incremental information about another ('does X's history help explain Y?')."
+    - "A relationship screen needs a single hypothesis-test statistic for temporal precedence, with the p-value recorded in lineage."
+  when_not_to_use:
+    - "User wants the full lag-by-lag correlation profile — use lead_lag (per-lag Series)."
+    - "User wants contemporaneous co-movement — use correlation (ScalarMetric) or rolling_correlation (per-date Series)."
+    - "User asks for a FORECAST or a causal proof — this is a descriptive historical test; the substrate does not forecast or assert causation."
+  upstream_requirements:
+    - "Both Series must share an identical DatetimeIndex.  Canonical upstream: align_series → select_from_series_set ×2."
+    - "NOT commutative: wire the candidate DRIVER into 'left' and the RESPONSE into 'right' — swapping tests the reverse direction."
+  downstream_pattern:
+    - "Output is a ScalarMetric (the F statistic, RATIO; p-value/df1/df2/n_obs in lineage).  Feeds the terminal answer directly; the answer layer interprets the statistic."
+  knobs_quick_ref:
+    n_lags: "5 by default (one trading week on daily data); the test needs at least 2·n_lags + 2 complete-case rows."
+    condition_number_threshold: "1e10 — refuse numerically meaningless tests (collinear lags)."
+  example_shapes:
+    - description: "Does series A's history add explanatory power for series B?"
+      shape: "[Series A, Series B] -> align_series -> select_from_series_set ×2 -> granger_causality -> ScalarMetric"
+  sibling_operators:
+    - lead_lag: "The full per-lag correlation profile (who moves first, by how many rows).  Use when the user wants the profile, not a hypothesis test."
+    - correlation: "Contemporaneous co-movement strength (one ScalarMetric)."
+    - cointegration: "Stationarity of the LEVEL relationship (Engle-Granger ADF).  Use for 'is this pair tradeable', not temporal precedence."
+    - rolling_regression: "Time-varying slope/alpha/R² paths of one series on another."
+  intent_hints: [relationship]

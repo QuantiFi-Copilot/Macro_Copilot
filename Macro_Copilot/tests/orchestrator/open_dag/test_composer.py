@@ -281,6 +281,7 @@ class TestComposerPromptContent:
             "correlation",
             "covariance",
             "event_windows",
+            "granger_causality",
             "lead_lag",
             "percentile_rank",
             "regression_residual",

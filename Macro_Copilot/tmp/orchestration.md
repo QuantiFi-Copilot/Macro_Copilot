@@ -53,7 +53,7 @@ Cited from the project-owner handoff. Every PR below must respect these; reviewe
 
 ## 2. Confirmed catalogue
 
-### 2.1 Operators (21 — 16 at PoC + covariance, rolling_covariance, regression_residual, beta & lead_lag added by the Track-A fable_build; finance-blind, in `OPERATOR_REGISTRY` at [shared/workflow/registry.py:324](../shared/workflow/registry.py:324))
+### 2.1 Operators (22 — 16 at PoC + covariance, rolling_covariance, regression_residual, beta, lead_lag & granger_causality added by the Track-A fable_build; finance-blind, in `OPERATOR_REGISTRY` at [shared/workflow/registry.py:324](../shared/workflow/registry.py:324))
 
 Grouped by purpose; wiring fact each one carries.
 
