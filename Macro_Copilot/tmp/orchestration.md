@@ -53,7 +53,7 @@ Cited from the project-owner handoff. Every PR below must respect these; reviewe
 
 ## 2. Confirmed catalogue
 
-### 2.1 Operators (16, finance-blind, in `OPERATOR_REGISTRY` at [shared/workflow/registry.py:324](../shared/workflow/registry.py:324))
+### 2.1 Operators (17 — 16 at PoC + covariance added by the Track-A fable_build; finance-blind, in `OPERATOR_REGISTRY` at [shared/workflow/registry.py:324](../shared/workflow/registry.py:324))
 
 Grouped by purpose; wiring fact each one carries.
 

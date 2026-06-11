@@ -266,9 +266,30 @@ class TestComposerPromptContent:
                 "prompt — catalogue rendering is incomplete"
             )
 
-    def test_prompt_lists_sixteen_operators(self):
-        # Sanity-check: the registry IS sized as documented.
-        assert len(OPERATOR_REGISTRY) == 16
+    def test_prompt_lists_the_full_closed_operator_family(self):
+        # Sanity-check: pin the EXACT closed-family membership (a bare
+        # count silently drifts — this catches both an accidental
+        # addition and a silent removal, and forces the admission
+        # checklist conversation when the family legitimately grows).
+        assert sorted(OPERATOR_REGISTRY.keys()) == [
+            "align_series",
+            "apply_mask",
+            "cointegration",
+            "conditional_aggregate",
+            "convert_units",
+            "correlation",
+            "covariance",
+            "event_windows",
+            "percentile_rank",
+            "rolling_correlation",
+            "rolling_regression",
+            "rolling_statistic",
+            "rolling_zscore",
+            "select_from_series_set",
+            "series_arithmetic",
+            "summarize_series",
+            "threshold_events",
+        ]
 
     @pytest.mark.parametrize(
         "primitive_indicator",

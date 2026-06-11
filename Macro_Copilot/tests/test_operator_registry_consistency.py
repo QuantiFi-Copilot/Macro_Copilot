@@ -51,6 +51,7 @@ from shared.workflow.slots import OutputDescriptor, SlotDescriptor
 _V2_CONFORMANT = {
     "cointegration",
     "correlation",
+    "covariance",
     "align_series",
     "apply_mask",
     "conditional_aggregate",
@@ -239,6 +240,7 @@ def test_v2_operator_conforms(name):
 # still be present).  correlation is strict-always by design (no opt-out).
 _MULTI_ARTIFACT_OPS = {
     "align_series",
+    "covariance",
     "series_arithmetic",
     "rolling_regression",
     "rolling_correlation",

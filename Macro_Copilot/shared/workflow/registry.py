@@ -60,6 +60,10 @@ from shared.operators.correlation import (
     correlation, CorrelationParams,
     CONFIG_PATH as _CORRELATION_CONFIG_PATH,
 )
+from shared.operators.covariance import (
+    covariance, CovarianceParams,
+    CONFIG_PATH as _COVARIANCE_CONFIG_PATH,
+)
 from shared.operators.convert_units import (
     convert_units, ConvertUnitsParams,
     CONFIG_PATH as _CONVERT_UNITS_CONFIG_PATH,
@@ -375,6 +379,41 @@ def _series_arithmetic_unit_validator(
     return None
 
 
+def _covariance_unit_validator(
+    node_params: Dict[str, Any],
+    source_units: Dict[str, Optional[str]],
+) -> Optional[str]:
+    """Validate-time mirror of covariance's runtime same-units rule
+    (OPR11).  A covariance is unit-BEARING (its semantic unit is the
+    product of its inputs' units), so the operator requires matching
+    units by default; this hook surfaces a declared-unit mismatch as
+    ``E_UNIT_MISMATCH`` at ``validate_workflow`` time instead of an
+    execute-time failure.
+
+    Best-effort discipline (same as the series_arithmetic hook): when
+    either source's units are unknown (``None``) the substrate skips
+    the check and the operator's runtime refusal stays authoritative.
+    An explicit ``require_matching_units: false`` in the node's params
+    opts out, exactly as it does at runtime.
+    """
+    require_matching = node_params.get("require_matching_units", True)
+    if not require_matching:
+        return None
+    left = source_units.get("left")
+    right = source_units.get("right")
+    if left is not None and right is not None and left != right:
+        return (
+            f"covariance requires matching units across left + right by "
+            f"default (its output's semantic unit is the product of the "
+            f"inputs' units), but the substrate detected "
+            f"left.units={left!r} vs right.units={right!r} from declared "
+            "upstream sources.  Insert convert_units on the offending "
+            "arm, or set require_matching_units: false in the node's "
+            "params to opt into a mixed-unit covariance explicitly."
+        )
+    return None
+
+
 # ============================================================================
 # PARAM-SANITY HOOKS (orchestration-upgrade plan D4)
 # ============================================================================
@@ -654,6 +693,69 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "the overlap is below params.min_periods or either input "
                 "has zero variance over the overlap (undefined coefficient "
                 "is a typed refusal, never a non-finite value)."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — statistical_relationship: full-sample
+    # covariance between two index-aligned Series.  Two Series in, one
+    # ScalarMetric out.  The unit-BEARING sibling of ``correlation``:
+    # same units required by default (a covariance's unit is the
+    # product of its inputs' units); output tagged RATIO with both
+    # input units recorded in lineage (rolling_regression-beta /
+    # cointegration precedent).
+    "covariance": OperatorSpec(
+        operator_name="covariance",
+        callable=covariance,
+        params_class=CovarianceParams,
+        config_path=_COVARIANCE_CONFIG_PATH,
+        unit_validator=_covariance_unit_validator,
+        input_slots={
+            "left": SlotDescriptor.of(
+                "Series",
+                (
+                    "One arm of the covariance pair.  Single-artifact "
+                    "slot (no scalar literal) expecting a typed Series "
+                    "that shares an IDENTICAL DatetimeIndex with 'right' "
+                    "— this operator does NOT align internally; canonical "
+                    "upstream is align_series -> select_from_series_set "
+                    "on both arms.  USE when the user asks how much two "
+                    "series move together in LEVEL terms (the raw, "
+                    "unit-bearing co-movement number).  COMMUTATIVE — "
+                    "the choice of arm is cosmetic.  Unlike correlation "
+                    "this operator is unit-BEARING: both Series must "
+                    "share the SAME units by default (insert "
+                    "convert_units upstream to reconcile PERCENT vs "
+                    "BPS).  DO NOT use for the normalised [-1, 1] "
+                    "strength (use correlation), a time-varying "
+                    "co-movement (use rolling_correlation), or the slope "
+                    "of one series on another (use rolling_regression)."
+                ),
+            ),
+            "right": SlotDescriptor.of(
+                "Series",
+                (
+                    "The other arm of the covariance pair.  Symmetric "
+                    "counterpart to 'left' — same artifact type, same "
+                    "DatetimeIndex requirement (align upstream), same "
+                    "same-units-by-default discipline (convert_units "
+                    "upstream to reconcile).  DO NOT bind both arms to "
+                    "the same upstream Series (that is just the variance "
+                    "of the series) and DO NOT pass a scalar literal "
+                    "here (artifact-only slot)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "ScalarMetric",
+            (
+                "The full-sample covariance (a single number) wrapped as "
+                "a typed ScalarMetric.  Tagged RATIO because the closed "
+                "unit enum has no product unit — the TRUE dimension "
+                "(left_units × right_units) is recorded in lineage, with "
+                "ddof and the overlap n_obs.  Feeds the terminal answer "
+                "directly.  Raises CovarianceError below min_periods or "
+                "on a strict-mode units mismatch; a constant input is "
+                "NOT an error — its covariance is a legitimate 0.0."
             ),
         ),
     ),

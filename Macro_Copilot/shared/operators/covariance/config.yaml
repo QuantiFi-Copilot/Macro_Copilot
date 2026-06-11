@@ -1,0 +1,85 @@
+operator:
+  name: covariance
+  method_family: statistical_relationship
+  version: "1.0.0"
+  description: >-
+    Full-sample covariance between two index-aligned numeric Series.
+    Finance-blind. Unlike correlation, a covariance is unit-BEARING:
+    its semantic unit is the product of the two inputs' units, which
+    the closed TimeSeriesUnits enum cannot express — so the output
+    ScalarMetric is tagged RATIO and both inputs' units are recorded
+    in lineage for provenance (the rolling_regression-beta /
+    cointegration precedent). Same units are required by default.
+
+# Every user-choosable method choice is offloaded here so the operator
+# is not opinionated and the caller can switch seamlessly (OPR7/OPR8).
+# The schema defaults in schemas.py mirror these values and a test
+# asserts they do not diverge.
+defaults:
+  ddof:
+    value: 1
+    source: operator_v1_default
+    rationale: >-
+      Sample covariance (Bessel-corrected, denominator n - 1) matches
+      pandas' default and the sample-statistic convention used across
+      the catalog (industry_standard_sample_std on the primitive side,
+      e.g. z_score_ddof = 1). ddof=0 (population covariance) is the
+      explicit alternative.
+    valid_values: [0, 1]
+  min_periods:
+    value: 2
+    source: operator_v1_default
+    rationale: >-
+      A sample covariance is undefined with fewer than two overlapping
+      non-NaN observations; 2 is the mathematical floor.
+
+methodology:
+  what_it_does: >-
+    Computes the covariance between two Series over the dates where
+    both are present, after requiring an identical DatetimeIndex (align
+    upstream with align_series — covariance does not align) and, by
+    default, identical units (reconcile upstream with convert_units —
+    a covariance's unit is the product of its inputs' units, so a
+    mixed-unit covariance is refused unless explicitly opted into and
+    the opt-out is recorded in lineage). Returns a single ScalarMetric
+    tagged RATIO — the closed unit enum has no product unit, so the
+    true dimension (left_units x right_units) is recorded in lineage
+    params for provenance. Strict-by-default on frequency and
+    missingness. A zero-variance (constant) input is NOT an error: the
+    covariance with a constant series is defined and equals 0. Raises
+    CovarianceError when the overlap is below min_periods or the value
+    overflows to a non-finite float.
+  planned_extensions:
+    - "rolling_covariance: a separate operator emitting a Series of trailing-window covariances (constant output type per OPR2) — NOT a window parameter on this full-sample operator."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# Description content lives ONLY here; slot / output structure lives ONLY in
+# shared.workflow.OPERATOR_REGISTRY.  The renderer at
+# shared.workflow.operator_catalogue fuses both at L3-prompt-build time.
+# ============================================================================
+card:
+  one_line: >-
+    Full-sample covariance between two index-aligned numeric Series (unit-bearing co-movement in level terms).
+  when_to_use:
+    - "User asks how much two series move together in LEVEL terms (not the normalised [-1,1] strength) over the full sample."
+    - "A downstream calculation needs the raw covariance as an ingredient (e.g. variance decomposition or a hand-built hedge ratio cov/var)."
+  when_not_to_use:
+    - "User asks how STRONGLY two series co-move / wants a normalised, scale-free number — use correlation (dimensionless, [-1, 1])."
+    - "User asks for a time-varying / rolling co-movement — a rolling covariance Series is a separate operator (see planned_extensions); rolling_correlation covers the normalised case today."
+    - "User asks for the slope of one series on another (hedge ratio / beta) — use rolling_regression."
+  upstream_requirements:
+    - "Both Series must share an identical DatetimeIndex.  Canonical upstream: align_series → select_from_series_set ×2."
+    - "Both Series must share the SAME units by default (a covariance's unit is the product of its inputs' units) — insert convert_units on the offending arm to reconcile PERCENT vs BPS first."
+  downstream_pattern:
+    - "Output is a ScalarMetric (tagged RATIO; the true dimension — left_units × right_units — is recorded in lineage); feeds the terminal answer directly."
+  knobs_quick_ref:
+    ddof: "1 (default; sample covariance, denominator n-1) | 0 (population covariance, denominator n)."
+    min_periods: "2 by default (mathematical floor); raise for noisier inputs."
+  example_shapes:
+    - description: "Full-sample covariance of two index-aligned numeric Series."
+      shape: "[Series A, Series B] -> align_series -> select_from_series_set ×2 -> covariance -> ScalarMetric"
+  sibling_operators:
+    - correlation: "The normalised, dimensionless version (covariance divided by both standard deviations).  Use when the question is 'how correlated', not 'how much together in level terms'."
+    - rolling_regression: "Slope (beta) of one Series on another — the regression-flavoured cousin (beta = cov/var with intercept).  Emits {beta, alpha, r_squared} SeriesSet."
+  intent_hints: [relationship]
