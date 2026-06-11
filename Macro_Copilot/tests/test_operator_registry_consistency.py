@@ -63,6 +63,7 @@ _V2_CONFORMANT = {
     "event_windows",
     "granger_causality",
     "lead_lag",
+    "pairwise_spread_matrix",
     "percentile_rank",
     "regression_residual",
     "rolling_correlation",

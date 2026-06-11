@@ -1,0 +1,73 @@
+operator:
+  name: pairwise_spread_matrix
+  method_family: cross_sectional
+  version: "1.0.0"
+  description: >-
+    All pairwise differences of an aligned SeriesSet's members over
+    time: one wide Panel whose rows are the shared dates and whose
+    columns are the unordered member pairs (upper triangle over
+    sorted keys; column 'a__minus__b' is a - b), every column in the
+    members' common unit. Finance-blind — the full relative-
+    positioning matrix. All members must share one unit (differences;
+    mixed units are refused with the convert_units remedy). At most
+    50 members (design-locked ceiling: N members emit N(N-1)/2
+    columns).
+
+# This operator has NO user-choosable parameters: the pair enumeration,
+# direction convention, column naming and member ceiling are all
+# DESIGN-LOCKED (OPR7 — varying them would break replay identity and
+# the column-name contract for no analytical gain).  Each lock is
+# documented in operator.py/schemas.py and recorded in lineage params.
+defaults: {}
+
+methodology:
+  what_it_does: >-
+    Enumerates the unordered pairs of the set's members (upper
+    triangle over SORTED keys, i < j — the reverse pair is the exact
+    negation, so emitting both would double the width for zero
+    information), computes member_i - member_j element-wise on the
+    shared index, and assembles one Panel with a column per pair
+    named '<ki>__minus__<kj>'. A pair value is NaN exactly where
+    either member is NaN (pairwise propagation). An overflowing
+    difference (subtraction of extreme finite values can exceed the
+    float range) and an all-NaN output each raise
+    PairwiseSpreadMatrixError. All members must share one unit —
+    mixed units are refused outright with convert_units named as the
+    upstream remedy; every pair column carries that common unit in
+    units_by_column. Sets larger than 50 members are refused
+    (design-locked ceiling — summarise larger universes with
+    cross_sectional_statistic or subset upstream). Output missingness
+    is fresh (RawNoCleaning); the Panel's lineage extends the input
+    set's chain (the set-producing step already folds every member's
+    head hash).
+  planned_extensions:
+    - "absolute-difference variant (|a - b|): a distinct value semantics — declared here so the signed-difference surface stays honest."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    All pairwise differences of an aligned SeriesSet over time — one Panel column per member pair, the full relative-positioning matrix.
+  when_to_use:
+    - "User asks for EVERY pair spread across a small universe at once ('the matrix of spreads between all the points') as a single wide artifact."
+    - "A terminal answer wants the relative-positioning grid over time rather than one chosen pair."
+  when_not_to_use:
+    - "User wants ONE specific pair's spread — use select_from_series_set ×2 + series_arithmetic(subtract) (a single Series, far cheaper)."
+    - "User wants a per-date summary of how spread out the universe is — use cross_sectional_statistic(statistic=std)."
+    - "User wants each member vs the universe average — use demean_cross_section."
+  upstream_requirements:
+    - "Input is ONE aligned SeriesSet — canonical upstream: align_series over the member Series (2–50 members)."
+    - "All members must share one unit; insert convert_units on offending members first (mixed-unit differences are refused, no opt-out)."
+  downstream_pattern:
+    - "Output is a Panel (rows = dates; one column per pair, named '<ki>__minus__<kj>' with a - b direction; every column in the common unit).  Typically the TERMINAL artifact — no live operator consumes Panel today."
+  knobs_quick_ref:
+    (none): "No knobs — pair enumeration (sorted upper triangle), direction (a__minus__b = a − b), naming, and the 50-member ceiling are design-locked and recorded in lineage."
+  example_shapes:
+    - description: "The full spread matrix of a small universe over time."
+      shape: "[Series x N] -> align_series -> pairwise_spread_matrix -> Panel (terminal)"
+  sibling_operators:
+    - series_arithmetic: "ONE pair's difference as a Series — the right tool when the user names a specific pair."
+    - cross_sectional_statistic: "Per-date summary across members (mean/median/std/min/max/sum) — the dispersion gauge for large universes."
+    - demean_cross_section: "Each member vs the universe average (SeriesSet out)."
+  intent_hints: [cross_sectional]

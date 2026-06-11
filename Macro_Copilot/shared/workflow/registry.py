@@ -105,6 +105,10 @@ from shared.operators.rolling_regression import (
     RollingRegressionParams,
     CONFIG_PATH as _ROLLING_REGRESSION_CONFIG_PATH,
 )
+from shared.operators.pairwise_spread_matrix import (
+    pairwise_spread_matrix, PairwiseSpreadMatrixParams,
+    CONFIG_PATH as _PAIRWISE_SPREAD_MATRIX_CONFIG_PATH,
+)
 from shared.operators.percentile_rank import (
     percentile_rank,
     PercentileRankParams,
@@ -1799,6 +1803,53 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "n_observations.  The substrate does NOT auto-translate "
                 "this to a yes/no judgement — the answer layer "
                 "interprets against critical-value tables."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — cross_sectional: all pairwise differences
+    # of an aligned SeriesSet.  One SeriesSet in, one Panel out (rows =
+    # dates; one column per unordered pair; units passthrough).  Same-
+    # units-across-members required outright; <= 50 members
+    # (design-locked ceiling).
+    "pairwise_spread_matrix": OperatorSpec(
+        operator_name="pairwise_spread_matrix",
+        callable=pairwise_spread_matrix,
+        params_class=PairwiseSpreadMatrixParams,
+        config_path=_PAIRWISE_SPREAD_MATRIX_CONFIG_PATH,
+        input_slots={
+            "series_set": SlotDescriptor.of(
+                "SeriesSet",
+                (
+                    "An aligned SeriesSet of 2–50 members sharing ONE "
+                    "unit — canonical upstream is align_series (insert "
+                    "convert_units on offending members first; "
+                    "mixed-unit differences are refused outright).  USE "
+                    "when the user wants EVERY pair spread across a "
+                    "small universe at once, as one wide artifact over "
+                    "time.  Pair enumeration, direction "
+                    "('a__minus__b' = a − b, sorted upper triangle), "
+                    "column naming and the 50-member ceiling are "
+                    "design-locked and recorded in lineage.  DO NOT use "
+                    "for ONE named pair (use select_from_series_set ×2 "
+                    "+ series_arithmetic), a per-date dispersion gauge "
+                    "(use cross_sectional_statistic(std)), or "
+                    "vs-average series (use demean_cross_section)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Panel",
+            (
+                "A Panel whose rows are the shared dates and whose "
+                "columns are the unordered member pairs "
+                "('<ki>__minus__<kj>', value = ki − kj), every column "
+                "in the members' common unit.  A pair value is NaN "
+                "where either member is NaN.  Typically the TERMINAL "
+                "artifact (no live operator consumes Panel).  Lineage "
+                "extends the input set's chain with the design locks "
+                "recorded.  Raises PairwiseSpreadMatrixError on <2 or "
+                ">50 members, mixed units, overflow, or an all-NaN "
+                "output."
             ),
         ),
     ),
