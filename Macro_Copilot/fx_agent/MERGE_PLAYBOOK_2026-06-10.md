@@ -66,3 +66,33 @@ Ping sent; answer: **"OK I trust you."** → all 3 questions green-lit, operator
 - **Rebase target = revamp** confirmed. **FX frontend via his factory** post-merge confirmed; #243/#244 remain open as spec/reference for the factory run.
 
 Remaining gate: **the merge window is Sacha's timing call.** When opened, run §4 steps 2-5 (throwaway dry-run → one-session cascade rebase → merge bottom-up → re-ingest → factory → backlog).
+
+## 8. Post-merge alignment backlog (audit vs revamp standards, 2026-06-10)
+
+Full comparative audit of FX vs Sreeram's revamp standards (docs_revamped: P1–P12, PR1–PR16 + 8-stage BUILD_GUIDE, OPR/ART v2 per ADR 0016, tool_lifecycle 7 axes, methodology_exposure, ADR 0014/0015). **Already compliant, do not redo**: data substrate + playbooks, 4-file shape + compute signature, conventions value/source/rationale, bucket taxonomy, MCP wrapper pattern, finance-blind discipline, cross-domain read pattern (`fetch_cross_market_pair` survives on revamp), P7/P11.
+
+### Bloc 1 — merge-window conditions
+- [ ] Cascade-rebase onto revamp (§4; 8 known conflict files).
+- [ ] Re-wire FX into the orchestrator's **dynamic Domain enum** (PR-10F — members built from sub-package dirs; replaces #178's hardcoded wiring).
+- [ ] Re-test F1 panels against **ART v2** hardened validators (strict index, ±Inf forbidden, lineage integrity).
+- [ ] **Renumber our FX ADR**: our "ADR 0007" collides with revamp's `0007-otr-resolver` → becomes 0017+.
+
+### Bloc 2 — per-tool backend conformity (×30, mechanical, batchable)
+- [ ] `exposure:` block on every convention + `_conventions_from_config` resolver (pilot pattern: `breakeven_inflation_simple`).
+- [ ] Per-tool `README.md` + `LIFECYCLE_CHECKLIST.md` (tool folder becomes 6 files).
+- [ ] Pytest-ify standalone-runner tests; complete the F1 seven (panels + scanners): wiring + sql_validation + parity fixtures.
+- [ ] Split `01_fx_manifest.yml` into per-sub-agent manifests (spot / forwards / ndf / vol) with revamp-style headers.
+- [ ] Create `manifesto/01_instruments/fx_agent/` (universe map + 6 substrate docs — content exists in FX_INVENTORY, it's reformatting).
+
+### Bloc 3 — platform integration
+- [ ] `tool_metadata` (ADR 0015): add FX domains to the `CHECK (domain IN ...)` constraint (**coordinate with Sreeram — shared schema**), extend `populate_tool_metadata.py`, then author theoretical_reference / known_limitations / desk_narrative ×30 (the real intellectual work).
+- [ ] Register the 30 tools in `_PRIMITIVE_SPECS` with `output_field_units` (+ `output_artifact_type="Panel"` for the 3 panels) → FX becomes DAG-composable/selectable.
+- [ ] Validate existing workflow templates (event_study / regime / backtest) with FX slots (WT15 instrument-agnostic claim) before authoring any FX-specific template.
+- [ ] Optional: `fx_agent/storage/views/` (fx_instruments_view).
+- [ ] Re-propose `cross_sectional_rank` per OPR v2 (ADR 0016 explicitly plans a `cross_sectional` family).
+
+### Bloc 4 — frontend via HIS factory (not by hand)
+- [ ] Enter the 30 FX tools into the frontend_automation catalog → modules generated in batches (THESIS, dual Build views, Monitor surface, mockups, module.spec). #243/#244 = spec/reference, then superseded.
+- [ ] `surface_contract.md` rows for every FX tool (PR gate).
+
+Effort: Blocs 1+2 ≈ 2-3 sessions (mostly mechanical); Bloc 3 ≈ 2 sessions (7-axes authoring dominates); Bloc 4 ≈ catalog entries, his factory does the rest. Strategic read: FX is at parity on substrate + backend core, behind on conformity/metadata/frontend — same position as his own tools 29-58, which his factory is still retrofitting.
