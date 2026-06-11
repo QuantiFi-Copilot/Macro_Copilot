@@ -80,6 +80,10 @@ from shared.operators.cross_sectional_rank import (
     cross_sectional_rank, CrossSectionalRankParams,
     CONFIG_PATH as _CROSS_SECTIONAL_RANK_CONFIG_PATH,
 )
+from shared.operators.cross_sectional_statistic import (
+    cross_sectional_statistic, CrossSectionalStatisticParams,
+    CONFIG_PATH as _CROSS_SECTIONAL_STATISTIC_CONFIG_PATH,
+)
 from shared.operators.cross_sectional_zscore import (
     cross_sectional_zscore, CrossSectionalZscoreParams,
     CONFIG_PATH as _CROSS_SECTIONAL_ZSCORE_CONFIG_PATH,
@@ -1053,6 +1057,54 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "extract one member's rank path.  Raises "
                 "CrossSectionalRankError on <2 members, mixed units, "
                 "or an all-NaN output."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — cross_sectional: per-date summary of an
+    # aligned SeriesSet's cross-section (mean/median/std/min/max/sum).
+    # One SeriesSet in, one Series out (units passthrough; std is the
+    # dispersion gauge).  Same-units-across-members required outright.
+    "cross_sectional_statistic": OperatorSpec(
+        operator_name="cross_sectional_statistic",
+        callable=cross_sectional_statistic,
+        params_class=CrossSectionalStatisticParams,
+        config_path=_CROSS_SECTIONAL_STATISTIC_CONFIG_PATH,
+        input_slots={
+            "series_set": SlotDescriptor.of(
+                "SeriesSet",
+                (
+                    "An aligned SeriesSet of N >= 2 members sharing ONE "
+                    "unit — canonical upstream is align_series (insert "
+                    "convert_units on offending members first; "
+                    "mixed-unit summaries are refused outright, no "
+                    "opt-out).  USE when the user asks for ONE number "
+                    "per date across the universe: the average/median "
+                    "level (statistic=mean/median), the cross-sectional "
+                    "DISPERSION gauge (statistic=std — 'how spread out "
+                    "is the universe today'), the per-date extremes "
+                    "(min/max), or the total (sum).  Dates with fewer "
+                    "than params.min_members non-NaN members emit NaN.  "
+                    "DO NOT use for per-member positions vs peers (use "
+                    "cross_sectional_rank / cross_sectional_zscore), a "
+                    "rolling summary of ONE series (use "
+                    "rolling_statistic), or a full-sample scalar of one "
+                    "series (use summarize_series)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            (
+                "One value per date — the chosen statistic across the "
+                "non-NaN members — in the members' common unit "
+                "(passthrough for every statistic; std of BPS members "
+                "is BPS).  Missingness is fresh; frequency passes "
+                "through; lineage extends the input set's chain.  "
+                "Drop-in input for rolling_zscore (dispersion regime), "
+                "threshold_events (alerts), series_arithmetic, or "
+                "direct surface.  Raises CrossSectionalStatisticError "
+                "on <2 members, mixed units, overflow, or an all-NaN "
+                "output."
             ),
         ),
     ),

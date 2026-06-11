@@ -1,0 +1,101 @@
+operator:
+  name: cross_sectional_statistic
+  method_family: cross_sectional
+  version: "1.0.0"
+  description: >-
+    Per-date summary of an aligned SeriesSet's cross-section: reduces
+    the non-NaN members at each date to ONE number — mean | median |
+    std | min | max | sum — emitting a single Series in the members'
+    common unit. Finance-blind. std is the cross-sectional dispersion
+    gauge ("how spread out is the universe today"). All members must
+    share one unit (a cross-member summary compares values; mixed
+    units are refused with the convert_units remedy).
+
+# Every user-choosable method choice is offloaded here so the operator
+# is not opinionated and the caller can switch seamlessly (OPR7/OPR8).
+# The schema defaults in schemas.py mirror these values and a test
+# asserts they do not diverge.
+defaults:
+  statistic:
+    value: mean
+    source: operator_v1_default
+    rationale: >-
+      The cross-sectional mean ("the universe's average level today")
+      is the most common per-date summary; median (robust), std (the
+      dispersion gauge), min/max (extremes) and sum are the explicit
+      alternatives.  count is deliberately excluded — it summarises
+      PRESENCE (COUNT units), not the members' values, and would break
+      the family's uniform unit-passthrough algebra.
+    valid_values: [mean, median, std, min, max, sum]
+  ddof:
+    value: 1
+    source: operator_v1_default
+    rationale: >-
+      Sample standard deviation (``ddof=1``) is the desk-default —
+      consistent with ``rolling_zscore``, ``cross_sectional_zscore``,
+      ``threshold_events`` and ``summarize_series``.  ``ddof=0``
+      (population) is supported.  Consumed ONLY by statistic='std';
+      nulled in lineage params otherwise (OPR14).
+    valid_values: [0, 1]
+  min_members:
+    value: 2
+    source: operator_v1_default
+    rationale: >-
+      A cross-sectional summary of fewer than 2 members is the
+      identity, not a reduction (and std with ddof=1 is undefined at
+      n=1); 2 is the floor, applied PER DATE — a date below it emits
+      NaN.  Raise it for screens that need a deeper universe.
+
+methodology:
+  what_it_does: >-
+    Builds the [date x member] frame from an aligned SeriesSet and
+    reduces each row across the non-NaN members with the chosen
+    statistic (pandas axis=1 reductions; std uses the configured
+    ddof). A date with fewer than min_members non-NaN members emits
+    NaN (legitimate per-date missingness — this also corrects pandas'
+    sum-of-all-NaN = 0 to an honest NaN); std of an all-equal date is
+    a legitimate 0.0. An overflowing summary (±Inf — reachable for
+    sum/mean of extreme values) and an all-NaN output each raise
+    CrossSectionalStatisticError. All members must share one unit —
+    mixed units are refused outright with convert_units named as the
+    upstream remedy; the output passes that common unit through for
+    every statistic. Output missingness is fresh (RawNoCleaning);
+    set frequency passes through; the output Series' lineage is the
+    input set's chain extended by this step (the set-producing step
+    already folds every member's head hash).
+  planned_extensions:
+    - "per-date quantiles (e.g. p25/p75 across members): a distinct parameterised reduction — declared here so the closed statistic set stays honest."
+    - "count of non-NaN members per date (COUNT units): a presence statistic, not a value statistic — its own operator if the toolbox needs it."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Per-date summary of an aligned SeriesSet — one number per date across the members (mean, median, dispersion, extremes, sum).
+  when_to_use:
+    - "User asks for the universe's per-date AVERAGE / MEDIAN level ('the average yield across the curve over time')."
+    - "User asks how DISPERSED the universe is per date — statistic=std is the cross-sectional dispersion gauge."
+    - "User asks for the per-date extreme level across members (min/max) or the cross-member total (sum)."
+  when_not_to_use:
+    - "User wants each member's position vs peers — use cross_sectional_rank (per-member ranks) or cross_sectional_zscore (per-member z-scores)."
+    - "User wants a rolling summary of ONE series over time — use rolling_statistic."
+    - "User wants ONE full-sample number for a single series — use summarize_series."
+  upstream_requirements:
+    - "Input is ONE aligned SeriesSet — canonical upstream: align_series over the member Series (N >= 2)."
+    - "All members must share one unit; insert convert_units on offending members first (mixed-unit summaries are refused, no opt-out)."
+  downstream_pattern:
+    - "Output is a Series in the members' common unit (one value per date).  Drop-in input for rolling_zscore (dispersion regime), threshold_events (dispersion alerts), series_arithmetic, or direct surface."
+  knobs_quick_ref:
+    statistic: "mean (default) | median | std (dispersion gauge) | min | max | sum."
+    ddof: "1 (default; sample std) | 0 (population) — std only; nulled in lineage otherwise."
+    min_members: "2 by default — dates with fewer non-NaN members emit NaN."
+  example_shapes:
+    - description: "The universe's per-date dispersion, then z-scored against its own history."
+      shape: "[Series x N] -> align_series -> cross_sectional_statistic(statistic=std) -> rolling_zscore -> Series"
+  sibling_operators:
+    - cross_sectional_rank: "Per-member positions among peers per date (SeriesSet out).  Use when the user wants WHO is high/low, not the summary level."
+    - cross_sectional_zscore: "Per-member peer-relative z-scores per date (SeriesSet out)."
+    - rolling_statistic: "Trailing-window summary of ONE series over time (Series out).  Time-series, not cross-sectional."
+    - summarize_series: "Full-sample scalar summary of ONE series (ScalarMetric out)."
+  intent_hints: [cross_sectional]

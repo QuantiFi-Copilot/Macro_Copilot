@@ -281,6 +281,7 @@ class TestComposerPromptContent:
             "correlation",
             "covariance",
             "cross_sectional_rank",
+            "cross_sectional_statistic",
             "cross_sectional_zscore",
             "event_windows",
             "granger_causality",

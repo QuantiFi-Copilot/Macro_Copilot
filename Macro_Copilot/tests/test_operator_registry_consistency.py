@@ -54,6 +54,7 @@ _V2_CONFORMANT = {
     "correlation",
     "covariance",
     "cross_sectional_rank",
+    "cross_sectional_statistic",
     "cross_sectional_zscore",
     "align_series",
     "apply_mask",
