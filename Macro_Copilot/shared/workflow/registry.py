@@ -80,6 +80,10 @@ from shared.operators.cross_sectional_rank import (
     cross_sectional_rank, CrossSectionalRankParams,
     CONFIG_PATH as _CROSS_SECTIONAL_RANK_CONFIG_PATH,
 )
+from shared.operators.cross_sectional_zscore import (
+    cross_sectional_zscore, CrossSectionalZscoreParams,
+    CONFIG_PATH as _CROSS_SECTIONAL_ZSCORE_CONFIG_PATH,
+)
 from shared.operators.granger_causality import (
     granger_causality, GrangerCausalityParams,
     CONFIG_PATH as _GRANGER_CAUSALITY_CONFIG_PATH,
@@ -1049,6 +1053,52 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "extract one member's rank path.  Raises "
                 "CrossSectionalRankError on <2 members, mixed units, "
                 "or an all-NaN output."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — cross_sectional: per-date z-score of
+    # every member of an aligned SeriesSet against the cross-section.
+    # One SeriesSet in, one SeriesSet out (same keys; Z_SCORE units).
+    # Same-units-across-members required outright.
+    "cross_sectional_zscore": OperatorSpec(
+        operator_name="cross_sectional_zscore",
+        callable=cross_sectional_zscore,
+        params_class=CrossSectionalZscoreParams,
+        config_path=_CROSS_SECTIONAL_ZSCORE_CONFIG_PATH,
+        input_slots={
+            "series_set": SlotDescriptor.of(
+                "SeriesSet",
+                (
+                    "An aligned SeriesSet of N >= 2 members sharing ONE "
+                    "unit — canonical upstream is align_series (insert "
+                    "convert_units on offending members first; "
+                    "mixed-unit standardisation is refused outright, no "
+                    "opt-out).  USE when the user asks how far each "
+                    "member of a universe sits FROM ITS PEERS at each "
+                    "date: z = (member − cross-mean) / cross-std over "
+                    "the non-NaN members.  A member NaN at a date gets "
+                    "a NaN z; dates with fewer than params.min_members "
+                    "non-NaN members OR zero cross-sectional dispersion "
+                    "emit NaN for all.  DO NOT use to standardise ONE "
+                    "series against its own history (use "
+                    "rolling_zscore) or for per-date peer positions / "
+                    "percentiles (use cross_sectional_rank)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "SeriesSet",
+            (
+                "A SeriesSet with the SAME keys and common index; each "
+                "member's payload is its per-date z-score vs the "
+                "cross-section, in Z_SCORE units (dimensionless).  "
+                "Missingness is fresh (z-scores are fresh derivations); "
+                "frequency passes through; the set-level lineage "
+                "extends the input's chain.  Typical follow-ons: "
+                "cross_sectional_rank (rank the z-scores), "
+                "select_from_series_set (extract one member's "
+                "peer-relative path).  Raises CrossSectionalZscoreError "
+                "on <2 members, mixed units, or an all-NaN output."
             ),
         ),
     ),

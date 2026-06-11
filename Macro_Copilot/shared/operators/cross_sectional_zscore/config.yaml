@@ -1,0 +1,87 @@
+operator:
+  name: cross_sectional_zscore
+  method_family: cross_sectional
+  version: "1.0.0"
+  description: >-
+    Per-date z-score of each member of an aligned SeriesSet against
+    the cross-section of all members: z = (member - cross_mean) /
+    cross_std at every date. Finance-blind. Emits a SeriesSet with
+    the same keys in Z_SCORE units — "how far is each member from
+    its peers today". All members must share one unit (standardising
+    compares values; mixed units are refused with the convert_units
+    remedy).
+
+# Every user-choosable method choice is offloaded here so the operator
+# is not opinionated and the caller can switch seamlessly (OPR7/OPR8).
+# The schema defaults in schemas.py mirror these values and a test
+# asserts they do not diverge.
+defaults:
+  ddof:
+    value: 1
+    source: operator_v1_default
+    rationale: >-
+      Sample standard deviation (``ddof=1``) is the desk-default —
+      consistent with ``rolling_zscore``, ``threshold_events`` and
+      ``summarize_series``.  ``ddof=0`` (population / biased
+      estimator) is supported.
+    valid_values: [0, 1]
+  min_members:
+    value: 2
+    source: operator_v1_default
+    rationale: >-
+      A cross-sectional z-score with fewer than two non-NaN members is
+      undefined (no dispersion to standardise against); 2 is the
+      mathematical floor, applied PER DATE — a date below the floor
+      emits NaN for every member.  At n=2 with ddof=1 the std is
+      defined whenever the two values differ; equal values are the
+      zero-dispersion case (NaN row).  Raise the floor for screens
+      that need a deeper universe.
+
+methodology:
+  what_it_does: >-
+    Builds the [date x member] frame from an aligned SeriesSet and
+    standardises each row: z = (member - cross_mean) / cross_std with
+    the configured ddof, using only the non-NaN members at each date.
+    A member that is NaN at a date receives a NaN z there; a date with
+    fewer than min_members non-NaN members, or with ZERO cross-
+    sectional dispersion (all members equal — z undefined), emits NaN
+    for every member (legitimate per-date missingness; the std mask
+    runs before division so infinities are unreachable). An all-NaN
+    output raises CrossSectionalZscoreError. All members must share
+    one unit — mixed units are refused outright (standardising
+    compares values; there is no honest opt-out) with convert_units
+    named as the upstream remedy. Output missingness is fresh
+    (RawNoCleaning); set frequency passes through; the set-level
+    lineage extends the input's chain.
+  planned_extensions:
+    - "robust variant (median / MAD standardisation): a distinct estimator family — declared here so the mean/std surface stays honest; its own param set when the toolbox needs it."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Per-date z-score of every member of an aligned SeriesSet against the cross-section — how far each member sits from its peers today.
+  when_to_use:
+    - "User asks how extreme each member of a universe is VERSUS ITS PEERS at each date ('which curve points are stretched relative to the rest')."
+    - "A screen needs peer-relative standardisation before ranking or thresholding (z first, then cross_sectional_rank or threshold_events)."
+  when_not_to_use:
+    - "User wants each series standardised against its OWN trailing history — use rolling_zscore (single-Series, time-series z)."
+    - "User wants per-date ordinal positions / percentiles among peers — use cross_sectional_rank."
+    - "User wants the cross-sectional dispersion level itself — a planned cross_sectional_statistic operator covers that; until it lands there is no per-date cross-member reducer."
+  upstream_requirements:
+    - "Input is ONE aligned SeriesSet — canonical upstream: align_series over the member Series (N >= 2)."
+    - "All members must share one unit; insert convert_units on offending members first (mixed-unit standardisation is refused, no opt-out)."
+  downstream_pattern:
+    - "Output is a SeriesSet (same keys; Z_SCORE units).  Typical follow-ons: cross_sectional_rank (rank the z-scores), select_from_series_set (one member's peer-relative path), threshold_events on an extracted member."
+  knobs_quick_ref:
+    ddof: "1 (default; sample std) | 0 (population std)."
+    min_members: "2 by default — dates with fewer non-NaN members (or zero dispersion) emit NaN for every member."
+  example_shapes:
+    - description: "Peer-relative z of a universe, then ranked cross-sectionally."
+      shape: "[Series x N] -> align_series -> cross_sectional_zscore -> cross_sectional_rank -> SeriesSet"
+  sibling_operators:
+    - rolling_zscore: "Standardises ONE series against its OWN trailing window (time-series z).  Use for 'vs its past', not 'vs peers'."
+    - cross_sectional_rank: "Ordinal/percentile positions among peers per date — the ranking sibling; chain it after this for z-then-rank screens."
+    - align_series: "Builds the aligned SeriesSet this operator consumes."
+  intent_hints: [cross_sectional]
