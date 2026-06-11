@@ -52,6 +52,7 @@ import {
   registerToolRenderer,
   type NodeRenderer,
 } from '@/components/build/lib/nodeRendererRegistry';
+import { StandardPreviewWidget } from './shared/StandardPreviewWidget';
 
 // Stage 4d — every module's preview registers under ``Series`` by
 // default.  Modules that need additional artifact-type registrations
@@ -73,6 +74,31 @@ for (const m of ALL_PRIMITIVE_MODULES) {
     registerToolRenderer(
       { artifactType: extra, toolName: m.toolName },
       Preview,
+    );
+  }
+}
+
+// Stage 4e — standard dual-view tools (buildExtended + buildCompact, no
+// bespoke ``preview``) get the SHARED ``StandardPreviewWidget`` as their
+// persisted-slug node body, so the open-DAG ``/workspace/:slug`` page
+// renders them as a desk card (deterministic, read-only by hash) instead
+// of the generic per-artifact-type stats strip.  One shared renderer,
+// zero per-tool files.  Operators (no owning module) keep the per-type
+// generic widget; rich-models keep their bespoke ``preview`` (the guard
+// below skips any module that already declared one above, so the per-tool
+// entries from the loop above are never overwritten).
+for (const m of ALL_PRIMITIVE_MODULES) {
+  if (m.surfaces?.preview) continue;
+  if (!m.surfaces?.buildCompact) continue;
+  registerToolRenderer(
+    { artifactType: DEFAULT_PREVIEW_ARTIFACT_TYPE, toolName: m.toolName },
+    StandardPreviewWidget as NodeRenderer,
+  );
+  for (const extra of m.previewArtifactTypes ?? []) {
+    if (extra === DEFAULT_PREVIEW_ARTIFACT_TYPE) continue;
+    registerToolRenderer(
+      { artifactType: extra, toolName: m.toolName },
+      StandardPreviewWidget as NodeRenderer,
     );
   }
 }
