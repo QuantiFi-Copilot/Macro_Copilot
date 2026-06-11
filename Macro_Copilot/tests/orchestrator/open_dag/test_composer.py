@@ -283,6 +283,7 @@ class TestComposerPromptContent:
             "cross_sectional_rank",
             "cross_sectional_statistic",
             "cross_sectional_zscore",
+            "cumulative",
             "demean_cross_section",
             "event_windows",
             "ewm_statistic",

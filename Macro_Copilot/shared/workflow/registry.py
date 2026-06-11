@@ -100,6 +100,10 @@ from shared.operators.granger_causality import (
     granger_causality, GrangerCausalityParams,
     CONFIG_PATH as _GRANGER_CAUSALITY_CONFIG_PATH,
 )
+from shared.operators.cumulative import (
+    cumulative, CumulativeParams,
+    CONFIG_PATH as _CUMULATIVE_CONFIG_PATH,
+)
 from shared.operators.lag import (
     lag, LagParams,
     CONFIG_PATH as _LAG_CONFIG_PATH,
@@ -1516,6 +1520,46 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "the rolling beta the user usually asks for; or all "
                 "three for full diagnostic.  Beta is in (lhs_units / "
                 "rhs_units); alpha in lhs_units; r_squared in RATIO."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — single_series_transform: running
+    # sum/max/min of one Series from its first row.  One Series in,
+    # one Series out (units passthrough); product excluded
+    # (dimensional honesty).
+    "cumulative": OperatorSpec(
+        operator_name="cumulative",
+        callable=cumulative,
+        params_class=CumulativeParams,
+        config_path=_CUMULATIVE_CONFIG_PATH,
+        input_slots={
+            "series": SlotDescriptor.of(
+                "Series",
+                (
+                    "The single typed Series to accumulate.  USE when "
+                    "the user wants a SINCE-INCEPTION running read: a "
+                    "level path rebuilt from period changes "
+                    "(statistic=sum over a diff'd series), or the "
+                    "running peak/trough to date (statistic=max/min — "
+                    "e.g. the cummax leg of a drawdown comparison).  "
+                    "NaN positions stay NaN; accumulation continues "
+                    "over non-NaN values.  DO NOT use for a "
+                    "TRAILING-window statistic (use rolling_statistic), "
+                    "a full-sample scalar (use summarize_series), or "
+                    "compounded growth/cumprod (deliberately "
+                    "unsupported on unit-bearing series)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            (
+                "The running statistic on the input index, in the "
+                "input's units (passthrough).  Typical follow-ons: "
+                "series_arithmetic (x − cummax(x) drawdown shapes), "
+                "threshold_events, direct surface.  Raises "
+                "CumulativeError on a non-Series input, an overflowing "
+                "running sum, or an all-NaN output."
             ),
         ),
     ),

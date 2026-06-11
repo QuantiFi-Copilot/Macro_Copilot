@@ -1,0 +1,72 @@
+operator:
+  name: cumulative
+  method_family: single_series_transform
+  version: "1.0.0"
+  description: >-
+    Running reduction of one Series from its first row — sum (running
+    total), max (running peak) or min (running trough) — emitting a
+    Series in the input's units. Finance-blind. product is
+    deliberately excluded (cumprod of a unit-bearing series is
+    dimensionally dishonest — unit^n; only meaningful on
+    dimensionless growth factors).
+
+# Every user-choosable method choice is offloaded here so the operator
+# is not opinionated and the caller can switch seamlessly (OPR7/OPR8).
+# The schema defaults in schemas.py mirror these values and a test
+# asserts they do not diverge.
+defaults:
+  statistic:
+    value: sum
+    source: operator_v1_default
+    rationale: >-
+      The running total (e.g. of period changes — a rebuilt level
+      path) is the canonical cumulative read; max (running peak) and
+      min (running trough) are the explicit alternatives.  product is
+      EXCLUDED: cumprod of a Series in unit X yields X^n, which
+      violates OPR11 unit consistency — only dimensionless growth
+      factors support it (declared in planned_extensions).
+    valid_values: [sum, max, min]
+
+methodology:
+  what_it_does: >-
+    Applies pandas cumsum/cummax/cummin to the input Series. NaN
+    positions stay NaN and the accumulation continues over the
+    non-NaN values (pandas skipna semantics). The running SUM is an
+    unbounded accumulator, so an overflowing (±Inf) result raises
+    CumulativeError (full-accumulation reductions raise, never scrub
+    — the cross_sectional_statistic precedent; max/min are bounded by
+    the inputs). An all-NaN output also raises. Units, frequency and
+    missingness policy pass through; the statistic is recorded in
+    lineage.
+  planned_extensions:
+    - "product (cumprod): only dimensionally honest on RATIO growth factors — needs an explicit unit-gate before it can land."
+    - "windowed restart (cumulative within blocks): a distinct anchoring semantics."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Running sum / peak / trough of one Series from its first row — rebuild level paths from changes or track running extremes.
+  when_to_use:
+    - "User wants a level path rebuilt from period changes ('cumulative change since the start') — statistic=sum over a diff'd series."
+    - "User wants the running extreme to date ('the highest level reached so far') — statistic=max (or min)."
+    - "A drawdown-style comparison needs the running peak as one leg (cummax, then series_arithmetic subtract)."
+  when_not_to_use:
+    - "User wants a TRAILING-window statistic (last N rows, not since-inception) — use rolling_statistic."
+    - "User wants the full-sample total as ONE number — use summarize_series."
+    - "User wants compounded growth (cumprod) — deliberately unsupported on unit-bearing series (dimensional honesty); see planned_extensions."
+  upstream_requirements:
+    - "Input is ONE Series (any units).  For a rebuilt level path, difference upstream first (series_arithmetic op=diff)."
+  downstream_pattern:
+    - "Output is a Series in the input's units on the same index.  Typical follow-ons: series_arithmetic (x − cummax(x) for drawdown shapes), threshold_events, direct surface."
+  knobs_quick_ref:
+    statistic: "sum (default; running total) | max (running peak) | min (running trough)."
+  example_shapes:
+    - description: "Cumulative change since the start of the window."
+      shape: "[Series] -> series_arithmetic(op=diff) -> cumulative(statistic=sum) -> Series"
+  sibling_operators:
+    - rolling_statistic: "Trailing-window reductions — bounded lookback, not since-inception."
+    - summarize_series: "Full-sample scalar summary (one number, not a path)."
+    - series_arithmetic: "diff upstream to accumulate changes; subtract downstream for peak-relative paths."
+  intent_hints: [transform]

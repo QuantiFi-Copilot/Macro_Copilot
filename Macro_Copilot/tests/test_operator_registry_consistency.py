@@ -60,6 +60,7 @@ _V2_CONFORMANT = {
     "align_series",
     "apply_mask",
     "conditional_aggregate",
+    "cumulative",
     "event_windows",
     "ewm_statistic",
     "granger_causality",
