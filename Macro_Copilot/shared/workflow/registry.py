@@ -82,6 +82,11 @@ from shared.operators.percentile_rank import (
     PercentileRankParams,
     CONFIG_PATH as _PERCENTILE_RANK_CONFIG_PATH,
 )
+from shared.operators.regression_residual import (
+    regression_residual,
+    RegressionResidualParams,
+    CONFIG_PATH as _REGRESSION_RESIDUAL_CONFIG_PATH,
+)
 from shared.operators.rolling_correlation import (
     rolling_correlation,
     RollingCorrelationParams,
@@ -978,6 +983,66 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "of the input Series's index.  Drop-in input for "
                 "summarize_series, percentile_rank, or further "
                 "subsetting."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — statistical_relationship: full-sample OLS
+    # residual of lhs on rhs.  Two Series in, one Series out (the
+    # per-date distance from the fitted line — the relative-value
+    # signal).  NOT commutative.  Unit-invariant across inputs (β
+    # absorbs units); output honestly tagged in the LHS's units; the
+    # fitted α/β/R²/n_obs are recorded in lineage.
+    "regression_residual": OperatorSpec(
+        operator_name="regression_residual",
+        callable=regression_residual,
+        params_class=RegressionResidualParams,
+        config_path=_REGRESSION_RESIDUAL_CONFIG_PATH,
+        input_slots={
+            "lhs": SlotDescriptor.of(
+                "Series",
+                (
+                    "Dependent / target Series — the y in y = α + βx + "
+                    "ε, whose distance from the fitted line the residual "
+                    "measures.  NOT commutative with 'rhs' (swapping "
+                    "fits a different line).  Must share an IDENTICAL "
+                    "DatetimeIndex with 'rhs' (align_series -> "
+                    "select_from_series_set upstream).  The OUTPUT lives "
+                    "in THIS series's units.  USE when the user asks how "
+                    "far one series sits from the level implied by "
+                    "another.  Unit-invariant across inputs (β absorbs "
+                    "the regressor's units).  DO NOT use for the "
+                    "time-varying slope/alpha/R² paths (use "
+                    "rolling_regression), co-movement strength (use "
+                    "correlation), or a stationarity verdict (use "
+                    "cointegration)."
+                ),
+            ),
+            "rhs": SlotDescriptor.of(
+                "Series",
+                (
+                    "The single explanatory / driver Series — the x in "
+                    "y = α + βx + ε (V1 is single-regressor).  Same "
+                    "DatetimeIndex requirement as 'lhs' (align "
+                    "upstream).  DO NOT pass a constant-valued Series "
+                    "(the slope is undefined — the operator refuses "
+                    "with a typed error) and DO NOT bind the same "
+                    "upstream Series to both arms (residuals are "
+                    "identically zero)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            (
+                "The residual series lhs_t − (α + β·rhs_t) on the shared "
+                "index, NaN where either input is NaN, in the LHS's "
+                "units (honest passthrough).  Lineage records the fitted "
+                "α, β, R², n_obs and both inputs' units — the fitted "
+                "line is fully auditable.  Drop-in input for "
+                "rolling_zscore, threshold_events, or summarize_series.  "
+                "Raises RegressionResidualError on insufficient overlap, "
+                "a zero-variance rhs, an ill-conditioned fit, or "
+                "overflow."
             ),
         ),
     ),

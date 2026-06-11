@@ -281,6 +281,7 @@ class TestComposerPromptContent:
             "covariance",
             "event_windows",
             "percentile_rank",
+            "regression_residual",
             "rolling_correlation",
             "rolling_covariance",
             "rolling_regression",

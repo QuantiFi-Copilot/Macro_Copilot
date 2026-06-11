@@ -57,6 +57,7 @@ _V2_CONFORMANT = {
     "conditional_aggregate",
     "event_windows",
     "percentile_rank",
+    "regression_residual",
     "rolling_correlation",
     "rolling_covariance",
     "rolling_regression",
@@ -242,6 +243,7 @@ def test_v2_operator_conforms(name):
 _MULTI_ARTIFACT_OPS = {
     "align_series",
     "covariance",
+    "regression_residual",
     "rolling_covariance",
     "series_arithmetic",
     "rolling_regression",

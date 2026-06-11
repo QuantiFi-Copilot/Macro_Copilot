@@ -1,0 +1,96 @@
+operator:
+  name: regression_residual
+  method_family: statistical_relationship
+  version: "1.0.0"
+  description: >-
+    Full-sample OLS residual of one Series regressed on another:
+    fits lhs = alpha + beta*rhs over the overlapping non-NaN
+    observations and emits the per-date residual lhs_t - (alpha +
+    beta*rhs_t). Finance-blind. Unit-invariant across its inputs
+    (beta absorbs the regressor's units); the residual lives in the
+    LHS's units, so the output unit is an honest LHS passthrough,
+    with both inputs' units and the fitted alpha/beta/R-squared
+    recorded in lineage. NOT commutative — swapping the arms fits a
+    different line.
+
+# Every user-choosable method choice is offloaded here so the operator
+# is not opinionated and the caller can switch seamlessly (OPR7/OPR8).
+# The schema defaults in schemas.py mirror these values and a test
+# asserts they do not diverge.
+defaults:
+  add_constant:
+    value: true
+    source: operator_v1_default
+    rationale: >-
+      Fitting an intercept is the standard OLS form and what "distance
+      from the fitted line" means by default; with an intercept the
+      residuals are mean-zero by construction. add_constant=false
+      (through-the-origin) is the explicit alternative for callers who
+      want a no-intercept fit.
+    valid_values: [true, false]
+  min_periods:
+    value: 3
+    source: operator_v1_default
+    rationale: >-
+      With an intercept the fit estimates two parameters; n = 2 fits
+      the line exactly and every residual is 0 by construction, so 3
+      is the smallest n at which a residual carries information.
+      Callers wanting statistically meaningful fits should raise this.
+  condition_number_threshold:
+    value: 1.0e10
+    source: operator_v1_default
+    rationale: >-
+      Refuse fits whose design-matrix condition number indicates a
+      numerically meaningless solution (near-constant regressor) —
+      the same guard threshold the rolling_regression operator uses.
+
+methodology:
+  what_it_does: >-
+    Fits a single ordinary-least-squares line lhs = alpha + beta*rhs
+    (optionally through the origin) over the dates where both inputs
+    are present, then emits the residual series lhs_t - (alpha +
+    beta*rhs_t) on the full shared index, NaN exactly where either
+    input is NaN. The two inputs MUST share an identical DatetimeIndex
+    (align upstream with align_series — this operator does NOT align).
+    Strict-by-default on frequency and missingness (OPR11);
+    unit-invariant across the inputs (beta absorbs units — regressing
+    a PERCENT series on a BPS series is meaningful), with the output
+    honestly tagged in the LHS's units and both inputs' units recorded
+    in lineage. The fitted alpha, beta, R-squared and n_obs are
+    recorded in lineage so the fitted line is fully auditable. Typed
+    refusals (RegressionResidualError): insufficient overlap, a
+    zero-variance regressor (undefined slope), an ill-conditioned
+    design matrix, or an overflowing residual.
+  planned_extensions:
+    - "multi-regressor residual (lhs on N regressors): a distinct design-matrix shape — would ship as its own operator when the toolbox needs it, not as a flag here."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Full-sample OLS residual of one Series on another — the per-date distance from the fitted line (the relative-value signal).
+  when_to_use:
+    - "User asks how rich/cheap one series is versus another via a fitted relationship ('X vs its fair value implied by Y')."
+    - "A downstream step needs the residual series as an ingredient — z-score of richness (rolling_zscore), richness alerts (threshold_events), or mean-reversion reads."
+  when_not_to_use:
+    - "User wants the co-movement STRENGTH (use correlation / rolling_correlation) or the raw co-movement in level terms (use covariance / rolling_covariance)."
+    - "User wants the time-varying slope/alpha/R² paths themselves — use rolling_regression (emits the {beta, alpha, r_squared} SeriesSet)."
+    - "User asks whether the relationship is STATIONARY / a tradeable pair — use cointegration (a test statistic, not a residual series)."
+  upstream_requirements:
+    - "Both Series must share an identical DatetimeIndex.  Canonical upstream: align_series → select_from_series_set ×2."
+    - "NOT commutative: wire the series whose richness you want into 'lhs' and the explanatory series into 'rhs' — swapping fits a different line."
+  downstream_pattern:
+    - "Output is a Series in the LHS's units (NaN where either input is NaN).  Canonical follow-ons: rolling_zscore (sigma-scaled richness), threshold_events (alert dates), summarize_series (current residual)."
+  knobs_quick_ref:
+    add_constant: "true (default; intercept fitted, residuals mean-zero) | false (through-the-origin)."
+    min_periods: "3 by default (mathematical floor); raise it for statistically meaningful fits."
+    condition_number_threshold: "1e10 — refuse numerically meaningless fits (near-constant rhs)."
+  example_shapes:
+    - description: "Residual of series A versus the line fitted on series B, then z-scored."
+      shape: "[Series A, Series B] -> align_series -> select_from_series_set ×2 -> regression_residual -> rolling_zscore -> Series"
+  sibling_operators:
+    - rolling_regression: "The windowed coefficient-path form — emits {beta, alpha, r_squared} SeriesSet.  Use when the question is 'how has the relationship evolved', not 'how far from the fitted line is each date'."
+    - correlation: "Normalised co-movement strength (one ScalarMetric).  Use for 'how related', not 'how far from fair value'."
+    - cointegration: "Stationarity test on the relationship's residuals (Engle-Granger ADF ScalarMetric).  Use for 'is this pair tradeable', not for the residual series itself."
+  intent_hints: [relationship]
