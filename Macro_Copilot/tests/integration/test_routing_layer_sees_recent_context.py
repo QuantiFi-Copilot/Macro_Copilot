@@ -56,14 +56,20 @@ def _install_langchain_stubs() -> None:
     # state-layer CI job doesn't install ``python-dotenv`` because
     # nothing in the state-layer test surface needs it AT RUNTIME.
     # We stub the module so the import chain succeeds — load_dotenv
-    # is a no-op in tests anyway.
-    if "dotenv" not in sys.modules:
+    # is a no-op in tests anyway.  Stub ONLY when the real package is
+    # genuinely absent: a partial fake registered ahead of the real
+    # package breaks later ``dotenv.dotenv_values`` importers
+    # (pydantic_settings → mcp) in full-tree pytest runs.
+    try:
+        import dotenv as _real_dotenv  # noqa: F401
+    except ImportError:
         fake_dotenv = types.ModuleType("dotenv")
 
         def _no_op_load_dotenv(*args, **kwargs):
             return False
 
         fake_dotenv.load_dotenv = _no_op_load_dotenv
+        fake_dotenv.dotenv_values = lambda *a, **k: {}
         sys.modules["dotenv"] = fake_dotenv
 
     if "langchain_anthropic" not in sys.modules:

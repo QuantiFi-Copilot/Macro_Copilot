@@ -1908,13 +1908,19 @@ class CopilotSession:
                             )
                         )
 
-                    # Surface the open-DAG outcome verbatim to the
-                    # user.  The PipelineOutcome's markdown is
-                    # always populated.
+                    # Surface the open-DAG outcome to the user.
+                    # Consolidation target #3 (one Ask card): PASS →
+                    # the concise answer paragraph; non-PASS → the
+                    # full structured message.  See
+                    # ``_open_dag_answer_text``.
                     await emit(
                         SessionEvent(
                             type="token",
-                            data={"content": open_dag_outcome.markdown},
+                            data={
+                                "content": _open_dag_answer_text(
+                                    open_dag_outcome,
+                                ),
+                            },
                         )
                     )
                     await emit(
@@ -2797,6 +2803,26 @@ def _workspace_name_for(decision) -> str:
     )
     stamp = datetime.now(timezone.utc).strftime("%H:%M UTC")
     return f"{pretty} · {stamp}"
+
+
+def _open_dag_answer_text(outcome: Any) -> str:
+    """Choose the chat-token content for an open-DAG turn.
+
+    Consolidation target #3 (one Ask card): on PASS the stream carries
+    the CONCISE answer paragraph (``PipelineOutcome.answer_prose`` —
+    the PM-facing sentence with the number embedded), NOT the full L6
+    document.  The intent echo + provenance stay available
+    structurally (the ``workflow_result`` event, the persisted
+    workspace, the Build-page audit surfaces), so the open-DAG chat
+    prose reads like a direct answer.  Non-PASS paths (refusal /
+    clarification / fail-safe) keep the full ``markdown`` — there the
+    document IS the user-facing message.  Pure + deterministic.
+    """
+    if getattr(outcome, "status", None) == "PASS":
+        prose = getattr(outcome, "answer_prose", None)
+        if prose:
+            return prose
+    return outcome.markdown
 
 
 def _format_workflow_prose(envelope: dict) -> str:

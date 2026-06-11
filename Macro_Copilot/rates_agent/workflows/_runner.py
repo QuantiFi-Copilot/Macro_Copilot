@@ -276,12 +276,26 @@ def _summarize_scalar_metric(s: ScalarMetric) -> Dict[str, Any]:
     surfaces ``metric_key`` + ``value`` + ``units`` so the frontend
     workflow_result card can render the actual number (e.g. the
     correlation coefficient), not a hash.
+
+    GAP G02/T6 — the wire shape ALSO carries the companion dispersion
+    when the producing summary operator recorded one in its head
+    lineage step (``summarize_series``: ``statistic=mean,
+    dispersion=std``), so a "mean and std" answer card renders both
+    numbers.  ``dispersion_key`` / ``dispersion_value`` are ``None``
+    when no dispersion was computed — stable wire keys either way.
     """
+    from shared.artifacts.lineage import companion_dispersion_from_lineage
+
+    dispersion_key, dispersion_value = companion_dispersion_from_lineage(
+        s.lineage,
+    )
     return {
         "type": "ScalarMetric",
         "metric_key": s.metric_key,
         "value": _safe_float(s.value),
         "units": s.units.value,
+        "dispersion_key": dispersion_key,
+        "dispersion_value": dispersion_value,
     }
 
 

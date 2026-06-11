@@ -721,6 +721,55 @@ def sanitize_params_for_lineage(params: Dict[str, Any]) -> Dict[str, Any]:
     return _clean(params)
 
 
+# ============================================================================
+# COMPANION-DISPERSION READER (GAP G02/T6 — surface the recorded dispersion)
+# ============================================================================
+
+
+def companion_dispersion_from_lineage(
+    lineage: "Lineage",
+) -> tuple[Optional[str], Optional[float]]:
+    """Read the companion dispersion a summary operator recorded in the
+    head lineage step, if any.
+
+    A summary operator that computes a central statistic PLUS a
+    companion dispersion (``summarize_series``: ``statistic=mean,
+    dispersion=std``) records both in its ``OperatorStep`` params —
+    ``{"dispersion": "std", "dispersion_value": 59.4, ...}``.  The
+    artifact itself is a single-value ``ScalarMetric`` (the central
+    statistic); the dispersion lives ONLY here.  Answer/summary
+    surfaces that want to quote BOTH numbers ("mean 9.2 bps, std
+    59.4 bps") read the companion via this helper.
+
+    Operator-generic by design: ANY operator that records a
+    ``dispersion`` kind + a finite ``dispersion_value`` in its head
+    step params is surfaced — no operator-name matching, so a future
+    summary operator joins by recording the same keys, not by editing
+    this function.
+
+    Returns ``(dispersion_key, dispersion_value)`` — both ``None``
+    when the head step records no dispersion (``"none"``), a
+    non-finite/absent value (degenerate n<2 inputs record ``None``
+    per OPR10), or the head step carries no params dict.
+    """
+    import math
+
+    params = getattr(lineage.steps[-1], "params", None)
+    if not isinstance(params, dict):
+        return None, None
+    key = params.get("dispersion")
+    value = params.get("dispersion_value")
+    if not isinstance(key, str) or key == "none":
+        return None, None
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+    ):
+        return None, None
+    return key, float(value)
+
+
 __all__ = [
     "LineageHash",
     "LineageStep",
@@ -731,4 +780,5 @@ __all__ = [
     "PrimitiveStep",
     "OperatorStep",
     "sanitize_params_for_lineage",
+    "companion_dispersion_from_lineage",
 ]

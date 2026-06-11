@@ -39,7 +39,7 @@ Schema
     name: <mcp_tool_name>
     domain: <sovereign_bonds | ois | ...>
     description: <one-line human description>
-    category: <desk_invariant_primitive | quant_standard_analytic>
+    category: <desk_invariant_primitive | quant_standard_analytic | scanner>
               # optional; defaults to 'desk_invariant_primitive'.  See
               # docs/architecture/tool_architecture.md for the
               # honesty-mechanism rationale.
@@ -53,8 +53,9 @@ Schema
 
   methodology:
     what_it_does: <one-paragraph description>
-    assumptions: [<short string>, ...]    # optional list
-    citations:   [<citation>, ...]         # optional list
+    assumptions: [<short string>, ...]      # optional list
+    citations:   [<citation>, ...]          # optional list
+    known_caveats: [<short string>, ...]    # optional list
 
 Source-tag enforcement
 ----------------------
@@ -109,6 +110,7 @@ if TYPE_CHECKING:
 ToolCategory = Literal[
     "desk_invariant_primitive",
     "quant_standard_analytic",
+    "scanner",
 ]
 
 
@@ -371,6 +373,11 @@ class ToolMeta(BaseModel):
             "must be specified before use (yield_change_decomposition_simple, "
             "rolling_regression, pca_yield_curve, "
             "yield_change_attribution_pca).\n"
+            "* ``scanner`` — cross-universe sweep tool that loops a "
+            "per-instrument analytic over every (curve_family, tenor) "
+            "group and ranks the results (scan_extremes, "
+            "scan_ois_extremes).  Introduced by the 2026-06-10 scanner "
+            "per-tool migration (PR-10G gap #4).\n"
             "Defaults to ``desk_invariant_primitive`` so the existing five "
             "migrated tools keep their identity without explicit YAML "
             "edits.  See docs/architecture/tool_architecture.md for "
@@ -406,6 +413,17 @@ class MethodologyMeta(BaseModel):
     assumptions: List[str] = Field(default_factory=list)
     citations: List[str] = Field(default_factory=list)
     planned_extensions: List[str] = Field(default_factory=list)
+    known_caveats: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Honest limitations of the implemented methodology that a "
+            "consumer should know before interpreting results (e.g. "
+            "'z-score is rolling, not cross-sectional').  Unlike "
+            "``planned_extensions`` these are not roadmap items — they "
+            "are permanent properties of the chosen method.  "
+            "Documentation only: does NOT feed ``conventions_hash``."
+        ),
+    )
 
 
 # ============================================================================

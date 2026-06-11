@@ -78,7 +78,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, Any, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -131,6 +131,38 @@ class _AnswerLLMOutput(BaseModel):
         if not stripped:
             raise ValueError("answer_prose must be non-empty")
         return stripped
+
+
+# ============================================================================
+# RENDERED ANSWER — structured render output (consolidation target #3)
+# ============================================================================
+
+
+class RenderedAnswer(BaseModel):
+    """The structured output of one L6 render.
+
+    ``markdown`` is the full assembled document (intent echo + prose +
+    provenance footer on PASS; the refusal / clarification message
+    otherwise) — byte-identical to what ``AnswerRenderer.render``
+    returned before this type existed, so every existing consumer and
+    test keeps working through the delegating ``render()``.
+
+    ``answer_prose`` is JUST the LLM-authored middle paragraph — the
+    concise PM-facing sentence with the number embedded.  Populated
+    only when ``kind == 'answer'``.  The Ask chat stream emits THIS as
+    the token content (the clean box: concise summary, no L6 dump);
+    the intent echo + provenance stay available structurally (the
+    workflow_result event, the persisted workspace, the audit
+    surfaces) instead of as a prose wall.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    markdown: str = Field(..., min_length=1)
+    answer_prose: Optional[str] = None
+    kind: Literal[
+        "answer", "refusal", "clarification", "failsafe", "inconsistent",
+    ] = Field(...)
 
 
 # ============================================================================
@@ -481,20 +513,55 @@ class AnswerRenderer:
         deterministic ``render_clarification`` / ``render_refusal``
         helpers.  No LLM tokens spent, no timeout risk.
         """
+        parts = await self.render_parts(
+            intent_chain=intent_chain,
+            executed_summary=executed_summary,
+            lineage_head_hash=lineage_head_hash,
+            timeout_s=timeout_s,
+        )
+        return parts.markdown
+
+    async def render_parts(
+        self,
+        *,
+        intent_chain: IntentChain,
+        executed_summary: str,
+        lineage_head_hash: str,
+        timeout_s: float = 15.0,
+    ) -> RenderedAnswer:
+        """Render the final answer as a structured ``RenderedAnswer``.
+
+        Same semantics, fail-safes, and short-circuits as ``render``
+        (which now delegates here) — but the caller ALSO receives the
+        bare ``answer_prose`` paragraph on the answer path, so the
+        chat stream can emit the concise summary while the assembled
+        ``markdown`` stays available for audit surfaces (consolidation
+        target #3: open-DAG and direct Ask answers read identically —
+        no L6 dump in the prose zone).
+        """
         # Short-circuit: refusal / clarification.
         if intent_chain.gate.status == "REFUSE":
-            return render_refusal(intent_chain)
+            return RenderedAnswer(
+                markdown=render_refusal(intent_chain),
+                kind="refusal",
+            )
         if intent_chain.gate.status == "CLARIFY":
-            return render_clarification(intent_chain)
+            return RenderedAnswer(
+                markdown=render_clarification(intent_chain),
+                kind="clarification",
+            )
         # Defensive: composer / selector refusals that somehow reached
         # here even with a PASS gate.  Treat as REFUSE-flavoured
         # output.
         if not intent_chain.is_answerable:
-            return (
-                render_intent_echo(intent_chain)
-                + "\n\nI can't answer this query — an upstream layer "
-                "refused (Composer or Selector); the gate's PASS is "
-                "inconsistent with the upstream refusal."
+            return RenderedAnswer(
+                markdown=(
+                    render_intent_echo(intent_chain)
+                    + "\n\nI can't answer this query — an upstream layer "
+                    "refused (Composer or Selector); the gate's PASS is "
+                    "inconsistent with the upstream refusal."
+                ),
+                kind="inconsistent",
             )
 
         from langchain_core.messages import HumanMessage
@@ -528,22 +595,28 @@ class AnswerRenderer:
             logger.warning(
                 "AnswerRenderer LLM timed out after %.1fs", timeout_s,
             )
-            return _failsafe_answer(
-                intent_chain=intent_chain,
-                lineage_head_hash=lineage_head_hash,
-                reason=(
-                    f"Answer LLM call timed out after {timeout_s}s."
+            return RenderedAnswer(
+                markdown=_failsafe_answer(
+                    intent_chain=intent_chain,
+                    lineage_head_hash=lineage_head_hash,
+                    reason=(
+                        f"Answer LLM call timed out after {timeout_s}s."
+                    ),
                 ),
+                kind="failsafe",
             )
         except Exception as exc:
             logger.exception("AnswerRenderer LLM call failed")
-            return _failsafe_answer(
-                intent_chain=intent_chain,
-                lineage_head_hash=lineage_head_hash,
-                reason=(
-                    f"Answer LLM call failed: "
-                    f"{type(exc).__name__}: {exc}."
+            return RenderedAnswer(
+                markdown=_failsafe_answer(
+                    intent_chain=intent_chain,
+                    lineage_head_hash=lineage_head_hash,
+                    reason=(
+                        f"Answer LLM call failed: "
+                        f"{type(exc).__name__}: {exc}."
+                    ),
                 ),
+                kind="failsafe",
             )
 
         raw = result.get("raw") if isinstance(result, dict) else None
@@ -554,19 +627,26 @@ class AnswerRenderer:
         if raw is not None:
             _log_usage("answer", raw)
         if parsed is None:
-            return _failsafe_answer(
-                intent_chain=intent_chain,
-                lineage_head_hash=lineage_head_hash,
-                reason=(
-                    "Answer LLM did not produce a valid output; "
-                    f"parsing_error={parsing_error!r}."
+            return RenderedAnswer(
+                markdown=_failsafe_answer(
+                    intent_chain=intent_chain,
+                    lineage_head_hash=lineage_head_hash,
+                    reason=(
+                        "Answer LLM did not produce a valid output; "
+                        f"parsing_error={parsing_error!r}."
+                    ),
                 ),
+                kind="failsafe",
             )
 
-        return assemble_final_answer(
-            chain=intent_chain,
+        return RenderedAnswer(
+            markdown=assemble_final_answer(
+                chain=intent_chain,
+                answer_prose=parsed.answer_prose,
+                lineage_head_hash=lineage_head_hash,
+            ),
             answer_prose=parsed.answer_prose,
-            lineage_head_hash=lineage_head_hash,
+            kind="answer",
         )
 
 
@@ -669,6 +749,7 @@ def _log_usage(label: str, response) -> None:
 
 __all__ = [
     "AnswerRenderer",
+    "RenderedAnswer",
     "assemble_final_answer",
     "render_answer_user_message",
     "render_clarification",

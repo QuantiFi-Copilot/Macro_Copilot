@@ -111,6 +111,15 @@ class TerminalArtifactSummary(BaseModel):
     value: Optional[float] = None
     row_count: Optional[int] = None
     head_hash: str = Field(..., min_length=1)
+    # GAP G02/T6 — companion dispersion.  ScalarMetric only, and only
+    # when the producing operator recorded a dispersion in its head
+    # lineage step (summarize_series: statistic=mean, dispersion=std).
+    # The user who asked "mean AND std" gets both numbers in the L6
+    # prose + the workflow_result card instead of a qualitative
+    # description of the std.  None for every other artifact type and
+    # for summaries that computed no dispersion.
+    dispersion_key: Optional[str] = None
+    dispersion_value: Optional[float] = None
 
     @classmethod
     def from_terminal_artifact(
@@ -128,6 +137,17 @@ class TerminalArtifactSummary(BaseModel):
         """
         head_hash = artifact.lineage.head_hash
         if isinstance(artifact, ScalarMetric):
+            # GAP G02/T6 — a summary operator records its companion
+            # dispersion in the head lineage step; surface it so the
+            # L6 prose + the workflow_result card can quote BOTH
+            # numbers ("mean 9.2 bps, std 59.4 bps").
+            from shared.artifacts.lineage import (
+                companion_dispersion_from_lineage,
+            )
+
+            dispersion_key, dispersion_value = (
+                companion_dispersion_from_lineage(artifact.lineage)
+            )
             return cls(
                 artifact_type="ScalarMetric",
                 units=artifact.units.value,
@@ -135,6 +155,8 @@ class TerminalArtifactSummary(BaseModel):
                 value=float(artifact.value),
                 row_count=None,
                 head_hash=head_hash,
+                dispersion_key=dispersion_key,
+                dispersion_value=dispersion_value,
             )
         if isinstance(artifact, Series):
             return cls(
@@ -212,6 +234,18 @@ class TerminalArtifactSummary(BaseModel):
                 else "n/a"
             )
             units_repr = f" {self.units}" if self.units else ""
+            # GAP G02/T6 — when the summary operator recorded a
+            # companion dispersion, hand the L6 LLM BOTH numbers in the
+            # same units so "mean and std" prose can quote both.  The
+            # no-dispersion format stays byte-identical (stable; tests
+            # assert on it).
+            if self.dispersion_key is not None and self.dispersion_value is not None:
+                return (
+                    f"ScalarMetric({self.metric_key}="
+                    f"{value_repr}{units_repr}; "
+                    f"{self.dispersion_key}="
+                    f"{self.dispersion_value:.4g}{units_repr})"
+                )
             return (
                 f"ScalarMetric({self.metric_key}="
                 f"{value_repr}{units_repr})"

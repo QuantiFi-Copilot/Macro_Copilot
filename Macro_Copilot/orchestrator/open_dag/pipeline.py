@@ -288,6 +288,21 @@ class PipelineOutcome(BaseModel):
             "rendering land in the credit/UI phase)."
         ),
     )
+    answer_prose: Optional[str] = Field(
+        default=None,
+        description=(
+            "Consolidation target #3 (one Ask card): the bare "
+            "LLM-authored answer paragraph from the L6 renderer — the "
+            "concise PM-facing sentence with the number embedded, "
+            "WITHOUT the intent echo or provenance footer.  Populated "
+            "only on ``status == 'PASS'`` when the L6 LLM authored "
+            "prose (None on refusals / clarifications / fail-safes — "
+            "their ``markdown`` IS the user-facing message).  The "
+            "session layer streams THIS as the chat token so the "
+            "open-DAG Ask answer reads like a direct answer; the full "
+            "``markdown`` remains for audit surfaces."
+        ),
+    )
 
     @property
     def is_pass(self) -> bool:
@@ -857,12 +872,13 @@ class OpenDagPipeline:
         # construction-time exception or an unexpected sub-component
         # contract violation could still raise.
         try:
-            markdown = await self._answer_renderer.render(
+            rendered = await self._answer_renderer.render_parts(
                 intent_chain=intent_chain,
                 executed_summary=executed_summary,
                 lineage_head_hash=run_lineage.head_hash or "",
                 timeout_s=self._answer_timeout_s,
             )
+            markdown = rendered.markdown
         except Exception as exc:
             logger.exception("OpenDagPipeline: answer renderer raised")
             from orchestrator.open_dag.answer import _failsafe_answer
@@ -891,6 +907,11 @@ class OpenDagPipeline:
             route_decision=route_decision,
             workflow=assembly_result.workflow,
             executed_dag=executed_dag,
+            # Consolidation target #3 — the concise answer paragraph
+            # the chat stream emits instead of the full L6 document.
+            # None when the L6 fell back to a fail-safe (its markdown
+            # is then the user-facing message).
+            answer_prose=rendered.answer_prose,
         )
 
     # ------------------------------------------------------------------

@@ -94,9 +94,19 @@ _DOMAIN_AGENT_SOURCE = (
 
 
 def _install_langchain_stubs() -> None:
-    if "dotenv" not in sys.modules:
+    # Stub ``dotenv`` ONLY when the real package is genuinely absent.
+    # The previous "if not in sys.modules" guard installed a partial
+    # fake (load_dotenv only) whenever this module imported FIRST in a
+    # full-tree pytest run — any later import needing
+    # ``dotenv.dotenv_values`` (pydantic_settings → mcp) then failed
+    # with a misleading ImportError.  A test stub must never shadow a
+    # real installed package.
+    try:
+        import dotenv as _real_dotenv  # noqa: F401
+    except ImportError:
         fake_dotenv = types.ModuleType("dotenv")
         fake_dotenv.load_dotenv = lambda *a, **k: False
+        fake_dotenv.dotenv_values = lambda *a, **k: {}
         sys.modules["dotenv"] = fake_dotenv
 
 

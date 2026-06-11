@@ -55,9 +55,16 @@ if _PROJECT_ROOT not in sys.path:
 
 
 def _install_stubs() -> None:
-    if "dotenv" not in sys.modules:
+    # Stub ``dotenv`` ONLY when the real package is genuinely absent —
+    # a partial fake registered ahead of the real package breaks later
+    # ``dotenv.dotenv_values`` importers (pydantic_settings → mcp) in
+    # full-tree pytest runs.
+    try:
+        import dotenv as _real_dotenv  # noqa: F401
+    except ImportError:
         fake_dotenv = types.ModuleType("dotenv")
         fake_dotenv.load_dotenv = lambda *a, **k: False
+        fake_dotenv.dotenv_values = lambda *a, **k: {}
         sys.modules["dotenv"] = fake_dotenv
 
 

@@ -16,6 +16,12 @@ dependencies:
   - statsmodels
   - sqlalchemy
   - pytest
+  # pytest-asyncio: the repo's async suites (@pytest.mark.asyncio) need this
+  # plugin to run at all — without it every async test "fails" with
+  # "async def functions are not natively supported", which reads like a
+  # regression but is environmental.  Declared here so the docker image
+  # (built FROM this environment.yml) runs the async suites honestly.
+  - pytest-asyncio
   - psycopg
   - psycopg2-binary
   - python-dotenv
