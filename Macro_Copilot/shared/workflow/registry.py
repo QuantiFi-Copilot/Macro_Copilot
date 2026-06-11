@@ -163,6 +163,10 @@ from shared.operators.top_n import (
     top_n, TopNParams,
     CONFIG_PATH as _TOP_N_CONFIG_PATH,
 )
+from shared.operators.weighted_combination import (
+    weighted_combination, WeightedCombinationParams,
+    CONFIG_PATH as _WEIGHTED_COMBINATION_CONFIG_PATH,
+)
 
 
 # ============================================================================
@@ -1903,6 +1907,57 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "cross_sectional_statistic (basket average), "
                 "select_from_series_set.  Raises TopNError on <2 "
                 "members, mixed units, or an all-NaN output."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — arithmetic: weighted sum of named
+    # SeriesSet members (N-leg baskets / synthetic series).  One
+    # SeriesSet in, one Series out (units passthrough of the named
+    # members' common unit).  weights mapping REQUIRED (no meaningful
+    # default — the select_from_series_set precedent).
+    "weighted_combination": OperatorSpec(
+        operator_name="weighted_combination",
+        callable=weighted_combination,
+        params_class=WeightedCombinationParams,
+        config_path=_WEIGHTED_COMBINATION_CONFIG_PATH,
+        input_slots={
+            "series_set": SlotDescriptor.of(
+                "SeriesSet",
+                (
+                    "An aligned SeriesSet containing every member the "
+                    "params.weights mapping names — canonical upstream "
+                    "is align_series (use its output_keys to control "
+                    "the member names the mapping must match; insert "
+                    "convert_units on offending members first — "
+                    "mixed-unit sums across the NAMED members are "
+                    "refused outright).  USE when the user wants a "
+                    "CUSTOM weighted combination of several series as "
+                    "ONE series ('long A, short two of B, long C' — "
+                    "weights {a:1, b:-2, c:1}); members absent from "
+                    "the mapping are excluded; negative weights are "
+                    "first-class; at least 2 members must be named.  "
+                    "DO NOT use for exactly two unit-weight legs (use "
+                    "series_arithmetic), for scaling one series (use "
+                    "series_arithmetic multiply with a scalar "
+                    "literal), or for the equal-weight average of the "
+                    "whole set (use cross_sectional_statistic mean)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            (
+                "The weighted sum Σ w_k · member_k on the shared "
+                "index, NaN exactly where ANY named member is NaN "
+                "(unnamed members' NaNs are inert), in the named "
+                "members' common unit (weights are dimensionless).  "
+                "The full weights mapping rides in lineage — the "
+                "content-defining basket recipe.  Drop-in input for "
+                "rolling_zscore, threshold_events, summarize_series, "
+                "or direct surface.  Raises WeightedCombinationError "
+                "on missing weights, <2 named members, an unknown "
+                "named key, a zero/non-finite weight, mixed units, "
+                "overflow, or an all-NaN output."
             ),
         ),
     ),

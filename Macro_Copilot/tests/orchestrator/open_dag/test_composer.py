@@ -300,6 +300,7 @@ class TestComposerPromptContent:
             "summarize_series",
             "threshold_events",
             "top_n",
+            "weighted_combination",
         ]
 
     @pytest.mark.parametrize(

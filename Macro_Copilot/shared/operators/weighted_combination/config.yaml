@@ -1,0 +1,77 @@
+operator:
+  name: weighted_combination
+  method_family: arithmetic
+  version: "1.0.0"
+  description: >-
+    Weighted sum of the members of an aligned SeriesSet named by an
+    explicit member_key-to-weight mapping: out_t = sum(w_k *
+    member_k,t) over the named members, emitting one Series — custom
+    baskets, synthetic series and multi-leg structures (e.g. a
+    1/-2/1 three-leg) in a single auditable node. Finance-blind: the
+    weights are caller-supplied structural coefficients. Named
+    members must share one unit (a weighted sum; mixed units are
+    refused with the convert_units remedy); members absent from the
+    mapping are excluded. Negative weights are first-class.
+
+# The weights mapping is the basket definition itself — a per-call
+# input with NO meaningful default (the select_from_series_set
+# series_key precedent): params=None refuses cleanly naming the
+# required field.  There are no other knobs, so defaults: is
+# explicitly empty (OPR7/OPR8).
+defaults: {}
+
+methodology:
+  what_it_does: >-
+    Multiplies each NAMED member of the aligned SeriesSet by its
+    weight and sums element-wise on the shared index. The weights
+    mapping names the participating members (keys absent from the
+    mapping are excluded — natural basket selection); every named key
+    must exist in the set; weights must be finite and non-zero (to
+    exclude a member, omit its key); negative weights are first-class
+    (multi-leg structures); at least 2 members must be named (a 1-key
+    combination is plain scaling — use series_arithmetic multiply
+    with a scalar literal). The combination is NaN exactly where ANY
+    named member is NaN (a partial weighted sum would silently change
+    the basket — dishonest); unnamed members' NaNs are inert. An
+    overflowing sum and an all-NaN output each raise
+    WeightedCombinationError. Named members must share one unit —
+    mixed units are refused outright with convert_units named as the
+    upstream remedy; the output carries that common unit (weights are
+    dimensionless). No normalisation in v1 — callers pass exact
+    weights (an equal-weight basket is weights of 1/N), declared
+    below. Output missingness is fresh (RawNoCleaning); frequency
+    passes through; the lineage extends the input set's chain with
+    the full weights mapping recorded (the content-defining recipe —
+    different weights yield different identities).
+  planned_extensions:
+    - "normalisation variants (sum-to-one / gross-notional scaling): a second composition layer — declared here so the exact-weights surface stays honest."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Weighted sum of named SeriesSet members — N-leg baskets, synthetic series and multi-leg structures as one auditable node.
+  when_to_use:
+    - "User asks for a CUSTOM weighted combination of several series ('long A, short two of B, long C' — weights 1/−2/1) as a single series."
+    - "A computed weight vector (e.g. from an upstream fit) must be applied to several members to build a synthetic/neutral combination."
+    - "More than two legs are combined — chaining 2-leg series_arithmetic loses the basket as one auditable recipe."
+  when_not_to_use:
+    - "Exactly TWO series with unit weights (A − B or A + B) — use series_arithmetic (simpler, the canonical 2-leg node)."
+    - "Scaling ONE series by a constant — use series_arithmetic op='multiply' with a scalar literal."
+    - "An EQUAL-weight average of the whole set per date — cross_sectional_statistic(statistic=mean) (no weights mapping needed)."
+  upstream_requirements:
+    - "Input is ONE aligned SeriesSet containing every named member — canonical upstream: align_series (use params.output_keys there to control the member names the weights mapping must match)."
+    - "Named members must share one unit; insert convert_units on offending members first (mixed-unit sums are refused, no opt-out)."
+  downstream_pattern:
+    - "Output is a Series in the named members' common unit (NaN where any named member is NaN).  Drop-in input for rolling_zscore, threshold_events, summarize_series, or direct surface."
+  knobs_quick_ref:
+    weights: "REQUIRED — explicit member_key → weight mapping; >= 2 named members; finite, non-zero; negatives first-class; unnamed members excluded."
+  example_shapes:
+    - description: "A three-leg 1/−2/1 structure from three aligned series, then z-scored."
+      shape: "[Series ×3] -> align_series -> weighted_combination(weights={a:1, b:-2, c:1}) -> rolling_zscore -> Series"
+  sibling_operators:
+    - series_arithmetic: "The canonical 2-leg node (add/subtract/multiply/divide, scalar support).  Use for exactly two series or scalar ops."
+    - cross_sectional_statistic: "Unweighted per-date reductions across ALL members (mean/median/std/min/max/sum)."
+    - align_series: "Builds the aligned SeriesSet whose member names the weights mapping must match (output_keys controls the names)."
+  intent_hints: [arithmetic, combination]
