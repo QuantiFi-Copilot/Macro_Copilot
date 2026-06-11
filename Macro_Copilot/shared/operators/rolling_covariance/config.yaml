@@ -1,0 +1,99 @@
+operator:
+  name: rolling_covariance
+  method_family: statistical_relationship
+  version: "1.0.0"
+  description: >-
+    Trailing-window covariance between two index-aligned numeric
+    Series, emitting one value per date. Finance-blind. Unit-BEARING
+    (family doctrine set by the full-sample covariance sibling): the
+    semantic unit is the product of the two inputs' units, which the
+    closed TimeSeriesUnits enum cannot express — so the output Series
+    is tagged RATIO and both inputs' units are recorded in lineage for
+    provenance. Same units are required by default.
+
+# Every user-choosable method choice is offloaded here so the operator
+# is not opinionated and the caller can switch seamlessly (OPR7/OPR8).
+# The schema defaults in schemas.py mirror these values and a test
+# asserts they do not diverge.
+defaults:
+  window:
+    value: 60
+    source: operator_v1_default
+    rationale: >-
+      60 = 3 months of business days — the conventional rolling
+      pair-statistic window for macro analytics, matching
+      rolling_correlation so the two siblings are directly
+      substitutable. Override for tactical (e.g. 20) or strategic
+      (e.g. 252) horizons.
+  min_periods:
+    value: null
+    source: operator_v1_default
+    rationale: >-
+      null defers to ``window`` at runtime — the strict choice (no
+      partial-window covariances). A sample covariance needs at least
+      2 overlapping non-NaN observations; the operator enforces
+      ``window >= 2``.
+  ddof:
+    value: 1
+    source: operator_v1_default
+    rationale: >-
+      Sample covariance (Bessel-corrected, denominator n - 1) matches
+      pandas' default and the full-sample covariance sibling, keeping
+      the rolling and full-sample forms directly comparable. ddof=0
+      (population covariance) is the explicit alternative.
+    valid_values: [0, 1]
+
+methodology:
+  what_it_does: >-
+    Computes a windowed covariance between two Series over a trailing
+    window of length ``window``, emitting a Series tagged RATIO (the
+    closed unit enum has no product unit; the true dimension —
+    left_units x right_units — is recorded in lineage params). The two
+    inputs MUST share an identical DatetimeIndex (align upstream with
+    align_series — this operator does NOT align) and, by default,
+    identical units (reconcile upstream with convert_units; the
+    mixed-unit opt-out is recorded in lineage). Strict-by-default on
+    frequency and missingness (OPR11). Warmup positions (fewer than
+    ``min_periods`` overlapping non-NaN observations within the
+    window) emit NaN — legitimate missingness from insufficient
+    history. A constant (zero-variance) window is NOT degenerate: its
+    covariance is a legitimate 0.0, unlike rolling_correlation where
+    the coefficient is undefined. An overflowing (non-finite) window
+    value and an all-NaN output each raise RollingCovarianceError
+    (typed refusal — never a silently scrubbed payload, matching the
+    full-sample covariance sibling).
+  planned_extensions:
+    - "exponentially-weighted covariance (ewm cov): a distinct weighting scheme — would ship as part of the EWM operator family, not as a flag here."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# Description content lives ONLY here; slot / output structure lives ONLY in
+# shared.workflow.OPERATOR_REGISTRY.
+# ============================================================================
+card:
+  one_line: >-
+    Trailing-window covariance between two index-aligned numeric Series (time-varying, unit-bearing co-movement in level terms).
+  when_to_use:
+    - "User asks how the LEVEL co-movement of two series has EVOLVED over time (a covariance value per date, not one number)."
+    - "A downstream calculation needs a time-varying covariance ingredient (e.g. a hand-built rolling hedge ratio cov/var)."
+  when_not_to_use:
+    - "User wants ONE full-sample covariance number — use covariance (emits ScalarMetric)."
+    - "User wants the normalised, scale-free co-movement strength over time — use rolling_correlation (dimensionless, [-1, 1])."
+    - "User wants the time-varying slope of one series on another — use rolling_regression (emits {beta, alpha, r_squared})."
+  upstream_requirements:
+    - "Both Series must share an identical DatetimeIndex.  Canonical upstream: align_series → select_from_series_set ×2."
+    - "Both Series must share the SAME units by default (a covariance's unit is the product of its inputs' units) — insert convert_units on the offending arm first."
+  downstream_pattern:
+    - "Output is a Series (RATIO-tagged; true dimension recorded in lineage).  Drop-in input for threshold_events, rolling_zscore, summarize_series, or direct surface."
+  knobs_quick_ref:
+    window: "60 by default (≈3 months business days); 20 tactical, 252 strategic."
+    min_periods: "null → window (strict, no partial windows); lower it to emit earlier values."
+    ddof: "1 (default; sample covariance) | 0 (population covariance)."
+  example_shapes:
+    - description: "Rolling 60-row covariance of two index-aligned numeric Series."
+      shape: "[Series A, Series B] -> align_series -> select_from_series_set ×2 -> rolling_covariance -> Series"
+  sibling_operators:
+    - covariance: "The full-sample, single-number form (ScalarMetric).  Use when the question is 'how much together overall', not 'how has it evolved'."
+    - rolling_correlation: "The normalised sibling — dimensionless [-1, 1] coefficients per date.  Use when the question is 'how correlated over time', not 'how much together in level terms'."
+    - rolling_regression: "Time-varying slope (beta) of one Series on another — beta = rolling cov/var with an intercept.  Use when the question is 'how much per unit of the regressor'."
+  intent_hints: [relationship]

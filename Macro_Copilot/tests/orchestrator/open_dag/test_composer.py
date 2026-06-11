@@ -282,6 +282,7 @@ class TestComposerPromptContent:
             "event_windows",
             "percentile_rank",
             "rolling_correlation",
+            "rolling_covariance",
             "rolling_regression",
             "rolling_statistic",
             "rolling_zscore",

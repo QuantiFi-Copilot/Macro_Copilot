@@ -87,6 +87,11 @@ from shared.operators.rolling_correlation import (
     RollingCorrelationParams,
     CONFIG_PATH as _ROLLING_CORRELATION_CONFIG_PATH,
 )
+from shared.operators.rolling_covariance import (
+    rolling_covariance,
+    RollingCovarianceParams,
+    CONFIG_PATH as _ROLLING_COVARIANCE_CONFIG_PATH,
+)
 from shared.operators.rolling_statistic import (
     rolling_statistic,
     RollingStatisticParams,
@@ -430,8 +435,8 @@ def _rolling_min_periods_param_sanity(
     node_params: Dict[str, Any],
 ) -> Optional[str]:
     """Shared by the rolling operators (rolling_zscore / rolling_statistic
-    / rolling_correlation / rolling_regression), all of which carry
-    ``window: int`` and ``min_periods: Optional[int]``.
+    / rolling_correlation / rolling_covariance / rolling_regression),
+    all of which carry ``window: int`` and ``min_periods: Optional[int]``.
 
     The Pydantic schemas enforce ``window >= 2`` and ``min_periods >= 1``
     individually, but NOT the cross-field invariant ``min_periods <=
@@ -1204,6 +1209,74 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "input for threshold_events (e.g. flag dates when "
                 "rolling corr fell below 0.3), rolling_zscore (corr-of-"
                 "corr surprise), or direct surface."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — statistical_relationship: trailing-window
+    # covariance between two index-aligned Series.  Two Series in, one
+    # Series out (per-date rolling covariances).  The SEPARATE-operator
+    # counterpart of ``covariance`` per OPR2, and the unit-BEARING
+    # sibling of ``rolling_correlation`` (same units required by
+    # default; output RATIO with the true product dimension recorded
+    # in lineage).
+    "rolling_covariance": OperatorSpec(
+        operator_name="rolling_covariance",
+        callable=rolling_covariance,
+        params_class=RollingCovarianceParams,
+        config_path=_ROLLING_COVARIANCE_CONFIG_PATH,
+        param_sanity_validator=_rolling_min_periods_param_sanity,
+        unit_validator=_covariance_unit_validator,
+        input_slots={
+            "left": SlotDescriptor.of(
+                "Series",
+                (
+                    "One arm of the rolling covariance pair.  Single-"
+                    "artifact slot (no scalar literal) expecting a typed "
+                    "Series that shares an IDENTICAL DatetimeIndex with "
+                    "'right' — this operator does NOT align internally; "
+                    "canonical upstream is align_series -> "
+                    "select_from_series_set on both arms.  USE when the "
+                    "user asks how the LEVEL co-movement of two series "
+                    "has EVOLVED over time (one covariance value per "
+                    "date).  COMMUTATIVE — the choice of arm is "
+                    "cosmetic.  Unit-BEARING like covariance: both "
+                    "Series must share the SAME units by default "
+                    "(insert convert_units upstream to reconcile "
+                    "PERCENT vs BPS).  DO NOT use for ONE full-sample "
+                    "covariance number (use covariance), the normalised "
+                    "[-1, 1] strength over time (use "
+                    "rolling_correlation), or the time-varying slope "
+                    "(use rolling_regression)."
+                ),
+            ),
+            "right": SlotDescriptor.of(
+                "Series",
+                (
+                    "Symmetric counterpart to 'left' for the rolling "
+                    "covariance pair.  Same artifact type, same "
+                    "DatetimeIndex requirement (align upstream), same "
+                    "same-units-by-default discipline (convert_units "
+                    "upstream to reconcile).  DO NOT bind both arms to "
+                    "the same upstream Series (that is just the rolling "
+                    "variance) and DO NOT pass a scalar literal here "
+                    "(artifact-only slot)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            (
+                "Per-date trailing-window covariance (window = "
+                "params.window rows).  Tagged RATIO because the closed "
+                "unit enum has no product unit — the TRUE dimension "
+                "(left_units × right_units) is recorded in lineage, with "
+                "ddof, window, min_periods and the overlap counts.  "
+                "Warmup is NaN.  A constant window is NOT degenerate — "
+                "its covariance is a legitimate 0.0 (unlike "
+                "rolling_correlation).  Raises RollingCovarianceError on "
+                "strict-mode units mismatch, overflow, or an all-NaN "
+                "output.  Drop-in input for threshold_events, "
+                "rolling_zscore, summarize_series, or direct surface."
             ),
         ),
     ),

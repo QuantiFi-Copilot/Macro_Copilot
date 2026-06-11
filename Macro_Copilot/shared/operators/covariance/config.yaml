@@ -66,7 +66,7 @@ card:
     - "A downstream calculation needs the raw covariance as an ingredient (e.g. variance decomposition or a hand-built hedge ratio cov/var)."
   when_not_to_use:
     - "User asks how STRONGLY two series co-move / wants a normalised, scale-free number — use correlation (dimensionless, [-1, 1])."
-    - "User asks for a time-varying / rolling co-movement — a rolling covariance Series is a separate operator (see planned_extensions); rolling_correlation covers the normalised case today."
+    - "User asks for a time-varying / rolling co-movement — use rolling_covariance (level terms) or rolling_correlation (normalised)."
     - "User asks for the slope of one series on another (hedge ratio / beta) — use rolling_regression."
   upstream_requirements:
     - "Both Series must share an identical DatetimeIndex.  Canonical upstream: align_series → select_from_series_set ×2."
@@ -81,5 +81,6 @@ card:
       shape: "[Series A, Series B] -> align_series -> select_from_series_set ×2 -> covariance -> ScalarMetric"
   sibling_operators:
     - correlation: "The normalised, dimensionless version (covariance divided by both standard deviations).  Use when the question is 'how correlated', not 'how much together in level terms'."
+    - rolling_covariance: "The time-varying form — one covariance value per date over a trailing window.  Use when the question is 'how has it evolved', not 'how much overall'."
     - rolling_regression: "Slope (beta) of one Series on another — the regression-flavoured cousin (beta = cov/var with intercept).  Emits {beta, alpha, r_squared} SeriesSet."
   intent_hints: [relationship]
