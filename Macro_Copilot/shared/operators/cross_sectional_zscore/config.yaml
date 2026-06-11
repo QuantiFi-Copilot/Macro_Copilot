@@ -68,7 +68,7 @@ card:
   when_not_to_use:
     - "User wants each series standardised against its OWN trailing history — use rolling_zscore (single-Series, time-series z)."
     - "User wants per-date ordinal positions / percentiles among peers — use cross_sectional_rank."
-    - "User wants the cross-sectional dispersion level itself — a planned cross_sectional_statistic operator covers that; until it lands there is no per-date cross-member reducer."
+    - "User wants the cross-sectional dispersion level itself — use cross_sectional_statistic(statistic=std)."
   upstream_requirements:
     - "Input is ONE aligned SeriesSet — canonical upstream: align_series over the member Series (N >= 2)."
     - "All members must share one unit; insert convert_units on offending members first (mixed-unit standardisation is refused, no opt-out)."

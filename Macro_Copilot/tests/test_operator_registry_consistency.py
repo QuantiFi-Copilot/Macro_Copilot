@@ -74,6 +74,7 @@ _V2_CONFORMANT = {
     "series_arithmetic",
     "summarize_series",
     "threshold_events",
+    "top_n",
     "convert_units",
 }
 

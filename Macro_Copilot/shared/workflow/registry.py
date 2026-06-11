@@ -155,6 +155,10 @@ from shared.operators.threshold_events import (
     ThresholdEventsParams,
     CONFIG_PATH as _THRESHOLD_EVENTS_CONFIG_PATH,
 )
+from shared.operators.top_n import (
+    top_n, TopNParams,
+    CONFIG_PATH as _TOP_N_CONFIG_PATH,
+)
 
 
 # ============================================================================
@@ -1039,11 +1043,10 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                     "NaN rank; dates with fewer than params.min_members "
                     "non-NaN members emit NaN for all).  DO NOT use to "
                     "rank ONE series against its own history (use "
-                    "percentile_rank); top-members-only subsetting and "
-                    "per-date cross-member summary reducers are planned "
-                    "siblings (top_n, cross_sectional_statistic) — "
-                    "until they land, extract members with "
-                    "select_from_series_set and reduce downstream."
+                    "percentile_rank), to keep only the top members "
+                    "per date (use top_n), or for a per-date "
+                    "cross-member summary number (use "
+                    "cross_sectional_statistic)."
                 ),
             ),
         },
@@ -1796,6 +1799,59 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "n_observations.  The substrate does NOT auto-translate "
                 "this to a yes/no judgement — the answer layer "
                 "interprets against critical-value tables."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — cross_sectional: per-date top/bottom-n
+    # selection mask over an aligned SeriesSet.  One SeriesSet in, one
+    # SeriesSet out (same keys; non-selected values masked to NaN —
+    # the semantics ride in lineage).  Units passthrough; same-units-
+    # across-members required outright.
+    "top_n": OperatorSpec(
+        operator_name="top_n",
+        callable=top_n,
+        params_class=TopNParams,
+        config_path=_TOP_N_CONFIG_PATH,
+        input_slots={
+            "series_set": SlotDescriptor.of(
+                "SeriesSet",
+                (
+                    "An aligned SeriesSet of N >= 2 members sharing ONE "
+                    "unit — canonical upstream is align_series, often "
+                    "after cross_sectional_zscore or "
+                    "demean_cross_section (insert convert_units on "
+                    "offending members first; mixed-unit selection is "
+                    "refused outright).  USE when the user wants to "
+                    "KEEP only the n most extreme members per date "
+                    "('the five richest points per day') as a "
+                    "composable basket over time — at each date the n "
+                    "largest (mode=top) or smallest (mode=bottom) "
+                    "non-NaN members keep their values and the rest "
+                    "are masked to NaN (NaN = NOT SELECTED, disclosed "
+                    "in lineage; dates below params.min_members mask "
+                    "everything; dates with fewer than n valid members "
+                    "keep all of them).  DO NOT use for every member's "
+                    "rank (use cross_sectional_rank), for threshold-"
+                    "based selection on one series (use "
+                    "threshold_events + apply_mask), or for a per-date "
+                    "summary (use cross_sectional_statistic)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "SeriesSet",
+            (
+                "A SeriesSet with the SAME keys, common index and "
+                "frequency (dates are never dropped — only payloads "
+                "are masked); each member keeps its value where it is "
+                "among the per-date top/bottom n and is NaN elsewhere.  "
+                "Units passthrough; missingness fresh; the set-level "
+                "lineage extends the input's chain with the full "
+                "selection rule (n, mode, design-locked tie-break, "
+                "floor) recorded.  Typical follow-ons: "
+                "cross_sectional_statistic (basket average), "
+                "select_from_series_set.  Raises TopNError on <2 "
+                "members, mixed units, or an all-NaN output."
             ),
         ),
     ),

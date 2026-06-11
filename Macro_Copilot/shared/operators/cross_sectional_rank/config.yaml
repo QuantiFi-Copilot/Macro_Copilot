@@ -83,8 +83,8 @@ card:
     - "The final step of a screen: compute a signal per member (residual, z-score), align them, then rank the members cross-sectionally."
   when_not_to_use:
     - "User wants each series ranked against its OWN history — use percentile_rank (single-Series, time-series rank)."
-    - "User wants the top/bottom members only — extract with select_from_series_set and threshold downstream (a planned top_n operator will subset per date directly)."
-    - "User wants a cross-sectional summary number per date (mean/median/dispersion) — a planned cross_sectional_statistic operator covers that; until it lands there is no per-date cross-member reducer."
+    - "User wants the top/bottom members only — use top_n (per-date selection mask over the set)."
+    - "User wants a cross-sectional summary number per date (mean/median/dispersion) — use cross_sectional_statistic."
   upstream_requirements:
     - "Input is ONE aligned SeriesSet — canonical upstream: align_series over the member Series (N >= 2)."
     - "All members must share one unit; insert convert_units on offending members first (mixed-unit ranking is refused, no opt-out)."

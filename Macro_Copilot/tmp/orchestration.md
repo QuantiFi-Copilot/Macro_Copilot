@@ -53,7 +53,7 @@ Cited from the project-owner handoff. Every PR below must respect these; reviewe
 
 ## 2. Confirmed catalogue
 
-### 2.1 Operators (26 — 16 at PoC + Track-A fable_build additions (covariance, rolling_covariance, regression_residual, beta, lead_lag, granger_causality, cross_sectional_rank, cross_sectional_zscore, cross_sectional_statistic, demean_cross_section); finance-blind, in `OPERATOR_REGISTRY` at [shared/workflow/registry.py:324](../shared/workflow/registry.py:324))
+### 2.1 Operators (27 — 16 at PoC + Track-A fable_build additions (covariance, rolling_covariance, regression_residual, beta, lead_lag, granger_causality, cross_sectional_rank, cross_sectional_zscore, cross_sectional_statistic, demean_cross_section, top_n); finance-blind, in `OPERATOR_REGISTRY` at [shared/workflow/registry.py:324](../shared/workflow/registry.py:324))
 
 Grouped by purpose; wiring fact each one carries.
 

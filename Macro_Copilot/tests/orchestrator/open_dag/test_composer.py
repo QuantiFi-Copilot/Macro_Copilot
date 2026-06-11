@@ -298,6 +298,7 @@ class TestComposerPromptContent:
             "series_arithmetic",
             "summarize_series",
             "threshold_events",
+            "top_n",
         ]
 
     @pytest.mark.parametrize(

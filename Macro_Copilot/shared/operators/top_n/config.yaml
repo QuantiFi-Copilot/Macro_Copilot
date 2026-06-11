@@ -1,0 +1,100 @@
+operator:
+  name: top_n
+  method_family: cross_sectional
+  version: "1.0.0"
+  description: >-
+    Per-date top/bottom-n selection mask over an aligned SeriesSet:
+    at every date the n largest (mode=top) or smallest (mode=bottom)
+    non-NaN members keep their values and every other member is
+    masked to NaN, emitting a SeriesSet with the SAME keys — the
+    screen-membership basket over time. Finance-blind. Output NaN
+    means NOT SELECTED at that date (disclosed in lineage), not
+    upstream missingness. All members must share one unit (selecting
+    by value compares values; mixed units are refused with the
+    convert_units remedy).
+
+# Every user-choosable method choice is offloaded here so the operator
+# is not opinionated and the caller can switch seamlessly (OPR7/OPR8).
+# The schema defaults in schemas.py mirror these values and a test
+# asserts they do not diverge.  Tie-breaking is DESIGN-LOCKED to pandas
+# rank(method='first') — deterministic position-order resolution,
+# documented in schemas.py and recorded in lineage (OPR7 design-lock:
+# a caller-varied tie rule would break replay identity for no
+# analytical gain).
+defaults:
+  n:
+    value: 5
+    source: operator_v1_default
+    rationale: >-
+      A typical screen depth ("show me the five most extreme");
+      adjust per universe size at the call site.
+  mode:
+    value: top
+    source: operator_v1_default
+    rationale: >-
+      Keeping the LARGEST values is the canonical screen direction
+      ("richest / most extreme first"); bottom (smallest) is the
+      explicit alternative.
+    valid_values: [top, bottom]
+  min_members:
+    value: 2
+    source: operator_v1_default
+    rationale: >-
+      A per-date selection over fewer than 2 non-NaN members is
+      degenerate; 2 is the floor, applied PER DATE — a date below it
+      emits NaN for every member.  A date with fewer than n (but at
+      least min_members) valid members keeps ALL of them — documented
+      behaviour, not an error.
+
+methodology:
+  what_it_does: >-
+    Builds the [date x member] frame from an aligned SeriesSet, ranks
+    each row with pandas rank(axis=1, method='first' — the
+    design-locked deterministic tie-break; ascending follows mode)
+    and keeps the values whose rank is <= n, masking every other
+    member to NaN. A date with fewer than min_members non-NaN members
+    emits NaN for every member; a date with fewer than n valid
+    members keeps all of them. OUTPUT NaN SEMANTICS (disclosed here
+    and in lineage params): NaN means the member was NOT SELECTED at
+    that date — not that upstream data was missing; upstream-NaN
+    members are non-contenders. The common index and frequency pass
+    through UNCHANGED (only payloads are masked — dates are never
+    dropped). An all-NaN output raises TopNError. All members must
+    share one unit — mixed units are refused outright with
+    convert_units named as the upstream remedy; the output passes
+    that common unit through. Output missingness is fresh
+    (RawNoCleaning); the set-level lineage extends the input's chain
+    with the full selection rule recorded.
+  planned_extensions:
+    - "fraction-based selection (top decile / top 10% of valid members per date): a distinct n-semantics — declared here so the integer-n surface stays honest."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Per-date top/bottom-n selection mask over an aligned SeriesSet — the screen-membership basket over time, same keys, non-selected values masked to NaN.
+  when_to_use:
+    - "User asks to keep only the n most extreme members of a universe at each date ('the five richest points per day') for further analysis."
+    - "A screen needs the selected basket as composable series — e.g. the average of the per-date top-n (chain cross_sectional_statistic after this)."
+  when_not_to_use:
+    - "User wants every member's position among peers — use cross_sectional_rank (keeps all values, emits ranks)."
+    - "User wants a one-date snapshot of the extremes — extract members with select_from_series_set and read the latest values; this operator preserves the time dimension."
+    - "User wants threshold-based (not count-based) selection on ONE series — use threshold_events + apply_mask."
+  upstream_requirements:
+    - "Input is ONE aligned SeriesSet — canonical upstream: align_series (N >= 2), often after cross_sectional_zscore or demean_cross_section."
+    - "All members must share one unit; insert convert_units on offending members first (mixed-unit selection is refused, no opt-out)."
+  downstream_pattern:
+    - "Output is a SeriesSet (same keys; units passthrough; NaN = not selected at that date — the semantics ride in lineage).  Typical follow-ons: cross_sectional_statistic (basket average/dispersion), select_from_series_set (one member's selected path)."
+  knobs_quick_ref:
+    n: "5 by default — how many members to keep per date."
+    mode: "top (default; largest kept) | bottom (smallest kept)."
+    min_members: "2 by default — dates with fewer non-NaN members emit NaN for every member; dates with fewer than n valid members keep all of them."
+  example_shapes:
+    - description: "The per-date average of the five most extreme peer-relative members."
+      shape: "[Series x N] -> align_series -> cross_sectional_zscore -> top_n(n=5) -> cross_sectional_statistic(mean) -> Series"
+  sibling_operators:
+    - cross_sectional_rank: "Positions among peers for ALL members (no masking).  Use when the user wants ranks, not membership."
+    - cross_sectional_statistic: "Per-date summary across members — the canonical consumer of this operator's basket output."
+    - apply_mask: "Date-mask for ONE Series from an EventSet — event/regime subsetting, not per-date cross-member selection."
+  intent_hints: [cross_sectional, ranking]
