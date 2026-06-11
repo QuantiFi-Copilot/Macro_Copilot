@@ -100,6 +100,10 @@ from shared.operators.granger_causality import (
     granger_causality, GrangerCausalityParams,
     CONFIG_PATH as _GRANGER_CAUSALITY_CONFIG_PATH,
 )
+from shared.operators.lag import (
+    lag, LagParams,
+    CONFIG_PATH as _LAG_CONFIG_PATH,
+)
 from shared.operators.lead_lag import (
     lead_lag, LeadLagParams,
     CONFIG_PATH as _LEAD_LAG_CONFIG_PATH,
@@ -1512,6 +1516,48 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "the rolling beta the user usually asks for; or all "
                 "three for full diagnostic.  Beta is in (lhs_units / "
                 "rhs_units); alpha in lhs_units; r_squared in RATIO."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — single_series_transform: shift a Series
+    # back by k rows (pandas shift(k); positive = look BACK; lead
+    # deliberately unsupported).  One Series in, one Series out.
+    "lag": OperatorSpec(
+        operator_name="lag",
+        callable=lag,
+        params_class=LagParams,
+        config_path=_LAG_CONFIG_PATH,
+        input_slots={
+            "series": SlotDescriptor.of(
+                "Series",
+                (
+                    "The single typed Series to shift back.  USE when "
+                    "a PAST value of the series must appear at each "
+                    "position — comparing a series to its own level k "
+                    "rows ago (lag it, then series_arithmetic "
+                    "subtract), or building a lagged regressor (lag "
+                    "the x leg, then beta / regression_residual).  "
+                    "Positive periods always looks BACK (the first k "
+                    "rows are NaN); lead (negative shift) is "
+                    "deliberately unsupported — look-ahead hazard.  "
+                    "DO NOT use for the k-row CHANGE directly (use "
+                    "series_arithmetic op=diff), or to hand-roll "
+                    "no-look-ahead hygiene inside rolling stats (the "
+                    "rolling/ewm operators have their own "
+                    "look_ahead_safe knob)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            (
+                "The input shifted back by k rows on the SAME index "
+                "(value from k rows earlier at each position; first k "
+                "rows NaN), in the input's units.  Frequency and "
+                "missingness pass through; the sign convention rides "
+                "in lineage.  Typical follow-ons: series_arithmetic "
+                "(x − lag(x)), beta, correlation.  Raises LagError on "
+                "a non-Series input or periods >= the input length."
             ),
         ),
     ),

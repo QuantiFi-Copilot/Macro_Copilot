@@ -287,6 +287,7 @@ class TestComposerPromptContent:
             "event_windows",
             "ewm_statistic",
             "granger_causality",
+            "lag",
             "lead_lag",
             "pairwise_spread_matrix",
             "percentile_rank",

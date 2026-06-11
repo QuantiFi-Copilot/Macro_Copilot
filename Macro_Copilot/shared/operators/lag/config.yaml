@@ -1,0 +1,67 @@
+operator:
+  name: lag
+  method_family: single_series_transform
+  version: "1.0.0"
+  description: >-
+    Shift one Series back by k rows: the value from k rows EARLIER
+    appears at each position (pandas shift(k) — positive periods
+    always looks BACK; the first k rows are NaN). Finance-blind. The
+    raw material for lagged regressions and period-over-period
+    composition. Lead (negative shift) is deliberately not offered —
+    it would smuggle look-ahead into composed signals.
+
+# Every user-choosable method choice is offloaded here so the operator
+# is not opinionated and the caller can switch seamlessly (OPR7/OPR8).
+# The schema defaults in schemas.py mirror these values and a test
+# asserts they do not diverge.
+defaults:
+  periods:
+    value: 1
+    source: operator_v1_default
+    rationale: >-
+      One row back (the previous observation) is the canonical lag;
+      raise for longer horizons.  Restricted to >= 1: a negative
+      value would be a LEAD — silent look-ahead that undermines the
+      rolling family's look_ahead_safe hygiene (declared in
+      planned_extensions, not a knob).
+
+methodology:
+  what_it_does: >-
+    Applies pandas shift(periods) to the input Series on the SAME
+    index — the value from periods rows earlier appears at each
+    position and the first periods rows are NaN (legitimate
+    missingness; row-count shifting, not calendar shifting — gaps in
+    the index are not re-spaced). periods >= the input length is
+    refused (the output would be all-NaN). No value arithmetic, so
+    there is no overflow surface. Units, frequency and missingness
+    policy pass through; the sign convention is recorded in lineage.
+  planned_extensions:
+    - "lead (negative shift): pulls FUTURE values back to t — a look-ahead hazard that needs its own explicitly-named operator and hygiene documentation, never a sign flip here."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Shift one Series back by k rows (the value from k rows earlier at each position) — the lag building block for period-over-period composition.
+  when_to_use:
+    - "User compares a series to its own PAST level ('vs a week ago') — lag it, then series_arithmetic(subtract) the lag from the original."
+    - "A lagged regressor is needed (regress y on x lagged k rows: lag the x leg, then beta/regression_residual)."
+  when_not_to_use:
+    - "User wants the period-over-period CHANGE directly — use series_arithmetic(op=diff) (one node, same effect as subtract-the-lag)."
+    - "User wants no-look-ahead hygiene inside a rolling statistic — the rolling/ewm operators have their own look_ahead_safe knob; do not hand-roll it with lag."
+    - "User wants to shift FORWARD (a lead) — deliberately unsupported (look-ahead hazard)."
+  upstream_requirements:
+    - "Input is ONE Series (any units)."
+  downstream_pattern:
+    - "Output is a Series in the input's units on the SAME index (first k rows NaN).  Typical follow-ons: series_arithmetic (x vs lag(x); y vs lag(x)), beta, correlation."
+  knobs_quick_ref:
+    periods: "1 by default — how many rows back; must be >= 1 (lead is not offered)."
+  example_shapes:
+    - description: "Five-row change via subtract-the-lag."
+      shape: "[Series] -> lag(periods=5) + original -> series_arithmetic(subtract) -> Series"
+  sibling_operators:
+    - series_arithmetic: "op=diff computes the k-row change in one node; subtract composes the same from an explicit lag leg."
+    - lead_lag: "Scans CCF across many lags between TWO series (lag-axis Series out) — diagnostics, not a shifted series."
+    - ewm_statistic: "Recency-weighted smoothing with its own look_ahead_safe hygiene."
+  intent_hints: [transform]
