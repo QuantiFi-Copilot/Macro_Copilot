@@ -80,6 +80,7 @@ _V2_CONFORMANT = {
     "threshold_events",
     "top_n",
     "weighted_combination",
+    "winsorize",
     "convert_units",
 }
 

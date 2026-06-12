@@ -175,6 +175,10 @@ from shared.operators.top_n import (
     top_n, TopNParams,
     CONFIG_PATH as _TOP_N_CONFIG_PATH,
 )
+from shared.operators.winsorize import (
+    winsorize, WinsorizeParams,
+    CONFIG_PATH as _WINSORIZE_CONFIG_PATH,
+)
 from shared.operators.weighted_combination import (
     weighted_combination, WeightedCombinationParams,
     CONFIG_PATH as _WEIGHTED_COMBINATION_CONFIG_PATH,
@@ -1520,6 +1524,50 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "the rolling beta the user usually asks for; or all "
                 "three for full diagnostic.  Beta is in (lhs_units / "
                 "rhs_units); alpha in lhs_units; r_squared in RATIO."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — single_series_transform: cap a Series'
+    # extremes at full-sample quantile bounds or fixed bounds.  One
+    # Series in, one Series out (units passthrough); the quantile
+    # scope's look-ahead is disclosed in lineage.
+    "winsorize": OperatorSpec(
+        operator_name="winsorize",
+        callable=winsorize,
+        params_class=WinsorizeParams,
+        config_path=_WINSORIZE_CONFIG_PATH,
+        input_slots={
+            "series": SlotDescriptor.of(
+                "Series",
+                (
+                    "The single typed Series whose extremes should be "
+                    "CAPPED.  USE for pre-fit outlier hygiene (clip "
+                    "before correlation/beta/regression_residual): "
+                    "mode=quantile clips at the FULL-SAMPLE [q, 1−q] "
+                    "empirical bounds (LOOK-AHEAD — bounds include "
+                    "later data; disclosed in lineage; never use in "
+                    "point-in-time compositions), mode=absolute clips "
+                    "at fixed caller bounds in the series' own units.  "
+                    "NaN positions untouched.  DO NOT use to DETECT "
+                    "extremes (use threshold_events — flags, not "
+                    "caps), to standardise them (use rolling_zscore), "
+                    "or with bounds quoted in other units (convert_"
+                    "units first)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            (
+                "The clipped series on the input index, in the input's "
+                "units (passthrough; NaN untouched).  Lineage records "
+                "the mode, the RESOLVED bounds, the clipped count and "
+                "quantile_scope='full_sample' (the look-ahead "
+                "disclosure).  Typical follow-ons: correlation, beta, "
+                "regression_residual, rolling_zscore.  Raises "
+                "WinsorizeError on a non-Series input, absolute mode "
+                "without bounds, lower >= upper, bounds in quantile "
+                "mode, or an all-NaN input."
             ),
         ),
     ),

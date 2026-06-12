@@ -97,4 +97,16 @@ Defer reasoning below cites the LIVE state, not the plan's stale §9 claims, per
   YAML-disclosed `trading_days_per_year` convention + registered source tag.
 - Disposition: deferred (not built as an operator); no proxy shipped.
 
+### drawdown  (framework: OP per plan §7-A1)
+- Gate that fired: OPR4 (trivial-chain doctrine — the running peak-to-trough is
+  exactly the two-node chain `cumulative(statistic=max)` →
+  `series_arithmetic(op=subtract: x − cummax(x))`; relative drawdown adds one
+  `series_arithmetic(op=divide)` node).
+- Evidence: `cumulative` shipped on fable_build with this exact shape
+  documented as its card example ("x − cummax(x) for drawdown shapes").
+- What would unblock it: drawdown DURATION / time-under-water analytics
+  (consecutive-rows-below-peak bookkeeping that no chain provides) — a
+  distinct core that would justify a named operator in Phase 2.
+- Disposition: deferred-as-covered (use the chain); no proxy shipped.
+
 (entries appended per-tool as gates fire)

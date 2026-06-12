@@ -1,0 +1,86 @@
+operator:
+  name: winsorize
+  method_family: single_series_transform
+  version: "1.0.0"
+  description: >-
+    Cap a Series' extreme values: clip to the FULL-SAMPLE empirical
+    [q, 1-q] quantile bounds (mode=quantile — the canonical pre-fit
+    hygiene transform; the full-sample scope LOOKS AHEAD and is
+    disclosed in lineage) or to fixed caller-supplied bounds
+    (mode=absolute, in the series' own units). Finance-blind; units
+    passthrough; NaN positions untouched; the resolved bounds and the
+    clipped count are recorded in lineage.
+
+# Every user-choosable method choice is offloaded here so the operator
+# is not opinionated and the caller can switch seamlessly (OPR7/OPR8).
+# The schema defaults in schemas.py mirror these values and a test
+# asserts they do not diverge.  lower_bound/upper_bound have no
+# defaults: they are absolute-mode-only caller inputs (None here).
+defaults:
+  mode:
+    value: quantile
+    source: operator_v1_default
+    rationale: >-
+      Symmetric empirical [q, 1-q] clipping is the canonical
+      winsorization; absolute (fixed bounds in the series' own units)
+      is the explicit alternative for known thresholds.
+    valid_values: [quantile, absolute]
+  quantile:
+    value: 0.05
+    source: operator_v1_default
+    rationale: >-
+      5% tail mass each side (clip at the 5th/95th percentiles) is
+      the conventional winsorization level; tighten or loosen at the
+      call site.  Must lie in (0, 0.5).
+
+methodology:
+  what_it_does: >-
+    Computes the clip bounds — mode=quantile takes the q-th and
+    (1-q)-th EMPIRICAL QUANTILES OF THE WHOLE SAMPLE (LOOK-AHEAD: a
+    value early in the series is clipped using quantiles that include
+    later data; this is the standard pre-fit hygiene semantics,
+    disclosed here, in the card and in lineage as
+    quantile_scope='full_sample' — do not feed into point-in-time
+    compositions; a rolling variant is a planned extension);
+    mode=absolute uses caller-supplied fixed bounds (at least one of
+    lower/upper, in the series' own units; quantile is nulled in
+    lineage per OPR14) — then applies pandas clip. NaN positions pass
+    through untouched; degenerate bounds (lower >= upper), explicit
+    bounds in quantile mode, and an all-NaN input each raise
+    WinsorizeError. Units, frequency and missingness policy pass
+    through (clipping never changes dimension); the RESOLVED bounds
+    and the clipped count are recorded in lineage so the cap is
+    auditable.
+  planned_extensions:
+    - "rolling winsorization (trailing-window quantile bounds, no look-ahead): the point-in-time-safe variant — a distinct scope semantics."
+    - "asymmetric tail masses (q_lo != q_hi): a distinct bound recipe — declared so the symmetric-q surface stays honest."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Cap a Series' extreme values at full-sample quantile bounds or fixed bounds — pre-fit outlier hygiene with the cap recorded in lineage.
+  when_to_use:
+    - "Outliers would distort a downstream fit or correlation ('clip the extremes before correlating') — mode=quantile ahead of correlation/beta/regression_residual."
+    - "Known hard thresholds exist in the series' own units ('cap anything beyond ±50') — mode=absolute with explicit bounds."
+  when_not_to_use:
+    - "POINT-IN-TIME compositions: quantile bounds use the WHOLE sample (look-ahead — disclosed in lineage).  If no future data may leak, do not use quantile mode; a rolling variant is planned."
+    - "User wants to DETECT extremes rather than cap them — use threshold_events (EventSet of breaches, values untouched)."
+    - "User wants per-date cross-member capping in a universe — winsorize members individually before align_series, or use cross_sectional tools."
+  upstream_requirements:
+    - "Input is ONE Series (any units).  Absolute bounds are in the series' own units — convert_units first if the threshold is quoted differently."
+  downstream_pattern:
+    - "Output is a Series in the input's units (NaN positions untouched; resolved bounds + clipped count in lineage).  Typical follow-ons: correlation, beta, regression_residual, rolling_zscore."
+  knobs_quick_ref:
+    mode: "quantile (default; full-sample [q, 1-q] empirical bounds — LOOK-AHEAD disclosed) | absolute (fixed bounds)."
+    quantile: "0.05 by default — symmetric tail mass each side, in (0, 0.5); quantile mode only."
+    lower_bound_upper_bound: "absolute mode only — at least one, in the series' own units; forbidden in quantile mode."
+  example_shapes:
+    - description: "Outlier-capped series before a correlation read."
+      shape: "[Series] -> winsorize(mode=quantile) -> correlation(with other Series) -> ScalarMetric"
+  sibling_operators:
+    - threshold_events: "Detects breaches as an EventSet — use when extremes should be FLAGGED, not capped."
+    - rolling_zscore: "Standardises against recent history — use when extremes should be MEASURED, not capped."
+    - convert_units: "Upstream when absolute bounds are quoted in different units."
+  intent_hints: [transform]
