@@ -132,4 +132,24 @@ Defer reasoning below cites the LIVE state, not the plan's stale §9 claims, per
 - Disposition: deferred-as-covered for membership semantics; onset-collapse
   pending the threshold_events extension; no proxy shipped.
 
+### empirical_quantile / historical_VaR  (framework: OP per plan §7-A1)
+- Gate that fired: OPR4 (non-overlap clause — "if an existing operator's variant
+  set could cover it, extend that operator instead"; here the variant ALREADY
+  exists).
+- Evidence: the committed `summarize_series` operator's `statistic='quantile'`
+  variant (v1.1.0) emits exactly the q-th full-sample empirical quantile as a
+  ScalarMetric in the input's units (type-7 linear interpolation, the pandas
+  default), parameterised by the `q` quantile-level field — its config documents
+  "0.05 for the downside tail — the desk's historical-VaR-style read — 0.95 for
+  the upside".  That IS the descriptive tail/VaR read the plan's A1 row asks for;
+  a standalone operator would ship the identical formula and semantics.
+- Why finance-blind: "historical_VaR" is a finance NAME, but the operation (the
+  p-th empirical quantile of a series) is pure; `summarize_series` carries it
+  with zero finance vocabulary.
+- What would unblock a distinct operator: a genuinely different tail semantic
+  (e.g. a fitted-distribution / parametric VaR, or expected-shortfall averaging
+  beyond the quantile) — a new method, not this row.
+- Disposition: deferred-as-covered (not built); use
+  `summarize_series(statistic='quantile', q=...)`.
+
 (entries appended per-tool as gates fire)
