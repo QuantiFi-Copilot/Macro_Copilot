@@ -292,6 +292,7 @@ class TestComposerPromptContent:
             "hp_filter",
             "lag",
             "lead_lag",
+            "ljung_box",
             "pairwise_spread_matrix",
             "percentile_rank",
             "regression_residual",

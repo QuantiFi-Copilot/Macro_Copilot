@@ -1,0 +1,79 @@
+operator:
+  name: ljung_box
+  method_family: statistical_relationship
+  version: "1.0.0"
+  description: >-
+    Ljung-Box autocorrelation test of one Series (statsmodels
+    acorr_ljungbox), emitting the Q STATISTIC at the full horizon as
+    a ScalarMetric in RATIO units (larger = stronger evidence of
+    autocorrelation; the Q at horizon L jointly tests lags 1..L); the
+    p-value and the per-lag trail ride in lineage. Finance-blind.
+    lags=null resolves to the classical min(10, n/5) rule. Full-
+    sample descriptive test; NaN rows dropped with the interior-drop
+    count disclosed in lineage.
+
+# Every user-choosable method choice is offloaded here so the operator
+# is not opinionated and the caller can switch seamlessly (OPR7/OPR8).
+# The schema defaults in schemas.py mirror these values and a test
+# asserts they do not diverge.
+defaults:
+  lags:
+    value: null
+    source: operator_v1_default
+    rationale: >-
+      null resolves to the classical rule min(10, n_obs // 5) at
+      runtime — the conventional horizon that scales with sample size
+      while capping at 10 (the resolved value rides in lineage, so
+      auto and an explicit equal value hash identically).  Set an
+      explicit positive integer to pin the horizon.
+
+methodology:
+  what_it_does: >-
+    Drops NaN rows (full-sample descriptive test — the
+    stationarity_adf family model; because the Q statistic is LAG-
+    BASED, dropped INTERIOR rows splice non-adjacent observations
+    together, so the interior-drop count is recorded separately in
+    lineage as n_interior_dropped — auditable, never silent), then
+    runs statsmodels acorr_ljungbox over lags 1..L where L is the
+    resolved horizon. THE COLLAPSE RULE: statsmodels returns one
+    (stat, p) row per lag; the operator emits the LARGEST-horizon row
+    (the full-spectrum joint test — one scalar per call) and records
+    the whole per-lag trail in lineage. Larger Q = stronger evidence
+    of autocorrelation (the p-value in lineage interprets it). RATIO
+    units — a chi-squared-type statistic is dimensionless. Refusals:
+    fewer than lags + 2 finite observations, zero variance
+    (autocorrelation undefined on a constant), a non-finite
+    statistic. test_scope='full_sample' rides in lineage — this
+    DESCRIBES the whole observed history; never feed it into
+    point-in-time compositions.
+  planned_extensions:
+    - "Box-Pierce variant (the small-sample-uncorrected statistic): a distinct estimator — declared, not a silent knob."
+    - "residual-diagnostics mode (model_df adjustment when testing fitted-model residuals): needs the upstream fit's degrees of freedom — awaits the model-engine layer."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Ljung-Box autocorrelation test — ONE ScalarMetric (the joint Q statistic over lags 1..L; larger = more autocorrelated; p-value and per-lag trail in lineage).
+  when_to_use:
+    - "User asks whether a series is AUTOCORRELATED / serially dependent ('is X serially correlated?', 'is this series noise or structure?') — the Q statistic answers it jointly over the horizon."
+    - "A pre-check before analyses that assume serial independence (e.g. judging whether changes behave like noise) — run on the DIFFERENCED series."
+  when_not_to_use:
+    - "User wants the autocorrelation AT one specific lag as a correlation number — that is lead_lag (the CCF of a series with itself is not exposed; lead_lag covers cross-series lags)."
+    - "User wants unit-root/stationarity status — stationarity_adf (a different null: persistence of LEVEL, not dependence of increments)."
+    - "User wants a time-varying read — this is a FULL-SAMPLE descriptive test (one number for the whole history)."
+  upstream_requirements:
+    - "Input is ONE Series (any units), >= lags + 2 finite observations, non-constant.  NaN rows are dropped (interior drops disclosed in lineage)."
+  downstream_pattern:
+    - "Output is a ScalarMetric in RATIO units (the Q statistic; metric_key ljung_box__<key>).  Terminal for 'is it autocorrelated' asks; lineage carries p_value, the resolved lags and the per-lag trail."
+  knobs_quick_ref:
+    lags: "null by default → min(10, n/5) classical rule (resolved value in lineage); set an explicit integer to pin the horizon."
+  example_shapes:
+    - description: "Serial-dependence check of a series' day-over-day changes."
+      shape: "[Series A] -> series_arithmetic(op=diff) -> ljung_box -> ScalarMetric  [terminal]"
+  sibling_operators:
+    - stationarity_adf: "Unit-root/persistence of the LEVEL; ljung_box tests serial dependence over a lag horizon."
+    - lead_lag: "Cross-series lag structure (CCF between TWO series); ljung_box is the single-series joint test."
+    - summarize_series: "Plain distributional summaries; ljung_box is the time-structure diagnostic."
+  intent_hints: [relationship]

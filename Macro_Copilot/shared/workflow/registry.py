@@ -124,6 +124,10 @@ from shared.operators.resample import (
     resample, ResampleParams,
     CONFIG_PATH as _RESAMPLE_CONFIG_PATH,
 )
+from shared.operators.ljung_box import (
+    ljung_box, LjungBoxParams,
+    CONFIG_PATH as _LJUNG_BOX_CONFIG_PATH,
+)
 from shared.operators.rolling_regression import (
     rolling_regression,
     RollingRegressionParams,
@@ -1726,6 +1730,49 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "threshold_events, direct surface.  Raises "
                 "CumulativeError on a non-Series input, an overflowing "
                 "running sum, or an all-NaN output."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — statistical_relationship (A5
+    # diagnostics): Ljung-Box autocorrelation test.  One Series in,
+    # one ScalarMetric out (the joint Q statistic, RATIO units;
+    # p-value + per-lag trail in lineage).
+    "ljung_box": OperatorSpec(
+        operator_name="ljung_box",
+        callable=ljung_box,
+        params_class=LjungBoxParams,
+        config_path=_LJUNG_BOX_CONFIG_PATH,
+        input_slots={
+            "series": SlotDescriptor.of(
+                "Series",
+                (
+                    "The single typed Series whose serial dependence "
+                    "is tested (>= lags + 2 finite observations, "
+                    "non-constant; NaN rows dropped with interior "
+                    "drops disclosed in lineage).  USE when the user "
+                    "asks whether a series is AUTOCORRELATED / "
+                    "serially dependent ('is X noise or structure?') "
+                    "— typically on the DIFFERENCED series for "
+                    "change-dependence.  The Q at horizon L jointly "
+                    "tests lags 1..L.  DO NOT use for unit-root/"
+                    "stationarity status (stationarity_adf — a "
+                    "different null), cross-series lag structure "
+                    "(lead_lag), or a time-varying read (this is one "
+                    "FULL-SAMPLE number)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "ScalarMetric",
+            (
+                "The joint Ljung-Box Q statistic in RATIO units "
+                "(larger = stronger evidence of autocorrelation; "
+                "metric_key ljung_box__<key>).  Lineage carries "
+                "p_value, the resolved lags (null → min(10, n/5) "
+                "classical rule), the per-lag trail and the NaN-drop "
+                "audit.  A terminal answer artifact for 'is it "
+                "autocorrelated' asks.  Raises LjungBoxError on too "
+                "few rows, zero variance, or a non-finite statistic."
             ),
         ),
     ),
