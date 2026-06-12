@@ -1794,9 +1794,11 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         ),
     ),
     # v2.0 (ADR 0016) — single_series_transform: generic windowed
-    # reducer (mean / std / min / max / sum) over a Series.  One Series
-    # in, one Series out (input unit preserved).  The composition
-    # primitive for rolling vol, moving averages, rolling ranges.
+    # reducer (mean / std / min / max / sum / skew / kurtosis) over a
+    # Series.  One Series in, one Series out (input unit preserved;
+    # RATIO for the dimensionless higher moments — v1.1.0).  The
+    # composition primitive for rolling vol, moving averages, rolling
+    # ranges, rolling distribution shape.
     "rolling_statistic": OperatorSpec(
         operator_name="rolling_statistic",
         param_sanity_validator=_rolling_min_periods_param_sanity,
@@ -1809,14 +1811,18 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 (
                     "Single typed Series to be reduced over a trailing "
                     "window via params.statistic in {mean, std, min, "
-                    "max, sum}.  USE for moving averages (statistic="
-                    "mean), realised vol (statistic=std), rolling "
-                    "ranges (min / max), rolling cumulative quantities "
-                    "(sum) — every 'over the last N days' summary that "
-                    "preserves the Series's units.  Window length is "
-                    "params.window_days.  DO NOT use for z-scores (use "
-                    "rolling_zscore — it emits Z_SCORE units), and DO "
-                    "NOT use for cross-series rolling stats like rolling "
+                    "max, sum, skew, kurtosis}.  USE for moving "
+                    "averages (statistic=mean), realised vol "
+                    "(statistic=std), rolling ranges (min / max), "
+                    "rolling cumulative quantities (sum), or rolling "
+                    "distribution shape (skew / kurtosis — "
+                    "dimensionless RATIO out; kurtosis is EXCESS, "
+                    "normal == 0) — every 'over the last N days' "
+                    "summary.  Window length is params.window_days.  "
+                    "DO NOT use for z-scores (use rolling_zscore — it "
+                    "emits Z_SCORE units), for recency-weighted stats "
+                    "(use ewm_statistic), and DO NOT use for "
+                    "cross-series rolling stats like rolling "
                     "correlation or rolling beta (use rolling_correlation "
                     "/ rolling_regression respectively)."
                 ),
@@ -1825,10 +1831,12 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         output=OutputDescriptor.of(
             "Series",
             (
-                "Windowed reduction (mean / std / min / max / sum) "
-                "preserving input units.  Warmup period is NaN.  Drop-in "
-                "input for series_arithmetic, threshold_events, or "
-                "direct surface."
+                "Windowed reduction (mean / std / min / max / sum / "
+                "skew / kurtosis) preserving input units — except the "
+                "dimensionless higher moments, which emit RATIO.  "
+                "Warmup period is NaN.  Drop-in input for "
+                "series_arithmetic, threshold_events, or direct "
+                "surface."
             ),
         ),
     ),

@@ -2,22 +2,29 @@
 
 A v2.0 finance-blind operator (ADR 0016) in the
 ``single_series_transform`` method family.  Applies one of
-``{mean, std, min, max, sum}`` over a trailing window and emits a
-Series of the same length, preserving the input unit.
+``{mean, std, min, max, sum, skew, kurtosis}`` over a trailing window
+and emits a Series of the same length.  v1.1.0 (Track-A) added the
+higher moments per the OPR4 extend-don't-add ruling: ``skew`` (unbiased
+sample skewness) and ``kurtosis`` (unbiased EXCESS kurtosis, Fisher —
+normal == 0) are DIMENSIONLESS, so those two variants emit RATIO units
+while every other statistic preserves the input unit (the
+``conditional_aggregate`` per-variant unit-override precedent).
 
 Contract highlights (cite by OPR-number):
 
   - OPR1/OPR6 : one finance-blind structural method; zero finance
     vocabulary or math.  Output unit PRESERVES the input unit (a
     rolling mean of bps is in bps; a rolling sum of percent is in
-    percent) — no coercion.  A future unit transform is owned by the
+    percent) — no coercion — EXCEPT the dimensionless higher moments
+    (skew/kurtosis → RATIO).  A future unit transform is owned by the
     single sanctioned ``convert_units`` operator (ADR 0016 Decision 4).
   - OPR2      : ONE output artifact type for every parameter value —
-    always a ``Series`` of the same shape as the input.  EWMA and
-    rolling-quantile are SEPARATE operators per planned_extensions.
+    always a ``Series`` of the same shape as the input.  Exponential
+    weighting is the SEPARATE live ``ewm_statistic`` operator;
+    rolling-quantile remains a planned extension.
   - OPR8      : ``params: Optional[RollingStatisticParams] = None``;
     every default resolves from ``config.yaml`` when omitted; schema
-    defaults mirror the YAML and a parity test pins that.  All five
+    defaults mirror the YAML and a parity test pins that.  All seven
     statistics in the closed Literal are implemented; the operator
     refuses any unknown value via ``NotImplementedError`` (defensive,
     not reachable from the schema).
@@ -42,6 +49,7 @@ import pandas as pd
 
 from shared.artifacts.lineage import OperatorStep, sanitize_params_for_lineage
 from shared.artifacts.types import Series
+from shared.artifacts.units import TimeSeriesUnits
 from shared.config.operator_config import (
     OperatorConfig,
     _check_config_identity,
@@ -54,19 +62,26 @@ from shared.operators.rolling_statistic.schemas import (
 
 
 _OPERATOR_NAME = "rolling_statistic"
-_OPERATOR_VERSION = "1.0.0"
+# 1.1.0 (Track-A): statistic set extended with skew/kurtosis — a
+# behavioural expansion, hence the minor bump (OPR14d).
+_OPERATOR_VERSION = "1.1.0"
 
 _CONFIG_PATH: Path = Path(__file__).resolve().parent / "config.yaml"
 
 
-# All five statistics in the Literal are implemented in v1.  An unknown
+# All seven statistics in the Literal are implemented.  An unknown
 # value cannot reach the operator via the schema (Literal enforces the
 # closed set), but the operator's dispatch path still uses an explicit
 # allowlist so a future Literal expansion without the matching dispatch
 # branch fails honestly via ``NotImplementedError`` (OPR8 / OPR13).
 _IMPLEMENTED_STATISTICS: tuple[RollingStatisticName, ...] = (
-    "mean", "std", "min", "max", "sum",
+    "mean", "std", "min", "max", "sum", "skew", "kurtosis",
 )
+
+# The dimensionless variants: normalised higher moments carry no unit —
+# they emit RATIO regardless of the input unit (per-variant override;
+# the conditional_aggregate count→COUNT precedent).
+_DIMENSIONLESS_STATISTICS: frozenset = frozenset({"skew", "kurtosis"})
 
 
 class RollingStatisticError(ValueError):
@@ -97,9 +112,10 @@ def rolling_statistic(
     -------
     Series
         A new ``Series`` aligned to the input's index, payload =
-        the rolling reducer; units PRESERVE the input unit, frequency
-        inherits the input, missingness policy propagated, lineage
-        extended by one ``OperatorStep``.
+        the rolling reducer; units PRESERVE the input unit (RATIO for
+        the dimensionless skew/kurtosis variants), frequency inherits
+        the input, missingness policy propagated, lineage extended by
+        one ``OperatorStep``.
 
     Raises
     ------
@@ -180,6 +196,13 @@ def rolling_statistic(
         result = roller.max()
     elif params.statistic == "sum":
         result = roller.sum()
+    elif params.statistic == "skew":
+        # Unbiased sample skewness (pandas rolling.skew).
+        result = roller.skew()
+    elif params.statistic == "kurtosis":
+        # Unbiased EXCESS kurtosis (Fisher: normal == 0) — pandas
+        # rolling.kurt.
+        result = roller.kurt()
     else:
         # Unreachable through the schema Literal, but a Literal-only
         # check is not load-bearing in lineage — fall through to the
@@ -228,6 +251,11 @@ def rolling_statistic(
     # match.  Set the field to None when ignored (sanitize_params_for_
     # lineage preserves None as a JSON-canonical value).
     ddof_for_lineage = int(params.ddof) if params.statistic == "std" else None
+    out_units = (
+        TimeSeriesUnits.RATIO
+        if params.statistic in _DIMENSIONLESS_STATISTICS
+        else series.units
+    )
     step_params: Dict[str, Any] = {
         "statistic": params.statistic,
         "window": window,
@@ -235,6 +263,7 @@ def rolling_statistic(
         "ddof": ddof_for_lineage,
         "look_ahead_safe": bool(params.look_ahead_safe),
         "input_units": series.units.value,
+        "output_units": out_units.value,
         "n_input_obs": n_obs,
         "n_finite_output": n_finite,
     }
@@ -251,8 +280,10 @@ def rolling_statistic(
         payload=result,
         # Unit PRESERVATION — a rolling mean of percent is in percent;
         # a rolling sum of bps is in bps.  Finance-blind: no coercion
-        # (ADR 0016 Decision 4).
-        units=series.units,
+        # (ADR 0016 Decision 4).  EXCEPTION (v1.1.0): the normalised
+        # higher moments are dimensionless → RATIO (per-variant
+        # override; the conditional_aggregate precedent).
+        units=out_units,
         frequency=series.frequency,
         missingness_policy=series.missingness_policy,
         lineage=out_lineage,

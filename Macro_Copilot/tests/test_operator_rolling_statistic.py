@@ -291,7 +291,9 @@ class TestLineageAndDeterminism:
         assert len(out.lineage.steps) == len(s.lineage.steps) + 1
         head = out.lineage.steps[-1]
         assert head.name == "rolling_statistic"
-        assert head.version == "1.0.0"
+        # 1.1.0: the Track-A statistic-set expansion (skew/kurtosis)
+        # was a behavioural change — minor bump per OPR14d.
+        assert head.version == "1.1.0"
         assert head.auxiliary_lineages == ()
         assert head.params["statistic"] == "mean"
         assert head.params["input_units"] == "percent"
@@ -376,7 +378,7 @@ def test_no_nan_inf_leakage_across_every_statistic():
     rng = np.random.RandomState(2027)
     values = list(rng.randn(30) * 1e3)  # large-magnitude values
     s = _series("x", dates=dates, values=values)
-    for stat in ("mean", "std", "min", "max", "sum"):
+    for stat in ("mean", "std", "min", "max", "sum", "skew", "kurtosis"):
         out = rolling_statistic(
             s, params=RollingStatisticParams(statistic=stat, window=5),
         )
@@ -386,3 +388,121 @@ def test_no_nan_inf_leakage_across_every_statistic():
             "been rejected by Series construction but the operator must "
             "scrub it pre-emptively)."
         )
+
+
+# ===========================================================================
+# v1.1.0 — higher moments (skew / kurtosis): Track-A extension per the
+# OPR4 extend-don't-add ruling.  Dimensionless variants emit RATIO.
+# ===========================================================================
+
+
+class TestHigherMoments:
+    @staticmethod
+    def _input(n=60, seed=109):
+        dates = pd.bdate_range("2026-01-02", periods=n)
+        rng = np.random.RandomState(seed)
+        values = rng.randn(n) ** 3  # asymmetric, heavy-tailed
+        return _series("hm", dates=dates, values=list(values)), values
+
+    def test_skew_matches_pandas(self):
+        s, values = self._input()
+        out = rolling_statistic(
+            s, params=RollingStatisticParams(statistic="skew", window=15),
+        )
+        expected = pd.Series(values, index=s.payload.index).rolling(
+            window=15, min_periods=15,
+        ).skew()
+        pd.testing.assert_series_equal(
+            out.payload, expected, check_names=False,
+        )
+        assert out.units == TimeSeriesUnits.RATIO  # dimensionless override
+
+    def test_kurtosis_matches_pandas_excess(self):
+        s, values = self._input(seed=211)
+        out = rolling_statistic(
+            s,
+            params=RollingStatisticParams(statistic="kurtosis", window=20),
+        )
+        expected = pd.Series(values, index=s.payload.index).rolling(
+            window=20, min_periods=20,
+        ).kurt()  # Fisher EXCESS kurtosis: normal == 0
+        pd.testing.assert_series_equal(
+            out.payload, expected, check_names=False,
+        )
+        assert out.units == TimeSeriesUnits.RATIO
+
+    def test_units_override_is_ratio_regardless_of_input_unit(self):
+        s, _ = self._input()
+        for stat in ("skew", "kurtosis"):
+            out = rolling_statistic(
+                s, params=RollingStatisticParams(statistic=stat, window=10),
+            )
+            assert out.units == TimeSeriesUnits.RATIO
+            head = out.lineage.steps[-1]
+            assert head.params["output_units"] == "ratio"
+            assert head.params["input_units"] == "percent"
+
+    def test_classic_statistics_still_pass_units_through(self):
+        s, _ = self._input()
+        out = rolling_statistic(
+            s, params=RollingStatisticParams(statistic="mean", window=10),
+        )
+        assert out.units == TimeSeriesUnits.PERCENT
+        assert out.lineage.steps[-1].params["output_units"] == "percent"
+
+    def test_window_floors_enforced_at_schema(self):
+        with pytest.raises(ValueError, match="window >= 3"):
+            RollingStatisticParams(statistic="skew", window=2)
+        with pytest.raises(ValueError, match="window >= 4"):
+            RollingStatisticParams(statistic="kurtosis", window=3)
+        # at-floor values are legal
+        RollingStatisticParams(statistic="skew", window=3)
+        RollingStatisticParams(statistic="kurtosis", window=4)
+
+    def test_ddof_nulled_for_higher_moments(self):
+        """OPR14: ddof is consumed only by std — two skew calls
+        differing only in ddof must hash identically."""
+        s, _ = self._input()
+        h1 = rolling_statistic(
+            s,
+            params=RollingStatisticParams(
+                statistic="skew", window=10, ddof=1,
+            ),
+        ).lineage.head_hash
+        h0 = rolling_statistic(
+            s,
+            params=RollingStatisticParams(
+                statistic="skew", window=10, ddof=0,
+            ),
+        ).lineage.head_hash
+        assert h1 == h0
+
+    def test_version_bumped_in_lineage(self):
+        """OPR14d: the statistic-set expansion is a behavioural change —
+        the step version must read 1.1.0."""
+        s, _ = self._input()
+        out = rolling_statistic(s)
+        assert out.lineage.steps[-1].version == "1.1.0"
+
+    def test_constant_window_higher_moments_finite_never_inf(self):
+        """Degenerate (zero-dispersion) windows: pandas defines
+        rolling skew of a constant window as 0.0 and excess kurtosis
+        as -3.0 — finite, pinned here; ±Inf never reaches the payload
+        (the scrub guards the 0/0 path on other inputs)."""
+        dates = pd.bdate_range("2026-01-02", periods=20)
+        s = _series("const", dates=dates, values=[5.0] * 20)
+        out_skew = rolling_statistic(
+            s, params=RollingStatisticParams(statistic="skew", window=5),
+        )
+        np.testing.assert_allclose(
+            out_skew.payload.dropna().to_numpy(), 0.0,
+        )
+        out_kurt = rolling_statistic(
+            s,
+            params=RollingStatisticParams(statistic="kurtosis", window=5),
+        )
+        np.testing.assert_allclose(
+            out_kurt.payload.dropna().to_numpy(), -3.0,
+        )
+        for out in (out_skew, out_kurt):
+            assert not np.isinf(out.payload.to_numpy(dtype=float)).any()

@@ -17,19 +17,27 @@ from typing import Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-# Closed set of statistic variants.  All five are IMPLEMENTED in v1 —
+# Closed set of statistic variants.  All seven are IMPLEMENTED —
 # unlike correlation's ``kendall``, this operator does not currently
 # declare any honest-refusal placeholders.  New statistics ship as
 # additions to BOTH this Literal AND the operator's implemented set
-# in lock-step (OPR8).
-RollingStatisticName = Literal["mean", "std", "min", "max", "sum"]
+# in lock-step (OPR8).  v1.1.0 added the higher moments ``skew`` and
+# ``kurtosis`` (Track-A; the OPR4 extend-don't-add ruling): they are
+# DIMENSIONLESS, so the output units are RATIO for those two variants
+# and input-passthrough for the rest (the conditional_aggregate
+# per-variant unit-override precedent).
+RollingStatisticName = Literal[
+    "mean", "std", "min", "max", "sum", "skew", "kurtosis",
+]
 
 
 class RollingStatisticParams(BaseModel):
     """Parameters for the ``rolling_statistic`` operator.
 
     Variants:
-      - ``statistic``       — closed set ``{mean, std, min, max, sum}``.
+      - ``statistic``       — closed set ``{mean, std, min, max, sum,
+                              skew, kurtosis}``; the higher moments
+                              emit RATIO (dimensionless) units.
       - ``window``          — trailing-window length, in rows of the
                               input Series (>= 1).
       - ``min_periods``     — minimum non-NaN observations within a
@@ -69,6 +77,23 @@ class RollingStatisticParams(BaseModel):
             raise ValueError(
                 f"statistic='std' requires window >= 2 (got "
                 f"{self.window}); a single-observation std is undefined."
+            )
+        # Higher-moment floors: the unbiased sample skewness needs at
+        # least 3 observations and the unbiased excess kurtosis at
+        # least 4 (below these pandas silently emits all-NaN — the
+        # schema refusal converts that misleading outcome into a clear
+        # one).
+        if self.statistic == "skew" and self.window < 3:
+            raise ValueError(
+                f"statistic='skew' requires window >= 3 (got "
+                f"{self.window}); sample skewness is undefined below 3 "
+                "observations."
+            )
+        if self.statistic == "kurtosis" and self.window < 4:
+            raise ValueError(
+                f"statistic='kurtosis' requires window >= 4 (got "
+                f"{self.window}); unbiased excess kurtosis is undefined "
+                "below 4 observations."
             )
         return self
 

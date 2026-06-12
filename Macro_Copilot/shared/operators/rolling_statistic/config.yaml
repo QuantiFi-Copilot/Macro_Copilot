@@ -1,14 +1,17 @@
 operator:
   name: rolling_statistic
   method_family: single_series_transform
-  version: "1.0.0"
+  version: "1.1.0"
   description: >-
     Generic windowed reducer over a Series — emits a Series of the same
-    index with a rolling mean / std / min / max / sum computed over a
-    trailing window.  Finance-blind: runs unchanged on rates, FX,
-    equities, or any numeric series.  Output units PRESERVE the input
-    unit (a rolling mean of percent is in percent, a rolling sum of
-    bps is in bps, etc.) — no coercion.
+    index with a rolling mean / std / min / max / sum / skew /
+    kurtosis computed over a trailing window.  Finance-blind: runs
+    unchanged on rates, FX, equities, or any numeric series.  Output
+    units PRESERVE the input unit (a rolling mean of percent is in
+    percent, a rolling sum of bps is in bps, etc.) — no coercion —
+    EXCEPT the dimensionless higher moments (skew/kurtosis emit
+    RATIO).  v1.1.0 added skew/kurtosis (the OPR4 extend-don't-add
+    ruling).
 
 # Every consequential method variant is offloaded here so the operator
 # is not opinionated and the caller can switch seamlessly (OPR7/OPR8).
@@ -22,8 +25,13 @@ defaults:
       ``mean`` is the most common rolling reducer (rolling average,
       moving average).  ``std`` is the natural rolling-volatility
       primitive; ``min``/``max`` are the rolling-range building blocks;
-      ``sum`` is the rolling-aggregate.  All five are implemented.
-    valid_values: [mean, std, min, max, sum]
+      ``sum`` is the rolling-aggregate; ``skew`` (unbiased sample
+      skewness, window >= 3) and ``kurtosis`` (unbiased EXCESS
+      kurtosis, Fisher — normal == 0, window >= 4) are the
+      dimensionless higher moments added in v1.1.0 — they emit RATIO
+      units while every other statistic preserves the input unit.
+      All seven are implemented.
+    valid_values: [mean, std, min, max, sum, skew, kurtosis]
   window:
     value: 20
     source: operator_v1_default
@@ -61,22 +69,24 @@ defaults:
 
 methodology:
   what_it_does: >-
-    Computes a trailing-window reducer (mean / std / min / max / sum)
-    over a single Series and emits a Series of the same index and
-    length.  Output UNITS PRESERVE the input unit — no coercion.
-    Output FREQUENCY preserves the input frequency.  Warmup positions
-    (fewer than ``min_periods`` valid observations) emit ``NaN`` —
-    legitimate missingness from insufficient history.  The operator
-    raises ``RollingStatisticError`` for an empty input, a non-Series
-    input, or an unsupported statistic value; for ``statistic='std'``
-    with ``window < 2`` (std is undefined on one observation); and
-    when the entire output is ``NaN``.  Variants are baked into the
-    operator; new statistics ship as additions here AND in the
-    operator's implemented set, never as silent fallbacks (OPR8
-    honest refusal).
+    Computes a trailing-window reducer (mean / std / min / max / sum /
+    skew / kurtosis) over a single Series and emits a Series of the
+    same index and length.  Output UNITS PRESERVE the input unit — no
+    coercion — EXCEPT the dimensionless higher moments: skew (unbiased
+    sample skewness) and kurtosis (unbiased EXCESS kurtosis, Fisher —
+    normal == 0) emit RATIO units (the per-variant unit-override
+    precedent).  Output FREQUENCY preserves the input frequency.
+    Warmup positions (fewer than ``min_periods`` valid observations)
+    emit ``NaN`` — legitimate missingness from insufficient history.
+    The operator raises ``RollingStatisticError`` for an empty input,
+    a non-Series input, or an unsupported statistic value; the schema
+    refuses statistic-specific window floors (std >= 2, skew >= 3,
+    kurtosis >= 4 — undefined below); and an all-``NaN`` output
+    raises.  Variants are baked into the operator; new statistics
+    ship as additions here AND in the operator's implemented set,
+    never as silent fallbacks (OPR8 honest refusal).
   planned_extensions:
     - "rolling_median / rolling_quantile: separate statistic variants admitted as extensions once a workflow needs them — they extend the implemented set in lock-step with the valid_values list above."
-    - "ewma: a SEPARATE operator (exponential weighting is mechanically distinct from a rectangular window) per OPR2 constant-output discipline."
 
 # ============================================================================
 # CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
@@ -84,12 +94,14 @@ methodology:
 card:
   one_line: >-
     Generic windowed reducer over a Series — rolling mean / std / min /
-    max / sum.  Output preserves input units.
+    max / sum / skew / kurtosis.  Output preserves input units (RATIO
+    for the dimensionless higher moments).
   when_to_use:
     - "User asks for rolling mean / moving average (statistic='mean')."
     - "User asks for rolling volatility (statistic='std')."
     - "User asks for rolling min / max / range building blocks (statistic='min' or 'max')."
     - "User asks for rolling sum / aggregate (statistic='sum')."
+    - "User asks for rolling asymmetry or tail-heaviness of a distribution over time (statistic='skew' or 'kurtosis' — dimensionless RATIO out; kurtosis is EXCESS, normal == 0)."
   when_not_to_use:
     - "If the user wants a SINGLE-NUMBER full-sample summary (the mean / std / sum / median of X over the whole period, ONE scalar — not a value per date), use summarize_series.  rolling_statistic emits a Series over time (one value PER DATE); it is the WRONG operator for 'what is the average of X over 5 years' (that is a single scalar → summarize_series)."
     - "If the user wants the value STANDARDISED vs that rolling stat, use rolling_zscore (combines mean/std into a z)."
@@ -98,9 +110,9 @@ card:
   upstream_requirements:
     - "One Series.  No alignment needed (single input)."
   downstream_pattern:
-    - "Output is a Series in INPUT units.  Feeds the terminal answer directly, threshold_events for level-based triggers, or series_arithmetic to compute deviations from the raw level."
+    - "Output is a Series in INPUT units (RATIO for the dimensionless skew/kurtosis variants).  Feeds the terminal answer directly, threshold_events for level-based triggers, or series_arithmetic to compute deviations from the raw level."
   knobs_quick_ref:
-    statistic: "mean (default) | std | min | max | sum."
+    statistic: "mean (default) | std | min | max | sum | skew (window >= 3) | kurtosis (excess; window >= 4).  Higher moments emit RATIO."
     window: "20 by default.  Override for tactical (shorter) or strategic (longer) horizons."
     min_periods: "Defaults to window (strict)."
     ddof: "Only used for statistic='std'; 1 (sample) default, 0 (population) supported."
@@ -114,4 +126,5 @@ card:
     - rolling_zscore: "If the user wants the value standardised by the rolling mean and std together."
     - percentile_rank: "If the user wants the rank against history."
     - series_arithmetic: "Often paired downstream to compute (value − rolling_mean) deviation."
+    - ewm_statistic: "Recency-weighted (exponential) mean/std — use when the window should weight recent observations more."
   intent_hints: [transform]
