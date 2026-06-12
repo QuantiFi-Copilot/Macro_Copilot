@@ -1,0 +1,73 @@
+operator:
+  name: streak
+  method_family: single_series_transform
+  version: "1.0.0"
+  description: >-
+    Signed run-length of one Series' SIGN at each position — +k on the
+    k-th consecutive positive value, -k on the k-th consecutive
+    negative value, 0 on a zero value (a boundary, not a member of
+    either run). Finance-blind structural counter; condition logic
+    composes UPSTREAM (subtract a level first for 'days above
+    level'). Output is in COUNT units (a run length is a row count,
+    whatever the input's units). NaN emits NaN and BREAKS the run.
+
+# streak deliberately has ZERO knobs in v1 (OPR7/OPR8): the sign rule
+# and NaN policy are design-locked (below) and condition logic
+# composes upstream, so there is nothing for a caller to choose.
+#
+# DESIGN LOCKS (OPR7, lineage-stamped): (1) sign_rule — >0 positive
+# run | <0 negative run | ==0 boundary (zero kills a run and is not a
+# member of either side; treating it as a continuation would
+# overstate persistence). (2) nan_policy='break' — a NaN position
+# emits NaN (the family's legitimate-missingness convention) AND
+# breaks the run: the next finite value starts at +-1. Silently
+# extending a run across a data gap would fabricate persistence the
+# data does not show.
+defaults: {}
+
+methodology:
+  what_it_does: >-
+    Single forward pass over the payload maintaining a signed run
+    counter: a positive value extends a positive run (or starts one
+    at +1), a negative value extends a negative run (or starts one at
+    -1), an exact zero resets the counter to 0 (boundary), and a NaN
+    emits NaN while resetting the counter (nan_policy='break' — a gap
+    never silently extends a run). The output is the counter value at
+    each position, in COUNT units (a run length is a row count — the
+    ordinal cross_sectional_rank precedent; input units are recorded
+    in lineage). The longest positive/negative runs observed are
+    recorded in lineage as audit diagnostics. An all-NaN input raises
+    StreakError. Frequency and missingness policy pass through. No
+    value arithmetic beyond the sign test — counts are bounded by the
+    row count, so there is no overflow surface.
+  planned_extensions:
+    - "min_run filtering ('only streaks of 10+'): composes today as streak -> threshold_events on the run-length Series."
+    - "streak-END/transition event emission: NOT expressible today (threshold_events emits every qualifying date, not transitions); awaits its event_dedup/consecutive_collapse extension."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Signed run-length of a Series' sign at each position (+k / -k / 0, COUNT units) — 'how many consecutive days has X been positive/negative'.
+  when_to_use:
+    - "User asks how LONG a condition has persisted ('how many consecutive days has the spread been negative / the curve inverted') — subtract the level upstream if needed, then streak."
+    - "Persistence itself is the signal (streak length feeding a threshold: 'flag when inverted 10+ days') — streak -> threshold_events."
+  when_not_to_use:
+    - "User wants the qualifying DATES themselves (every day the condition holds) — threshold_events emits those as an EventSet.  (Collapsing runs to start/stop transitions awaits its event_dedup extension.)"
+    - "User wants the TOTAL count of days matching a condition (not consecutive) — apply_mask + summarize_series(count)."
+    - "User wants run lengths of a NON-SIGN condition ('above its rolling mean') — compose the condition upstream first (series_arithmetic subtract), then streak; the operator only reads sign."
+  upstream_requirements:
+    - "Input is ONE SIGN-able Series: the sign carries the condition.  For 'above level L', series_arithmetic(subtract L) upstream; for 'above series Y', subtract Y."
+  downstream_pattern:
+    - "Output is a Series in COUNT units (+k / -k / 0; NaN at gaps, runs break across gaps; longest runs in lineage).  Typical follow-ons: threshold_events ('10+ day streak'), summarize_series(last) ('current streak'), direct surface."
+  knobs_quick_ref:
+    none: "Zero knobs in v1 — the sign rule and NaN-break policy are design-locked; condition logic composes upstream."
+  example_shapes:
+    - description: "Current consecutive days Series A has been negative."
+      shape: "[Series A] -> streak -> summarize_series(statistic=last) -> ScalarMetric"
+  sibling_operators:
+    - threshold_events: "Emits an event on EVERY date the condition holds (an EventSet); streak emits the running LENGTH per date."
+    - series_arithmetic: "Upstream subtract to express 'above level/series' conditions as sign."
+    - cumulative: "Running sum/extreme of VALUES; streak counts consecutive same-sign ROWS."
+  intent_hints: [transform]

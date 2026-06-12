@@ -173,6 +173,10 @@ from shared.operators.series_arithmetic import (
     SeriesArithmeticParams,
     CONFIG_PATH as _SERIES_ARITHMETIC_CONFIG_PATH,
 )
+from shared.operators.streak import (
+    streak, StreakParams,
+    CONFIG_PATH as _STREAK_CONFIG_PATH,
+)
 from shared.operators.summarize_series import (
     summarize_series,
     SummarizeSeriesParams,
@@ -1714,6 +1718,50 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "threshold_events, direct surface.  Raises "
                 "CumulativeError on a non-Series input, an overflowing "
                 "running sum, or an all-NaN output."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — single_series_transform: signed
+    # run-length of a Series' sign at each position (+k / −k / 0).
+    # One Series in, one Series out in COUNT units.
+    "streak": OperatorSpec(
+        operator_name="streak",
+        callable=streak,
+        params_class=StreakParams,
+        config_path=_STREAK_CONFIG_PATH,
+        input_slots={
+            "series": SlotDescriptor.of(
+                "Series",
+                (
+                    "The single typed SIGN-able Series whose "
+                    "consecutive same-sign run lengths are counted — "
+                    "the SIGN carries the condition, so compose "
+                    "series_arithmetic(subtract) UPSTREAM for 'above "
+                    "level L' or 'above series Y' conditions.  USE for "
+                    "'how many consecutive days has X been "
+                    "positive/negative' (persistence reads) or as the "
+                    "feeder for streak-length triggers (streak → "
+                    "threshold_events).  Zero is a boundary (kills the "
+                    "run); NaN emits NaN and BREAKS the run.  DO NOT "
+                    "use for the qualifying DATES of a condition as "
+                    "events (threshold_events — emits every date the "
+                    "condition holds) or a non-consecutive total "
+                    "count (apply_mask + summarize_series count)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            (
+                "Signed run lengths on the input index (+k on the "
+                "k-th consecutive positive, −k negative, 0 at a zero "
+                "value; NaN at gaps — runs break across them), in "
+                "COUNT units (a run length is a row count).  Longest "
+                "runs ride in lineage.  Typical follow-ons: "
+                "threshold_events ('flag 10+ day streaks'), "
+                "summarize_series(last) ('the current streak'), "
+                "direct surface.  Raises StreakError on a non-Series "
+                "or all-NaN input."
             ),
         ),
     ),

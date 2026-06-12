@@ -303,6 +303,7 @@ class TestComposerPromptContent:
             "rolling_zscore",
             "select_from_series_set",
             "series_arithmetic",
+            "streak",
             "summarize_series",
             "threshold_events",
             "top_n",

@@ -109,4 +109,27 @@ Defer reasoning below cites the LIVE state, not the plan's stale §9 claims, per
   distinct core that would justify a named operator in Phase 2.
 - Disposition: deferred-as-covered (use the chain); no proxy shipped.
 
+### crossover_events  (framework: OP per plan §7-A6)
+- Gate that fired: OPR4/P9 (trivial-chain doctrine — the MEMBERSHIP
+  semantics of a cross of two series is exactly
+  `series_arithmetic(op=subtract: left − right)` →
+  `threshold_events(threshold=0)`: every date the spread is on one side,
+  with threshold_events' strict-equality tie-breaking and look-ahead
+  discipline already adjudicated there).
+- Evidence: Warden ruling — "the cross chain composes transparently in the
+  open DAG; a standalone cross detector would duplicate threshold_events'
+  tie-breaking and look-ahead discipline and would need its own alignment
+  surface (a third copy of OPR11 flags) for zero analytical gain."
+- Honest scope (critic-qualified): the chain covers MEMBERSHIP ("dates left
+  was above right"), not onset-collapse ("the dates the cross HAPPENED") —
+  threshold_events today emits every qualifying date; collapsing runs to
+  transition events awaits its planned event_dedup/consecutive_collapse
+  extension, which is the named unblock path for true cross-DATE asks.
+- What would unblock it: threshold_events' event_dedup extension (covers
+  onset collapse there, keeping one event surface), or a cross semantics
+  that surface cannot express (e.g. simultaneous multi-pair crossing
+  matrices) — none identified.
+- Disposition: deferred-as-covered for membership semantics; onset-collapse
+  pending the threshold_events extension; no proxy shipped.
+
 (entries appended per-tool as gates fire)
