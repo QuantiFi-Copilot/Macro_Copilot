@@ -108,6 +108,10 @@ from shared.operators.cumulative import (
     cumulative, CumulativeParams,
     CONFIG_PATH as _CUMULATIVE_CONFIG_PATH,
 )
+from shared.operators.hp_filter import (
+    hp_filter, HpFilterParams,
+    CONFIG_PATH as _HP_FILTER_CONFIG_PATH,
+)
 from shared.operators.lag import (
     lag, LagParams,
     CONFIG_PATH as _LAG_CONFIG_PATH,
@@ -1710,6 +1714,54 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "threshold_events, direct surface.  Raises "
                 "CumulativeError on a non-Series input, an overflowing "
                 "running sum, or an all-NaN output."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — single_series_transform: Hodrick-
+    # Prescott trend/cycle decomposition (two-sided, statsmodels).
+    # One Series in, one Series out (units passthrough); lamb is
+    # REQUIRED (frequency-dependent methodology).
+    "hp_filter": OperatorSpec(
+        operator_name="hp_filter",
+        callable=hp_filter,
+        params_class=HpFilterParams,
+        config_path=_HP_FILTER_CONFIG_PATH,
+        input_slots={
+            "series": SlotDescriptor.of(
+                "Series",
+                (
+                    "The single typed Series to decompose — no "
+                    "INTERIOR NaN gaps (refused; fill upstream with "
+                    "align_series ffill), though contiguous "
+                    "leading/trailing warmup NaN from rolling/ewm/lag "
+                    "upstreams passes through; >= 3 finite rows.  USE "
+                    "for a smooth long-run path through a noisy series "
+                    "(component=trend) or the cyclical deviation from "
+                    "it (component=cycle); lamb MUST be supplied and "
+                    "is frequency-dependent (~1600 quarterly, ~14400 "
+                    "monthly, ~1e6-1e7 daily).  TWO-SIDED: the trend "
+                    "at every position uses the whole sample "
+                    "(look-ahead disclosed in lineage; never for "
+                    "point-in-time compositions).  DO NOT use when a "
+                    "straight-line/mean detrend suffices (detrend), "
+                    "for one-sided recency-weighted smoothing "
+                    "(ewm_statistic), or flat trailing windows "
+                    "(rolling_statistic)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            (
+                "The chosen HP component on the input index, in the "
+                "input's units (trend + cycle reconstruct the input "
+                "exactly).  Lineage records lamb, the component, "
+                "filter_scope='full_sample_two_sided' (the look-ahead "
+                "disclosure) and the cycle-variance share.  Typical "
+                "follow-ons: series_arithmetic, summarize_series(std) "
+                "on the cycle, threshold_events.  Raises HpFilterError "
+                "on missing lamb, interior NaN, < 3 finite rows, or a "
+                "non-finite solve."
             ),
         ),
     ),

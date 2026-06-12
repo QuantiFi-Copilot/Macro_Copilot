@@ -1,0 +1,92 @@
+operator:
+  name: hp_filter
+  method_family: single_series_transform
+  version: "1.0.0"
+  description: >-
+    Hodrick-Prescott trend/cycle decomposition of one Series via the
+    standard TWO-SIDED filter (statsmodels), emitting the chosen
+    component (trend or cycle; the two sum exactly to the input) in
+    the input's units. Finance-blind. The smoothing strength lamb is
+    REQUIRED — frequency-dependent methodology with no honest default
+    (~1600 quarterly, ~14400 monthly, ~1e6-1e7 daily). Two-sided =
+    the trend at every position uses the WHOLE sample (look-ahead,
+    disclosed in lineage). Contiguous leading/trailing warmup NaN
+    passes through (the solve covers the interior block); INTERIOR
+    gaps are refused (the penalty runs over adjacent rows — fill
+    upstream).
+
+# lamb is the methodology itself — a per-call input with NO meaningful
+# default (the weighted_combination weights precedent): params=None
+# refuses cleanly naming the field and the frequency guidance.
+# component does have an honest default (trend — the canonical HP
+# output); it is offloaded here per OPR7/OPR8.
+defaults:
+  component:
+    value: trend
+    source: operator_v1_default
+    rationale: >-
+      The smooth long-run path (trend) is the canonical HP read;
+      cycle (the residual, x - trend) is the explicit alternative
+      for gap/deviation analysis.  The two sum exactly to the input.
+    valid_values: [trend, cycle]
+
+methodology:
+  what_it_does: >-
+    Runs the standard two-sided Hodrick-Prescott filter
+    (statsmodels.tsa.filters.hp_filter.hpfilter — a battle-tested
+    sparse linear solve; the math is deliberately not re-implemented)
+    and emits ONE component: trend (the smooth path minimising
+    squared second differences under strength lamb) or cycle (the
+    residual). TWO-SIDED LOOK-AHEAD: the trend at every position is
+    fitted against the whole sample and is least stable near the
+    boundaries (one side of the context missing) — never feed the
+    output into point-in-time compositions; disclosed in lineage as
+    filter_scope='full_sample_two_sided'. lamb is REQUIRED
+    (frequency-dependent: ~1600 quarterly / ~14400 monthly / ~1e6-1e7
+    daily; a fixed default applied at the wrong frequency silently
+    under- or over-smooths). NaN policy is TWO-TIER: contiguous
+    leading/trailing warmup NaN — what every rolling/ewm/lag upstream
+    legitimately emits — is tolerated (the solve runs on the interior
+    finite block and the edges pass through as NaN; trimming a
+    contiguous edge leaves the remaining rows genuinely adjacent);
+    INTERIOR gaps are refused — the second-difference penalty runs
+    over ADJACENT rows, and dropping interior gaps would silently
+    pretend non-adjacent observations are adjacent; fill upstream
+    (align_series ffill genuinely fixes interior gaps). Fewer than 3
+    finite observations refused (the penalty is undefined). Units,
+    frequency and missingness policy pass through for both
+    components; lamb, the component, the scope, the edge-NaN counts
+    and the cycle-variance share ride in lineage.
+  planned_extensions:
+    - "one-sided (real-time) HP filter: the point-in-time-safe variant — a distinct estimator with its own disclosure surface."
+    - "boundary-stability diagnostics (e.g. trimming guidance for the unstable edges): declared so the two-sided surface stays honest."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Hodrick-Prescott trend/cycle decomposition (two-sided, statsmodels) — the smooth long-run path or the cyclical residual; lamb is required and frequency-dependent.
+  when_to_use:
+    - "User wants a smooth long-run path through a noisy series ('the underlying trend of X') — component=trend, lamb chosen for the data's frequency."
+    - "User wants the deviation from that smooth path ('the cyclical gap in X') — component=cycle."
+  when_not_to_use:
+    - "POINT-IN-TIME compositions: the filter is TWO-SIDED (the trend at t uses the whole sample — look-ahead disclosed in lineage); a one-sided variant is planned."
+    - "A simple straight-line or mean detrend suffices — use detrend (cheaper, more interpretable)."
+    - "A recency-weighted smooth level is wanted — use ewm_statistic (one-sided, no look-ahead beyond t)."
+    - "The series has INTERIOR NaN gaps — refused; fill upstream first (align_series ffill).  Leading/trailing warmup NaN from rolling/ewm/lag upstreams is fine (passes through)."
+  upstream_requirements:
+    - "Input is ONE Series with no INTERIOR gaps (contiguous edge warmup NaN tolerated), >= 3 finite observations.  lamb MUST be supplied: ~1600 quarterly, ~14400 monthly, ~1e6-1e7 daily."
+  downstream_pattern:
+    - "Output is a Series in the input's units (edge NaN passes through; trend + cycle reconstruct the input exactly on the finite block; cycle-variance share in lineage).  Typical follow-ons: series_arithmetic, summarize_series(std) on the cycle, threshold_events on the gap."
+  knobs_quick_ref:
+    component: "trend (default; the smooth path) | cycle (the residual, x - trend)."
+    lamb: "REQUIRED, > 0 — the smoothing strength; frequency-dependent (~1600 Q / ~14400 M / ~1e6-1e7 daily).  No default: choosing it is methodology."
+  example_shapes:
+    - description: "Cyclical gap of a series, then its dispersion."
+      shape: "[Series] -> hp_filter(component=cycle, lamb=...) -> summarize_series(statistic=std) -> ScalarMetric"
+  sibling_operators:
+    - detrend: "Order-0/order-1 deterministic detrending (mean or straight line) — cheaper and more interpretable when a linear drift suffices."
+    - ewm_statistic: "One-sided recency-weighted smoothing — no look-ahead beyond t."
+    - rolling_statistic: "Flat trailing-window smoothing on the same index."
+  intent_hints: [transform]

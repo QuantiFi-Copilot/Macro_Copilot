@@ -65,6 +65,7 @@ _V2_CONFORMANT = {
     "event_windows",
     "ewm_statistic",
     "granger_causality",
+    "hp_filter",
     "lag",
     "lead_lag",
     "pairwise_spread_matrix",
