@@ -1,0 +1,94 @@
+operator:
+  name: changepoint_detection
+  method_family: statistical_relationship
+  version: "1.0.0"
+  description: >-
+    Structural mean-shift break detection of one Series via binary
+    segmentation with an L2 mean-shift cost (the math lives in
+    shared/quant/changepoint.py), emitting the break dates as an
+    EventSet. Finance-blind: answers "WHEN did the series break /
+    regime-shift" for any series. n_changepoints is REQUIRED (no honest
+    default — the number of breaks is the central methodology choice).
+    FEWER events than requested (down to an empty EventSet) is the
+    honest answer when positive-gain breaks are exhausted — never a
+    garbage break. The detection is FULL-SAMPLE (look-ahead — disclosed
+    in lineage as detection_scope='full_sample'; never feed into
+    point-in-time compositions). Two-tier NaN policy: contiguous
+    leading/trailing warmup NaN tolerated; interior NaN refused.
+
+# n_changepoints is required-no-default (the hp_filter lamb precedent).
+# min_size has an honest default (the L2-SSE floor). The cost model
+# (L2 mean-shift) and algorithm (greedy binary segmentation) are
+# design-locked.
+#
+# DESIGN LOCKS (OPR7, lineage-stamped):
+# (1) L2 mean-shift cost (SSE around the segment mean) — variance-shift
+#     and kernel costs are declared planned extensions.
+# (2) greedy binary segmentation — exact PELT / dynamic-programming and
+#     a penalty/BIC-driven count are declared planned extensions, never
+#     silent knobs.
+defaults:
+  min_size:
+    value: 2
+    source: operator_v1_default
+    rationale: >-
+      The minimum segment length.  2 is the smallest segment on which
+      an SSE-around-the-mean is non-degenerate; raise it to suppress
+      short spurious segments.
+
+methodology:
+  what_it_does: >-
+    Tolerates contiguous LEADING/TRAILING warmup NaN (the segmentation
+    runs on the interior finite block; the edges are never eligible
+    breaks) and REFUSES interior NaN (the L2 cost runs over CONTIGUOUS
+    rows; dropping interior gaps would splice non-adjacent observations
+    into one segment and corrupt its mean — the remedy align_series
+    ffill is named in the refusal). Runs binary segmentation: the cost
+    of a segment is its sum of squared deviations from the segment mean
+    (SSE); the split with the largest gain (SSE reduction) is accepted
+    greedily and the algorithm recurses on the two halves, stopping at
+    n_changepoints accepted splits OR when no split has POSITIVE gain
+    (an already-flat segment — the honest "no more breaks" stop, so the
+    result may contain FEWER than the requested number, down to zero /
+    an empty EventSet). The break dates are emitted as an EventSet (the
+    mask is True at each break); per-event metadata carries the gain
+    and the segment means before/after. The detection is FULL-SAMPLE —
+    every break is placed using the whole series (look-ahead;
+    detection_scope='full_sample' in lineage; never feed into
+    point-in-time compositions). Refusals: missing params
+    (n_changepoints), a non-Series input, fewer than
+    max(12, (n_changepoints+1)*min_size) finite observations, zero
+    variance (a constant has no break), an interior NaN.
+  planned_extensions:
+    - "Variance-shift and mean+variance and kernel cost models: distinct change semantics — declared, never silent alternates."
+    - "Penalty/BIC-driven count (data-driven n_changepoints) and exact PELT / dynamic-programming: distinct estimators — declared planned extensions."
+    - "changepoint_segments: the per-segment mean as a step Series — a Series output, hence a SEPARATE operator (OPR2)."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Structural mean-shift break detection (binary segmentation) — ONE EventSet (the break dates; gain + segment means in metadata; full-sample look-ahead).
+  when_to_use:
+    - "User asks WHEN a series structurally broke / shifted level / changed regime ('when did the relationship break?', 'find the regime shifts in X') — emits the break dates."
+    - "Locating structural breaks before an event study around them (feed the EventSet to event_windows)."
+  when_not_to_use:
+    - "POINT-IN-TIME compositions: the detection is FULL-SAMPLE (every break uses the whole series — look-ahead disclosed in lineage); never feed it into as-of/walk-forward chains."
+    - "User wants where the series CROSSES a fixed level — threshold_events (a level-membership rule, not a structural break)."
+    - "User wants the state changes of an ALREADY-LABELLED discrete series — transition_events; or a stationarity/mean-reversion read — stationarity_adf / fit_ou."
+  upstream_requirements:
+    - "Input is ONE Series (any units), >= max(12, (n_changepoints+1)*min_size) finite observations, non-constant, interior-gap-free (contiguous leading/trailing warmup NaN tolerated; INTERIOR NaN refused — fill via align_series).  n_changepoints is REQUIRED."
+  downstream_pattern:
+    - "Output is an EventSet (the break dates; source_series_key echoes the input).  Feed event_windows for an event study, or apply_mask.  Lineage records the requested/found counts, min_size, the locked cost/algorithm and detection_scope='full_sample'.  FEWER events than requested (down to empty) is honest."
+  knobs_quick_ref:
+    n_changepoints: "REQUIRED — the number of mean-shift breaks to find (>= 1); returns the top-gain splits, fewer if exhausted."
+    min_size: "the minimum segment length (default 2); raise to suppress short spurious segments."
+  example_shapes:
+    - description: "Structural breaks in the residual of one series regressed on another."
+      shape: "[Series A, Series B] -> regression_residual -> changepoint_detection(n_changepoints=2) -> EventSet  [feed event_windows]"
+  sibling_operators:
+    - threshold_events: "Where a series crosses a fixed user threshold (level membership); changepoint_detection discovers latent structural mean-shifts with no preset threshold."
+    - transition_events: "State changes of an already-labelled discrete series; changepoint_detection finds breaks in a continuous series."
+    - fit_ou: "Mean-reversion SPEED of a stationary series; changepoint_detection finds WHERE the level breaks."
+  intent_hints: [event_regime]

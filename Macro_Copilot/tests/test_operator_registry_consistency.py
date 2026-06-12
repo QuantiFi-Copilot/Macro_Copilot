@@ -51,6 +51,7 @@ from shared.workflow.slots import OutputDescriptor, SlotDescriptor
 _V2_CONFORMANT = {
     "bandpass",
     "beta",
+    "changepoint_detection",
     "cointegration",
     "correlation",
     "covariance",

@@ -231,6 +231,10 @@ from shared.operators.fit_ou import (
     fit_ou, FitOuParams,
     CONFIG_PATH as _FIT_OU_CONFIG_PATH,
 )
+from shared.operators.changepoint_detection import (
+    changepoint_detection, ChangepointDetectionParams,
+    CONFIG_PATH as _CHANGEPOINT_DETECTION_CONFIG_PATH,
+)
 
 
 # ============================================================================
@@ -1793,6 +1797,58 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "it normal / fat-tailed' asks.  Raises "
                 "NormalityTestError on < 3 finite rows, zero "
                 "variance, or a non-finite statistic."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — statistical_relationship (A4 model-fit
+    # engines): structural mean-shift break detection via binary
+    # segmentation.  One Series in, one EventSet out (the break dates;
+    # gain + segment means in metadata).  n_changepoints REQUIRED;
+    # full-sample look-ahead; math in shared/quant.
+    "changepoint_detection": OperatorSpec(
+        operator_name="changepoint_detection",
+        callable=changepoint_detection,
+        params_class=ChangepointDetectionParams,
+        config_path=_CHANGEPOINT_DETECTION_CONFIG_PATH,
+        input_slots={
+            "series": SlotDescriptor.of(
+                "Series",
+                (
+                    "The single typed Series to scan for structural "
+                    "mean-shift breaks (>= max(12, (n_changepoints+1)*"
+                    "min_size) finite observations, non-constant, "
+                    "interior-gap-free — contiguous leading/trailing "
+                    "warmup NaN passes through, INTERIOR NaN refused; "
+                    "n_changepoints is REQUIRED).  USE when the user "
+                    "asks WHEN a series broke / shifted level / changed "
+                    "regime ('when did the relationship break?', 'find "
+                    "the regime shifts in X') — typically on a spread "
+                    "or a regression residual.  FULL-SAMPLE: every "
+                    "break uses the whole series (look-ahead disclosed "
+                    "in lineage; never for point-in-time compositions). "
+                    " DO NOT use for where a series CROSSES a fixed "
+                    "threshold (threshold_events), state changes of an "
+                    "already-labelled series (transition_events), or a "
+                    "mean-reversion/stationarity read (fit_ou / "
+                    "stationarity_adf)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "EventSet",
+            (
+                "The break dates as an EventSet (the mask is True at "
+                "each break; source_series_key echoes the input).  "
+                "Per-event metadata carries the gain (SSE reduction) "
+                "and the segment means before/after.  Lineage records "
+                "the requested/found break counts, min_size, the "
+                "locked L2/binary-segmentation method and "
+                "detection_scope='full_sample'.  FEWER events than "
+                "requested (down to an empty EventSet) is the honest "
+                "answer when breaks are exhausted.  Feed event_windows "
+                "for an event study.  Raises "
+                "ChangepointDetectionError on missing n_changepoints, "
+                "too few rows, zero variance, or an interior NaN."
             ),
         ),
     ),

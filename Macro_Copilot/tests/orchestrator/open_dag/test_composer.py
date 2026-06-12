@@ -276,6 +276,7 @@ class TestComposerPromptContent:
             "apply_mask",
             "bandpass",
             "beta",
+            "changepoint_detection",
             "cointegration",
             "conditional_aggregate",
             "convert_units",
