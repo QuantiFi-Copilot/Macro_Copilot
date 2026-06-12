@@ -341,3 +341,127 @@ class TestRegistryEntry:
     def test_params_class_resolves(self):
         spec = OPERATOR_REGISTRY["summarize_series"]
         assert spec.params_class is SummarizeSeriesParams
+
+
+# ===========================================================================
+# v1.1.0 — statistic='quantile' (Track-A extension per the OPR4
+# extend-don't-add ruling; the rolling_statistic 1.1.0 precedent).
+# ===========================================================================
+
+
+class TestQuantile:
+    def test_quantile_matches_pandas_in_input_units(self):
+        vals = [1.0, 2.0, 3.0, 4.0, 100.0]
+        s = _make_series(series_key="x", values=vals)
+        out = summarize_series(
+            s,
+            SummarizeSeriesParams(statistic="quantile", q=0.05),
+        )
+        assert out.value == pytest.approx(
+            float(pd.Series(vals).quantile(0.05)),
+        )
+        # PASSTHROUGH units: the quantile of a unit-bearing series is
+        # a value in that unit, never a ratio.
+        assert out.units == s.units
+        assert out.metric_key == "quantile_0.05"
+
+    def test_q_default_is_median_equivalent(self):
+        vals = [1.0, 2.0, 3.0, 4.0, 5.0]
+        s = _make_series(series_key="x", values=vals)
+        out_q = summarize_series(
+            s, SummarizeSeriesParams(statistic="quantile"),
+        )
+        out_med = summarize_series(
+            s, SummarizeSeriesParams(statistic="median"),
+        )
+        assert out_q.value == pytest.approx(out_med.value)
+        assert out_q.metric_key == "quantile_0.5"
+
+    def test_nan_dropped_before_quantile(self):
+        vals = [1.0, float("nan"), 3.0, float("nan"), 5.0]
+        s = _make_series(series_key="x", values=vals)
+        out = summarize_series(
+            s, SummarizeSeriesParams(statistic="quantile", q=0.5),
+        )
+        assert out.value == pytest.approx(3.0)
+
+    def test_q_bounds_enforced_at_schema(self):
+        with pytest.raises(ValueError):
+            SummarizeSeriesParams(statistic="quantile", q=0.0)
+        with pytest.raises(ValueError):
+            SummarizeSeriesParams(statistic="quantile", q=1.0)
+
+    def test_q_nulled_in_lineage_for_other_statistics(self):
+        """OPR14: q is consumed only by statistic='quantile' — two mean
+        calls differing only in q must hash identically."""
+        s = _make_series(series_key="x", values=[1.0, 2.0, 3.0])
+        h1 = summarize_series(
+            s, SummarizeSeriesParams(statistic="mean", q=0.1),
+        ).lineage.head_hash
+        h2 = summarize_series(
+            s, SummarizeSeriesParams(statistic="mean", q=0.9),
+        ).lineage.head_hash
+        assert h1 == h2
+
+    def test_q_changes_identity_for_quantile(self):
+        s = _make_series(series_key="x", values=[1.0, 2.0, 3.0, 4.0])
+        h1 = summarize_series(
+            s, SummarizeSeriesParams(statistic="quantile", q=0.1),
+        ).lineage.head_hash
+        h2 = summarize_series(
+            s, SummarizeSeriesParams(statistic="quantile", q=0.9),
+        ).lineage.head_hash
+        assert h1 != h2
+
+    def test_ddof_nulled_when_no_std_in_play(self):
+        """The 1.1.0 OPR14 alignment: ddof is nulled unless statistic
+        or dispersion is 'std'."""
+        s = _make_series(series_key="x", values=[1.0, 2.0, 3.0, 4.0])
+        h1 = summarize_series(
+            s,
+            SummarizeSeriesParams(
+                statistic="mean", dispersion="none", ddof=1,
+            ),
+        ).lineage.head_hash
+        h0 = summarize_series(
+            s,
+            SummarizeSeriesParams(
+                statistic="mean", dispersion="none", ddof=0,
+            ),
+        ).lineage.head_hash
+        assert h1 == h0
+
+    def test_ddof_kept_when_dispersion_is_std(self):
+        s = _make_series(series_key="x", values=[1.0, 2.0, 3.0, 4.0])
+        h1 = summarize_series(
+            s,
+            SummarizeSeriesParams(
+                statistic="mean", dispersion="std", ddof=1,
+            ),
+        ).lineage.head_hash
+        h0 = summarize_series(
+            s,
+            SummarizeSeriesParams(
+                statistic="mean", dispersion="std", ddof=0,
+            ),
+        ).lineage.head_hash
+        assert h1 != h0
+
+    def test_version_bumped_in_lineage(self):
+        s = _make_series(series_key="x", values=[1.0, 2.0, 3.0])
+        out = summarize_series(s)
+        assert out.lineage.steps[-1].version == "1.1.0"
+
+    def test_yaml_q_default_pinned(self):
+        from shared.operators.summarize_series import CONFIG_PATH
+        cfg = load_operator_config(CONFIG_PATH)
+        assert float(cfg.default_value("q")) == 0.5
+        assert SummarizeSeriesParams().q == 0.5
+
+    def test_quantile_works_at_n1(self):
+        """An order statistic is defined on a single observation."""
+        s = _make_series(series_key="x", values=[7.0])
+        out = summarize_series(
+            s, SummarizeSeriesParams(statistic="quantile", q=0.25),
+        )
+        assert out.value == pytest.approx(7.0)

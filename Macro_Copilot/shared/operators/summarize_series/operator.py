@@ -41,7 +41,12 @@ from shared.operators.summarize_series.schemas import SummarizeSeriesParams
 
 
 _OPERATOR_NAME = "summarize_series"
-_OPERATOR_VERSION = "1.0.0"
+# 1.1.0 (Track-A): statistic set extended with 'quantile' (+ its q
+# param) — a behavioural expansion, hence the minor bump (OPR14d; the
+# rolling_statistic 1.1.0 precedent).  The same bump also brings the
+# lineage ddof field in line with the OPR14 meaningless-param doctrine
+# (nulled when neither statistic nor dispersion is 'std').
+_OPERATOR_VERSION = "1.1.0"
 
 _CONFIG_PATH: Path = Path(__file__).resolve().parent / "config.yaml"
 
@@ -55,7 +60,9 @@ class SummarizeSeriesError(ValueError):
     failure (e.g. all-NaN input)."""
 
 
-def _compute_statistic(values: pd.Series, statistic: str, ddof: int = 1) -> float:
+def _compute_statistic(
+    values: pd.Series, statistic: str, ddof: int = 1, q: float = 0.5,
+) -> float:
     if statistic == "mean":
         return float(values.mean())
     if statistic == "median":
@@ -73,6 +80,13 @@ def _compute_statistic(values: pd.Series, statistic: str, ddof: int = 1) -> floa
         return float(values.iloc[-1])
     if statistic == "first":
         return float(values.iloc[0])
+    if statistic == "quantile":
+        # 1.1.0: the q-th full-sample empirical quantile — LINEAR
+        # INTERPOLATION between order statistics (Hyndman–Fan type 7,
+        # the pandas default; named, not silently inherited — OPR7).
+        # Dimensionful, in the input's units (a quantile of a BPS
+        # series is a BPS number, NOT a ratio).
+        return float(values.quantile(q))
     raise SummarizeSeriesError(
         f"summarize_series: unsupported statistic={statistic!r}."
     )
@@ -146,6 +160,7 @@ def summarize_series(
         params = SummarizeSeriesParams(
             statistic=config.default_value("statistic"),
             dispersion=config.default_value("dispersion"),
+            q=float(config.default_value("q")),
         )
 
     n_total = int(len(series.payload))
@@ -166,7 +181,9 @@ def summarize_series(
             f"requires >=2 observations; got n={n_used}."
         )
 
-    central = _compute_statistic(cleaned, params.statistic, params.ddof)
+    central = _compute_statistic(
+        cleaned, params.statistic, params.ddof, params.q,
+    )
     # OPR14(b) / ERR-3: refuse to emit a non-finite central value into the
     # payload (e.g. a sum that overflowed) with the operator's own typed
     # error, rather than letting the artifact layer reject it as a bare
@@ -190,13 +207,26 @@ def summarize_series(
     else:
         dispersion_value = _compute_dispersion(cleaned, params.dispersion, params.ddof)
 
+    # OPR14 meaningless-param normalisation (brought in line under the
+    # 1.1.0 bump): ddof is consumed only when statistic or dispersion
+    # is 'std'; q only by statistic='quantile'.  Null when ignored so
+    # identity tracks content.
+    ddof_for_lineage = (
+        int(params.ddof)
+        if (params.statistic == "std" or params.dispersion == "std")
+        else None
+    )
+    q_for_lineage = (
+        float(params.q) if params.statistic == "quantile" else None
+    )
     step = OperatorStep.build(
         name=_OPERATOR_NAME,
         version=_OPERATOR_VERSION,
         params=sanitize_params_for_lineage({
             "statistic": params.statistic,
             "dispersion": params.dispersion,
-            "ddof": params.ddof,
+            "ddof": ddof_for_lineage,
+            "q": q_for_lineage,
             "central_value": central,
             "dispersion_value": dispersion_value,
             "n_observations": n_used,
@@ -205,8 +235,15 @@ def summarize_series(
         input_hashes=(series.lineage.head_hash,),
     )
 
+    # metric_key carries the q level for quantiles so the scalar is
+    # self-describing ("quantile_0.05"), the statistic name otherwise.
+    metric_key = (
+        f"quantile_{params.q:g}"
+        if params.statistic == "quantile"
+        else params.statistic
+    )
     return ScalarMetric(
-        metric_key=params.statistic,
+        metric_key=metric_key,
         value=central,
         units=series.units,
         lineage=series.lineage.append(step),

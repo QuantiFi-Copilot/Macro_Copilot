@@ -1144,13 +1144,14 @@ When the user asks for a SINGLE-NUMBER summary statistic of one series \
 — it collapses a whole Series to one scalar summary.  The canonical \
 shape is a 1-leaf chain with summarize_series AS THE TERMINAL:
 
-    leaf_input -> summarize_series(statistic=<mean|median|std|sum|count|last|first>)
+    leaf_input -> summarize_series(statistic=<mean|median|std|sum|count|last|first|quantile>)
         -> ScalarMetric (ONE scalar)   [terminal_node_id = the summarize node]
 
   - "average / mean of X"            → summarize_series(statistic='mean')
   - "standard deviation / vol of X"  → summarize_series(statistic='std')
   - "median / sum / count of X"      → summarize_series(statistic='median'|'sum'|'count')
   - "CURRENT / LATEST value of X"    → summarize_series(statistic='last')  (collapses the Series leaf to its latest finite point — the single number the user asked for, as a ScalarMetric)
+  - "Nth-percentile LEVEL of X"      → summarize_series(statistic='quantile', q=0.05/0.95/…)  (the full-sample percentile level, in the input's units)
 
 CRITICAL — do NOT use ``rolling_statistic`` for a single-number \
 summary.  rolling_statistic emits a Series OVER TIME (one value per \
@@ -1168,7 +1169,7 @@ MULTIPLE / UNSUPPORTED STATISTICS (the honest limit): the catalogue \
 has NO multi-statistic bundler, and a ShapeSpec has exactly ONE \
 terminal, so a single DAG CANNOT co-emit three-plus arbitrary \
 statistics, nor min/max (summarize_series.statistic is \
-{mean,median,std,sum,count,last,first} — no min/max).  When the user asks for \
+{mean,median,std,sum,count,last,first,quantile} — no min/max).  When the user asks for \
 more than mean+std together (e.g. "mean, median, AND std", or "min \
 AND max"), do ONE of: (a) emit the single most important statistic as \
 the terminal and note the others are not bundled, or (b) REFUSE with \

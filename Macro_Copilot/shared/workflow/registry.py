@@ -2225,17 +2225,22 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 (
                     "Single typed Series to collapse to ONE scalar "
                     "full-sample summary via params.statistic — exactly "
-                    "{mean, median, std, sum, count, last, first}.  "
-                    "``last`` = the latest finite observation (the "
-                    "'current value' of the series); ``first`` = the "
-                    "earliest.  For a min/max use rolling_statistic (as a "
-                    "rolling Series) — there is no scalar min/max here.  "
+                    "{mean, median, std, sum, count, last, first, "
+                    "quantile}.  ``last`` = the latest finite "
+                    "observation (the 'current value' of the series); "
+                    "``first`` = the earliest; ``quantile`` = the q-th "
+                    "full-sample empirical quantile (type-7 linear "
+                    "interpolation) in the INPUT'S UNITS "
+                    "(set params.q — 0.05/0.95 for tail reads).  For a "
+                    "min/max use rolling_statistic (as a rolling "
+                    "Series) — there is no scalar min/max here.  "
                     "PRIMARY use: a plain descriptive summary ('the mean "
-                    "/ std / median / current value of X over the "
-                    "period') — summarize_series is the terminal, one "
-                    "number out.  DO NOT use for a value-per-date rolling "
-                    "statistic (that is rolling_statistic); DO NOT use "
-                    "for cross-series summaries (single-Series only)."
+                    "/ std / median / current value / percentile level "
+                    "of X over the period') — summarize_series is the "
+                    "terminal, one number out.  DO NOT use for a "
+                    "value-per-date rolling statistic (that is "
+                    "rolling_statistic); DO NOT use for cross-series "
+                    "summaries (single-Series only)."
                 ),
             ),
         },
@@ -2244,10 +2249,12 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
             (
                 "A single finite scalar (ScalarMetric) carrying the "
                 "reduction of the input via params.statistic, with "
-                "metric_key equal to the statistic name and units "
-                "preserved 1:1 from the input.  This is a terminal "
-                "answer artifact — the single number the user asked "
-                "for (e.g. the average / std / current value of X)."
+                "metric_key equal to the statistic name "
+                "('quantile_<q>' for quantiles) and units preserved "
+                "1:1 from the input.  This is a terminal answer "
+                "artifact — the single number the user asked for "
+                "(e.g. the average / std / current value / percentile "
+                "level of X)."
             ),
         ),
     ),

@@ -1,13 +1,17 @@
 operator:
   name: summarize_series
   method_family: aggregation
-  version: "1.0.0"
+  version: "1.1.0"
   description: >-
     Collapse a typed Series to ONE scalar summary statistic
-    (mean / median / std / sum / count / last / first), emitted as a
-    ScalarMetric carrying the input's units.  This is the canonical
-    "what is the average / std / current value of X" terminal.
-    Always reports dispersion in lineage.  Finance-blind.
+    (mean / median / std / sum / count / last / first / quantile),
+    emitted as a ScalarMetric carrying the input's units.  This is
+    the canonical "what is the average / std / current value /
+    percentile of X" terminal.  Always reports dispersion in
+    lineage.  Finance-blind.  v1.1.0 added statistic='quantile'
+    (the q-th full-sample empirical quantile, type-7 linear
+    interpolation, in the input's units) per the OPR4
+    extend-don't-add ruling.
 
 defaults:
   statistic:
@@ -19,8 +23,25 @@ defaults:
       ``std``/``sum``/``count`` cover the dispersion / aggregation
       cases when the central tendency is not the deliverable; ``last``
       returns the latest finite observation (the "current value" of
-      the series) and ``first`` the earliest.
-    valid_values: [mean, median, std, sum, count, last, first]
+      the series) and ``first`` the earliest.  ``quantile`` (v1.1.0)
+      returns the ``q``-th full-sample empirical quantile — LINEAR
+      INTERPOLATION between order statistics (Hyndman–Fan type 7, the
+      pandas default; this materially affects small-sample tail
+      reads and is named here rather than silently inherited) — the
+      dimensionful percentile/tail read, in the input's units (a
+      quantile of a BPS series is a BPS number, never a ratio).
+    valid_values: [mean, median, std, sum, count, last, first, quantile]
+
+  q:
+    value: 0.5
+    source: operator_v1_default
+    rationale: >-
+      Quantile level for ``statistic='quantile'`` only (nulled in
+      lineage otherwise — the ddof doctrine).  0.5 (the median) is
+      the canonical central quantile; tail studies override at the
+      call site (0.05 for the downside tail — the desk's historical-
+      VaR-style read — 0.95 for the upside).  Open interval (0, 1):
+      the endpoints are degenerate (min/max, not quantiles).
 
   dispersion:
     value: std
@@ -44,15 +65,20 @@ methodology:
          and any per-regime no-coverage gaps would otherwise bias
          the statistic).
       2. Applies the chosen ``statistic`` — mean / median / std /
-         sum / count / last / first — on the cleaned payload.
+         sum / count / last / first / quantile (the q-th full-sample
+         empirical quantile, computed by linear interpolation between
+         order statistics — Hyndman–Fan type 7, the pandas default;
+         v1.1.0) — on the cleaned payload.
       3. Computes the chosen ``dispersion`` (std / mad) on the
          same cleaned payload, OR records "none" when dispersion
          is suppressed.
       4. Returns a ``ScalarMetric``: a single finite scalar with
-         ``metric_key`` equal to the statistic name and units
-         inherited 1:1 from the input.  Lineage records the central-
-         tendency value, dispersion value, n_observations, and
-         n_dropped (for diagnostic clarity).
+         ``metric_key`` equal to the statistic name
+         ("quantile_<q>" for quantiles, so the scalar is
+         self-describing) and units inherited 1:1 from the input.
+         Lineage records the central-tendency value, dispersion
+         value, n_observations, n_dropped, and the consumed q/ddof
+         (each nulled when its statistic does not use it — OPR14).
   planned_extensions:
     - "weighted aggregations (weighted mean / weighted median)"
     - "trimmed-mean and winsorized statistics for tail-robust summaries"
@@ -63,26 +89,27 @@ methodology:
 card:
   one_line: >-
     THE single-number summary operator: collapse a whole Series to ONE
-    full-sample summary statistic (mean / median / std / sum / count /
-    last / first), emitted as a ScalarMetric.  This is the operator for
-    "what is the average / standard deviation / median / CURRENT value
-    of X over the period" — a single scalar answer, NOT a time series.
+    full-sample statistic (mean / median / std / sum / count / last /
+    first / quantile) as a ScalarMetric — a single scalar answer, NOT
+    a time series.
   when_to_use:
     - "Mean / average, std / volatility, median, sum, or count of a Series over the full sample → statistic='mean'|'std'|'median'|'sum'|'count'. ONE number out."
     - "CURRENT / LATEST value ('what is the current / latest X', e.g. 'the current US 10Y yield') → statistic='last' (latest finite point as a ScalarMetric); statistic='first' for the earliest."
-    - "MEAN AND STD together → one node with statistic='mean', dispersion='std': the mean is the ScalarMetric value, the std is recorded in lineage. The sanctioned single-node way to answer 'mean and std of X'."
+    - "MEAN AND STD together → statistic='mean', dispersion='std' (mean is the value; std rides in lineage) — the sanctioned single node for 'mean and std of X'."
+    - "A full-sample PERCENTILE LEVEL ('the 5th-percentile level of the spread') → statistic='quantile' with q.  ONE number in the input's units."
   when_not_to_use:
     - "ROLLING / time-varying stat (moving average / rolling vol AS A SERIES, one value per date) → rolling_statistic, not this. summarize_series emits ONE value."
     - "Where today's value sits vs its own history (z-score / percentile) → rolling_zscore or percentile_rank."
     - "Per-offset summary of an event-window panel → conditional_aggregate (Panel → Series-by-offset)."
-    - "THREE+ distinct stats, or min / max (unsupported): one node cannot bundle them (one terminal, no multi-stat bundler). Pick the single most important stat, or refuse naming the limit."
+    - "THREE+ distinct stats, or min / max (unsupported): pick the single most important stat, or refuse naming the limit."
   upstream_requirements:
     - "One Series.  No alignment needed (single input)."
   downstream_pattern:
     - "Output is a ScalarMetric (one finite scalar, input's units, metric_key = the statistic name).  summarize_series IS the terminal node for any single-number summary — no further wiring."
   knobs_quick_ref:
-    statistic: "mean (default) | median | std | sum | count | last (current/latest value) | first (earliest).  No min/max — use rolling_statistic for those."
-    dispersion: "std (DEFAULT, recorded in lineage) | mad (robust) | none. For 'mean AND std' use statistic='mean', dispersion='std'. For a SINGLE stat only (e.g. 'the average of X') set dispersion='none' so you return strictly that one number."
+    statistic: "mean (default) | median | std | sum | count | last (current value) | first | quantile (set q).  No min/max — use rolling_statistic."
+    q: "0.5 default — quantile level in (0, 1), statistic='quantile' only; 0.05/0.95 = tail reads."
+    dispersion: "std (DEFAULT, recorded in lineage) | mad (robust) | none (strictly one number out)."
   example_shapes:
     - description: "Average over the full sample — summarize_series IS the terminal."
       shape: "Series -> summarize_series(statistic='mean') -> ScalarMetric(mean)  [terminal]"
