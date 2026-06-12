@@ -215,6 +215,10 @@ from shared.operators.weighted_combination import (
     weighted_combination, WeightedCombinationParams,
     CONFIG_PATH as _WEIGHTED_COMBINATION_CONFIG_PATH,
 )
+from shared.operators.variance_ratio import (
+    variance_ratio, VarianceRatioParams,
+    CONFIG_PATH as _VARIANCE_RATIO_CONFIG_PATH,
+)
 
 
 # ============================================================================
@@ -1777,6 +1781,58 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "it normal / fat-tailed' asks.  Raises "
                 "NormalityTestError on < 3 finite rows, zero "
                 "variance, or a non-finite statistic."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — statistical_relationship (A5
+    # diagnostics): Lo-MacKinlay variance-ratio test.  One Series in,
+    # one ScalarMetric out (the standardised z statistic, RATIO units;
+    # VR(q) effect size + p-value in lineage).  The first knob-bearing
+    # A5 test (q horizon + robust); math in shared/quant.
+    "variance_ratio": OperatorSpec(
+        operator_name="variance_ratio",
+        callable=variance_ratio,
+        params_class=VarianceRatioParams,
+        config_path=_VARIANCE_RATIO_CONFIG_PATH,
+        input_slots={
+            "series": SlotDescriptor.of(
+                "Series",
+                (
+                    "The single typed Series tested for random-walk "
+                    "behaviour at horizon q (>= max(12, q + 2) finite "
+                    "observations, non-constant and not a perfect "
+                    "ramp; NaN rows dropped with interior drops "
+                    "disclosed in lineage).  USE when the user asks "
+                    "whether a series is a RANDOM WALK vs TRENDING vs "
+                    "MEAN-REVERTING ('does X trend or mean-revert?', "
+                    "'is this a random walk?') — VR(q) in lineage gives "
+                    "the direction (>1 trending, <1 mean-reverting), "
+                    "the emitted z gives the significance; set q to the "
+                    "holding period of interest.  DO NOT use for "
+                    "unit-root/stationarity of the LEVEL "
+                    "(stationarity_adf — a different null), the "
+                    "autocorrelation spectrum at lag granularity "
+                    "(ljung_box), the SPEED of mean reversion "
+                    "(half-life — model estimation, not yet "
+                    "available), or a time-varying read (this is one "
+                    "FULL-SAMPLE number)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "ScalarMetric",
+            (
+                "The standardised Lo-MacKinlay z statistic in RATIO "
+                "units (asymptotically N(0,1) under the random-walk "
+                "null; |z| large = reject; metric_key "
+                "variance_ratio__<key>).  Lineage carries "
+                "variance_ratio (the VR(q) effect size: >1 trending, "
+                "<1 mean-reverting), p_value, the resolved q (null → "
+                "2), the robust flag, the locked overlapping/bias spec "
+                "and the NaN-drop audit.  A terminal answer artifact "
+                "for 'random walk vs trend vs mean-revert' asks.  "
+                "Raises VarianceRatioError on too few rows, zero "
+                "variance, a perfect ramp, or a non-finite statistic."
             ),
         ),
     ),

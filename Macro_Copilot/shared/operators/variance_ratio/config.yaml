@@ -1,0 +1,101 @@
+operator:
+  name: variance_ratio
+  method_family: statistical_relationship
+  version: "1.0.0"
+  description: >-
+    Lo-MacKinlay (1988) variance-ratio test of one Series, emitting the
+    standardised TEST STATISTIC z as a ScalarMetric in RATIO units
+    (asymptotically N(0,1) under the random-walk null); the variance
+    ratio VR(q) itself — the interpretable effect size: 1 = random
+    walk, > 1 = trending/momentum, < 1 = mean-reverting — rides in
+    lineage alongside the p-value. Finance-blind. The math has no
+    library (the arch/statsmodels VR test is unavailable here) so it
+    lives in shared/quant/variance_ratio.py. q=null resolves to the
+    minimal horizon 2. Overlapping q-period differences with the
+    Lo-MacKinlay bias-correction are design-locked. Full-sample
+    descriptive test; NaN rows dropped with the interior-drop count
+    disclosed in lineage.
+
+# q is offloaded here (OPR7/OPR8) so the operator is not opinionated and
+# the caller can switch horizons seamlessly; the schema default in
+# schemas.py mirrors this value and a test asserts they do not diverge.
+# (robust is a structural method-selection default — schema-only, NOT
+# config-contested — so it deliberately does NOT appear here: OPR8, a
+# param is either schema-default OR YAML-authoritative, never both.)
+#
+# DESIGN LOCK (OPR7, lineage-stamped): OVERLAPPING q-period differences
+# with the bias-correction m = q(T-q+1)(1 - q/T). Non-overlapping is a
+# distinct, weaker estimator that fractures replay comparability for no
+# analytical gain at this surface — a declared planned extension, never
+# a silent knob.
+defaults:
+  q:
+    value: null
+    source: operator_v1_default
+    rationale: >-
+      null resolves to the minimal valid horizon 2 at runtime — the
+      most basic random-walk check (lag-1 serial-correlation scaling);
+      the resolved value rides in lineage, so auto and an explicit
+      q=2 hash identically.  Set an explicit integer >= 2 to test a
+      longer horizon (e.g. 4, 8, 16 for multi-week mean-reversion).
+
+methodology:
+  what_it_does: >-
+    Drops NaN rows (full-sample descriptive test — the stationarity_adf
+    family model; because the q-period differences are LAG-BASED,
+    dropped INTERIOR rows splice non-adjacent observations together, so
+    the interior-drop count is recorded separately in lineage as
+    n_interior_dropped — auditable, never silent), then computes the
+    variance ratio VR(q) = var_q / (the one-period variance) using
+    OVERLAPPING q-period differences with the Lo-MacKinlay
+    bias-correction m = q(T-q+1)(1 - q/T) (T = number of one-period
+    increments). Under the random-walk null VR(q) = 1; VR > 1 = trending
+    (positive serial correlation), VR < 1 = mean-reverting (negative
+    serial correlation). The emitted scalar is the STANDARDISED
+    statistic z = (VR - 1) / sqrt(asymptotic variance): the
+    heteroskedasticity-consistent (Lo-MacKinlay M2) estimator when
+    robust=True (default; safe for non-iid data), the homoskedastic
+    (M1) one when robust=False (the two are mutually consistent — M2
+    reduces to M1 under homoskedasticity). z is asymptotically N(0,1);
+    VR(q) and the two-sided p-value ride in lineage. RATIO units — a
+    standardised statistic is dimensionless. Refusals: fewer than
+    max(12, q + 2) finite observations (the family floor or the horizon
+    floor), zero variance (constant series), zero first-difference
+    variance (a perfect linear ramp — the denominator is degenerate), a
+    non-finite statistic. test_scope='full_sample' rides in lineage —
+    this DESCRIBES the whole observed history; never feed it into
+    point-in-time compositions.
+  planned_extensions:
+    - "Non-overlapping q-period differences: a distinct, weaker estimator — declared, never a silent knob."
+    - "Multi-horizon joint test (VR over a set of q with a chi-squared joint statistic): a Panel output — a distinct operator, not a flag."
+    - "Automatic-q selection: a runtime rule analogous to the Ljung-Box auto-lag — awaits a registered convention."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Lo-MacKinlay variance-ratio test — ONE ScalarMetric (the standardised z; |z| large = reject random walk; VR(q) in lineage: >1 trending, <1 mean-reverting).
+  when_to_use:
+    - "User asks whether a series is a RANDOM WALK vs TRENDING vs MEAN-REVERTING ('does X trend or mean-revert?', 'is this a random walk?') — VR(q) in lineage gives the direction, z gives the significance."
+    - "The stat-arb / momentum-vs-reversion pre-check at a chosen horizon q (set q to the holding period of interest)."
+  when_not_to_use:
+    - "User asks specifically about a UNIT ROOT / stationarity of the level — stationarity_adf (a different null: level persistence, not variance scaling)."
+    - "User wants serial dependence at lag granularity (the autocorrelation spectrum) — ljung_box (the joint Q over lags 1..L)."
+    - "User wants the SPEED of mean reversion (half-life) — that is model estimation (planned engines), not a variance-ratio test."
+    - "User wants a time-varying read — this is a FULL-SAMPLE descriptive test (one number for the whole history)."
+  upstream_requirements:
+    - "Input is ONE Series (any units), >= max(12, q + 2) finite observations, non-constant and not a perfect ramp.  NaN rows are dropped (interior drops disclosed in lineage)."
+  downstream_pattern:
+    - "Output is a ScalarMetric in RATIO units (the z-statistic; metric_key variance_ratio__<key>).  Terminal for 'random walk vs trend vs mean-revert' asks; lineage carries variance_ratio (VR(q)), p_value, the resolved q and the robust flag."
+  knobs_quick_ref:
+    q: "null by default → resolves to 2 (minimal horizon; resolved value in lineage); set an integer >= 2 to test a longer horizon."
+    robust: "true by default → heteroskedasticity-consistent (M2) z; false → homoskedastic (M1) z.  VR(q) is identical either way."
+  example_shapes:
+    - description: "Random-walk vs mean-reversion check of a spread between two aligned series, at horizon 5."
+      shape: "[Series A, Series B] -> align_series -> series_arithmetic(subtract) -> variance_ratio(q=5) -> ScalarMetric  [terminal]"
+  sibling_operators:
+    - stationarity_adf: "Unit-root/persistence of the LEVEL (a different null); variance_ratio tests random-walk vs serial correlation via variance scaling and gives the trend-vs-revert DIRECTION."
+    - ljung_box: "Joint autocorrelation Q over lags 1..L; variance_ratio aggregates serial correlation into one horizon-q random-walk test with a signed direction."
+    - summarize_series: "Plain distributional summaries; variance_ratio is the time-structure diagnostic."
+  intent_hints: [relationship]

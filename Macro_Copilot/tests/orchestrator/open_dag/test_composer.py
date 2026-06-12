@@ -311,6 +311,7 @@ class TestComposerPromptContent:
             "threshold_events",
             "top_n",
             "transition_events",
+            "variance_ratio",
             "weighted_combination",
             "winsorize",
         ]

@@ -128,8 +128,8 @@ class TestEveryOperatorHasCard:
     def test_catalogue_size_matches_registry(
         self, catalogue: Dict[str, OperatorCard],
     ) -> None:
-        assert len(catalogue) == len(OPERATOR_REGISTRY) == 41, (
-            f"Expected 41 registered operators; got "
+        assert len(catalogue) == len(OPERATOR_REGISTRY) == 42, (
+            f"Expected 42 registered operators; got "
             f"registry={len(OPERATOR_REGISTRY)} catalogue={len(catalogue)}.  "
             "If this changed deliberately, update the assertion AND review "
             "tmp/orchestration.md §2.1 for the operator inventory."

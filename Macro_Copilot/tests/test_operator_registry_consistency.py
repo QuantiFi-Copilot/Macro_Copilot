@@ -70,6 +70,7 @@ _V2_CONFORMANT = {
     "lead_lag",
     "ljung_box",
     "normality_test",
+    "variance_ratio",
     "pairwise_spread_matrix",
     "percentile_rank",
     "regression_residual",
