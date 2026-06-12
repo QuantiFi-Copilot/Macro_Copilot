@@ -1501,10 +1501,12 @@ and ``rationale`` against the user's stated intent for THAT leaf — \
 if the user asked for US 2s10s but the leaf's params show \
 ``curve_family='BRL_GOV'`` / ``short_tenor='2Y'`` / \
 ``long_tenor='10Y'``, that's a wrong-binding regardless of what the \
-English role says.  Currency / curve-family / tenor / window / \
-lookback slot-fills are user-intent surfaces; treat any mismatch \
-between prompt and params as a hard REFUSE signal (or CLARIFY when \
-the prompt itself is ambiguous on the slot).
+English role says.  Currency / curve-family / tenor slot-fills \
+are IDENTITY surfaces; treat any identity mismatch between prompt and \
+params as a hard REFUSE signal (or CLARIFY when the prompt itself is \
+ambiguous on the slot).  Window / lookback slot-fills are SPAN \
+surfaces — judge them by the SPAN CONVENTIONS rule below, NOT by \
+exact-number matching.
 
 CLARIFY-VS-REFUSE TIE-BREAKING
 
@@ -1512,6 +1514,58 @@ Prefer CLARIFY when ONE question would resolve the gap and let the same \
 pipeline rerun produce the answer.  Prefer REFUSE when the gap is \
 structural (dropped domain, wrong terminal, no operator chain fits) \
 even if a future re-routing could fix it.
+
+SPAN CONVENTIONS (windows and lookbacks)
+
+Lookback params are expressed in CALENDAR days; prompts speak in \
+trading days, weeks, months, or years.  These unit conventions never \
+match digit-for-digit, and a slight calendar over-cover is correct \
+desk practice, not a mismatch: "10 trading days" is properly served \
+by a ~14-calendar-day lookback (markets close on weekends); "a \
+month" ≈ 21 trading days ≈ 30 calendar days; "a year" ≈ 252 trading \
+days ≈ 365 calendar days; "5 years" ≈ 1825 calendar days.
+  - PASS when the bound window covers the requested span under these \
+ordinary conversions (roughly: calendar cover between 1x and 2x the \
+requested trading-day span).  Do NOT refuse or clarify because the \
+prompt's day-count vocabulary (trading days) and the param's \
+day-count vocabulary (calendar days) differ while denoting the same \
+span.
+  - This rule NEVER excuses a GROSS span change: a 10-trading-day \
+request bound to a 365-calendar-day window summarizes a different \
+period and changes the answer — CLARIFY (one question about the \
+intended window resolves it).
+  - When a downstream operator carries its OWN window param (e.g. \
+rolling_statistic(window=10) feeding a last-value summarize), the \
+leaf's fetch lookback is a DATA BUFFER, not the summarized span — \
+judge the OPERATOR's window against the prompt and ignore buffer \
+over-fetch (tools impose minimum fetch sizes; a 60-calendar-day \
+fetch feeding a 10-observation window is correct practice, not a \
+mismatch).  This buffer rule applies ONLY when a windowed operator \
+bounds the computation: when the terminal summarize has NO window \
+param of its own, it summarizes the ENTIRE fetch, so the leaf's \
+lookback IS the summarized span and the 1x-2x rule above governs it \
+(a 365-day fetch into a windowless summarize does NOT answer a \
+10-trading-day question).
+  - rolling_statistic(statistic=S, window=N) followed by a \
+last-value summarize IS "the S of the last N observations" — for a \
+daily series, exactly "the S over the last N trading days".  Treat \
+that chain and a direct summarize over an N-trading-day window as \
+EQUIVALENT answers to the same prompt.
+  - This rule NEVER excuses identity mismatches (currency / \
+curve-family / tenor) — those stay hard REFUSE signals.
+
+DISPERSION CONVENTION (one ScalarMetric, two numbers)
+
+The summarize_series operator carries an optional ``dispersion`` \
+param.  When set (e.g. statistic='mean', dispersion='std'), the \
+SINGLE terminal ScalarMetric carries BOTH numbers — the headline \
+statistic as the value and the dispersion alongside it in the \
+artifact's lineage; the answer layer renders both.  A prompt asking \
+for "the mean and standard deviation" of one series is therefore \
+FAITHFULLY answered by one summarize_series(statistic='mean', \
+dispersion='std') terminal.  Do NOT refuse such a DAG on the theory \
+that "a ScalarMetric cannot carry two statistics" — under this \
+convention it does.
 
 NEVER pass a low-confidence DAG.  Hard-block (R8): your PASS verdict is \
 the green light for execution; REFUSE and CLARIFY both halt the \
@@ -1626,6 +1680,23 @@ curve_family='BRL_GOV' (Brazil) while the user asked specifically for \
 US 2s10s.  The selector chose a wrong-but-type-legal curve family — \
 running the DAG would correlate Brazil's 2s10s with UK 2s10s, a \
 different question.  Refusing."
+
+EXAMPLE 6 — PASS (span-convention equivalence — NOT a wrong-binding)
+
+USER PROMPT: "What has been the average US 10Y Treasury yield over \
+the last 10 trading days?"
+
+DAG ECHO (abridged):
+  leaves: leaf_us10y (semantic_role=yield_level, \
+domain=sovereign_bonds, params={curve_family='UST', tenor='10Y', \
+lookback_days=14}).
+  operators: summarize_series(statistic='mean').
+  terminal: summarize_series (ScalarMetric).
+
+VERDICT: status=PASS, reason="14 calendar days is the standard \
+calendar cover for 10 trading days (weekends excluded); the leaf's \
+span honours the prompt's window under ordinary desk conventions, and \
+the terminal ScalarMetric matches the prompt's 'average' verb."
 """
 
 
