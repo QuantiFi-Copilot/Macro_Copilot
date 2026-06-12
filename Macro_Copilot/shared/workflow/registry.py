@@ -227,6 +227,10 @@ from shared.operators.hurst_exponent import (
     hurst_exponent, HurstExponentParams,
     CONFIG_PATH as _HURST_EXPONENT_CONFIG_PATH,
 )
+from shared.operators.fit_ou import (
+    fit_ou, FitOuParams,
+    CONFIG_PATH as _FIT_OU_CONFIG_PATH,
+)
 
 
 # ============================================================================
@@ -1789,6 +1793,55 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "it normal / fat-tailed' asks.  Raises "
                 "NormalityTestError on < 3 finite rows, zero "
                 "variance, or a non-finite statistic."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — statistical_relationship (A4 model-fit
+    # engines): Ornstein-Uhlenbeck / AR(1) mean-reversion fit.  One
+    # Series in, one ScalarMetric out (the HALF-LIFE, COUNT units;
+    # phi/equilibrium/R-squared in lineage).  Zero-knob; math in
+    # shared/quant; REFUSES non-mean-reverting series.
+    "fit_ou": OperatorSpec(
+        operator_name="fit_ou",
+        callable=fit_ou,
+        params_class=FitOuParams,
+        config_path=_FIT_OU_CONFIG_PATH,
+        input_slots={
+            "series": SlotDescriptor.of(
+                "Series",
+                (
+                    "The single typed Series whose mean-reversion "
+                    "half-life is estimated (>= 12 finite "
+                    "observations, non-constant, and MEAN-REVERTING — "
+                    "0 < phi < 1, else REFUSED; NaN rows dropped with "
+                    "interior drops disclosed in lineage).  USE when "
+                    "the user asks HOW FAST a series reverts to its "
+                    "mean ('what is the half-life of this spread?') — "
+                    "typically on a stationary spread or a regression "
+                    "residual.  DO NOT use for WHETHER it is stationary "
+                    "(stationarity_adf — a hypothesis test; fit_ou "
+                    "estimates the speed and refuses non-reverting "
+                    "series), random-walk-vs-trend direction "
+                    "(variance_ratio), long-memory persistence "
+                    "(hurst_exponent), or a time-varying read (this is "
+                    "one FULL-SAMPLE number)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "ScalarMetric",
+            (
+                "The mean-reversion half-life in COUNT units (steps to "
+                "close half the gap to equilibrium; metric_key "
+                "fit_ou__<key>).  Lineage carries phi (the AR(1) "
+                "coefficient), theta (the reversion speed), the "
+                "equilibrium mu, the stationary sigma_eq, the Delta-x "
+                "fit R-squared (read it to gauge a weak fit), the "
+                "locked ar1_ols estimator and the NaN-drop audit.  A "
+                "terminal answer artifact for 'how fast does it revert' "
+                "asks.  Raises FitOuError on < 12 finite rows, zero "
+                "variance, a NOT-mean-reverting series (phi not in "
+                "(0,1)), or a non-finite half-life."
             ),
         ),
     ),

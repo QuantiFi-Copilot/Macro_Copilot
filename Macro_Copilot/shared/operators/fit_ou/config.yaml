@@ -1,0 +1,85 @@
+operator:
+  name: fit_ou
+  method_family: statistical_relationship
+  version: "1.0.0"
+  description: >-
+    Ornstein-Uhlenbeck / AR(1) mean-reversion fit of one Series,
+    emitting the HALF-LIFE as a ScalarMetric in COUNT units (a positive
+    count of observations — steps to close half the gap to
+    equilibrium). The full fit — phi (AR(1) coefficient), theta
+    (mean-reversion speed), the equilibrium mu, the stationary sigma_eq
+    and the Delta-x-fit R-squared (the mean-reversion signal strength)
+    — rides in lineage. Finance-blind: generalises the rates half_life
+    primitive to ANY series. The math has no library (it lives in
+    shared/quant/ou.py). Mean reversion requires 0 < phi < 1; a
+    unit-root/trending (phi >= 1) or oscillatory/explosive (phi <= 0)
+    series is REFUSED (no finite half-life — never a garbage number).
+    The AR(1) OLS estimator is design-locked (Vasicek 1977; Hamilton
+    1994 Ch. 17). Full-sample descriptive fit; NaN rows dropped with
+    the interior-drop count in lineage.
+
+# fit_ou deliberately has ZERO knobs in v1 (the A4 model-fit family
+# opener; the stationarity_adf precedent) — an OU fit has no honest
+# tuning parameter (phi/alpha/sigma are all ESTIMATED, not chosen).
+#
+# DESIGN LOCK (OPR7, lineage-stamped): the AR(1) OLS estimator (SVD
+# lstsq, estimation_method='ar1_ols'). Exact-MLE and Kalman-OU answer
+# the same question through different estimators with different
+# small-sample behaviour; they are declared planned extensions, never
+# silent knobs.
+defaults: {}
+
+methodology:
+  what_it_does: >-
+    Drops NaN rows (full-sample descriptive fit — the stationarity_adf
+    family model; because the AR(1) regression is LAG-BASED, dropped
+    INTERIOR rows splice non-adjacent observations together, so the
+    interior-drop count is recorded separately in lineage as
+    n_interior_dropped — auditable, never silent), then fits the
+    discrete OU model by regressing the one-period change on the lagged
+    level (Delta-x_t = alpha + beta * x_{t-1}; phi = 1 + beta). The
+    half-life = -ln(2)/ln(phi) is emitted (steps to close half the gap
+    to the equilibrium mu = -alpha/beta). Mean reversion requires
+    0 < phi < 1: a unit-root/trending series (phi >= 1, beta >= 0) or an
+    oscillatory/explosive one (phi <= 0, beta <= -1) has NO finite
+    half-life and is REFUSED (a ScalarMetric has no None channel — the
+    honesty rule). A merely-SLOW but valid reversion (phi near 1, a
+    large but finite half-life) IS emitted — the phi and R-squared in
+    lineage disclose the weakness; pair with stationarity_adf to
+    confirm stationarity before trusting a long half-life. COUNT units
+    — a half-life is a count of observations, not dimensionless.
+    test_scope='full_sample' rides in lineage — this DESCRIBES the
+    whole observed history; never feed it into point-in-time
+    compositions.
+  planned_extensions:
+    - "ou_zscore: the z-to-equilibrium SERIES (x - mu)/sigma_eq over time — a Series output, hence a SEPARATE operator (OPR2), not a flag here."
+    - "exact-MLE / Kalman-OU estimators: distinct estimators with different small-sample behaviour — declared, never silent alternates."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Ornstein-Uhlenbeck mean-reversion fit — ONE ScalarMetric (the HALF-LIFE in COUNT units; phi/equilibrium/R-squared in lineage; refuses if not mean-reverting).
+  when_to_use:
+    - "User asks HOW FAST a series reverts to its mean ('what is the half-life of this spread?', 'how quickly does X mean-revert?') — the half-life (in observations) answers it."
+    - "Estimating the mean-reversion speed of a spread/residual for stat-arb sizing — typically on a stationary spread or a regression residual."
+  when_not_to_use:
+    - "User asks WHETHER it is stationary / mean-reverts at all — stationarity_adf (a hypothesis test on the unit-root null); fit_ou ESTIMATES the speed and REFUSES non-reverting series."
+    - "User wants random-walk-vs-trend DIRECTION — variance_ratio; or long-memory persistence — hurst_exponent."
+    - "User wants the z-to-equilibrium PATH over time (a Series) — that is the ou_zscore planned extension, a separate operator."
+    - "User wants a time-varying half-life — this is a FULL-SAMPLE descriptive fit (one number for the whole history)."
+  upstream_requirements:
+    - "Input is ONE Series (any units), >= 12 finite observations, non-constant, and MEAN-REVERTING (0 < phi < 1 — else refused).  NaN rows are dropped (interior drops disclosed in lineage)."
+  downstream_pattern:
+    - "Output is a ScalarMetric in COUNT units (the half-life; metric_key fit_ou__<key>).  Terminal for 'how fast does it revert' asks; lineage carries phi, theta, the equilibrium mu, sigma_eq and the fit R-squared (read R-squared to gauge a weak fit; pair with stationarity_adf for significance)."
+  knobs_quick_ref:
+    none: "Zero knobs in v1 — the AR(1) OLS estimator is design-locked; exact-MLE/Kalman-OU are planned extensions."
+  example_shapes:
+    - description: "Mean-reversion half-life of the residual of one series regressed on another (a fair-value spread)."
+      shape: "[Series A, Series B] -> rolling_regression / regression_residual -> fit_ou -> ScalarMetric  [terminal]"
+  sibling_operators:
+    - stationarity_adf: "Tests the unit-root NULL ('IS it stationary?'); fit_ou ESTIMATES the reversion speed ('HOW FAST?') and refuses non-reverting series."
+    - variance_ratio: "Random-walk-vs-trend direction at one horizon; fit_ou estimates the reversion half-life."
+    - hurst_exponent: "Long-memory persistence exponent; fit_ou is the OU speed of a mean-reverting series."
+  intent_hints: [relationship]
