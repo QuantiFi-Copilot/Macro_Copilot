@@ -477,11 +477,13 @@ class CoverageGate:
     def __init__(
         self,
         *,
-        model_name: str = "claude-sonnet-4-5",
+        model_name: Optional[str] = None,
         temperature: float = 0.0,
         max_tokens: int = 1024,
     ) -> None:
-        self._model_name = model_name
+        from orchestrator.config import GATE_MODEL
+
+        self._model_name = model_name or GATE_MODEL
         self._temperature = temperature
         self._max_tokens = max_tokens
         self._is_open: bool = False
@@ -516,10 +518,14 @@ class CoverageGate:
                 }
             ]
         )
+        from orchestrator.config import anthropic_chat_kwargs
+
         self._gate_model = ChatAnthropic(
-            model=self._model_name,
-            temperature=self._temperature,
-            max_tokens=self._max_tokens,
+            **anthropic_chat_kwargs(
+                model_name=self._model_name,
+                temperature=self._temperature,
+                max_tokens=self._max_tokens,
+            )
         ).with_structured_output(_GateLLMOutput, include_raw=True)
 
         self._is_open = True

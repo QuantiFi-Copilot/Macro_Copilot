@@ -44,7 +44,13 @@ for candidate in _candidates:
 # ===========================================================================
 
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
-LLM_MODEL: str = os.getenv("LLM_MODEL", "claude-sonnet-4-20250514")
+# Migrated 2026-06-12: claude-sonnet-4-20250514 is DEPRECATED (retires
+# 2026-06-15).  claude-sonnet-4-6 validated head-to-head on the exact
+# production prompts (offline rig, temp 0): 12/13 L1 lane/shape cells
+# identical, selector date-anchor binding exact (1259/730), gate
+# targets+guards held (G2 improved REFUSE→CLARIFY per the gate's own
+# tie-break preference), answer cells grounded ("F = 0.93 (p ≈ 0.46)").
+LLM_MODEL: str = os.getenv("LLM_MODEL", "claude-sonnet-4-6")
 LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0"))
 LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "4096"))
 
@@ -56,6 +62,38 @@ LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "4096"))
 # Default stays the known-good claude-opus-4-6; the head-to-head against a
 # newer Opus is the credit-gated Phase E step.
 COMPOSER_MODEL: str = os.getenv("COMPOSER_MODEL", "claude-opus-4-6")
+
+
+# Gate (L4.5) + Answer (L6) model knobs.  Hardcoded "claude-sonnet-4-5"
+# pins pre-dated these; env-configurable so model A/B experiments run
+# without code edits.  Defaults unchanged.
+GATE_MODEL: str = os.getenv("GATE_MODEL", "claude-sonnet-4-6")
+ANSWER_MODEL: str = os.getenv("ANSWER_MODEL", "claude-sonnet-4-6")
+
+
+# Models where the Anthropic API REMOVED sampling params (temperature /
+# top_p / top_k return 400): Opus 4.7+, Fable.  See the claude-api
+# migration guide ("Sampling parameters removed").  Sonnet 4.x and
+# Opus <=4.6 still accept temperature.
+_NO_SAMPLING_PARAM_PREFIXES = (
+    "claude-opus-4-7",
+    "claude-opus-4-8",
+    "claude-fable",
+)
+
+
+def anthropic_chat_kwargs(
+    *, model_name: str, temperature: float, max_tokens: int
+) -> dict:
+    """Build ChatAnthropic constructor kwargs honouring per-model API
+    surfaces: models that removed sampling params get NO temperature
+    key (sending one is a hard 400), everything else keeps the
+    explicit temperature (production determinism convention).
+    """
+    kwargs: dict = {"model": model_name, "max_tokens": max_tokens}
+    if not model_name.startswith(_NO_SAMPLING_PARAM_PREFIXES):
+        kwargs["temperature"] = temperature
+    return kwargs
 
 
 # ===========================================================================

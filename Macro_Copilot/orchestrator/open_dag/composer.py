@@ -1131,16 +1131,15 @@ class Composer:
             ]
         )
 
-        self._compose_model = ChatAnthropic(
-            model=self._model_name,
+        from orchestrator.config import anthropic_chat_kwargs
+
+        _kwargs = anthropic_chat_kwargs(
+            model_name=self._model_name,
             temperature=self._temperature,
             max_tokens=self._max_tokens,
-        ).with_structured_output(ComposerLLMOutput, include_raw=True)
-        self._repair_model = ChatAnthropic(
-            model=self._model_name,
-            temperature=self._temperature,
-            max_tokens=self._max_tokens,
-        ).with_structured_output(ComposerRepairLLMOutput, include_raw=True)
+        )
+        self._compose_model = ChatAnthropic(**_kwargs).with_structured_output(ComposerLLMOutput, include_raw=True)
+        self._repair_model = ChatAnthropic(**_kwargs).with_structured_output(ComposerRepairLLMOutput, include_raw=True)
 
         self._is_open = True
         logger.info(

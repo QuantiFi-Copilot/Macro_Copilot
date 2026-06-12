@@ -133,10 +133,14 @@ class Supervisor:
 
         # Base model — no tools bound.  This is the guardrail: the
         # supervisor cannot call a rates tool because none are attached.
+        from orchestrator.config import anthropic_chat_kwargs
+
         self._base_model = ChatAnthropic(
-            model=model_name,
-            temperature=temperature,
-            max_tokens=max_tokens,
+            **anthropic_chat_kwargs(
+                model_name=model_name,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
         )
 
         # Route step uses structured output.  ``include_raw=True`` lets us

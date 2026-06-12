@@ -206,6 +206,13 @@ today / now / currently" — the desk wants ONE number read off the transform; \
 declare ``["scalar"]`` (or ``["scalar","series"]`` when the phrasing also \
 suggests a chart).  Declaring bare ``["series"]`` here lets the answer end \
 without any number.
+  - COMPARATIVE-IDENTITY asks ("WHICH market is most stretched / most \
+inverted / the winner") → ``["any"]``: the honest answer is an IDENTITY \
+read off a ranking artifact (often a SeriesSet / cross-sectional rank), \
+not one number — a bare ``["scalar"]`` pin vetoes the correct ranking \
+terminal.  Likewise "show me X ALONGSIDE Y" (two aligned series \
+together) → include ``"series_set"`` in the set; a bare ``["series"]`` \
+pin vetoes the aligned two-member SeriesSet that IS the ask.
   - Ambiguous → list BOTH (e.g. ``["scalar","series"]``).  Genuinely \
 open-ended or unsure → ``["any"]`` (never blocks).
   - Keep it CONSISTENT with intent_tag: ``lookup`` → ["scalar"]; \
@@ -290,7 +297,13 @@ several standard facets.  That z-score is NOT an operator computation — it \
 ships inside the primitive.  Promote to ``open_dag`` ONLY when the prompt \
 demands a NON-STANDARD window (z-score over 3 years, percentile since 2020), \
 a period SUMMARY statistic (average / median / std / count over a window), or \
-a transform of a DERIVED series the tool does not return.  Test: "would the \
+a transform of a DERIVED series the tool does not return.  The carve-out covers the FUTURES \
+POSITIONING facets too — a volume / open-interest tool's typed view carries \
+current OI, the 1-day OI change, the 252-day OI z-score / percentile and \
+volume-vs-mean context ("z-score of RX1 open interest vs its 252d history" \
+= ``direct_fetch``).  And PANEL-BUILDER asks — "build me a panel of X, Y, Z \
+since <date>" — are a single panel-builder tool's whole job: \
+``direct_fetch``, never a composed SeriesSet.  Test: "would the \
 desk's one-click tool card already display every number asked for?"  If yes \
 → ``direct_fetch``.
 
@@ -1260,6 +1273,49 @@ years of X so a 252-day rolling z-score has warmup").  NEVER set the \
 fetch span equal to the window — a window that equals (or exceeds) the \
 fetched rows yields an ALL-NaN series and execution fails.
 
+OPERATOR IDIOMS (composable patterns — do NOT refuse these as gaps)
+
+The catalogue answers more than its per-operator cards suggest when \
+chained.  These idioms are SANCTIONED; refusing a prompt these cover \
+is a wrong refusal:
+
+  - COUNT / "how many days did X happen": threshold_events (pick the \
+honest mode: above / below / crossing) → apply_mask → \
+summarize_series(statistic='count').  A count of ZERO executes \
+cleanly (ScalarMetric 0) — do not avoid the chain fearing empty \
+masks.  There is no separate "count events" operator; this chain IS \
+the count idiom.
+  - EXPANDING EXTREMUM / "the highest/lowest X reached over the \
+period" / "the trough/peak": rolling_statistic(statistic='min' or \
+'max', window=<the full span in trading days>) → \
+summarize_series(statistic='last').  The last value of a full-span \
+rolling extremum IS the period extremum.  Comparative troughs \
+("which inverted deeper") = one such arm per instrument → \
+series_arithmetic(subtract) → summarize(last) and read the sign.  \
+summarize_series itself has NO min/max — the ROLLING operator is \
+the extremum path.
+  - BUFFER-THEN-WINDOW / short explicit spans ("average over the \
+last 10 trading days") when the fetch floor (tools enforce \
+lookback_days >= 30) exceeds the asked span: fetch the FLOOR (or \
+more), then rolling_statistic(statistic=<stat>, window=<asked \
+trading days>) → summarize_series(statistic='last').  NEVER leave a \
+windowless summarize over a floor-inflated fetch — that answers a \
+different (longer) window.
+  - SELF-JOIN output_keys: whenever align_series's input arms \
+descend from the SAME leaf (lagged copy vs original, transformed vs \
+raw), SET ``output_keys`` with distinct names per arm — identical \
+series_keys otherwise collide at execution.
+  - MIXED-FREQUENCY legs: if execution reports incompatible \
+frequencies on align_series, the sanctioned fix is \
+``require_matching_frequency: false`` on the align node (explicit \
+opt-in) — apply it on recompose instead of re-emitting the same DAG.
+  - CROSS-DOMAIN RE-HINT on selector refusal: when a Selector \
+refuses a leaf saying the quantity belongs elsewhere (e.g. \
+sovereign_bonds refusing a CPI-release leaf), RE-EMIT the LeafHole \
+with the domain_hint the refusal points to (CPI surprise lives in \
+inflation_swaps; NFP in sovereign_bonds).  A single-domain refusal \
+is routing evidence, not proof the quantity is unavailable.
+
 DECOMPOSITION → LEAF-HOLES MAPPING
 
 For each entry in the L1 decomposition that represents an INPUT \
@@ -1574,7 +1630,10 @@ match digit-for-digit, and a slight calendar over-cover is correct \
 desk practice, not a mismatch: "10 trading days" is properly served \
 by a ~14-calendar-day lookback (markets close on weekends); "a \
 month" ≈ 21 trading days ≈ 30 calendar days; "a year" ≈ 252 trading \
-days ≈ 365 calendar days; "5 years" ≈ 1825 calendar days.
+days ≈ 365 calendar days; "5 years" ≈ 1825 calendar days.  TRADING-DAY \
+windows on operators follow the same table: window=252 IS one year — \
+endorsing "252 trading days ≈ 2 years" is a calibration error; a \
+2-year window is ~504 trading days.
   - PASS when the bound window covers the requested span under these \
 ordinary conversions (roughly: calendar cover between 1x and 2x the \
 requested trading-day span).  Do NOT refuse or clarify because the \
@@ -1899,6 +1958,23 @@ p_value in the summary, report the statistic by its NAME and say \
 the p-value rides the lineage — do not invent significance \
 thresholds ("above the 1.0 neutral threshold" is not a valid F \
 reading) and do not present the statistic as a percent chance.
+
+9. SIGN CONVENTIONS, WINDOW LABELS, AND DERIVED COLOR.
+   - DIRECTION comes from the CONSTRUCTION in the intent echo, never \
+from vibes: a spread built long-tenor-minus-short (10Y − 2Y) FALLS \
+when the curve flattens — z = −1.8 on that spread means FLATTENING \
+(front-end underperforming), not "the front end rallied hard".  \
+Re-derive the sign story from the echoed legs before narrating it.
+   - LABEL the window the summary actually used: 252 trading days is \
+ONE year, 504 is two; a window=252 result must never be described \
+as "2-year".  When prose names a span, it must match the executed \
+span / window, not the user's phrasing.
+   - Bands or ranges YOU compute from the summary's mean/std are \
+DERIVED — label them ("a ±1σ band of …"), never present them as \
+observed trading ranges.
+   - No dated market episodes ("the 2022 repricing", "September's \
+FOMC") unless the executed data and span actually cover them — and \
+even then, only what the numbers support.
 
 OUTPUT FORMAT
 
