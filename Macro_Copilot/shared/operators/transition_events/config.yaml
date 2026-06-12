@@ -1,0 +1,70 @@
+operator:
+  name: transition_events
+  method_family: masking
+  version: "1.0.0"
+  description: >-
+    Label-change events of a DISCRETE-valued Series: one event at
+    every position where the integer label differs from the previous
+    adjacent finite row, stamped at the first bar of the NEW label,
+    with from/to metadata. Finance-blind — the labels are never
+    interpreted (model state labels, sign buckets, rank buckets all
+    look identical). Non-integer-valued inputs are refused (soft
+    states quantise upstream); zero transitions yield a valid empty
+    EventSet.
+
+# transition_events deliberately has ZERO knobs in v1 (the minimal-
+# surface ruling): every adjacent-row label change is an event.
+# Transition FILTERING (only certain from->to pairs; ignoring labels)
+# is a declared planned extension, never a silent default (OPR7/OPR8).
+defaults: {}
+
+methodology:
+  what_it_does: >-
+    Single pass over adjacent row pairs: where both rows are finite
+    and the integer labels differ, the position of the SECOND row is
+    an event (the first bar where the new label is in force — the
+    event convention, recorded in lineage). A NaN on either side of a
+    pair suppresses the event: a change that cannot be dated to
+    adjacent observations is not a dated transition (no events across
+    gaps). The first row is never an event. Discreteness is enforced
+    by VALUE, not dtype (the payload is float64 by artifact
+    contract): every finite value must equal its rounding; soft or
+    posterior state values (e.g. 0.9) are refused, never silently
+    rounded — quantising is a methodology choice that belongs
+    upstream, in lineage. Exact integer equality makes the detection
+    float-tolerance-free and rerun-deterministic. Zero transitions
+    emit a valid EMPTY EventSet (the threshold_events no-qualifying-
+    rows convention). The label inventory, event count and convention
+    ride in lineage; the source's frequency tag propagates to the
+    EventSet for downstream frequency-agreement checks.
+  planned_extensions:
+    - "transition filtering (only certain from->to pairs, or ignoring transitions out of named labels): an explicit allowlist surface — declared so the emit-everything v1 stays honest."
+    - "minimum-dwell filtering (ignore labels held fewer than k rows): a distinct debouncing semantics."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Events where a discrete-label Series CHANGES value (stamped at the first bar of the new label, from/to in metadata) — the state-change detector.
+  when_to_use:
+    - "A discrete state/label series exists upstream (model regime labels, sign buckets) and the user asks WHEN the state changed ('dates the regime flipped') — transition_events emits exactly those dates."
+    - "An event study around state changes: transition_events -> event_windows -> conditional_aggregate."
+  when_not_to_use:
+    - "The series is CONTINUOUS (yields, spreads, z-scores) — there is no label to change; threshold_events detects level/zscore conditions on continuous series."
+    - "The series is a SOFT state (posterior probabilities, 0.9-style) — refused; quantise upstream first so the choice is in lineage."
+    - "User wants how LONG the current state has persisted — that is streak on a sign-able encoding, or awaits dwell analytics."
+  upstream_requirements:
+    - "Input is ONE Series whose finite values are integer-valued labels (any units tag).  NaN gaps suppress events across them."
+  downstream_pattern:
+    - "Output is an EventSet (mask + dates + from/to metadata; source frequency propagated).  Typical follow-ons: event_windows (study behaviour around changes), apply_mask, direct surface of the change dates."
+  knobs_quick_ref:
+    none: "Zero knobs in v1 — every adjacent-row label change is an event; filtering is a declared planned extension."
+  example_shapes:
+    - description: "Event study around the label changes of a discrete state series."
+      shape: "[Series labels] -> transition_events -> event_windows(target=[Series B]) -> WindowedPanel"
+  sibling_operators:
+    - threshold_events: "Condition events on CONTINUOUS series (level/zscore rules); transition_events is its discrete-label sibling."
+    - event_windows: "The canonical consumer — windows a target series around the change dates."
+    - streak: "Run LENGTH of a sign condition per date; transition_events emits the change DATES of a label series."
+  intent_hints: [event_regime]

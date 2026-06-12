@@ -182,6 +182,10 @@ from shared.operators.summarize_series import (
     SummarizeSeriesParams,
     CONFIG_PATH as _SUMMARIZE_SERIES_CONFIG_PATH,
 )
+from shared.operators.transition_events import (
+    transition_events, TransitionEventsParams,
+    CONFIG_PATH as _TRANSITION_EVENTS_CONFIG_PATH,
+)
 from shared.operators.threshold_events import (
     threshold_events,
     ThresholdEventsParams,
@@ -1718,6 +1722,47 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "threshold_events, direct surface.  Raises "
                 "CumulativeError on a non-Series input, an overflowing "
                 "running sum, or an all-NaN output."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — masking: label-change events of a
+    # discrete-valued Series (the threshold_events sibling for
+    # integer labels).  One Series in, one EventSet out.
+    "transition_events": OperatorSpec(
+        operator_name="transition_events",
+        callable=transition_events,
+        params_class=TransitionEventsParams,
+        config_path=_TRANSITION_EVENTS_CONFIG_PATH,
+        input_slots={
+            "series": SlotDescriptor.of(
+                "Series",
+                (
+                    "The single typed DISCRETE-label Series whose "
+                    "changes are the events — every finite value must "
+                    "be integer-valued (model state labels, sign "
+                    "buckets; soft/posterior states are REFUSED — "
+                    "quantise upstream so the choice is in lineage).  "
+                    "USE when the user asks WHEN the state changed "
+                    "('the dates the label flipped') or for event "
+                    "studies around state changes (→ event_windows).  "
+                    "Events stamp at the first bar of the NEW label; "
+                    "NaN gaps suppress events across them.  DO NOT "
+                    "use on CONTINUOUS series (threshold_events owns "
+                    "level/zscore conditions) or for state DURATION "
+                    "(streak)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "EventSet",
+            (
+                "One event per adjacent-row label change (mask + "
+                "dates + from_value/to_value metadata; the source's "
+                "frequency tag propagates; zero changes yield a valid "
+                "empty EventSet).  Typical follow-ons: event_windows "
+                "→ conditional_aggregate (event study), apply_mask.  "
+                "Raises TransitionEventsError on a non-Series input, "
+                "no finite values, or non-integer-valued labels."
             ),
         ),
     ),
