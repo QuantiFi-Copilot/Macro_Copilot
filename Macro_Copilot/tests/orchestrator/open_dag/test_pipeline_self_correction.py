@@ -295,6 +295,122 @@ class TestSelfCorrectsExecutionError:
         assert composer.calls == 1
 
 
+# ============================================================================
+# 4. FM-10: machine-enforced remediation injection (campaign e04/f05/j04/j01)
+# ============================================================================
+#
+# When the executor error prescribes its own remedy (align_series
+# incompatible-frequencies / duplicate-series_key), the pipeline must
+# DETERMINISTICALLY append the mandatory instruction to the recompose
+# correction — the campaign proved the composer ignores the prescription
+# when it only appears inside the raw error text (e04 re-ordered the
+# chain and failed identically; j04 rebuilt a byte-identical DAG).
+
+
+_ALIGN_FREQ_ERROR = (
+    "WorkflowExecutionError: Workflow 'lookup_deeper_inversion_comparison': "
+    "node 'align_raw' failed during execution: AlignSeriesError: "
+    "align_series: incompatible frequencies across inputs "
+    "([\"uk_gilt_2y_10y_spread='irregular'\", \"ust_2y_10y_spread='B'\"]).  "
+    "Pass require_matching_frequency=False to opt into mixed-frequency "
+    "alignment explicitly."
+)
+
+_DUP_KEY_ERROR = (
+    "WorkflowExecutionError: Workflow 'lookup_breakeven_selfjoin': node "
+    "'align_join' failed during execution: AlignSeriesError: align_series: "
+    "duplicate series_key(s) ['ust_usd_tips_10y_breakeven']; every input "
+    "must have a unique series_key."
+)
+
+
+class TestMandatoryRemediationInjection:
+    async def test_incompatible_frequencies_appends_param_mandate(self):
+        composer = _SequenceComposer([GOLDEN_SUMMARY_SINGLE_STAT])
+        executor = _RaisingExecutor(_ALIGN_FREQ_ERROR)
+        pipe = _pipeline_for(
+            _route(["scalar"]),
+            composer=composer,
+            gate=_SequenceGate([_PASS]),
+            executor=executor,
+        )
+        outcome = await pipe.run(
+            "Which inverted deeper at the trough — UST or gilt 2s10s?"
+        )
+        assert outcome.status == "EXECUTION_REFUSE"  # hard-block floor
+        assert composer.calls == 2
+        correction = composer.corrections[1]
+        assert correction and "MANDATORY FIX" in correction
+        assert "require_matching_frequency" in correction
+        # The mandate is part of the audit trace reason too (plan D9).
+        assert len(outcome.recompose_trace) == 1
+        assert "require_matching_frequency" in outcome.recompose_trace[0].reason
+
+    async def test_duplicate_series_key_appends_output_keys_mandate(self):
+        composer = _SequenceComposer([GOLDEN_SUMMARY_SINGLE_STAT])
+        executor = _RaisingExecutor(_DUP_KEY_ERROR)
+        pipe = _pipeline_for(
+            _route(["scalar"]),
+            composer=composer,
+            gate=_SequenceGate([_PASS]),
+            executor=executor,
+        )
+        outcome = await pipe.run("10Y breakeven vs its own 1-month lag")
+        assert outcome.status == "EXECUTION_REFUSE"
+        correction = composer.corrections[1]
+        assert correction and "MANDATORY FIX" in correction
+        assert "output_keys" in correction
+
+    async def test_mandate_survives_600_char_truncation(self):
+        # The correction seed caps the failure markdown at 600 chars; the
+        # trigger substring may sit beyond that cap (real refusal markdown
+        # front-loads the intent echo).  The mandate must still land.
+        padded = ("intent echo preamble sentence. " * 30) + _ALIGN_FREQ_ERROR
+        composer = _SequenceComposer([GOLDEN_SUMMARY_SINGLE_STAT])
+        executor = _RaisingExecutor(padded)
+        pipe = _pipeline_for(
+            _route(["scalar"]),
+            composer=composer,
+            gate=_SequenceGate([_PASS]),
+            executor=executor,
+        )
+        await pipe.run("...")
+        correction = composer.corrections[1]
+        assert correction and "require_matching_frequency" in correction
+
+    async def test_unrelated_execution_error_gets_no_mandate(self):
+        composer = _SequenceComposer([GOLDEN_SUMMARY_SINGLE_STAT])
+        executor = _RaisingExecutor()  # default: rolling_zscore all-NaN
+        pipe = _pipeline_for(
+            _route(["scalar"]),
+            composer=composer,
+            gate=_SequenceGate([_PASS]),
+            executor=executor,
+        )
+        await pipe.run("...")
+        correction = composer.corrections[1]
+        assert correction and "MANDATORY FIX" not in correction
+
+    async def test_gate_refuse_mentioning_frequencies_not_injected(self):
+        # The mandate is scoped to EXECUTION_REFUSE: a gate critique that
+        # merely *mentions* frequencies must not trigger a param mandate.
+        composer = _SequenceComposer(
+            [GOLDEN_SUMMARY_SINGLE_STAT, GOLDEN_SUMMARY_SINGLE_STAT]
+        )
+        gate = _SequenceGate([
+            GateVerdict(
+                status="REFUSE",
+                reason="the chain may mix incompatible frequencies",
+            ),
+            _PASS,
+        ])
+        pipe = _pipeline_for(_route([]), composer=composer, gate=gate)
+        outcome = await pipe.run("...")
+        assert outcome.status == "PASS_DRYRUN"
+        correction = composer.corrections[1]
+        assert correction and "MANDATORY FIX" not in correction
+
+
 class TestBudgetAndUnconstrained:
     async def test_budget_zero_disables_recompose(self):
         composer = _SequenceComposer([GOLDEN_SUMMARY_SINGLE_STAT])

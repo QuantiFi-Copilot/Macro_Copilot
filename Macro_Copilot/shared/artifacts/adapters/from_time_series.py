@@ -835,6 +835,54 @@ def _coarse_frequency(alias: str) -> str:
     return "irregular"
 
 
+# FM-10 tolerance bounds for _is_business_daily_with_holiday_gaps.
+# A holiday gap step spans 1 normal business day + up to 3 skipped
+# business days (e.g. Christmas + Boxing Day + a bridge day) → max 4.
+_BDAY_HOLIDAY_STEP_MAX = 4
+# Holiday gaps must stay OCCASIONAL: ~10 UST / ~8 UK holidays per ~260
+# business days ≈ 4% of steps.  10% + a floor of 2 (short windows can
+# legitimately straddle 2 holidays) keeps every-other-day cadences out.
+_BDAY_GAP_FRACTION_MAX = 0.10
+_BDAY_GAP_COUNT_FLOOR = 2
+
+
+def _is_business_daily_with_holiday_gaps(index: pd.DatetimeIndex) -> bool:
+    """True when a DatetimeIndex is business-day-spaced apart from
+    OCCASIONAL 1-3-business-day holiday gaps (FM-10).
+
+    ``pd.infer_freq`` returns None on any holiday-gapped business-day
+    index, which made derived-series bridges (curve spreads, breakevens,
+    OIS bridges) stamp ``frequency='irregular'`` while plain fetches of
+    gap-free spans stamped ``'B'`` — and align_series then refused the
+    mix as "incompatible frequencies".  This check recognises the
+    real-world business-daily cadence:
+
+      - every date falls on a weekday (Mon-Fri);
+      - consecutive dates are 1 business day apart, except occasional
+        holiday gaps of up to 3 skipped business days;
+      - gapped steps stay a small fraction of all steps (so weekly /
+        every-other-day cadences are NOT misread as 'B').
+
+    Never raises; purely structural (no holiday calendar needed).
+    """
+    if (index.dayofweek > 4).any():
+        return False  # weekend dates → not a business-day series
+    days = index.normalize().values.astype("datetime64[D]")
+    steps = np.busday_count(days[:-1], days[1:])
+    if steps.size == 0:
+        return False
+    if (steps < 1).any() or (steps > _BDAY_HOLIDAY_STEP_MAX).any():
+        return False  # duplicates / unsorted, or a gap too wide for a holiday
+    gapped = int((steps > 1).sum())
+    if gapped == 0:
+        return True  # pure business-daily
+    allowed = max(
+        _BDAY_GAP_COUNT_FLOOR,
+        int(np.ceil(_BDAY_GAP_FRACTION_MAX * steps.size)),
+    )
+    return gapped <= allowed
+
+
 def _infer_frequency(
     index: Any,
 ) -> Optional[Literal["B", "D", "W", "M", "Q", "Y", "irregular"]]:
@@ -843,14 +891,20 @@ def _infer_frequency(
     Returns B/D/W/M/Q/Y when pandas infers a regular cadence, ``'irregular'``
     for a non-uniform but >=3-point index, or ``None`` for a too-short
     (<3-point) index where inference is unreliable.  Never raises.
+
+    FM-10: when pandas cannot infer a cadence, a business-day index with
+    occasional 1-3-business-day holiday gaps is tagged ``'B'`` rather than
+    ``'irregular'`` — see ``_is_business_daily_with_holiday_gaps``.
     """
     if not isinstance(index, pd.DatetimeIndex) or len(index) < 3:
         return None
     try:
         inferred = pd.infer_freq(index)
     except (ValueError, TypeError):
-        return "irregular"
+        inferred = None
     if inferred is None:
+        if _is_business_daily_with_holiday_gaps(index):
+            return "B"
         return "irregular"
     return _coarse_frequency(inferred)  # type: ignore[return-value]
 

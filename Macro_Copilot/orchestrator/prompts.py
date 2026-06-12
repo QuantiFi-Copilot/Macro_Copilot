@@ -1318,9 +1318,9 @@ REQUIRES diff(periods=1) BEFORE cumulative(sum) — cumulative applied \
 to the raw LEVEL is a different quantity entirely.  Never skip the \
 diff node; a reviewer will check the chain structurally.
   - SELF-JOIN output_keys: whenever align_series's input arms \
-descend from the SAME leaf (lagged copy vs original, transformed vs \
-raw), SET ``output_keys`` with distinct names per arm — identical \
-series_keys otherwise collide at execution.
+descend from the SAME leaf or instrument fetched twice (lagged vs \
+original, transformed vs raw), SET ``output_keys`` with distinct \
+names per arm — identical series_keys collide at execution.
   - MIXED-FREQUENCY legs: if execution reports incompatible \
 frequencies on align_series, the sanctioned fix is \
 ``require_matching_frequency: false`` on the align node (explicit \

@@ -147,6 +147,46 @@ _RECOMPOSABLE_STATUSES = frozenset(
 )
 
 
+# FM-10 (campaign e04/f05/j04/j01): MACHINE-ENFORCED recompose remediation.
+# Certain typed executor errors prescribe their own exact remedy in the
+# error text, yet the composer demonstrably ignored the prescription on
+# recompose (e04 re-ordered the chain and failed identically; j04 rebuilt
+# a byte-identical DAG).  When an EXECUTION_REFUSE reason contains one of
+# these trigger substrings, the matching MANDATORY instruction is appended
+# DETERMINISTICALLY to the correction seed — no LLM judgement involved —
+# and survives the 600-char truncation because it is appended after it.
+# (A param-patch-without-recompose was considered and rejected: mutating
+# the assembled workflow post-gate would bypass the coverage gate's review
+# of the executed DAG; the bounded reason-seeded recompose IS the
+# sanctioned self-correction channel — plan D1/D3.)
+_MANDATORY_REMEDIATIONS: Tuple[Tuple[str, str], ...] = (
+    (
+        "incompatible frequencies",
+        "MANDATORY FIX (machine-enforced, not optional): the execution "
+        "failure above is a frequency-METADATA mismatch, not a data "
+        "problem.  In your re-composed DAG you MUST set "
+        '"require_matching_frequency": false in the params of the '
+        "align_series node (and of any other operator node named in the "
+        "error) — this is the explicit mixed-frequency opt-in the error "
+        "message itself prescribes.  Do NOT re-order the chain, swap "
+        "leaves, or rebuild the same DAG without this param: that fails "
+        "identically.",
+    ),
+    (
+        "duplicate series_key",
+        "MANDATORY FIX (machine-enforced, not optional): the execution "
+        "failure above happened because two inputs to an align_series "
+        "fan-in carried the SAME series_key (the same instrument reaches "
+        "the join twice).  In your re-composed DAG you MUST set "
+        '"output_keys" on that align_series node with one DISTINCT name '
+        'per input arm (e.g. ["<key>_raw", "<key>_lagged"]), and any '
+        "downstream select_from_series_set must select by those new "
+        "names.  Do NOT rebuild the same DAG without output_keys: that "
+        "fails identically.",
+    ),
+)
+
+
 # ============================================================================
 # OUTCOME — the typed pipeline result
 # ============================================================================
@@ -1026,11 +1066,31 @@ class OpenDagPipeline:
         recomposable failure outcome, to seed the next (re-)compose.
         The outcome's markdown always carries the gate / assembly /
         shape refusal reason.  Capped so the re-compose prompt stays
-        bounded."""
+        bounded.
+
+        FM-10: for EXECUTION_REFUSE outcomes whose failure text matches
+        a known self-prescribing executor error (incompatible
+        frequencies / duplicate series_key), the matching MANDATORY
+        remediation instruction is appended deterministically — AFTER
+        the truncation cap, so it always survives — because the
+        composer demonstrably ignored the prescription when it only
+        appeared inside the raw error text."""
         md = (outcome.markdown or "").strip()
         if len(md) > 600:
             md = md[:600] + " …"
-        return md or "The previous DAG was rejected; build a different one."
+        correction = md or "The previous DAG was rejected; build a different one."
+        if outcome.status == "EXECUTION_REFUSE":
+            # Scan the FULL (untruncated) failure text so a long error
+            # cannot hide the trigger substring; the gate verdict reason
+            # carries the raw executor error even when markdown reflows it.
+            full_text = outcome.markdown or ""
+            verdict = getattr(outcome.intent_chain, "gate_verdict", None)
+            if verdict is not None and getattr(verdict, "reason", None):
+                full_text = f"{full_text}\n{verdict.reason}"
+            for trigger, instruction in _MANDATORY_REMEDIATIONS:
+                if trigger in full_text:
+                    correction = f"{correction}\n\n{instruction}"
+        return correction
 
     # ------------------------------------------------------------------
     # INTERNAL — SELECTOR DISPATCH
