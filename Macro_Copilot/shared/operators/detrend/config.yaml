@@ -1,0 +1,78 @@
+operator:
+  name: detrend
+  method_family: single_series_transform
+  version: "1.0.0"
+  description: >-
+    Remove a full-sample deterministic trend from one Series —
+    subtract the mean (method=demean) or an OLS straight line fitted
+    on the 0..n-1 row positions (method=linear) — emitting the
+    residual in the input's units. Finance-blind (the time axis is
+    row positions, not calendar). FULL-SAMPLE fit: the residual at
+    every position uses data from the whole series (look-ahead —
+    disclosed in lineage as trend_scope='full_sample'); the fitted
+    trend parameters ride in lineage.
+
+# Every user-choosable method choice is offloaded here so the operator
+# is not opinionated and the caller can switch seamlessly (OPR7/OPR8).
+# The schema defaults in schemas.py mirror these values and a test
+# asserts they do not diverge.
+defaults:
+  method:
+    value: linear
+    source: operator_v1_default
+    rationale: >-
+      Removing a straight-line drift (linear) is the canonical
+      detrending ask — the residual centres a trending series for
+      stationarity-style reads; demean (subtract the full-sample
+      mean) is the simpler center-zero alternative.
+
+methodology:
+  what_it_does: >-
+    Fits the chosen full-sample trend on the FINITE observations —
+    demean: the sample mean; linear: OLS y = intercept + slope*t on
+    the 0..n-1 row positions (numpy lstsq; slope is per ROW, not per
+    calendar day — gaps in the index are not re-spaced) — and
+    subtracts it, emitting the residual. NaN positions stay NaN. The
+    FIT IS FULL-SAMPLE (look-ahead: the residual at every position
+    uses data from the entire series — the standard descriptive
+    detrending semantics; never feed the output into point-in-time
+    compositions, and chaining another full-sample fit downstream
+    compounds the look-ahead; disclosed in lineage as
+    trend_scope='full_sample'). The fitted parameters (mean, or
+    intercept/slope/R^2) are recorded in lineage so the removed trend
+    is auditable. Fewer than 2 finite observations, a rank-deficient
+    linear design, and an overflowing residual each raise
+    DetrendError. Units, frequency and missingness policy pass
+    through (a residual of BPS is BPS).
+  planned_extensions:
+    - "higher-order polynomial detrending: a distinct fit family — declared here so the linear surface stays honest."
+    - "rolling/point-in-time detrending (no look-ahead): a distinct scope semantics, the winsorize-rolling analogue."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Remove a full-sample deterministic trend (mean or OLS line on row positions) from one Series — the residual, with the fitted trend in lineage.
+  when_to_use:
+    - "A trending series must be centred before a distribution/stationarity-style read ('strip the drift out of X') — method=linear."
+    - "A simple center-zero transform is wanted ('X relative to its full-period average') — method=demean."
+  when_not_to_use:
+    - "POINT-IN-TIME compositions: the trend is fitted on the WHOLE sample (look-ahead — disclosed in lineage).  No rolling variant exists yet (planned)."
+    - "User wants the deviation from a ROLLING mean (time-varying baseline) — use rolling_statistic(mean) + series_arithmetic(subtract)."
+    - "User wants residuals vs ANOTHER SERIES (not vs time) — use regression_residual."
+    - "User wants smooth trend/cycle separation — hp_filter (when available) is the dedicated decomposition."
+  upstream_requirements:
+    - "Input is ONE Series (any units), >= 2 finite observations."
+  downstream_pattern:
+    - "Output is the residual Series in the input's units (NaN positions untouched; fitted mean or intercept/slope/R^2 + trend_scope in lineage).  Typical follow-ons: summarize_series(std), rolling_zscore, threshold_events."
+  knobs_quick_ref:
+    method: "linear (default; subtract an OLS line on row positions) | demean (subtract the full-sample mean)."
+  example_shapes:
+    - description: "Drift-stripped series, then thresholded."
+      shape: "[Series] -> detrend(method=linear) -> threshold_events -> EventSet"
+  sibling_operators:
+    - regression_residual: "Residuals vs another SERIES (y on x), not vs time — use for cross-series relationships."
+    - rolling_statistic: "Time-varying baseline (rolling mean) when the trend should not be a single full-sample fit."
+    - winsorize: "The other full-sample hygiene transform (caps extremes; same look-ahead disclosure pattern)."
+  intent_hints: [transform]

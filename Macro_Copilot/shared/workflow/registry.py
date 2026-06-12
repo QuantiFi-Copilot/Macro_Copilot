@@ -76,6 +76,10 @@ from shared.operators.demean_cross_section import (
     demean_cross_section, DemeanCrossSectionParams,
     CONFIG_PATH as _DEMEAN_CROSS_SECTION_CONFIG_PATH,
 )
+from shared.operators.detrend import (
+    detrend, DetrendParams,
+    CONFIG_PATH as _DETREND_CONFIG_PATH,
+)
 from shared.operators.event_windows import (
     event_windows, EventWindowsParams,
     CONFIG_PATH as _EVENT_WINDOWS_CONFIG_PATH,
@@ -1528,6 +1532,50 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "the rolling beta the user usually asks for; or all "
                 "three for full diagnostic.  Beta is in (lhs_units / "
                 "rhs_units); alpha in lhs_units; r_squared in RATIO."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — single_series_transform: remove a
+    # full-sample deterministic trend (mean or OLS line on row
+    # positions).  One Series in, one Series out (units passthrough);
+    # the look-ahead scope is disclosed in lineage.
+    "detrend": OperatorSpec(
+        operator_name="detrend",
+        callable=detrend,
+        params_class=DetrendParams,
+        config_path=_DETREND_CONFIG_PATH,
+        input_slots={
+            "series": SlotDescriptor.of(
+                "Series",
+                (
+                    "The single typed Series whose deterministic trend "
+                    "should be REMOVED.  USE to centre a trending "
+                    "series before a distribution/stationarity-style "
+                    "read: method=linear subtracts an OLS line fitted "
+                    "on the 0..n−1 ROW positions (FULL-SAMPLE fit — "
+                    "look-ahead disclosed in lineage; never for "
+                    "point-in-time compositions); method=demean "
+                    "subtracts the full-sample mean.  NaN positions "
+                    "stay NaN.  DO NOT use for deviation from a "
+                    "ROLLING baseline (rolling_statistic mean + "
+                    "series_arithmetic subtract), residuals vs ANOTHER "
+                    "series (regression_residual), or smooth "
+                    "trend/cycle decomposition."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            (
+                "The residual (input − fitted trend) on the input "
+                "index, in the input's units (passthrough; NaN "
+                "untouched).  Lineage records the method, the FITTED "
+                "parameters (mean, or intercept/slope/R²) and "
+                "trend_scope='full_sample' (the look-ahead "
+                "disclosure).  Typical follow-ons: "
+                "summarize_series(std), rolling_zscore, "
+                "threshold_events.  Raises DetrendError on <2 finite "
+                "observations, a degenerate fit, or overflow."
             ),
         ),
     ),
