@@ -423,6 +423,37 @@ def _has_time_series_list_field(output_class) -> bool:
     return False
 
 
+def _input_constraint_lines(input_class: Any) -> str:
+    """Render numeric field constraints (ge/le) from a primitive's
+    Pydantic Input class as a compact catalogue suffix.
+
+    Campaign b06 nit: tools enforce fetch floors (e.g.
+    ``lookback_days >= 30``) the Selector could not see — attempt-0
+    bindings below the floor burned a full execution round before the
+    self-correction recompose discovered it.  Surfacing the bounds in
+    the catalogue makes the wrong binding visible at choice time.
+    """
+    try:
+        fields = getattr(input_class, "model_fields", None) or {}
+    except Exception:  # pragma: no cover — defensive
+        return ""
+    lines = []
+    for name, field in fields.items():
+        bounds = []
+        for meta in getattr(field, "metadata", None) or []:
+            ge = getattr(meta, "ge", None)
+            le = getattr(meta, "le", None)
+            if ge is not None:
+                bounds.append(f">= {ge}")
+            if le is not None:
+                bounds.append(f"<= {le}")
+        if bounds:
+            lines.append(f"{name} {' and '.join(bounds)}")
+    if not lines:
+        return ""
+    return "\nINPUT CONSTRAINTS (Pydantic-enforced; bindings outside them fail): " + "; ".join(sorted(lines))
+
+
 def render_tool_catalogue(
     domain: Domain,
     mcp_tools: Sequence[Any],
@@ -617,7 +648,7 @@ def render_tool_catalogue(
 
         kept.append(ToolCatalogueEntry(
             mcp_tool_name=mcp_name,
-            description=description,
+            description=description + _input_constraint_lines(spec.input_class),
             resolver_tool_key=resolver_key,
             composability=cls,
             output_artifact_type=decl.output_artifact_type,

@@ -159,6 +159,11 @@ class TerminalArtifactSummary(BaseModel):
     last_date: Optional[str] = None
     first_date: Optional[str] = None
     finite_count: Optional[int] = None
+    # Campaign c04 — with only ``last=`` the L6 LLM fabricated in-window
+    # TREND claims ("drifted higher over the period") it could not know.
+    # The first finite observation gives it both endpoints, so direction
+    # statements are grounded by comparison instead of invented.
+    first_value: Optional[float] = None
     # Campaign FM-2 — diagnostic operators (granger_causality,
     # stationarity_adf, ljung_box, normality_test, cointegration)
     # emit a TEST STATISTIC as the ScalarMetric value and record the
@@ -216,6 +221,7 @@ class TerminalArtifactSummary(BaseModel):
             last_date: Optional[str] = None
             first_date: Optional[str] = None
             finite_count: Optional[int] = None
+            first_value: Optional[float] = None
             try:
                 payload = artifact.payload
                 if len(payload) > 0:
@@ -225,6 +231,7 @@ class TerminalArtifactSummary(BaseModel):
                     if finite_count > 0:
                         last_value = float(cleaned.iloc[-1])
                         last_date = str(cleaned.index[-1])[:10]
+                        first_value = float(cleaned.iloc[0])
             except Exception:  # pragma: no cover — defensive
                 pass
             return cls(
@@ -236,6 +243,7 @@ class TerminalArtifactSummary(BaseModel):
                 last_date=last_date,
                 first_date=first_date,
                 finite_count=finite_count,
+                first_value=first_value,
             )
         if isinstance(artifact, SeriesSet):
             return cls(
@@ -354,9 +362,17 @@ class TerminalArtifactSummary(BaseModel):
                     if self.finite_count is not None
                     else ""
                 )
+                # Campaign c04 — both endpoints when available, so the
+                # prose can state direction from comparison only.
+                first = (
+                    f"first={self.first_value:.4g}, "
+                    if self.first_value is not None
+                    else ""
+                )
                 return (
                     f"Series{units_repr}(n={self.row_count or 0}{finite}; "
-                    f"last={self.last_value:.4g} on {self.last_date}{span})"
+                    f"{first}last={self.last_value:.4g} on "
+                    f"{self.last_date}{span})"
                 )
             return f"Series{units_repr}(n={self.row_count or 0})"
         # SeriesSet / EventSet / Panel — no single-units summary at

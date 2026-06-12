@@ -297,13 +297,22 @@ several standard facets.  That z-score is NOT an operator computation — it \
 ships inside the primitive.  Promote to ``open_dag`` ONLY when the prompt \
 demands a NON-STANDARD window (z-score over 3 years, percentile since 2020), \
 a period SUMMARY statistic (average / median / std / count over a window), or \
-a transform of a DERIVED series the tool does not return.  The carve-out covers the FUTURES \
+a transform of a DERIVED series the tool does not return.  SCOPE LIMIT: the card's z-score / \
+percentile are OF THE LEVEL.  An ask whose ONLY subject is a \
+transform of a DERIVED series — "where does the 5-day CHANGE sit \
+versus the distribution of 5-day changes over the past year?" — is \
+NOT on the card: route ``open_dag``.  Multi-facet asks that mix \
+card facets with one derived-transform facet stay ``direct_fetch`` \
+(the card answers most facets at once).  The carve-out covers the FUTURES \
 POSITIONING facets too — a volume / open-interest tool's typed view carries \
 current OI, the 1-day OI change, the 252-day OI z-score / percentile and \
 volume-vs-mean context ("z-score of RX1 open interest vs its 252d history" \
-= ``direct_fetch``).  And PANEL-BUILDER asks — "build me a panel of X, Y, Z \
-since <date>" — are a single panel-builder tool's whole job: \
-``direct_fetch``, never a composed SeriesSet.  Test: "would the \
+= ``direct_fetch``).  And PANEL-BUILDER asks are a single \
+panel-builder tool's whole job: "build me a daily panel of US, German \
+and Japanese 10Y yields since 2024" → ``direct_fetch``, never a \
+composed SeriesSet — the catalogue has NO operator that assembles a \
+raw-level Panel from Series, so open_dag guarantees a refusal of a \
+fully supported request.  Test: "would the \
 desk's one-click tool card already display every number asked for?"  If yes \
 → ``direct_fetch``.
 
@@ -1271,7 +1280,10 @@ X vs its 1-year history" means the rolling WINDOW is ~1 year (≈252 \
 trading days); the leaf must then fetch MORE than 1 year (e.g. "fetch ~3 \
 years of X so a 252-day rolling z-score has warmup").  NEVER set the \
 fetch span equal to the window — a window that equals (or exceeds) the \
-fetched rows yields an ALL-NaN series and execution fails.
+fetched rows yields an ALL-NaN series and execution fails.  WINDOW \
+SIZING: the window must MATCH the asked history span — "vs its 1-year \
+history" → window≈252 trading days, "2-year" → ≈504, "3-year" → ≈756.  \
+Binding window=252 for a "2 years" ask answers a different question.
 
 OPERATOR IDIOMS (composable patterns — do NOT refuse these as gaps)
 
@@ -1301,6 +1313,10 @@ more), then rolling_statistic(statistic=<stat>, window=<asked \
 trading days>) → summarize_series(statistic='last').  NEVER leave a \
 windowless summarize over a floor-inflated fetch — that answers a \
 different (longer) window.
+  - CUMULATIVE OF CHANGES: "the cumulative sum of daily changes" \
+REQUIRES diff(periods=1) BEFORE cumulative(sum) — cumulative applied \
+to the raw LEVEL is a different quantity entirely.  Never skip the \
+diff node; a reviewer will check the chain structurally.
   - SELF-JOIN output_keys: whenever align_series's input arms \
 descend from the SAME leaf (lagged copy vs original, transformed vs \
 raw), SET ``output_keys`` with distinct names per arm — identical \
@@ -1682,6 +1698,18 @@ The catalogue is explicit: ``beta`` emits ONE number; \
 correctly-wired full-sample beta because the phrase "over the past \
 year" could be misread as rolling is a wrong refusal.
 
+STRUCTURE OVER PROSE (echo is the truth)
+
+Your verdict reasoning may cite ONLY operators that appear in the \
+ECHO's operator list.  If the chain you believe makes the DAG correct \
+(e.g. "diff then cumulative") is NOT in the echo, the DAG does not \
+contain it — judge the echo's actual chain, never the composer's \
+rationale prose.  Endorsing a chain the echo lacks ships a silently \
+wrong number.  Likewise a rolling operator's ``window`` param must \
+match the prompt's asked history span under the trading-day table \
+above (window=252 for a "vs 2 years" ask is a mismatch — refuse or \
+hint the recompose).
+
 DISPERSION CONVENTION (one ScalarMetric, two numbers)
 
 The summarize_series operator carries an optional ``dispersion`` \
@@ -1942,6 +1970,12 @@ its mean".
    - Your market narration is BOUNDED by the fetched span.  A window \
 that starts in mid-2023 supports no claims about 2021-2022 — do not \
 recount cycle history from outside the data you were handed.
+   - TREND / DIRECTION claims need BOTH endpoints.  With only \
+"last=<v>" in the summary, do NOT assert in-window direction \
+("drifted higher", "steepened over the period") — state the current \
+level and let the chart carry the path.  When the summary carries \
+both "first=" and "last=", direction may be stated from that \
+comparison only.
    - NEVER emit bracketed template placeholders ("[value from ...]", \
 "[if |z| < 1: ...]").  If you are tempted to write one, you are \
 missing the number — re-read the executed summary; if it truly \

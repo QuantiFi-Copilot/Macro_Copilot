@@ -59,9 +59,12 @@ LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "4096"))
 # the disambiguation cases more robustly) is a one-line / one-env-var flip,
 # and the deterministic verifier + self-correction loop mean correctness
 # never DEPENDS on a specific version (the upgrade only raises the floor).
-# Default stays the known-good claude-opus-4-6; the head-to-head against a
-# newer Opus is the credit-gated Phase E step.
-COMPOSER_MODEL: str = os.getenv("COMPOSER_MODEL", "claude-opus-4-6")
+# Upgraded 2026-06-12 to claude-opus-4-8 after the composer A/B on the
+# exact production prompts: 4-8 composed all four FM-11 wrong-refusal
+# targets (h02/r01/s11/s10) with chains equal to or simpler than 4-6's,
+# and held every guard (incl. the honest refusals).  4-7+/4-8 take NO
+# sampling params — anthropic_chat_kwargs below handles the surface.
+COMPOSER_MODEL: str = os.getenv("COMPOSER_MODEL", "claude-opus-4-8")
 
 
 # Gate (L4.5) + Answer (L6) model knobs.  Hardcoded "claude-sonnet-4-5"
