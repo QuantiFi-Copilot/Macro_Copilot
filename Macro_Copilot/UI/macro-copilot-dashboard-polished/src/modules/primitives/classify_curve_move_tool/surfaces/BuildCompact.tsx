@@ -66,10 +66,10 @@ const BuildCompact: React.FC<BuildCompactProps> = ({
             ]
       }
       // Single classified observation — no series exists on the wire,
-      // so no sparkline (rendering_density.md §2.2 semantic contract;
-      // the empty array renders the shell's no-chart layout).
-      chartPoints={[]}
-      chartUnit="bp"
+      // so chartPoints is OMITTED: the shell renders the chartless
+      // KPI-card layout (rendering_density.md §2.2 semantic contract;
+      // an empty ARRAY would instead show the misleading "No data in
+      // window" empty-series state).
       caveatText={CLASSIFY_COMPACT_CAVEAT}
       asOf={cm?.as_of_date}
       freshness="fresh"

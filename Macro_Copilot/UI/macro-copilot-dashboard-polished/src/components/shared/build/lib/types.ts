@@ -274,8 +274,14 @@ export interface BuildCompactShellProps {
    *  per the rendering-density spec §2.2.  Extra entries are
    *  truncated to the first 3 with a console warning in dev. */
   kpis: ReadonlyArray<KPIDescriptor>;
-  chartPoints: ReadonlyArray<ChartPoint>;
-  chartUnit: string;
+  /** Sparkline series.  Semantics: OMIT (undefined) when the tool's
+   *  wire carries NO series at all — pure-snapshot / categorical
+   *  shapes render a chartless KPI card (rendering_density.md §2.2
+   *  semantic contract: never fabricate a tape).  Pass an EMPTY array
+   *  only when the tool IS series-shaped but the window came back
+   *  empty — that renders the honest "No data in window" state. */
+  chartPoints?: ReadonlyArray<ChartPoint>;
+  chartUnit?: string;
   referenceBands?: ReadonlyArray<ReferenceBand>;
   /** Compact methodology — one-line caveat that renders inline in the
    *  footer (or via an info-tooltip).  Per rendering_density.md §2.2

@@ -156,14 +156,20 @@ export function BuildCompactShell({
           </div>
 
           {/* ---------- Chart ---------- */}
-          <div className="min-h-0 flex-1">
-            <MiniChart
-              points={chartPoints}
-              unit={chartUnit}
-              referenceBands={referenceBands}
-              height={size === 'medium' ? 220 : 160}
-            />
-          </div>
+          {/* Chartless when chartPoints is OMITTED (pure-snapshot /
+              categorical wires — §2.2: never fabricate a tape).  An
+              empty ARRAY still mounts MiniChart's honest "No data in
+              window" state (series-shaped tool, empty window). */}
+          {chartPoints != null && (
+            <div className="min-h-0 flex-1">
+              <MiniChart
+                points={chartPoints}
+                unit={chartUnit ?? ''}
+                referenceBands={referenceBands}
+                height={size === 'medium' ? 220 : 160}
+              />
+            </div>
+          )}
         </>
       )}
 
