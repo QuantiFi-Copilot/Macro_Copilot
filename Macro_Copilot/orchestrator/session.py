@@ -2840,14 +2840,22 @@ def _build_run_audit(outcome: Any) -> Optional[Dict[str, Any]]:
         expected_shape = getattr(
             route_decision, "expected_answer_shape", None,
         )
+        # JSON-friendly coercion: the field is a list of shape tokens
+        # on RouteDecision (e.g. ['scalar']); enum members carry
+        # .value; bare strings pass through.  Store lists AS lists —
+        # a str() of a list would poison downstream renderers.
         if expected_shape is not None and not isinstance(
             expected_shape, str,
         ):
-            # Enum-valued on some RouteDecision builds — store the
-            # JSON-friendly value.
-            expected_shape = getattr(
-                expected_shape, "value", str(expected_shape),
-            )
+            if isinstance(expected_shape, (list, tuple)):
+                expected_shape = [
+                    getattr(item, "value", str(item))
+                    for item in expected_shape
+                ]
+            else:
+                expected_shape = getattr(
+                    expected_shape, "value", str(expected_shape),
+                )
         recompose_trace = [
             step.model_dump(mode="json")
             for step in getattr(outcome, "recompose_trace", ()) or ()

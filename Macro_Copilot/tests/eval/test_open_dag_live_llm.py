@@ -113,11 +113,17 @@ async def test_live_canonical_us_2s10s_vs_5y_breakeven_correlation(
         f"{domain_hints}"
     )
 
-    # The L3 Composer should emit a relationship shape.
+    # The L3 Composer should emit a relationship shape.  The eval runs
+    # in a COLD container (no warm HTTP pool, ~25K-token prompt-cache
+    # CREATE on the first call), where production's 15s margin is
+    # reliably exceeded — this test asserts the composer's LOGIC on the
+    # canonical query, not production's latency envelope, so it gets a
+    # generous timeout.
     compose_result = await composer.compose(
         prompt=prompt,
         intent_tag=route.intent_tag,
         decomposition=route.decomposition,
+        timeout_s=60.0,
     )
     from orchestrator.open_dag import ShapeSpec
     assert isinstance(compose_result, ShapeSpec), (

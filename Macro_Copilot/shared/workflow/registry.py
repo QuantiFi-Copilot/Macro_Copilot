@@ -137,6 +137,10 @@ from shared.operators.pairwise_spread_matrix import (
     pairwise_spread_matrix, PairwiseSpreadMatrixParams,
     CONFIG_PATH as _PAIRWISE_SPREAD_MATRIX_CONFIG_PATH,
 )
+from shared.operators.normality_test import (
+    normality_test, NormalityTestParams,
+    CONFIG_PATH as _NORMALITY_TEST_CONFIG_PATH,
+)
 from shared.operators.percentile_rank import (
     percentile_rank,
     PercentileRankParams,
@@ -1730,6 +1734,49 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "threshold_events, direct surface.  Raises "
                 "CumulativeError on a non-Series input, an overflowing "
                 "running sum, or an all-NaN output."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — statistical_relationship (A5
+    # diagnostics): Jarque-Bera normality test.  One Series in, one
+    # ScalarMetric out (the JB statistic, RATIO units; p-value +
+    # moment diagnostics in lineage).
+    "normality_test": OperatorSpec(
+        operator_name="normality_test",
+        callable=normality_test,
+        params_class=NormalityTestParams,
+        config_path=_NORMALITY_TEST_CONFIG_PATH,
+        input_slots={
+            "series": SlotDescriptor.of(
+                "Series",
+                (
+                    "The single typed Series whose distribution shape "
+                    "is tested (>= 3 finite observations, "
+                    "non-constant; NaN rows dropped — moments are "
+                    "order-insensitive).  USE when the user asks "
+                    "whether values are NORMALLY distributed or "
+                    "fat-tailed ('are the changes in X normal?') — "
+                    "typically on the DIFFERENCED series.  DO NOT use "
+                    "for skew/kurtosis AS A SERIES over time "
+                    "(rolling_statistic — note its kurtosis is "
+                    "EXCESS, normal == 0, while this test's lineage "
+                    "records RAW, normal == 3), for serial dependence "
+                    "(ljung_box), or for a time-varying read (one "
+                    "FULL-SAMPLE number)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "ScalarMetric",
+            (
+                "The Jarque-Bera statistic in RATIO units (larger = "
+                "stronger evidence against normality; metric_key "
+                "normality_test__<key>).  Lineage carries p_value, "
+                "skewness, kurtosis_raw (normal == 3) and the "
+                "NaN-drop count.  A terminal answer artifact for 'is "
+                "it normal / fat-tailed' asks.  Raises "
+                "NormalityTestError on < 3 finite rows, zero "
+                "variance, or a non-finite statistic."
             ),
         ),
     ),

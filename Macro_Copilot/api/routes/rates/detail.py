@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, timedelta
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -183,6 +183,15 @@ from rates_agent.inflation_indexed_bonds.tools.cross_country_real_yield_spread_s
     CrossCountryRealYieldSpreadSimpleInput,
     CrossCountryRealYieldSpreadSimpleOutput,
     calculate_cross_country_real_yield_spread_simple,
+)
+# Standalone-bridge endpoint for the inflation-linker PANEL-BUILDER primitive.
+# Wire = panel CONTRACT (dims / vendor_tickers / units / methodology_card);
+# the typed Panel artifact is dropped in-route, replicating the MCP layer's
+# {k: v for k, v in result.items() if k != "panel"} drop.
+from rates_agent.inflation_indexed_bonds.tools.build_linker_panel import (
+    CONFIG_PATH as BUILD_LINKER_PANEL_CONFIG_PATH,
+    BuildLinkerPanelInput,
+    build_linker_panel,
 )
 # Standalone-bridge endpoint for the same-tenor cross-market ZCIS spread
 # primitive (e.g. USD_ZCIS 5Y minus EUR_ZCIS 5Y).  First inflation_swaps tool
@@ -500,6 +509,23 @@ from rates_agent.policy_futures.tools.futures_price_level import (
     FuturesPriceLevelOutput,
     calculate_futures_price_level,
 )
+# Standalone-bridge endpoint for the policy_futures whole-strip snapshot
+# primitive — one aligned row per configured strip position on ONE
+# curve_family (ADR 0013; intersection-of-trading-days anchor).
+from rates_agent.policy_futures.tools.futures_strip_snapshot import (
+    CONFIG_PATH as POLICY_FUTURES_STRIP_SNAPSHOT_CONFIG_PATH,
+    FuturesStripSnapshotInput,
+    FuturesStripSnapshotOutput,
+    calculate_futures_strip_snapshot,
+)
+# Standalone-bridge endpoint for the policy_futures strip-position volume +
+# open-interest snapshot — the positioning / flow read (ADR 0013).
+from rates_agent.policy_futures.tools.volume_open_interest_snapshot import (
+    CONFIG_PATH as POLICY_FUTURES_VOI_SNAPSHOT_CONFIG_PATH,
+    VolumeOpenInterestSnapshotInput,
+    VolumeOpenInterestSnapshotOutput,
+    calculate_volume_open_interest_snapshot,
+)
 # Catalog tool-23 — bond_futures front-month rolling-generic price level
 # (TY1 / UXY1 / RX1 / G1 / JB1 / OAT1 / IK1 / KOA1 / CN1 / YM1 / XM1 / ...).
 # Same MCP function NAME as the policy_futures sibling
@@ -579,6 +605,17 @@ from rates_agent.policy_futures.tools.futures_pack_average_simple import (
     FuturesPackAverageSimpleOutput,
     calculate_futures_pack_average_simple,
 )
+# Standalone-bridge endpoint for the policy-futures strip PANEL-BUILDER
+# primitive.  Wire = panel CONTRACT (dims / column_keys 'FAMILY|N' /
+# strip_positions / units / methodology_card incl. inverse-pricing +
+# rolling-generic + cross-region caveats); the typed Panel artifact is
+# dropped in-route, replicating the MCP layer's
+# {k: v for k, v in result.items() if k != "panel"} drop.
+from rates_agent.policy_futures.tools.build_policy_futures_strip_panel import (
+    CONFIG_PATH as BUILD_POLICY_FUTURES_STRIP_PANEL_CONFIG_PATH,
+    BuildPolicyFuturesStripPanelInput,
+    build_policy_futures_strip_panel,
+)
 from rates_agent.sovereign_bonds.tools.otr_ofr_spread import (
     CONFIG_PATH as OTR_OFR_SPREAD_CONFIG_PATH,
     OtrOfrSpreadInput,
@@ -627,6 +664,15 @@ from rates_agent.inflation_swaps.tools.cpi_surprise import (
     CpiSurpriseOutput,
     calculate_cpi_surprise,
 )
+# Standalone-bridge endpoint for the ZCIS PANEL-BUILDER primitive.  Wire =
+# panel CONTRACT (dims / tenors / vendor_tickers / units / methodology_card);
+# the typed Panel artifact is dropped in-route, replicating the MCP layer's
+# {k: v for k, v in result.items() if k != "panel"} drop.
+from rates_agent.inflation_swaps.tools.build_zcis_panel import (
+    CONFIG_PATH as BUILD_ZCIS_PANEL_CONFIG_PATH,
+    BuildZcisPanelInput,
+    build_zcis_panel,
+)
 from rates_agent.sovereign_bonds.tools.nfp_surprise import (
     CONFIG_PATH as NFP_SURPRISE_CONFIG_PATH,
     NfpSurpriseInput,
@@ -644,6 +690,39 @@ from rates_agent.bond_futures.tools.futures_volume_oi import (
     FuturesVolumeOIInput,
     FuturesVolumeOIOutput,
     calculate_futures_volume_oi,
+)
+from rates_agent.sovereign_bonds.tools.get_otr_history import (
+    CONFIG_PATH as GET_OTR_HISTORY_CONFIG_PATH,
+    OtrHistoryInput,
+    OtrHistoryOutput,
+    get_otr_history,
+)
+# Standalone-bridge endpoint for the sovereign yield PANEL-BUILDER primitive.
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` every new tool
+# ships its OWN typed-detail endpoint consumed by both the extended and
+# compact Build views (rendering_density dual-view).  The wire carries the
+# panel CONTRACT (dims / columns / date range / units / disclosures); the
+# typed Panel artifact is dropped in-route, replicating the MCP layer's drop
+# ({k: v for k, v in result.items() if k != "panel"} — see
+# rates_agent/inflation_indexed_bonds/mcp_server.py).
+from rates_agent.sovereign_bonds.tools.sovereign_yield_panel import (
+    CONFIG_PATH as SOVEREIGN_YIELD_PANEL_CONFIG_PATH,
+    SovereignYieldPanelInput,
+    SovereignYieldPanelLegSpec,
+    build_sovereign_yield_panel,
+)
+# Standalone-bridge endpoint for the universe-wide OIS rate-extremes scanner.
+# SCANNER-shape primitive under the dual-view contract — the wire returns a
+# ranked LIST of (curve_family, tenor) extremes ordered by |z| of the
+# 252d-rolling PX_LAST par-swap-rate z-score rather than a single time
+# series, so this endpoint feeds the per-tool BuildCompact (top-N table) +
+# BuildExtended (universe scan + ranked detail) per the rendering-density
+# dual-view contract + the standalone bridge (methodology_exposure.md §5).
+from rates_agent.ois.tools.scan_ois_extremes import (
+    CONFIG_PATH as SCAN_OIS_EXTREMES_CONFIG_PATH,
+    OISScannerInput,
+    OISScannerOutput,
+    scan_ois_extremes,
 )
 from shared.schemas.time_series import PairSpec, SeriesSpec
 from shared.config import load_tool_config
@@ -3694,6 +3773,174 @@ def policy_futures_price_detail(
 
 
 # ----------------------------------------------------------------------------
+# /detail/policy-futures-strip-snapshot — policy_futures whole-strip snapshot
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# ``policy_futures_get_futures_strip_snapshot_tool`` primitive ships its OWN
+# typed-detail endpoint.  Keyed by ``curve_family`` only per ADR 0013 — the
+# YAML owns the strip-positions list (V1: 1..8).  Conventions are YAML-locked
+# in V1; only ``curve_family`` / ``as_of_date`` plus the two Bloomberg
+# field-name overrides are exposed (mirrors the MCP wrapper's input surface).
+@router.get(
+    "/detail/policy-futures-strip-snapshot",
+    response_model=FuturesStripSnapshotOutput,
+    summary="Policy Futures Whole-Strip Snapshot Detail (standalone bridge)",
+)
+def policy_futures_strip_snapshot_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family: str = Query(
+        ...,
+        description=(
+            "Policy-futures curve family — 'SOFR_FUT' (US RFR), "
+            "'EUR_SHORT_RATE_FUT' (Euribor IBOR), 'SONIA_FUT' (UK RFR)."
+        ),
+    ),
+    as_of_date: Optional[date] = Query(
+        default=None,
+        description=(
+            "ISO-format date (YYYY-MM-DD) anchoring the snapshot.  Omit "
+            "to anchor at the universe's last observed trade_date where "
+            "ALL configured strip positions have a value (post-fetch "
+            "data-max anchor).  A date BEYOND the universe's last "
+            "observed trade_date returns the documented controlled-error "
+            "envelope rather than silently re-labelling an unbounded read."
+        ),
+    ),
+    last_price_field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg price-field mnemonic.  Omit (None) to use the "
+            "tool's bundled ``default_price_field`` convention from "
+            "futures_strip_snapshot/config.yaml (currently 'PX_LAST')."
+        ),
+    ),
+    open_interest_field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg open-interest-field mnemonic.  Omit (None) to use "
+            "the tool's bundled ``default_open_interest_field`` convention "
+            "from futures_strip_snapshot/config.yaml (currently 'OPEN_INT')."
+        ),
+    ),
+):
+    """Same payload + sentinel semantics as the MCP wrapper.  Consumed by
+    ``surfaces/BuildExtended.tsx`` AND ``surfaces/BuildCompact.tsx`` per
+    the rendering-density dual-view contract.  None-sentinels on the two
+    field names / ``as_of_date`` fall through to the YAML default /
+    data-max anchor via compute() — same shadowing-fix pattern as
+    policy_futures_price_detail.
+    """
+    try:
+        params = FuturesStripSnapshotInput(
+            curve_family=curve_family,
+            as_of_date=as_of_date,
+            last_price_field_name=last_price_field_name,
+            open_interest_field_name=open_interest_field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        strip_config = load_tool_config(POLICY_FUTURES_STRIP_SNAPSHOT_CONFIG_PATH)
+        result = calculate_futures_strip_snapshot(
+            engine=engine, params=params, config=strip_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/policy-futures-strip-snapshot: tool failed for %s",
+            curve_family,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Policy futures strip snapshot for {curve_family}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/policy-futures-voi-snapshot — policy_futures volume + OI snapshot
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# ``policy_futures_get_volume_open_interest_snapshot_tool`` primitive ships
+# its OWN typed-detail endpoint.  Keyed by ``(curve_family, strip_position)``
+# per ADR 0013.  Conventions are YAML-locked in V1; only the structural keys
+# plus ``lookback_days`` / ``as_of_date`` are exposed.  NO ``field_name``
+# param by design — the volume / OI mnemonics are YAML-owned (PR9; mirrors
+# the MCP wrapper's input surface).
+@router.get(
+    "/detail/policy-futures-voi-snapshot",
+    response_model=VolumeOpenInterestSnapshotOutput,
+    summary="Policy Futures Volume / Open-Interest Snapshot Detail (standalone bridge)",
+)
+def policy_futures_voi_snapshot_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family: str = Query(
+        ...,
+        description=(
+            "Policy-futures curve family — 'SOFR_FUT' (US RFR), "
+            "'EUR_SHORT_RATE_FUT' (Euribor IBOR), 'SONIA_FUT' (UK RFR)."
+        ),
+    ),
+    strip_position: int = Query(
+        ...,
+        ge=1,
+        le=12,
+        description=(
+            "1-based strip position. 1 = front contract; whites = 1-4, "
+            "reds = 5-8 in the V1 universe."
+        ),
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    as_of_date: Optional[date] = Query(
+        default=None,
+        description=(
+            "ISO-format date (YYYY-MM-DD) anchoring the snapshot.  Omit "
+            "to anchor at the universe's last observed trade_date for "
+            "the requested strip (post-fetch data-max anchor).  A date "
+            "BEYOND the universe's last observed trade_date returns the "
+            "documented controlled-error envelope rather than silently "
+            "re-labelling an unbounded read."
+        ),
+    ),
+):
+    """Same payload + sentinel semantics as the MCP wrapper.  Consumed by
+    ``surfaces/BuildExtended.tsx`` AND ``surfaces/BuildCompact.tsx`` per
+    the rendering-density dual-view contract.  The ``as_of_date`` None-
+    sentinel falls through to the data-max anchor via compute() — same
+    pattern as policy_futures_price_detail.
+    """
+    try:
+        params = VolumeOpenInterestSnapshotInput(
+            curve_family=curve_family,
+            strip_position=strip_position,
+            lookback_days=lookback_days,
+            as_of_date=as_of_date,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        voi_config = load_tool_config(POLICY_FUTURES_VOI_SNAPSHOT_CONFIG_PATH)
+        result = calculate_volume_open_interest_snapshot(
+            engine=engine, params=params, config=voi_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/policy-futures-voi-snapshot: tool failed for %s strip=%d",
+            curve_family, strip_position,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Policy futures volume/OI snapshot for {curve_family} strip={strip_position}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
 # /detail/policy-futures-butterfly  — policy_futures same-curve simple butterfly
 # ----------------------------------------------------------------------------
 # Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
@@ -5396,3 +5643,690 @@ def futures_volume_oi_detail(
         f"Volume/OI for {curve_family} {contract_code}",
     )
     return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/otr-history — sovereign cash-bond OTR transition-log bridge
+# ----------------------------------------------------------------------------
+# CATEGORICAL TIMELINE primitive under the standalone-bridge contract.  Wire
+# shape is an SCD2 window LIST (identity fields + effective ranges) plus the
+# current-OTR snapshot — NOT a numeric TimeSeries / Panel, which is exactly
+# why the tool sits outside the workflow registry (see schemas.py module
+# docstring).  This endpoint is the live Build read for the per-tool
+# BuildExtended (full SCD2 transitions table) + BuildCompact (current-OTR
+# identity + recent-transition rows) per the rendering-density dual-view
+# contract.  ``lookback_days`` is the single central methodology knob (PR8);
+# honest absence (P6) returns an empty transitions list + null snapshot
+# identity fields, NOT a 404.
+
+
+@router.get(
+    "/detail/otr-history",
+    response_model=OtrHistoryOutput,
+    summary="Sovereign OTR Transition History Detail (standalone bridge)",
+)
+def otr_history_detail(
+    engine: Engine = Depends(get_engine),
+    country: str = Query(
+        ...,
+        description=(
+            "Sovereign country code as stored in macro_data.otr_history.  "
+            "Convention: uppercase ISO-3166-alpha-2 — e.g. 'US', 'DE', "
+            "'GB', 'JP', 'FR', 'IT', 'ES', 'CA', 'AU'."
+        ),
+    ),
+    tenor: str = Query(
+        ...,
+        description=(
+            "Canonical slot tenor as stored in macro_data.otr_history.  "
+            "Convention: integer-Y matching sovereign_cash_bonds.yml — "
+            "'2Y', '3Y', '5Y', '7Y', '10Y', '20Y', '30Y'."
+        ),
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=3650),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the frontend
+    module's ``surfaces/BuildExtended.tsx`` AND ``surfaces/BuildCompact.tsx``
+    per the rendering-density dual-view contract.
+
+    No field_name / z-score inputs — this is a pure-INGEST identifier read
+    of macro_data.otr_history (ADR 0003 / 0007); the only exposed knob is
+    ``lookback_days`` (PR8).  Empty-window absence is a VALID 200 response
+    (honest absence per P6) — ``get_otr_history`` never returns an
+    ``{"error": ...}`` envelope, so ``_tool_result_or_raise`` passes it
+    through untouched.
+    """
+    try:
+        params = OtrHistoryInput(
+            country=country,
+            tenor=tenor,
+            lookback_days=lookback_days,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        otr_history_config = load_tool_config(GET_OTR_HISTORY_CONFIG_PATH)
+        result = get_otr_history(
+            engine=engine, params=params, config=otr_history_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/otr-history: tool failed for %s %s",
+            country, tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result, f"OTR history for {country} {tenor}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/ois-scanner  — universe-wide OIS rate-extremes scanner bridge
+# ----------------------------------------------------------------------------
+# SCANNER-shape primitive under the standalone-bridge contract.  Wire shape
+# is a ranked LIST (top-N rows by |z| of the 252d-rolling PX_LAST par-swap-
+# rate z-score across the OIS universe) rather than a single time series —
+# the BuildCompact view renders this as a top-N table (NOT a sparkline) and
+# the BuildExtended view renders the same payload as a universe scan + full
+# ranked detail.  Rolling-z-score conventions are YAML-locked on this
+# primitive (mirrors the sibling sovereign / ZCIS / linker / bond-futures
+# scanners); ``curve_families`` / ``top_n`` / ``min_abs_z_score`` /
+# ``field_name`` remain exposed.
+
+
+@router.get(
+    "/detail/ois-scanner",
+    response_model=OISScannerOutput,
+    summary="OIS Universe Extremes Scan (standalone bridge)",
+)
+def ois_scanner_detail(
+    engine: Engine = Depends(get_engine),
+    curve_families: Optional[str] = Query(
+        default=None,
+        description=(
+            "Comma-separated list of OIS curve families to scan (e.g. "
+            "'USD_SOFR_OIS,EUR_ESTR_OIS').  Omit (None) for every OIS "
+            "curve in the database."
+        ),
+    ),
+    top_n: Optional[int] = Query(
+        default=None,
+        ge=1,
+        le=50,
+        description=(
+            "Number of extreme stems to return.  Omit (None) to fall "
+            "through to the schema default (currently 10)."
+        ),
+    ),
+    min_abs_z_score: Optional[float] = Query(
+        default=None,
+        ge=0.0,
+        description=(
+            "Minimum absolute z-score threshold for inclusion.  Omit "
+            "(None) to fall through to the schema default (currently 1.5)."
+        ),
+    ),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg observation field to scan.  Omit (None) to fall "
+            "through to the schema default ('PX_LAST' — mid par swap "
+            "rate).  Other valid: 'PX_BID', 'PX_ASK'."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the frontend
+    module's ``surfaces/BuildExtended.tsx`` (universe scan + ranked detail)
+    AND ``surfaces/BuildCompact.tsx`` (top-N table) per the rendering-
+    density dual-view contract.
+
+    The rolling-z-score conventions are YAML-locked on this primitive —
+    only scope / threshold / field-name inputs are exposed at the API layer.
+    """
+    parsed_families: Optional[List[str]] = None
+    if curve_families and curve_families.strip():
+        parsed_families = [
+            cf.strip() for cf in curve_families.split(",") if cf.strip()
+        ]
+
+    # The Pydantic OISScannerInput has positive defaults (top_n=10,
+    # min_abs_z_score=1.5, field_name='PX_LAST') so None falls through
+    # cleanly via the optional construction below.
+    try:
+        input_kwargs: dict = {}
+        if parsed_families is not None:
+            input_kwargs["curve_families"] = parsed_families
+        if top_n is not None:
+            input_kwargs["top_n"] = top_n
+        if min_abs_z_score is not None:
+            input_kwargs["min_abs_z_score"] = min_abs_z_score
+        if field_name is not None:
+            input_kwargs["field_name"] = field_name
+        params = OISScannerInput(**input_kwargs)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        ois_scan_config = load_tool_config(SCAN_OIS_EXTREMES_CONFIG_PATH)
+        result = scan_ois_extremes(
+            engine=engine, params=params, config=ois_scan_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/ois-scanner: tool failed for curve_families=%s",
+            parsed_families,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"OIS universe scan ({', '.join(parsed_families) if parsed_families else 'full universe'})",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/sovereign-yield-panel — multi-leg sovereign yield Panel CONTRACT
+# ----------------------------------------------------------------------------
+# Panel-builder standalone bridge.  The backend Output carries a typed Panel
+# artifact (rows = trade_dates, columns = '<family>_<tenor>') that is
+# WORKFLOW-SIDE ONLY: compute() returns ``model_dump(mode="python")`` with the
+# Panel object intact, and the MCP layer drops the ``panel`` key before LLM
+# serialisation.  This route replicates that drop honestly — the response is
+# the panel's METADATA CONTRACT, not the cell data.  The response model is a
+# route-local mirror (FinancingRateDetailResponse precedent) because
+# ``Panel.payload`` is a pd.DataFrame (arbitrary_types_allowed) with no JSON
+# schema — using the backend Output as response_model would break OpenAPI
+# generation.
+#
+# Input flattening: the nested leg-spec list flattens to PAIRED repeated query
+# lists (leg_curve_families[i] ↔ leg_tenors[i]) with a single optional
+# ``field_name`` applied to all legs — the same paired-list convention as
+# /detail/rolling-regression's regressor specs.
+
+
+class SovereignYieldPanelDetailResponse(BaseModel):
+    """Wire mirror of ``SovereignYieldPanelOutput`` minus ``panel``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    as_of_start: str
+    as_of_end: str
+    columns: List[str]
+    n_observations: int
+    units_by_column: Dict[str, str]
+    methodology_disclosures: List[str] = Field(default_factory=list)
+
+
+@router.get(
+    "/detail/sovereign-yield-panel",
+    response_model=SovereignYieldPanelDetailResponse,
+    summary="Sovereign Yield Panel Contract Detail (workspace)",
+)
+def sovereign_yield_panel_detail(
+    engine: Engine = Depends(get_engine),
+    leg_curve_families: List[str] = Query(
+        ...,
+        description=(
+            "One entry per leg, paired index-wise with ``leg_tenors``.  "
+            "Repeat the param: ?leg_curve_families=UST&leg_curve_families=DE_BUND."
+        ),
+    ),
+    leg_tenors: List[str] = Query(
+        ...,
+        description=(
+            "One entry per leg, paired index-wise with ``leg_curve_families``."
+        ),
+    ),
+    start_date: date = Query(
+        ...,
+        description="Earliest trade_date to include (inclusive, YYYY-MM-DD).",
+    ),
+    end_date: Optional[date] = Query(
+        default=None,
+        description=(
+            "Latest trade_date to include (inclusive).  Omit → every "
+            "observation up to the latest in the DB."
+        ),
+    ),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic applied to ALL legs (the per-leg "
+            "override stays a builder/MCP affordance).  Omit to use the "
+            "tool's bundled default from sovereign_yield_panel/config.yaml "
+            "(currently 'YLD_YTM_MID')."
+        ),
+    ),
+    missing_data_policy: Optional[str] = Query(
+        default=None,
+        description=(
+            "Missing-data policy override.  Omit → YAML default.  Allowed: "
+            "['raise', 'forward_fill_only', 'drop_rows_any_missing']."
+        ),
+    ),
+):
+    """Flattening contract: ``leg_curve_families[i]`` pairs with
+    ``leg_tenors[i]``; a length mismatch is a 422.  The typed Panel
+    artifact is dropped from the response, mirroring the MCP layer."""
+    if len(leg_curve_families) != len(leg_tenors):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "leg_curve_families and leg_tenors must pair index-wise; "
+                f"got {len(leg_curve_families)} vs {len(leg_tenors)}."
+            ),
+        )
+    try:
+        params = SovereignYieldPanelInput(
+            legs=[
+                SovereignYieldPanelLegSpec(
+                    curve_family=cf, tenor=tn, field_name=field_name,
+                )
+                for cf, tn in zip(leg_curve_families, leg_tenors)
+            ],
+            start_date=start_date,
+            end_date=end_date,
+            missing_data_policy=missing_data_policy,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        syp_config = load_tool_config(SOVEREIGN_YIELD_PANEL_CONFIG_PATH)
+        result = build_sovereign_yield_panel(
+            engine=engine, params=params, config=syp_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/sovereign-yield-panel: tool failed for %d leg(s) start=%s",
+            len(leg_curve_families), start_date,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Sovereign yield panel ({len(leg_curve_families)} leg(s), "
+        f"start={start_date})",
+    )
+
+    # Replicate the MCP layer's Panel drop verbatim (the typed artifact is
+    # workflow-side; the wire is the contract).
+    return {k: v for k, v in result.items() if k != "panel"}
+
+
+# ----------------------------------------------------------------------------
+# /detail/linker-panel — inflation-linker real-yield Panel CONTRACT
+# ----------------------------------------------------------------------------
+# Panel-builder standalone bridge.  Response is the panel's METADATA CONTRACT
+# (the assembled matrix is a workflow-side artifact).  Route-local response
+# model per the FinancingRateDetailResponse precedent — Panel.payload is a
+# pd.DataFrame with no JSON schema, so the backend Output cannot be the
+# response_model.  The methodology_card flows through VERBATIM (P5 — the
+# security_name / index_family / market_structure /
+# cross_region_business_days caveats are the point of this tool).
+
+
+class LinkerPanelDetailResponse(BaseModel):
+    """Wire mirror of ``BuildLinkerPanelOutput`` minus ``panel``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    start_date: str
+    end_date: str
+    row_count: int
+    column_count: int
+    curve_families: List[str]
+    vendor_tickers: List[str]
+    units_by_column: Dict[str, str]
+    methodology_card: Dict[str, Any]
+
+
+@router.get(
+    "/detail/linker-panel",
+    response_model=LinkerPanelDetailResponse,
+    summary="Inflation-Linker Panel Contract Detail (workspace)",
+)
+def linker_panel_detail(
+    engine: Engine = Depends(get_engine),
+    start_date: date = Query(
+        ...,
+        description="Earliest trade_date to include (inclusive, YYYY-MM-DD).",
+    ),
+    end_date: Optional[date] = Query(
+        default=None,
+        description=(
+            "Latest trade_date to include (inclusive).  Omit → every "
+            "observation up to the latest in the DB."
+        ),
+    ),
+    curve_families: Optional[List[str]] = Query(
+        default=None,
+        description=(
+            "Linker families to scope the panel.  Repeat the param: "
+            "?curve_families=USD_TIPS&curve_families=GBP_LINKER.  Omit → "
+            "full universe (USD_TIPS, GBP_LINKER, EUR_FR_LINKER, CAD_RRB).  "
+            "Non-linker families are 422-refused by the closed Literal."
+        ),
+    ),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field for the linker real yield.  Omit to use the "
+            "tool's bundled default from build_linker_panel/config.yaml "
+            "(currently 'YLD_YTM_MID').  The Optional[str]=None passthrough "
+            "preserves the YAML default (no wrapper shadowing)."
+        ),
+    ),
+    calendar_policy: Optional[str] = Query(
+        default=None,
+        description=(
+            "Calendar policy override.  Omit → YAML default.  Allowed: "
+            "['business_days', 'instrument_native']."
+        ),
+    ),
+    missing_data_policy: Optional[str] = Query(
+        default=None,
+        description=(
+            "Missing-data policy override.  Omit → YAML default.  Allowed: "
+            "['raise', 'forward_fill_only', 'drop_rows_any_missing']."
+        ),
+    ),
+):
+    """Closed-enum knobs (curve_families / calendar_policy /
+    missing_data_policy) are validated by the backend Input's Literals —
+    invalid values are 422s.  The typed Panel artifact is dropped from the
+    response, mirroring the MCP layer."""
+    try:
+        params = BuildLinkerPanelInput(
+            start_date=start_date,
+            end_date=end_date,
+            curve_families=curve_families,  # None → full universe
+            field_name=field_name,
+            calendar_policy=calendar_policy,
+            missing_data_policy=missing_data_policy,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        blp_config = load_tool_config(BUILD_LINKER_PANEL_CONFIG_PATH)
+        result = build_linker_panel(
+            engine=engine, params=params, config=blp_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/linker-panel: tool failed for families=%s start=%s",
+            curve_families, start_date,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Linker panel (families={curve_families or 'ALL'}, "
+        f"start={start_date})",
+    )
+
+    # Replicate the MCP layer's Panel drop verbatim.
+    return {k: v for k, v in result.items() if k != "panel"}
+
+
+# ----------------------------------------------------------------------------
+# /detail/zcis-panel — zero-coupon inflation swap Panel CONTRACT
+# ----------------------------------------------------------------------------
+# Panel-builder standalone bridge.  Response is the panel's METADATA CONTRACT
+# (the assembled matrix is a workflow-side artifact).  Route-local response
+# model per the FinancingRateDetailResponse precedent — Panel.payload is a
+# pd.DataFrame with no JSON schema, so the backend Output cannot be the
+# response_model.  The methodology_card flows through VERBATIM (P5 — the
+# security_name / index_family caveats + per-family index_lag /
+# interpolation reference are the point of this tool).
+
+
+class ZcisPanelDetailResponse(BaseModel):
+    """Wire mirror of ``BuildZcisPanelOutput`` minus ``panel``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    start_date: str
+    end_date: str
+    row_count: int
+    column_count: int
+    curve_families: List[str]
+    tenors: List[str]
+    vendor_tickers: List[str]
+    units_by_column: Dict[str, str]
+    methodology_card: Dict[str, Any]
+
+
+@router.get(
+    "/detail/zcis-panel",
+    response_model=ZcisPanelDetailResponse,
+    summary="ZCIS Panel Contract Detail (workspace)",
+)
+def zcis_panel_detail(
+    engine: Engine = Depends(get_engine),
+    start_date: date = Query(
+        ...,
+        description="Earliest trade_date to include (inclusive, YYYY-MM-DD).",
+    ),
+    end_date: Optional[date] = Query(
+        default=None,
+        description=(
+            "Latest trade_date to include (inclusive).  Omit → every "
+            "observation up to the latest in the DB."
+        ),
+    ),
+    curve_families: Optional[List[str]] = Query(
+        default=None,
+        description=(
+            "ZCIS families to scope the panel.  Repeat the param: "
+            "?curve_families=USD_ZCIS&curve_families=EUR_ZCIS.  Omit → "
+            "full universe (USD_ZCIS, EUR_ZCIS, GBP_ZCIS).  Non-ZCIS "
+            "families are 422-refused by the closed Literal."
+        ),
+    ),
+    tenors: Optional[List[str]] = Query(
+        default=None,
+        description=(
+            "Tenor pillars to scope the panel (repeat the param).  Omit → "
+            "every tenor present for the resolved families.  Tenors absent "
+            "on a family are silently dropped; the wire echoes the "
+            "resolved set."
+        ),
+    ),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field for the ZCIS rate.  Omit to use the tool's "
+            "bundled default from build_zcis_panel/config.yaml (currently "
+            "'PX_MID').  The Optional[str]=None passthrough preserves the "
+            "YAML default (no wrapper shadowing)."
+        ),
+    ),
+    calendar_policy: Optional[str] = Query(
+        default=None,
+        description=(
+            "Calendar policy override.  Omit → YAML default.  Allowed: "
+            "['business_days', 'instrument_native']."
+        ),
+    ),
+    missing_data_policy: Optional[str] = Query(
+        default=None,
+        description=(
+            "Missing-data policy override.  Omit → YAML default.  Allowed: "
+            "['raise', 'forward_fill_only', 'drop_rows_any_missing']."
+        ),
+    ),
+):
+    """Closed-enum knobs are validated by the backend Input's Literals —
+    invalid values are 422s.  The typed Panel artifact is dropped from the
+    response, mirroring the MCP layer."""
+    try:
+        params = BuildZcisPanelInput(
+            start_date=start_date,
+            end_date=end_date,
+            curve_families=curve_families,  # None → full universe
+            tenors=tenors,                  # None → every available tenor
+            field_name=field_name,
+            calendar_policy=calendar_policy,
+            missing_data_policy=missing_data_policy,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        bzp_config = load_tool_config(BUILD_ZCIS_PANEL_CONFIG_PATH)
+        result = build_zcis_panel(
+            engine=engine, params=params, config=bzp_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/zcis-panel: tool failed for families=%s tenors=%s start=%s",
+            curve_families, tenors, start_date,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"ZCIS panel (families={curve_families or 'ALL'}, "
+        f"tenors={tenors or 'ALL'}, start={start_date})",
+    )
+
+    # Replicate the MCP layer's Panel drop verbatim.
+    return {k: v for k, v in result.items() if k != "panel"}
+
+
+# ----------------------------------------------------------------------------
+# /detail/policy-futures-strip-panel — STIR strip implied-rate Panel CONTRACT
+# ----------------------------------------------------------------------------
+# Panel-builder standalone bridge.  Response is the panel's METADATA CONTRACT
+# (the assembled matrix is a workflow-side artifact).  Route-local response
+# model per the FinancingRateDetailResponse precedent — Panel.payload is a
+# pd.DataFrame with no JSON schema, so the backend Output cannot be the
+# response_model.  The methodology_card flows through VERBATIM (P5 — the
+# inverse_pricing_handling / rolling_generic_strip_caveat /
+# cross_region_business_days_caveat + per-family regime/Buba disclosures are
+# the point of this tool).
+
+
+class PolicyFuturesStripPanelDetailResponse(BaseModel):
+    """Wire mirror of ``BuildPolicyFuturesStripPanelOutput`` minus ``panel``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    start_date: str
+    end_date: str
+    row_count: int
+    column_count: int
+    curve_families: List[str]
+    strip_positions: List[int]
+    column_keys: List[str]
+    units_by_column: Dict[str, str]
+    methodology_card: Dict[str, Any]
+
+
+@router.get(
+    "/detail/policy-futures-strip-panel",
+    response_model=PolicyFuturesStripPanelDetailResponse,
+    summary="Policy-Futures Strip Panel Contract Detail (workspace)",
+)
+def policy_futures_strip_panel_detail(
+    engine: Engine = Depends(get_engine),
+    start_date: date = Query(
+        ...,
+        description="Earliest trade_date to include (inclusive, YYYY-MM-DD).",
+    ),
+    end_date: Optional[date] = Query(
+        default=None,
+        description=(
+            "Latest trade_date to include (inclusive).  Omit → every "
+            "observation up to the latest in the DB."
+        ),
+    ),
+    curve_families: Optional[List[str]] = Query(
+        default=None,
+        description=(
+            "Policy-futures families to scope the panel.  Repeat the param: "
+            "?curve_families=SOFR_FUT&curve_families=SONIA_FUT.  Omit → "
+            "full universe (SOFR_FUT, SONIA_FUT, EUR_SHORT_RATE_FUT).  "
+            "Non-policy-futures families are 422-refused by the closed "
+            "Literal."
+        ),
+    ),
+    strip_positions: Optional[List[int]] = Query(
+        default=None,
+        description=(
+            "Strip positions 1..8 to scope the panel (repeat the param).  "
+            "Omit → the full strip.  Out-of-range integers are 422-refused "
+            "by the closed Literal."
+        ),
+    ),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field for the futures price series.  Omit to use "
+            "the tool's bundled default from "
+            "build_policy_futures_strip_panel/config.yaml (currently "
+            "'PX_LAST').  The Optional[str]=None passthrough preserves "
+            "the YAML default (no wrapper shadowing)."
+        ),
+    ),
+    calendar_policy: Optional[str] = Query(
+        default=None,
+        description=(
+            "Calendar policy override.  Omit → YAML default.  Allowed: "
+            "['business_days', 'instrument_native']."
+        ),
+    ),
+    missing_data_policy: Optional[str] = Query(
+        default=None,
+        description=(
+            "Missing-data policy override.  Omit → YAML default.  Allowed: "
+            "['raise', 'forward_fill_only', 'drop_rows_any_missing']."
+        ),
+    ),
+):
+    """Closed-enum knobs (curve_families / strip_positions /
+    calendar_policy / missing_data_policy) are validated by the backend
+    Input's Literals — invalid values are 422s.  The typed Panel artifact
+    is dropped from the response, mirroring the MCP layer."""
+    try:
+        params = BuildPolicyFuturesStripPanelInput(
+            start_date=start_date,
+            end_date=end_date,
+            curve_families=curve_families,    # None → full universe
+            strip_positions=strip_positions,  # None → full strip 1..8
+            field_name=field_name,
+            calendar_policy=calendar_policy,
+            missing_data_policy=missing_data_policy,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        bpfsp_config = load_tool_config(
+            BUILD_POLICY_FUTURES_STRIP_PANEL_CONFIG_PATH,
+        )
+        result = build_policy_futures_strip_panel(
+            engine=engine, params=params, config=bpfsp_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/policy-futures-strip-panel: tool failed for "
+            "families=%s positions=%s start=%s",
+            curve_families, strip_positions, start_date,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Policy-futures strip panel (families={curve_families or 'ALL'}, "
+        f"positions={strip_positions or 'ALL'}, start={start_date})",
+    )
+
+    # Replicate the MCP layer's Panel drop verbatim.
+    return {k: v for k, v in result.items() if k != "panel"}

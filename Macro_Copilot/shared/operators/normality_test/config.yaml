@@ -1,0 +1,73 @@
+operator:
+  name: normality_test
+  method_family: statistical_relationship
+  version: "1.0.0"
+  description: >-
+    Jarque-Bera normality test of one Series (statsmodels
+    jarque_bera), emitting the JB STATISTIC as a ScalarMetric in
+    RATIO units (larger = stronger evidence against normality;
+    asymptotically chi-squared with 2 df); the p-value, sample
+    skewness and RAW kurtosis (normal == 3 — named so it is never
+    confused with the Fisher excess form) ride in lineage.
+    Finance-blind. Full-sample descriptive test; moments are
+    order-insensitive so NaN rows are simply dropped.
+
+# normality_test deliberately has ZERO knobs in v1 (the A5 family
+# ruling).
+#
+# DESIGN LOCK (OPR7, lineage-implicit via the operator name):
+# Jarque-Bera is the single canonical test — moment-based,
+# asymptotically chi-squared(2).  Anderson-Darling / Shapiro-Wilk
+# answer the same question through different statistics with
+# different small-sample behaviour; they are declared planned
+# extensions, never silent alternates.
+defaults: {}
+
+methodology:
+  what_it_does: >-
+    Drops NaN rows (moments are ORDER-INSENSITIVE, so plain dropna is
+    exact — unlike the lag-based A5 siblings no interior-drop audit
+    is owed; n_dropped rides in lineage), then computes the
+    Jarque-Bera statistic JB = n/6 * (S^2 + (K-3)^2/4) from the
+    sample skewness S and RAW kurtosis K (statsmodels' convention:
+    normal == 3; the lineage field is named kurtosis_raw so it can
+    never be confused with rolling_statistic's Fisher EXCESS form
+    where normal == 0). Larger JB = stronger evidence against
+    normality (the p-value in lineage interprets it; chi-squared(2)
+    asymptotics are weak at small n — n_obs is disclosed alongside).
+    RATIO units — a test statistic is dimensionless. Refusals: fewer
+    than 3 finite observations (the third/fourth moments are
+    undefined), zero variance (standardised moments degenerate), a
+    non-finite statistic. test_scope='full_sample' rides in lineage —
+    this DESCRIBES the whole observed history; never feed it into
+    point-in-time compositions.
+  planned_extensions:
+    - "Anderson-Darling / Shapiro-Wilk variants: distinct statistics with better small-sample power — declared, never silent alternates."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Jarque-Bera normality test — ONE ScalarMetric (the JB statistic; larger = less normal; p-value, skewness and raw kurtosis in lineage).
+  when_to_use:
+    - "User asks whether a series' values are NORMALLY DISTRIBUTED / how heavy the tails are ('are the changes in X normal?', 'is X fat-tailed?') — typically on the DIFFERENCED series."
+    - "A distributional pre-check before analyses that assume normality."
+  when_not_to_use:
+    - "User wants the skewness/kurtosis VALUES over time — rolling_statistic(skew/kurtosis) emits them per date (note: its kurtosis is EXCESS, normal == 0; JB's lineage records RAW, normal == 3)."
+    - "User wants serial-dependence structure — ljung_box; unit-root status — stationarity_adf (different nulls)."
+    - "User wants a time-varying read — this is a FULL-SAMPLE descriptive test (one number for the whole history)."
+  upstream_requirements:
+    - "Input is ONE Series (any units), >= 3 finite observations, non-constant.  NaN rows are dropped (count in lineage)."
+  downstream_pattern:
+    - "Output is a ScalarMetric in RATIO units (the JB statistic; metric_key normality_test__<key>).  Terminal for 'is it normal' asks; lineage carries p_value, skewness and kurtosis_raw for interpretation."
+  knobs_quick_ref:
+    none: "Zero knobs in v1 — Jarque-Bera is the locked canonical test; Anderson-Darling/Shapiro-Wilk are planned extensions."
+  example_shapes:
+    - description: "Tail-heaviness check of a series' day-over-day changes."
+      shape: "[Series A] -> series_arithmetic(op=diff) -> normality_test -> ScalarMetric  [terminal]"
+  sibling_operators:
+    - rolling_statistic: "skew/kurtosis AS A SERIES over time (excess convention); normality_test is the one-number joint test."
+    - ljung_box: "Serial dependence (time structure); normality_test is the distribution-shape diagnostic."
+    - stationarity_adf: "Unit-root/persistence; a different null entirely."
+  intent_hints: [relationship]
