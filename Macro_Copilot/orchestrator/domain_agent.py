@@ -432,8 +432,17 @@ class DomainAgentSession:
         assert_request_for_this_domain(request, self.domain)
 
         # ---- Render user prompt ----
+        # Campaign FM-3: the Selector binds calendar-anchored spans
+        # ("year to date", "since the start of 2023") into
+        # ``lookback_days`` — arithmetic it cannot do without knowing
+        # the as-of date.  Passed per-call; the renderer keeps its
+        # deterministic ordering (the date line changes once a day,
+        # far beyond the prompt cache's 5-minute TTL).
+        from datetime import date as _date
+
         user_text = render_user_prompt(
             self.domain, request, self._tool_catalogue,
+            as_of_date=_date.today().isoformat(),
         )
 
         # ---- Invoke structured-output model (with timeout) ----

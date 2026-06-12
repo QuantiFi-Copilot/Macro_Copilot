@@ -78,6 +78,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import TYPE_CHECKING, Any, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -92,6 +93,13 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 logger = logging.getLogger(__name__)
+
+# Campaign FM-1 — unfilled-template detector.  Matches a square-bracket
+# span whose content contains a space or a pipe (template-ese like
+# "[value from the Series last observation]" or "[if |z| < 1: ...]")
+# — trader prose never legitimately carries those; single-token
+# brackets (e.g. "[sic]") deliberately do NOT match.
+_UNFILLED_PLACEHOLDER_RE = re.compile(r"\[[^\]\n]*[ |][^\]\n]*\]")
 
 
 # ============================================================================
@@ -639,13 +647,31 @@ class AnswerRenderer:
                 kind="failsafe",
             )
 
+        # Campaign FM-1 hard guard — the LLM has shipped literal
+        # unfilled templates to users ("**z-score [value from the
+        # Series last observation]** — [if |z| < 1: ...]").  Prose
+        # containing bracketed template spans is REPLACED with a
+        # deterministic grounded sentence quoting the executed summary
+        # verbatim — honest and number-bearing, never improvised.
+        answer_prose = parsed.answer_prose
+        if _UNFILLED_PLACEHOLDER_RE.search(answer_prose):
+            logger.warning(
+                "AnswerRenderer: prose contained unfilled template "
+                "placeholders; substituting the deterministic grounded "
+                "summary.  Draft was: %r",
+                answer_prose[:300],
+            )
+            answer_prose = (
+                f"Computed result: {executed_summary}."
+            )
+
         return RenderedAnswer(
             markdown=assemble_final_answer(
                 chain=intent_chain,
-                answer_prose=parsed.answer_prose,
+                answer_prose=answer_prose,
                 lineage_head_hash=lineage_head_hash,
             ),
-            answer_prose=parsed.answer_prose,
+            answer_prose=answer_prose,
             kind="answer",
         )
 

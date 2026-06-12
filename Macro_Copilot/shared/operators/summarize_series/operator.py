@@ -126,6 +126,12 @@ def summarize_series(
         step; the dispersion value, n_observations, and n_dropped
         are recorded in step.params for diagnostic recovery.
 
+        ``statistic='count'`` is special: it is well-defined on an
+        empty / all-NaN input and returns a legitimate ScalarMetric
+        of 0.0 (FM-6 — "how many matching days" must be able to
+        answer "0").  Every other statistic refuses on zero finite
+        observations.
+
     Migration note (was: 1-row sentinel-date Series)
     ------------------------------------------------
     Before the ScalarMetric closed-family type was wired end-to-end,
@@ -167,7 +173,15 @@ def summarize_series(
     cleaned = series.payload.dropna()
     n_used = int(len(cleaned))
     n_dropped = n_total - n_used
-    if n_used == 0:
+    # FM-6 count-of-zero: ``count`` is the ONE statistic that is
+    # well-defined on an empty / all-NaN input — "how many matching
+    # observations" legitimately answers 0 (e.g. an apply_mask
+    # subsample whose mask never fired).  It therefore bypasses the
+    # zero-finite-observations refusal below and flows through the
+    # normal path (_compute_statistic on the empty ``cleaned`` returns
+    # 0.0; dispersion on n<2 is recorded as None per OPR10).  Every
+    # other statistic keeps the refusal byte-identical.
+    if n_used == 0 and params.statistic != "count":
         raise SummarizeSeriesError(
             f"summarize_series: input has 0 finite observations "
             f"after dropna ({n_total} total, all NaN).  Cannot "

@@ -637,6 +637,7 @@ def render_user_prompt(
     domain: Domain,
     request: LeafRequest,
     catalogue: Sequence[ToolCatalogueEntry],
+    as_of_date: Optional[str] = None,
 ) -> str:
     """Render the user message the Selector LLM sees.
 
@@ -653,6 +654,11 @@ def render_user_prompt(
     """
     lines: List[str] = []
     lines.append(f"DOMAIN: {domain.value}")
+    if as_of_date is not None:
+        # Campaign FM-3 — calendar-anchor arithmetic ("since the start
+        # of 2023" -> lookback_days) is impossible without the as-of
+        # date.  Omitted when None (legacy callers / pinned tests).
+        lines.append(f"AS-OF DATE: {as_of_date}")
     lines.append("")
     lines.append("LEAF REQUEST:")
     lines.append(

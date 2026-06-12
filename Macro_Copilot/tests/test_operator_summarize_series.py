@@ -139,6 +139,41 @@ class TestStatisticComputation:
         # count is the n_used after dropna.
         assert out.value == 3.0
 
+    def test_count_on_all_nan_is_zero(self):
+        """FM-6 count-of-zero: an all-NaN input is a legitimate count
+        of 0 — the ONE statistic that bypasses the
+        zero-finite-observations refusal."""
+        s = _make_series(
+            series_key="x",
+            values=[math.nan, math.nan, math.nan],
+        )
+        out = summarize_series(
+            s, params=SummarizeSeriesParams(statistic="count"),
+        )
+        assert isinstance(out, ScalarMetric)
+        assert out.metric_key == "count"
+        assert out.value == 0.0
+        assert out.units == s.units
+        # Normal lineage discipline — same fields as any other run.
+        head = out.lineage.steps[-1]
+        assert head.params["central_value"] == 0.0
+        assert head.params["n_observations"] == 0
+        assert head.params["n_dropped"] == 3
+        assert head.params["dispersion_value"] is None
+
+    def test_count_on_empty_payload_is_zero(self):
+        """FM-6: count on a typed EMPTY Series (the apply_mask
+        zero-match output shape) returns 0.0."""
+        s = _make_series(series_key="x", values=[])
+        assert len(s.payload) == 0
+        out = summarize_series(
+            s, params=SummarizeSeriesParams(statistic="count"),
+        )
+        assert out.value == 0.0
+        head = out.lineage.steps[-1]
+        assert head.params["n_observations"] == 0
+        assert head.params["n_dropped"] == 0
+
     def test_last_returns_latest_finite_value(self):
         """statistic='last' = the 'current value' of the series — the
         latest finite observation (NaN tail dropped)."""
@@ -215,6 +250,21 @@ class TestRefusals:
         )
         with pytest.raises(SummarizeSeriesError, match="0 finite"):
             summarize_series(s)
+
+    def test_non_count_statistics_on_all_nan_still_raise(self):
+        """FM-6 regression guard: the count-of-zero special case must
+        NOT relax the zero-finite-observations refusal for any other
+        statistic."""
+        s = _make_series(
+            series_key="x",
+            values=[math.nan, math.nan, math.nan],
+        )
+        for stat in ("mean", "median", "std", "sum", "last", "first",
+                     "quantile"):
+            with pytest.raises(SummarizeSeriesError, match="0 finite"):
+                summarize_series(
+                    s, params=SummarizeSeriesParams(statistic=stat),
+                )
 
     def test_std_on_single_observation_raises(self):
         s = _make_series(series_key="x", values=[5.0])

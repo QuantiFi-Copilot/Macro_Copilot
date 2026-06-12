@@ -95,7 +95,12 @@ methodology:
                            series.payload.index == mask.mask.index.
 
     Preserve-index detail:
-      - false : output payload is the True-cell subset.
+      - false : output payload is the True-cell subset.  A mask that
+                fired on ZERO dates yields a typed EMPTY Series
+                (same series_key/units/frequency, empty payload,
+                n_true=0 in lineage) — "no day matched" is a
+                legitimate outcome, not an error; downstream
+                summarize_series(count) yields 0 (FM-6).
       - true  : output payload retains the (intersected) full index
                 with mask=False cells set to NaN.
 
@@ -109,7 +114,10 @@ methodology:
   planned_extensions:
     - "categorical-mask support (when a CategoricalMask artifact lands)"
     - "negation knob (apply_mask with rule=invert returning the complement)"
-    - "fail-fast empty-output refusal (raise when zero True dates)"
+    # The previously planned "fail-fast empty-output refusal" was
+    # REJECTED (FM-6): raising on zero True dates made the true
+    # answer "0 matching days" inexpressible.  Zero-match now returns
+    # a typed empty Series — see what_it_does above.
 
 # ============================================================================
 # CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
@@ -130,6 +138,7 @@ card:
     - "The Series and EventSet must declare the same frequency tag (strict by default)."
   downstream_pattern:
     - "Output is a Series (sparse by default — only the True dates).  Common downstream: summarize_series (per-regime central tendency), or any further single-series transform."
+    - "A mask that fires on ZERO dates yields an EMPTY Series — for 'how many days did X happen' wire summarize_series(statistic='count') downstream; it answers 0 honestly."
   knobs_quick_ref:
     index_policy: "intersect (default — works across slightly different calendars) | strict_match (requires identical index)."
     preserve_full_index: "false (default — sparse output) | true (keep full index with NaN at False cells; for downstream alignment)."

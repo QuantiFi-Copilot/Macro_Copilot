@@ -194,9 +194,18 @@ honest minimal set.
   - ONE number → ``["scalar"]``: "the average / current / median / std of \
 X", "how correlated are X and Y", "is X cointegrated with Y", "the (single) \
 beta of X on Y".
-  - One value PER DATE → ``["series"]``: "show me X over time", "the \
-z-score of X over its history", "rolling correlation / rolling beta of X \
-and Y", "plot X".
+  - One value PER DATE → ``["series"]``: "show me X over time", "plot \
+the z-score of X over its history", "rolling correlation / rolling beta of X \
+and Y", "plot X", and LEAD-LAG PROFILE questions ("does X lead Y?", "check \
+the lead-lag relationship") — the answer is the cross-correlation BY LAG, one \
+value per lag, NOT one number; vetoing the Series terminal forces a wrong \
+substitute analysis.
+  - CURRENT-STATE transform reads → include ``scalar``: "where does X (or \
+its N-day change) SIT on its z-score / percentile", "what's the z-score of X \
+today / now / currently" — the desk wants ONE number read off the transform; \
+declare ``["scalar"]`` (or ``["scalar","series"]`` when the phrasing also \
+suggests a chart).  Declaring bare ``["series"]`` here lets the answer end \
+without any number.
   - Ambiguous → list BOTH (e.g. ``["scalar","series"]``).  Genuinely \
 open-ended or unsure → ``["any"]`` (never blocks).
   - Keep it CONSISTENT with intent_tag: ``lookup`` → ["scalar"]; \
@@ -265,6 +274,25 @@ self-contained model / scanner, OR several things side by side — → \
     - COMPUTING something on / across the fetched data (a summary, a \
 transform, a correlation, a regression, a cointegration test, an \
 event-conditioned aggregate, a multi-leg composite) → ``open_dag``.
+
+  STANDARD-METRICS CARVE-OUT (the typed tool already shows these): every \
+named-structure / level primitive (a yield LEVEL, curve SPREAD, BUTTERFLY, \
+CROSS-MARKET spread, SWAP spread, BREAKEVEN, REAL-YIELD, futures PRICE / \
+open-interest tool) returns — in the SAME one-click tool — its CURRENT value \
+PLUS the standard context block: the 1-day / 5-day / 1-month CHANGES, the \
+252-day (1-year) Z-SCORE, and the 252-day PERCENTILE.  A prompt that asks for \
+a named structure's current value and/or ANY of those standard context stats \
+— "where is the 2s5s10s fly today and what's its 1-year z-score?", "what is \
+the BTP-Bund 10Y spread today, how did it move overnight, and where does the \
+5-day change sit on its 252-day z-score?" — is ``direct_fetch``: the tool's \
+typed view displays EVERY facet at once, INCLUDING multi-part asks that mix \
+several standard facets.  That z-score is NOT an operator computation — it \
+ships inside the primitive.  Promote to ``open_dag`` ONLY when the prompt \
+demands a NON-STANDARD window (z-score over 3 years, percentile since 2020), \
+a period SUMMARY statistic (average / median / std / count over a window), or \
+a transform of a DERIVED series the tool does not return.  Test: "would the \
+desk's one-click tool card already display every number asked for?"  If yes \
+→ ``direct_fetch``.
 
   BIAS TOWARD ``open_dag`` WHEN UNSURE — it is the more reliable, verified \
 lane.  Pick ``direct_fetch`` for a MULTI-instrument prompt ONLY when it is \
@@ -626,6 +654,29 @@ extraction is already declared as a selectable output_field, so no \
 operator chain is needed.
 
 A refusal is honest evidence.  A nearest-binding is silent harm.
+
+WINDOW & DATE-ANCHOR BINDING (lookback_days discipline)
+
+``lookback_days`` counts CALENDAR days back from the AS-OF DATE shown \
+at the top of this message.  Two regimes:
+
+  - RELATIVE spans ("last 2 years", "past 6 months", "over 1y") use \
+the ordinary conversions: 1m=30, 3m=90, 6m=180, 1y=365, 2y=730, \
+5y=1825 — plus a warmup buffer when the nl_intent mentions a rolling \
+window downstream (fetch MORE than the window).
+  - CALENDAR-ANCHORED spans ("year to date", "since the start of \
+2023", "since 2020", "from March 2024") MUST be computed as the day \
+count between the anchor date and the AS-OF DATE (plus any warmup \
+buffer).  NEVER substitute a stock 365/730/1825 for an anchored \
+span: as of 2026-06-12, "since the start of 2023" is ~1259 days — \
+binding 730 fetches 2024-onward data and silently answers a \
+different question.  Do the subtraction explicitly.
+
+OPTIONAL PARAMS — OMIT, NEVER EMPTY-STRING
+
+When you don't need an optional param (e.g. ``field_name``), OMIT \
+the key entirely.  Passing ``""`` shadows the tool's YAML default \
+and breaks the fetch ('' is not a valid field mnemonic).
 
 CLOSED-SUBSTRATE FIELDS YOU DO NOT POPULATE
 
@@ -1554,6 +1605,24 @@ EQUIVALENT answers to the same prompt.
   - This rule NEVER excuses identity mismatches (currency / \
 curve-family / tenor) — those stay hard REFUSE signals.
 
+EQUIVALENT-CHAIN IDENTITIES (do not refuse correct algebra)
+
+  - TELESCOPING: diff(1) -> cumulative(sum) -> last-value summarize \
+IS last - first over the window — exactly, including when the series \
+has gaps (every intermediate term cancels; missing dates drop out of \
+both forms identically).  Treat that chain and a direct \
+"total/cumulative change over the period" as the SAME answer.  Do \
+not refuse it on data-gap grounds.
+  - SAMPLE WINDOW IS NOT ROLLING: "the beta / correlation / \
+covariance over the past year" sets the SAMPLE WINDOW of ONE \
+full-sample statistic (a ScalarMetric).  It does NOT request a \
+rolling, time-varying output unless the prompt says "rolling", \
+"over time", "evolution", or asks for the statistic's own history.  \
+The catalogue is explicit: ``beta`` emits ONE number; \
+``rolling_regression`` is the time-varying path.  Refusing a \
+correctly-wired full-sample beta because the phrase "over the past \
+year" could be misread as rolling is a wrong refusal.
+
 DISPERSION CONVENTION (one ScalarMetric, two numbers)
 
 The summarize_series operator carries an optional ``dispersion`` \
@@ -1802,6 +1871,34 @@ leave it out of your prose; describe what the summary does contain \
 and let the widget carry the rest.  Do not narrate the widget's \
 existence either — no "see the chart", no "the widget shows"; just \
 present the numbers you have.
+
+7. GROUND EVERY NUMBER; STAY INSIDE THE FETCHED WINDOW.
+   - Quote ONLY numbers that appear in the EXECUTED RESULT SUMMARY.  \
+For Series terminals the summary carries the latest observation \
+explicitly ("last=<value> on <date>") and the fetched span \
+("span=<first>→<last>").  Use them.  If the summary carries NO \
+number (empty / all-NaN series), say the computation returned no \
+observations — do NOT improvise a level, a z-score, or "trading at \
+its mean".
+   - Your market narration is BOUNDED by the fetched span.  A window \
+that starts in mid-2023 supports no claims about 2021-2022 — do not \
+recount cycle history from outside the data you were handed.
+   - NEVER emit bracketed template placeholders ("[value from ...]", \
+"[if |z| < 1: ...]").  If you are tempted to write one, you are \
+missing the number — re-read the executed summary; if it truly \
+isn't there, write the no-number sentence above instead.  (A \
+deterministic post-check rejects placeholder prose outright.)
+
+8. TEST-STATISTIC IDENTITY (diagnostic operators).
+   - granger_causality / stationarity_adf / ljung_box / \
+normality_test / cointegration emit their TEST STATISTIC as the \
+ScalarMetric value — an F, ADF-t, Q, or JB statistic.  It is NEVER \
+a probability.  When the executed summary carries "p_value=...", \
+quote both, correctly labelled: "F = 0.93 (p ≈ 0.46)".  Without a \
+p_value in the summary, report the statistic by its NAME and say \
+the p-value rides the lineage — do not invent significance \
+thresholds ("above the 1.0 neutral threshold" is not a valid F \
+reading) and do not present the statistic as a percent chance.
 
 OUTPUT FORMAT
 

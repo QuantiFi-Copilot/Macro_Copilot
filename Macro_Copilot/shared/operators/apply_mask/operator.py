@@ -15,6 +15,10 @@ dates."  The semantic distinction lives in lineage (the
 ``threshold_events`` step's params record the rule that produced
 the mask).
 
+A mask that selects ZERO dates returns a typed EMPTY Series (FM-6) —
+"no day matched" is a legitimate answer, not an error; downstream
+``summarize_series(count)`` turns it into the honest scalar 0.
+
 Lineage contract
 ----------------
 The output ``Series.lineage`` is composed by appending an
@@ -82,6 +86,13 @@ def apply_mask(
         ``preserve_full_index`` policy.  Lineage extends the input
         series's chain with this operator step; the mask's lineage
         is captured as an ``auxiliary_lineage``.
+
+        Zero-match contract (FM-6): when the mask selects ZERO dates
+        (all-False mask under ``preserve_full_index=false``), the
+        output is a typed EMPTY Series — same series_key / units /
+        frequency / missingness, empty payload, ``n_true=0`` recorded
+        in the lineage step.  This keeps "0 matching days"
+        expressible: downstream ``summarize_series(count)`` yields 0.
     """
     if config is None:
         config = load_operator_config(_CONFIG_PATH)
@@ -190,16 +201,19 @@ def apply_mask(
         # Sparse output: only mask=True dates survive.
         new_payload = series_aligned[mask_aligned]
 
-    # The Series wrapper requires at least one row + a DatetimeIndex.
-    if len(new_payload) == 0:
-        raise ApplyMaskError(
-            f"apply_mask: after applying the mask "
-            f"({int(mask_aligned.sum())} True / {len(mask_aligned)} "
-            "dates) and the preserve_full_index="
-            f"{params.preserve_full_index} policy, the output "
-            "payload is empty.  Either widen the mask, change the "
-            "index_policy, or pass preserve_full_index=true."
-        )
+    # FM-6 count-of-zero: a mask that fired on ZERO dates is a
+    # legitimate, informative outcome — "no day matched the
+    # condition" — so the operator returns a typed EMPTY Series
+    # (same series_key / units / frequency / missingness, empty
+    # payload) instead of raising.  Downstream
+    # ``summarize_series(statistic='count')`` then yields the honest
+    # answer 0; other downstream operators hit their own typed
+    # empty-input refusals.  The Series wrapper accepts an empty
+    # payload (the DatetimeIndex / numeric-dtype invariants hold
+    # trivially); the realized cardinality (n_true=0) is recorded in
+    # the lineage step below.  (Pre-FM-6 behavior — raising
+    # ApplyMaskError "output payload is empty" — made the true
+    # answer "0 matching days" inexpressible; see campaign run b04.)
 
     # Preserve the input series's series_key (the data identity is
     # unchanged — we just subsampled).

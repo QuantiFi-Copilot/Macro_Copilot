@@ -32,8 +32,9 @@ Design contract
 from __future__ import annotations
 
 from graphlib import TopologicalSorter
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Type
 
+from pydantic import BaseModel
 from sqlalchemy.engine import Engine
 
 from shared.artifacts.adapters.from_time_series import (
@@ -233,6 +234,43 @@ def execute_workflow(
 # ============================================================================
 
 
+def _normalise_primitive_params(
+    raw_params: Dict[str, Any],
+    input_class: Type[BaseModel],
+) -> Dict[str, Any]:
+    """Drop empty-string sentinel values so the tool's own defaults apply.
+
+    FM-7 (campaign run b02): the L2 selector sometimes binds the
+    wire-level empty-string sentinel (``field_name=''``) on a leaf
+    param.  ``''`` is never a meaningful value in the tool family —
+    every rates tool schema documents it as the MCP wire sentinel that
+    wrappers MUST translate to ``None`` so the YAML default applies
+    (see ``rates_agent/sovereign_bonds/tools/yield_levels/schemas.py``
+    field_name docstring and the canonical wrapper-shadowing fix in
+    commit b2605ee).  Passing ``''`` through shadows defaults like
+    ``YLD_YTM_MID`` and the tool fails with a spurious "no data".
+
+    Contract: for every param whose value is exactly the empty string
+    and whose Pydantic field on ``input_class`` is NOT required (i.e.
+    it is Optional and/or carries a default), the key is dropped so
+    the field's own default applies.  Required fields keep ``''`` and
+    surface through normal Pydantic validation — the executor never
+    invents a value for a field the caller must supply.  Fields whose
+    declared default is itself ``''`` are unaffected (dropping the key
+    re-applies the identical default).
+    """
+    cleaned: Dict[str, Any] = {}
+    for key, value in raw_params.items():
+        if isinstance(value, str) and value == "":
+            field = input_class.model_fields.get(key)
+            if field is not None and not field.is_required():
+                # Empty-string sentinel on a defaulted field — drop it
+                # so the tool's YAML/schema default applies.
+                continue
+        cleaned[key] = value
+    return cleaned
+
+
 def _execute_primitive_node(
     node: PrimitiveNode,
     *,
@@ -246,8 +284,12 @@ def _execute_primitive_node(
 
     # Construct the primitive's *Input from the node's params.
     # Pydantic validation surfaces here with a clear error
-    # naming the offending field.
-    params = spec.input_class(**node.params)
+    # naming the offending field.  Empty-string sentinels on
+    # defaulted fields are dropped first (FM-7) — see
+    # ``_normalise_primitive_params``.
+    params = spec.input_class(
+        **_normalise_primitive_params(node.params, spec.input_class)
+    )
 
     # Load the primitive's bundled config (process-cached).
     config = load_tool_config(spec.config_path)

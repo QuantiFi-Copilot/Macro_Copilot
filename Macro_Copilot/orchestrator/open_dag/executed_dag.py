@@ -67,6 +67,34 @@ from shared.workflow.result import WorkflowResult
 # ============================================================================
 
 
+def _p_value_from_lineage(lineage: "Lineage") -> Optional[float]:
+    """Read a diagnostic operator's recorded p-value from the head
+    lineage step, if any.
+
+    Campaign FM-2 — granger_causality / stationarity_adf / ljung_box /
+    normality_test / cointegration emit a TEST STATISTIC as the
+    ScalarMetric value and record ``p_value`` in their OperatorStep
+    params.  Mirrors ``companion_dispersion_from_lineage``'s
+    operator-generic read: any head step that recorded a finite
+    ``p_value`` param surfaces it; everything else returns None.
+    """
+    try:
+        steps = getattr(lineage, "steps", None) or ()
+        if not steps:
+            return None
+        head = steps[-1]
+        params = getattr(head, "params", None) or {}
+        raw = params.get("p_value")
+        if raw is None:
+            return None
+        value = float(raw)
+        if value != value or value in (float("inf"), float("-inf")):
+            return None
+        return value
+    except Exception:  # pragma: no cover — defensive
+        return None
+
+
 class TerminalArtifactSummary(BaseModel):
     """Just enough of the terminal artifact for L6 prose + the frontend
     ``workflow_result`` card to render WITHOUT a second artifact-store
@@ -120,6 +148,25 @@ class TerminalArtifactSummary(BaseModel):
     # for summaries that computed no dispersion.
     dispersion_key: Optional[str] = None
     dispersion_value: Optional[float] = None
+    # Campaign FM-1 — Series terminals previously summarized as
+    # ``Series<PERCENT>(n=1257)``: NO value, NO dates.  The L6 LLM had
+    # nothing to quote and improvised (fabricated "trading at its
+    # mean", unfilled "[value from ...]" templates, narration outside
+    # the fetched window).  These fields ground the prose: the LAST
+    # FINITE observation (the "current" read), the FIRST date, and the
+    # LAST date bound the narratable span.  Series only; None elsewhere.
+    last_value: Optional[float] = None
+    last_date: Optional[str] = None
+    first_date: Optional[str] = None
+    finite_count: Optional[int] = None
+    # Campaign FM-2 — diagnostic operators (granger_causality,
+    # stationarity_adf, ljung_box, normality_test, cointegration)
+    # emit a TEST STATISTIC as the ScalarMetric value and record the
+    # p-value in the head lineage step.  Without it the L6 LLM has
+    # misread F statistics as p-values ("F=0.93 → p ~93%"; true
+    # p≈0.46).  Surfaced so the prose can quote both, correctly
+    # labelled.  None when the head step recorded no p_value.
+    p_value: Optional[float] = None
 
     @classmethod
     def from_terminal_artifact(
@@ -157,13 +204,38 @@ class TerminalArtifactSummary(BaseModel):
                 head_hash=head_hash,
                 dispersion_key=dispersion_key,
                 dispersion_value=dispersion_value,
+                p_value=_p_value_from_lineage(artifact.lineage),
             )
         if isinstance(artifact, Series):
+            # Campaign FM-1 — ground the L6 prose: last finite value +
+            # the fetched date span.  Pure reads of the payload; an
+            # empty / all-NaN payload leaves the fields None (honest
+            # absence — the renderer then has nothing to quote and must
+            # say so rather than improvise).
+            last_value: Optional[float] = None
+            last_date: Optional[str] = None
+            first_date: Optional[str] = None
+            finite_count: Optional[int] = None
+            try:
+                payload = artifact.payload
+                if len(payload) > 0:
+                    first_date = str(payload.index[0])[:10]
+                    cleaned = payload.dropna()
+                    finite_count = int(len(cleaned))
+                    if finite_count > 0:
+                        last_value = float(cleaned.iloc[-1])
+                        last_date = str(cleaned.index[-1])[:10]
+            except Exception:  # pragma: no cover — defensive
+                pass
             return cls(
                 artifact_type="Series",
                 units=artifact.units.value,
                 row_count=int(len(artifact.payload)),
                 head_hash=head_hash,
+                last_value=last_value,
+                last_date=last_date,
+                first_date=first_date,
+                finite_count=finite_count,
             )
         if isinstance(artifact, SeriesSet):
             return cls(
@@ -240,21 +312,52 @@ class TerminalArtifactSummary(BaseModel):
             # no-dispersion format stays byte-identical (stable; tests
             # assert on it).
             if self.dispersion_key is not None and self.dispersion_value is not None:
-                return (
+                base = (
                     f"ScalarMetric({self.metric_key}="
                     f"{value_repr}{units_repr}; "
                     f"{self.dispersion_key}="
                     f"{self.dispersion_value:.4g}{units_repr})"
                 )
-            return (
-                f"ScalarMetric({self.metric_key}="
-                f"{value_repr}{units_repr})"
-            )
+            else:
+                base = (
+                    f"ScalarMetric({self.metric_key}="
+                    f"{value_repr}{units_repr})"
+                )
+            # Campaign FM-2 — diagnostic operators' ScalarMetric is a
+            # TEST STATISTIC; the decision number is the p-value in
+            # lineage.  Hand the L6 LLM both, explicitly labelled, so
+            # an F statistic is never misread as a probability.
+            if self.p_value is not None:
+                base = (
+                    f"{base[:-1]}; p_value={self.p_value:.4g} "
+                    "[the test statistic above is NOT a probability])"
+                )
+            return base
         if self.artifact_type == "WindowedPanel":
             units_repr = f"<{self.units}>" if self.units else ""
             return f"WindowedPanel{units_repr}(n_events={self.row_count or 0})"
         if self.artifact_type == "Series":
             units_repr = f"<{self.units}>" if self.units else ""
+            # Campaign FM-1 — value-bearing Series summary.  The L6
+            # prose can now quote the latest observation and MUST NOT
+            # narrate outside the [first_date, last_date] span.  The
+            # value-less legacy format renders only when the payload
+            # was empty / all-NaN (honest absence).
+            if self.last_value is not None:
+                span = (
+                    f"; span={self.first_date}→{self.last_date}"
+                    if self.first_date and self.last_date
+                    else ""
+                )
+                finite = (
+                    f", finite={self.finite_count}"
+                    if self.finite_count is not None
+                    else ""
+                )
+                return (
+                    f"Series{units_repr}(n={self.row_count or 0}{finite}; "
+                    f"last={self.last_value:.4g} on {self.last_date}{span})"
+                )
             return f"Series{units_repr}(n={self.row_count or 0})"
         # SeriesSet / EventSet / Panel — no single-units summary at
         # this layer (the artifact carries per-key/per-column units).

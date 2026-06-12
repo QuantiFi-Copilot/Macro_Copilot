@@ -27,7 +27,7 @@ from __future__ import annotations
 import importlib
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any, Type
+from typing import Any, Optional, Type
 from unittest.mock import patch
 
 import numpy as np
@@ -39,6 +39,7 @@ from shared.artifacts import (
     EventSet,
     Lineage,
     PrimitiveStep,
+    ScalarMetric,
     Series,
     SeriesSet,
     TimeSeriesUnits,
@@ -889,6 +890,222 @@ class TestExecutor:
                 r1.node_artifacts[nid].lineage.head_hash
                 == r2.node_artifacts[nid].lineage.head_hash
             )
+
+    def test_b04_zero_match_count_chain(self, synthetic_resolver):
+        """FM-6 (campaign run b04) re-run deterministically through
+        the REAL executor: primitive → threshold_events (a threshold
+        the series never reaches → all-False mask) → apply_mask
+        (typed EMPTY Series) → summarize_series(count) → the honest
+        terminal answer ScalarMetric 0.0.  Pre-fix this chain raised
+        ApplyMaskError '... (0 True / N dates) ... output payload is
+        empty'."""
+        wf = Workflow(
+            workflow_id="b04_zero_match",
+            nodes=[
+                PrimitiveNode(
+                    node_id="p",
+                    tool_name="synthetic_primitive_tool",
+                    output_field="time_series",
+                    params={"series_name": "s", "n_rows": 30},
+                ),
+                OperatorNode(
+                    node_id="events",
+                    operator_name="threshold_events",
+                    params={
+                        "rule": "above",
+                        "threshold": 1.0e9,  # never fires
+                        "threshold_basis": "raw_value",
+                        "look_ahead_safe": True,
+                    },
+                ),
+                OperatorNode(
+                    node_id="masked",
+                    operator_name="apply_mask",
+                    params={},
+                ),
+                OperatorNode(
+                    node_id="count",
+                    operator_name="summarize_series",
+                    params={"statistic": "count"},
+                ),
+            ],
+            edges=[
+                WorkflowEdge(
+                    source_node_id="p", target_node_id="events",
+                    target_input_slot="series",
+                ),
+                WorkflowEdge(
+                    source_node_id="p", target_node_id="masked",
+                    target_input_slot="series",
+                ),
+                WorkflowEdge(
+                    source_node_id="events", target_node_id="masked",
+                    target_input_slot="mask",
+                ),
+                WorkflowEdge(
+                    source_node_id="masked", target_node_id="count",
+                    target_input_slot="series",
+                ),
+            ],
+            terminal_node_id="count",
+        )
+        result = execute_workflow(
+            wf, engine=None, primitive_resolver=synthetic_resolver,
+        )
+        term = result.terminal_artifact
+        assert isinstance(term, ScalarMetric)
+        assert term.metric_key == "count"
+        assert term.value == 0.0
+        # The intermediate apply_mask output is the typed EMPTY Series.
+        masked = result.node_artifacts["masked"]
+        assert isinstance(masked, Series)
+        assert len(masked.payload) == 0
+
+
+# ===========================================================================
+# 4b. FM-7 — empty-string sentinel normalisation at primitive params
+# ===========================================================================
+
+
+class _SentinelProbeInput(BaseModel):
+    """*Input class probing the FM-7 ''→default normalisation.
+
+    ``field_name`` mirrors the yield_levels shape (Optional[str],
+    default None → tool falls through to its YAML default);
+    ``series_name`` is a plain str with a NON-empty default (the
+    shadowing hazard class); ``must_keep`` is required, so '' must
+    pass through untouched (the executor never invents a value for a
+    caller-supplied field)."""
+
+    series_name: str = "synthetic_series"
+    n_rows: int = 12
+    field_name: Optional[str] = None
+    must_keep: str
+
+
+class TestEmptyStringSentinelNormalisation:
+    """FM-7 (campaign run b02): the L2 selector sometimes binds
+    ``field_name=''`` on a leaf.  The executor must drop the
+    empty-string wire sentinel for defaulted fields so the tool's own
+    default applies (yield_levels schemas.py documents this as the
+    wrappers-MUST-translate contract; commit b2605ee is the
+    precedent), while leaving '' on required fields untouched."""
+
+    def _probe_resolver_and_capture(self, synthetic_config_path):
+        received: dict = {}
+
+        def _probe_callable(*, engine, params, config) -> dict:
+            received.update(params.model_dump())
+            return _synthetic_primitive_callable(
+                engine=engine,
+                params=_SyntheticInput(
+                    series_name=params.series_name,
+                    n_rows=params.n_rows,
+                ),
+                config=config,
+            )
+
+        spec = PrimitiveSpec(
+            tool_name="synthetic_primitive_tool",
+            callable=_probe_callable,
+            input_class=_SentinelProbeInput,
+            output_class=_SyntheticOutput,
+            config_path=synthetic_config_path,
+        )
+
+        def _resolve(tool_name: str) -> PrimitiveSpec:
+            if tool_name != "synthetic_primitive_tool":
+                raise KeyError(tool_name)
+            return spec
+
+        return _resolve, received
+
+    def test_empty_string_yields_default_not_empty(
+        self, synthetic_config_path,
+    ):
+        """node params {'field_name': ''} → the tool receives the
+        field's default (None here, YAML fall-through in prod), NOT
+        ''.  A non-empty str default ('series_name') is likewise
+        un-shadowed.  Required '' passes through."""
+        resolver, received = self._probe_resolver_and_capture(
+            synthetic_config_path,
+        )
+        wf = Workflow(
+            workflow_id="fm7_sentinel",
+            nodes=[
+                PrimitiveNode(
+                    node_id="p",
+                    tool_name="synthetic_primitive_tool",
+                    output_field="time_series",
+                    params={
+                        "series_name": "",   # '' on non-empty default
+                        "field_name": "",    # '' on Optional[str]=None
+                        "must_keep": "",     # '' on REQUIRED field
+                    },
+                ),
+            ],
+            edges=[],
+            terminal_node_id="p",
+        )
+        result = execute_workflow(
+            wf, engine=None, primitive_resolver=resolver,
+        )
+        assert isinstance(result.terminal_artifact, Series)
+        # Defaulted fields: '' dropped → defaults applied.
+        assert received["field_name"] is None
+        assert received["series_name"] == "synthetic_series"
+        # Required field: '' kept verbatim.
+        assert received["must_keep"] == ""
+
+    def test_explicit_values_never_normalised(self, synthetic_config_path):
+        """Non-empty explicit values pass through untouched — the
+        normalisation only ever touches the exact empty string."""
+        resolver, received = self._probe_resolver_and_capture(
+            synthetic_config_path,
+        )
+        wf = Workflow(
+            workflow_id="fm7_explicit",
+            nodes=[
+                PrimitiveNode(
+                    node_id="p",
+                    tool_name="synthetic_primitive_tool",
+                    output_field="time_series",
+                    params={
+                        "series_name": "explicit_name",
+                        "field_name": "EXPLICIT_FIELD",
+                        "must_keep": "kept",
+                    },
+                ),
+            ],
+            edges=[],
+            terminal_node_id="p",
+        )
+        execute_workflow(wf, engine=None, primitive_resolver=resolver)
+        assert received["field_name"] == "EXPLICIT_FIELD"
+        assert received["series_name"] == "explicit_name"
+        assert received["must_keep"] == "kept"
+
+    def test_helper_unit_contract(self):
+        """Direct unit test of the helper: only ''-valued keys whose
+        field is NOT required are dropped; unknown keys are left for
+        Pydantic to adjudicate."""
+        from shared.workflow.executor import _normalise_primitive_params
+
+        out = _normalise_primitive_params(
+            {
+                "field_name": "",      # Optional → dropped
+                "series_name": "",     # non-empty default → dropped
+                "must_keep": "",       # required → kept
+                "n_rows": 7,           # non-string → untouched
+                "unknown_key": "",     # no field → kept (Pydantic decides)
+            },
+            _SentinelProbeInput,
+        )
+        assert "field_name" not in out
+        assert "series_name" not in out
+        assert out["must_keep"] == ""
+        assert out["n_rows"] == 7
+        assert out["unknown_key"] == ""
 
 
 # ===========================================================================

@@ -10,7 +10,9 @@ Covers the "split sample by mask" load-bearing primitive of the
   4. index_policy=strict_match: raises on differing indexes.
   5. index_policy=intersect: clean across slightly-different indexes.
   6. Empty intersection raises with diagnostic.
-  7. All-False mask raises (empty subsample).
+  7. All-False mask returns a typed EMPTY Series (FM-6: "no day
+     matched" is a legitimate outcome; downstream
+     summarize_series(count) yields 0 — the campaign-b04 chain).
   8. Lineage chain extends through both inputs (Series chain primary,
      EventSet chain in auxiliary_lineages).
   9. Units / frequency / missingness propagate 1:1 from input Series.
@@ -246,17 +248,102 @@ class TestIndexPolicy:
 
 
 # ===========================================================================
-# 5. Empty subsample refusals
+# 5. Zero-match masks (FM-6) — typed EMPTY Series, count-of-zero chain
 # ===========================================================================
 
 
-class TestEmptySubsampleRefusal:
-    def test_all_false_mask_raises(self):
-        s = _make_series(n=50)
+class TestZeroMatchMask:
+    """FM-6 (campaign run b04): a mask that fires on ZERO dates must
+    NOT raise — "no day matched the condition" is a legitimate,
+    informative outcome.  apply_mask returns a typed EMPTY Series and
+    downstream summarize_series(statistic='count') yields the honest
+    scalar 0."""
+
+    def test_all_false_mask_returns_typed_empty_series(self):
+        s = _make_series(n=50, units=TimeSeriesUnits.BPS)
         # Threshold above the maximum value → mask is all False.
         mask = _make_mask_via_threshold(s, threshold=999.0)
-        with pytest.raises(ApplyMaskError, match="empty"):
-            apply_mask(s, mask)
+        out = apply_mask(s, mask)
+        assert isinstance(out, Series)
+        assert len(out.payload) == 0
+        # Identity metadata preserved on the empty output.
+        assert out.series_key == s.series_key
+        assert out.units == TimeSeriesUnits.BPS
+        assert out.frequency == s.frequency
+        assert out.missingness_policy == s.missingness_policy
+
+    def test_zero_match_lineage_records_n_true_zero(self):
+        s = _make_series(n=50)
+        mask = _make_mask_via_threshold(s, threshold=999.0)
+        out = apply_mask(s, mask)
+        head = out.lineage.steps[-1]
+        assert isinstance(head, OperatorStep)
+        assert head.name == "apply_mask"
+        assert head.params["n_true"] == 0
+        assert head.params["n_total"] == 50
+
+    def test_b04_chain_sparse_empty_then_count_is_zero(self):
+        """The exact campaign-b04 chain shape, attempt 0:
+        threshold_events (never fires) → apply_mask (sparse) →
+        summarize_series(count) → ScalarMetric 0.0."""
+        from shared.artifacts.types import ScalarMetric
+        from shared.operators.summarize_series import (
+            summarize_series,
+            SummarizeSeriesParams,
+        )
+
+        s = _make_series(n=50)
+        mask = _make_mask_via_threshold(s, threshold=999.0)
+        subsample = apply_mask(s, mask)
+        out = summarize_series(
+            subsample, params=SummarizeSeriesParams(statistic="count"),
+        )
+        assert isinstance(out, ScalarMetric)
+        assert out.metric_key == "count"
+        assert out.value == 0.0
+
+    def test_b04_chain_full_index_all_nan_then_count_is_zero(self):
+        """The campaign-b04 recompose attempt's shape:
+        preserve_full_index=true → full-length all-NaN payload →
+        summarize_series(count) must yield 0, not raise
+        'input has 0 finite observations'."""
+        from shared.operators.summarize_series import (
+            summarize_series,
+            SummarizeSeriesParams,
+        )
+
+        s = _make_series(n=50)
+        mask = _make_mask_via_threshold(s, threshold=999.0)
+        subsample = apply_mask(
+            s, mask,
+            params=ApplyMaskParams(
+                index_policy="intersect", preserve_full_index=True,
+            ),
+        )
+        assert len(subsample.payload) == 50
+        assert subsample.payload.isna().all()
+        out = summarize_series(
+            subsample, params=SummarizeSeriesParams(statistic="count"),
+        )
+        assert out.value == 0.0
+
+    def test_non_count_downstream_still_refuses_on_empty(self):
+        """The typed-empty contract does NOT silence other operators:
+        a non-count statistic on the empty subsample hits
+        summarize_series's own honest empty-input refusal."""
+        from shared.operators.summarize_series import (
+            summarize_series,
+            SummarizeSeriesError,
+            SummarizeSeriesParams,
+        )
+
+        s = _make_series(n=50)
+        mask = _make_mask_via_threshold(s, threshold=999.0)
+        subsample = apply_mask(s, mask)
+        with pytest.raises(SummarizeSeriesError, match="0 finite"):
+            summarize_series(
+                subsample, params=SummarizeSeriesParams(statistic="mean"),
+            )
 
 
 # ===========================================================================
