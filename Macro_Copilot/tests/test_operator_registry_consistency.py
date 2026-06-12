@@ -71,6 +71,7 @@ _V2_CONFORMANT = {
     "ljung_box",
     "normality_test",
     "variance_ratio",
+    "hurst_exponent",
     "pairwise_spread_matrix",
     "percentile_rank",
     "regression_residual",

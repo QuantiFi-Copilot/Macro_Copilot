@@ -1,0 +1,93 @@
+operator:
+  name: hurst_exponent
+  method_family: statistical_relationship
+  version: "1.0.0"
+  description: >-
+    Hurst exponent of one Series via classical rescaled-range (R/S)
+    analysis with the Anis-Lloyd small-sample correction, emitting H as
+    a ScalarMetric in RATIO units (H ~ 0.5 random-walk-like, > 0.5
+    persistent/trending, < 0.5 anti-persistent/mean-reverting). The
+    diagnostic IS the estimate (R/S has no clean null statistic, unlike
+    the ADF/Q/JB/VR test siblings). Finance-blind. The math has no
+    library here so it lives in shared/quant/hurst.py. Operates on the
+    series AS GIVEN (does not difference internally — difference a level
+    first so a random walk maps to H ~ 0.5). Classical R/S, the
+    Anis-Lloyd correction and the geometric scale set are design-locked.
+    Full-sample descriptive estimate; NaN rows dropped with the
+    interior-drop count disclosed in lineage.
+
+# hurst_exponent deliberately has ZERO knobs in v1 (the A5 family
+# ruling, the stationarity_adf precedent).
+#
+# DESIGN LOCKS (OPR7, lineage-stamped):
+# (1) classical rescaled-range (Hurst 1951 / Mandelbrot-Wallis 1969) —
+#     DFA, aggregated-variance and periodogram/GPH estimators answer the
+#     same question through different statistics and are declared planned
+#     extensions, never silent knobs.
+# (2) the Anis-Lloyd (1976) / Peters (1994) small-sample correction —
+#     uncorrected R/S overestimates H at finite N (a bias straddling the
+#     H=0.5 decision boundary), so the canonical estimate subtracts the
+#     theoretical expected R/S under the iid null; the raw slope rides in
+#     lineage as h_uncorrected so the correction is auditable.
+# (3) a geometric scale set from min_window=8 to N//2 — a caller-chosen
+#     scale rule is a planned extension.
+defaults: {}
+
+methodology:
+  what_it_does: >-
+    Drops NaN rows (full-sample descriptive estimate — the
+    stationarity_adf family model; because R/S accumulates deviations
+    within CONTIGUOUS windows it is ORDER-SENSITIVE, so dropped INTERIOR
+    rows splice non-adjacent observations together and the interior-drop
+    count is recorded separately in lineage as n_interior_dropped —
+    auditable, never silent), then runs classical rescaled-range
+    analysis: for each window size in a geometric set from 8 to N//2 the
+    series is cut into contiguous non-overlapping blocks, the rescaled
+    range R/S (range of the mean-adjusted cumulative deviations divided
+    by the block standard deviation) is averaged over blocks, and H is
+    the slope of log(R/S) vs log(window). The canonical estimate applies
+    the Anis-Lloyd correction (subtract the slope of the theoretical iid
+    E[R/S]) so a random walk recentres to H ~ 0.5; the uncorrected slope
+    and the log-log fit R-squared ride in lineage. H > 0.5 = persistent
+    (trending), H < 0.5 = anti-persistent (mean-reverting). Operates on
+    the series AS GIVEN (no internal differencing — stamped
+    differenced=False). RATIO units — a scaling exponent is
+    dimensionless. Refusals: fewer than 128 finite observations (R/S is
+    sharply biased below that), zero variance (constant series), too few
+    usable scales, a non-finite or out-of-band H (a collapsed fit —
+    refused, never silently clamped). test_scope='full_sample' rides in
+    lineage — this DESCRIBES the whole observed history; never feed it
+    into point-in-time compositions.
+  planned_extensions:
+    - "DFA (detrended fluctuation analysis): a distinct estimator more robust to non-stationary trends — declared, never a silent knob."
+    - "Aggregated-variance and periodogram/GPH estimators: distinct long-memory estimators — separate methods."
+    - "Caller-chosen / automatic scale rule: a runtime convention analogous to the Ljung-Box auto-lag — awaits a registered convention."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Hurst exponent via rescaled-range (Anis-Lloyd corrected) — ONE ScalarMetric (H; ~0.5 random-walk-like, >0.5 persistent/trending, <0.5 mean-reverting; fit R-squared in lineage).
+  when_to_use:
+    - "User asks about LONG MEMORY / PERSISTENCE / the fractal or self-similarity character of a series ('is X persistent / trending or mean-reverting over the long run?', 'what is the Hurst exponent?')."
+    - "A magnitude read on trend-vs-revert across ALL scales at once (complements variance_ratio's single-horizon significance test)."
+  when_not_to_use:
+    - "Input is a PRICE/LEVEL and you want the random-walk reading at H=0.5 — difference it first (series_arithmetic(op=diff) -> hurst_exponent, like ljung_box/normality_test); a raw random-walk LEVEL returns H near 1, not 0.5."
+    - "User wants a SIGNIFICANCE test of the random-walk null at one horizon — variance_ratio (a z with a p-value; Hurst is a point estimate, no null)."
+    - "User wants unit-root status — stationarity_adf; or the autocorrelation spectrum — ljung_box."
+    - "User wants a time-varying read — this is FULL-SAMPLE (one number); short series (< 128 obs) are refused."
+  upstream_requirements:
+    - "Input is ONE Series (any units), >= 128 finite observations, non-constant.  NaN rows are dropped (interior drops disclosed in lineage)."
+  downstream_pattern:
+    - "Output is a ScalarMetric in RATIO units (the Hurst exponent; metric_key hurst_exponent__<key>).  Terminal for 'is it persistent / mean-reverting' asks; lineage carries h_uncorrected, r_squared (fit quality), n_scales and the per-scale log(R/S) trail."
+  knobs_quick_ref:
+    none: "Zero knobs in v1 — classical R/S, the Anis-Lloyd correction and the geometric scale set are design-locked; DFA/aggregated-variance/auto-scale are planned extensions."
+  example_shapes:
+    - description: "Persistence read of a price/level series' day-over-day changes (difference first so a random walk maps to 0.5)."
+      shape: "[Series A] -> series_arithmetic(op=diff) -> hurst_exponent -> ScalarMetric  [terminal]"
+  sibling_operators:
+    - variance_ratio: "Single-horizon random-walk SIGNIFICANCE test (z + p-value); hurst_exponent is the across-scales persistence MAGNITUDE (a point estimate, no null) — distinct estimators (VR(q)~q^(2H-1))."
+    - stationarity_adf: "Unit-root of the LEVEL (a different null); hurst_exponent is the long-memory scaling exponent."
+    - ljung_box: "Joint autocorrelation Q over lags 1..L; hurst_exponent is one self-similarity exponent across all scales."
+  intent_hints: [relationship]

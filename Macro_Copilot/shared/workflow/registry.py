@@ -219,6 +219,10 @@ from shared.operators.variance_ratio import (
     variance_ratio, VarianceRatioParams,
     CONFIG_PATH as _VARIANCE_RATIO_CONFIG_PATH,
 )
+from shared.operators.hurst_exponent import (
+    hurst_exponent, HurstExponentParams,
+    CONFIG_PATH as _HURST_EXPONENT_CONFIG_PATH,
+)
 
 
 # ============================================================================
@@ -1781,6 +1785,61 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "it normal / fat-tailed' asks.  Raises "
                 "NormalityTestError on < 3 finite rows, zero "
                 "variance, or a non-finite statistic."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — statistical_relationship (A5
+    # diagnostics): Hurst exponent via rescaled-range (R/S) with the
+    # Anis-Lloyd correction.  One Series in, one ScalarMetric out (the
+    # exponent H, RATIO units; uncorrected slope + fit R-squared +
+    # scale trail in lineage).  Zero-knob; math in shared/quant.
+    "hurst_exponent": OperatorSpec(
+        operator_name="hurst_exponent",
+        callable=hurst_exponent,
+        params_class=HurstExponentParams,
+        config_path=_HURST_EXPONENT_CONFIG_PATH,
+        input_slots={
+            "series": SlotDescriptor.of(
+                "Series",
+                (
+                    "The single typed Series whose long-memory / "
+                    "self-similarity exponent is estimated (>= 128 "
+                    "finite observations, non-constant; NaN rows "
+                    "dropped with interior drops disclosed in "
+                    "lineage).  USE when the user asks about "
+                    "PERSISTENCE / long memory / the Hurst exponent / "
+                    "the fractal character ('is X persistent or "
+                    "mean-reverting over the long run?').  Operates on "
+                    "the series AS GIVEN and does NOT difference "
+                    "internally — for a PRICE/LEVEL series difference "
+                    "first (series_arithmetic(op=diff)) so a random "
+                    "walk maps to H~0.5 (a raw random-walk LEVEL "
+                    "returns H~1, strongly persistent).  DO NOT use "
+                    "for a single-horizon random-walk SIGNIFICANCE "
+                    "test (variance_ratio — a z with a p-value), "
+                    "unit-root status (stationarity_adf), the "
+                    "autocorrelation spectrum (ljung_box), or a "
+                    "time-varying read (this is one FULL-SAMPLE "
+                    "number)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "ScalarMetric",
+            (
+                "The Anis-Lloyd-corrected Hurst exponent H in RATIO "
+                "units (~0.5 random-walk-like, >0.5 persistent/"
+                "trending, <0.5 anti-persistent/mean-reverting; "
+                "metric_key hurst_exponent__<key>).  Lineage carries "
+                "h_uncorrected (the raw biased slope), r_squared (the "
+                "log-log fit quality — a low value means an "
+                "untrustworthy H), n_scales, the per-scale log(R/S) "
+                "trail and the design-locks (classical R/S, "
+                "anis_lloyd, differenced=False).  A terminal answer "
+                "artifact for 'is it persistent / mean-reverting' "
+                "asks.  Raises HurstExponentError on < 128 finite "
+                "rows, zero variance, too few scales, or a non-finite "
+                "/ out-of-band H."
             ),
         ),
     ),

@@ -290,6 +290,7 @@ class TestComposerPromptContent:
             "ewm_statistic",
             "granger_causality",
             "hp_filter",
+            "hurst_exponent",
             "lag",
             "lead_lag",
             "ljung_box",
