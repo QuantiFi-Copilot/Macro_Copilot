@@ -79,6 +79,7 @@ _V2_CONFORMANT = {
     "rolling_zscore",
     "select_from_series_set",
     "series_arithmetic",
+    "stationarity_adf",
     "streak",
     "summarize_series",
     "threshold_events",

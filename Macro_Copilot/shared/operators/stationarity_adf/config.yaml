@@ -1,0 +1,74 @@
+operator:
+  name: stationarity_adf
+  method_family: statistical_relationship
+  version: "1.0.0"
+  description: >-
+    Augmented Dickey-Fuller unit-root test of one Series
+    (statsmodels adfuller), emitting the ADF TEST STATISTIC as a
+    ScalarMetric in RATIO units (more negative = stronger evidence
+    against a unit root); the p-value, used lag and 1/5/10% critical
+    values ride in lineage. Finance-blind. regression='c' and
+    autolag='AIC' are design-locked as the single canonical flavour.
+    Full-sample descriptive test; NaN rows dropped with the
+    interior-drop count disclosed in lineage.
+
+# stationarity_adf deliberately has ZERO knobs in v1 (the A5 family
+# ruling): the deterministic-term spec and lag selection are locked.
+#
+# DESIGN LOCKS (OPR7, lineage-stamped): (1) regression='c' (intercept
+# only) — the canonical specification for level series; 'ct'
+# (constant+trend) and 'n' (none) change the null hypothesis being
+# tested and are declared planned extensions, never silent knobs.
+# (2) autolag='AIC' — automatic lag selection; a manual maxlag would
+# let one test be expressed many ways for no analytical gain here.
+defaults: {}
+
+methodology:
+  what_it_does: >-
+    Drops NaN rows (full-sample descriptive test — the
+    summarize_series model; because the ADF auxiliary regression is
+    LAG-BASED, dropped INTERIOR rows splice non-adjacent observations
+    together, so the interior-drop count is recorded separately in
+    lineage as n_interior_dropped — auditable, never silent), then
+    runs statsmodels adfuller with the design-locked spec
+    (regression='c', autolag='AIC') and emits the ADF t-type
+    statistic. More negative = stronger evidence against a unit root
+    (compare with the 1/5/10% critical values in lineage; p-value
+    also recorded). RATIO units — a test statistic is dimensionless
+    whatever the input's units (recorded in lineage). Refusals: fewer
+    than 12 finite observations (the auxiliary regression is
+    degenerate), zero variance (constant series), a non-finite
+    statistic. test_scope='full_sample' rides in lineage — this
+    DESCRIBES the whole observed history; never feed it into
+    point-in-time compositions.
+  planned_extensions:
+    - "regression='ct'/'n' variants: different deterministic terms test a different null — an explicit variant surface, never a silent knob."
+    - "KPSS (stationarity null) as the complementary test: a distinct operator."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Augmented Dickey-Fuller unit-root test — ONE ScalarMetric (the ADF statistic; more negative = more stationary-looking; p-value and critical values in lineage).
+  when_to_use:
+    - "User asks whether a series is STATIONARY / mean-reverting vs unit-root ('is this spread stationary?', 'does X mean-revert?') — the ADF statistic answers it (compare with lineage critical values)."
+    - "A pre-check before relationship analysis whose validity needs stationarity (pair with cointegration for level relationships)."
+  when_not_to_use:
+    - "User wants the SPEED of mean reversion (half-life) — that is model estimation (planned engines), not a unit-root test."
+    - "User wants cointegration of TWO series — use cointegration (it embeds its own ADF on the spread)."
+    - "User wants a time-varying stationarity read — this is a FULL-SAMPLE descriptive test (one number for the whole history)."
+  upstream_requirements:
+    - "Input is ONE Series (any units), >= 12 finite observations, non-constant.  NaN rows are dropped (interior drops disclosed in lineage)."
+  downstream_pattern:
+    - "Output is a ScalarMetric in RATIO units (the ADF statistic; metric_key stationarity_adf__<key>).  Terminal for 'is it stationary' asks; lineage carries p_value, lags_used and critical_values for interpretation."
+  knobs_quick_ref:
+    none: "Zero knobs in v1 — regression='c' and autolag='AIC' are design-locked; 'ct'/'n' variants are planned extensions."
+  example_shapes:
+    - description: "Stationarity check of a spread between two aligned series."
+      shape: "[Series A, Series B] -> align_series -> series_arithmetic(subtract) -> stationarity_adf -> ScalarMetric  [terminal]"
+  sibling_operators:
+    - cointegration: "Two-series level relationship (embeds an ADF on the fitted spread); stationarity_adf tests ONE series."
+    - granger_causality: "Lead-lag predictive content between two series — a different question."
+    - summarize_series: "Plain distributional summaries; stationarity_adf is the time-structure diagnostic."
+  intent_hints: [relationship]

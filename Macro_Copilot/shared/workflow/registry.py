@@ -173,6 +173,10 @@ from shared.operators.series_arithmetic import (
     SeriesArithmeticParams,
     CONFIG_PATH as _SERIES_ARITHMETIC_CONFIG_PATH,
 )
+from shared.operators.stationarity_adf import (
+    stationarity_adf, StationarityAdfParams,
+    CONFIG_PATH as _STATIONARITY_ADF_CONFIG_PATH,
+)
 from shared.operators.streak import (
     streak, StreakParams,
     CONFIG_PATH as _STREAK_CONFIG_PATH,
@@ -1722,6 +1726,49 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "threshold_events, direct surface.  Raises "
                 "CumulativeError on a non-Series input, an overflowing "
                 "running sum, or an all-NaN output."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — statistical_relationship (A5
+    # diagnostics): augmented Dickey-Fuller unit-root test.  One
+    # Series in, one ScalarMetric out (the ADF statistic, RATIO
+    # units; p-value + critical values in lineage).
+    "stationarity_adf": OperatorSpec(
+        operator_name="stationarity_adf",
+        callable=stationarity_adf,
+        params_class=StationarityAdfParams,
+        config_path=_STATIONARITY_ADF_CONFIG_PATH,
+        input_slots={
+            "series": SlotDescriptor.of(
+                "Series",
+                (
+                    "The single typed Series whose unit-root status is "
+                    "tested (>= 12 finite observations, non-constant; "
+                    "NaN rows dropped with interior drops disclosed in "
+                    "lineage).  USE when the user asks whether a "
+                    "series is STATIONARY / mean-reverting vs a random "
+                    "walk ('is this spread stationary?') — typically "
+                    "on a spread or residual leg.  DO NOT use for the "
+                    "SPEED of mean reversion (model estimation — not "
+                    "yet available), for two-series level "
+                    "relationships (cointegration embeds its own ADF "
+                    "on the fitted spread), or for a time-varying "
+                    "read (this is one FULL-SAMPLE number)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "ScalarMetric",
+            (
+                "The ADF test statistic in RATIO units (more negative "
+                "= stronger evidence against a unit root; metric_key "
+                "stationarity_adf__<key>).  Lineage carries p_value, "
+                "lags_used, the 1/5/10% critical values, the locked "
+                "regression='c'/autolag='AIC' spec and the NaN-drop "
+                "audit.  A terminal answer artifact for 'is it "
+                "stationary' asks.  Raises StationarityAdfError on "
+                "< 12 finite rows, zero variance, or a non-finite "
+                "statistic."
             ),
         ),
     ),
