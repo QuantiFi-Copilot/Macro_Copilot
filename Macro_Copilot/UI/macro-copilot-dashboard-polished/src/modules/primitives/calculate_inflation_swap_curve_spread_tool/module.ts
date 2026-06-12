@@ -5,7 +5,6 @@
 //   - methodology_exposure.md §5 standalone-bridge contract (this tool ships
 //     its own typed-detail endpoint at
 //     /api/v1/rates/detail/inflation-swap-curve-spread + its own frontend
-//     surfaces; no shared typedView reuse)
 //   - rendering_density.md §1 dual-view mandate (BOTH buildExtended +
 //     buildCompact REQUIRED; no opt-in)
 //
@@ -69,14 +68,9 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Same-curve zero-coupon inflation swap (ZCIS) tenor spread between two pillars of one ZCIS curve (e.g. USD 5s10s, EUR 5s30s, GBP 2s10s). Positive = upward-sloping forward inflation curve; negative = inverted. OTC ZCIS-implied forward inflation curve shape — distinct from bond-implied breakeven curve spread.',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared typedView.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build`` is
-  // kept === buildExtended for the legacy VirtualPrimitiveCanvas dispatcher.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

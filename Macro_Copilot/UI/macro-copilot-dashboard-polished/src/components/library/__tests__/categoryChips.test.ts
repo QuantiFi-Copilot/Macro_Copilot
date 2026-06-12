@@ -12,8 +12,8 @@
 // closed hard-coded list fails loudly.
 //
 // The test reads the source file as bytes (same pattern as the
-// build-folder structural locks — `regressionLock.test.ts`,
-// `richModelWidgetContract.test.ts`).  This avoids needing a browser
+// build-folder structural locks — `regressionLock.test.ts`, the
+// RichModelWidget contract test).  This avoids needing a browser
 // renderer for what is fundamentally a derivation-shape claim.
 // ============================================================================
 

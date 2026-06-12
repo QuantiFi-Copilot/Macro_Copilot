@@ -5,7 +5,6 @@
 // (build_order 19; policy_futures domain).  Under the new standards:
 //   - methodology_exposure.md §5 standalone-bridge (own typed-detail
 //     endpoint at /api/v1/rates/detail/policy-futures-butterfly + own
-//     surfaces; no shared typedView)
 //   - rendering_density.md §1 dual-view mandate (buildExtended +
 //     buildCompact both REQUIRED)
 //
@@ -84,16 +83,9 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Same-curve simple butterfly (3-point implied-rate curvature) on the policy-futures strip (e.g. SFR 1-2-3, ER 1-2-4). FIXED 50-50 weighting: body − 0.5 × (wing_short + wing_long), per-leg implied rates derived from 100-minus-rate raw prices for SFR / ER / SFI. Positive = belly cheap; negative = belly rich. Carries the butterfly value in PERCENT POINTS on the wire (rendered in bps in the display) plus 1d change, rolling 252d z-score, trailing 252d range + percentile, and per-leg disclosure (strip-slot master stems + current-front underlying contracts).',
 
-  // FM9 — STANDALONE pattern per methodology_exposure.md §5: no shared
-  // typedView.  The module owns its own full Build surfaces.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build``
-  // is kept === buildExtended for the legacy VirtualPrimitiveCanvas
-  // dispatcher that reads ``surfaces.build``.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

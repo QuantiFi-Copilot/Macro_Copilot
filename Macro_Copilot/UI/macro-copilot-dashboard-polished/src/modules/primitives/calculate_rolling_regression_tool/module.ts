@@ -14,7 +14,6 @@
 // ``modelMetadata`` is intentionally ABSENT (it used to live here):
 // contextDecoder routes ``kind: 'builder'`` (the legacy BuilderCanvas
 // playground) whenever a tool has a model-registry entry, which is
-// derived from this field.  Removing it + setting ``richModel: false``
 // lets dispatch fall through to ``surfaces.buildExtended`` (single-tool
 // queries) and ``surfaces.buildCompact`` (multi-tool DAG nodes).  The
 // PM-read copy the legacy interpretation cards carried is preserved on
@@ -76,10 +75,6 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Rolling OLS regression of one sovereign yield on one or more regressor yields via numpy.linalg.lstsq, returning per-regressor betas, alpha, residual, in-window R², and a condition-number quality flag.',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared
-  // typedView, no rich-model builder route (see header note).
-  typedView: null,
-  richModel: false,
 
   // FM5 — flat-wire defaults; keys match the typed-detail endpoint's
   // query params.  The regressor lists are COMMA-JOINED strings — the
@@ -149,7 +144,6 @@ export const MODULE: PrimitiveModuleSpec = {
   // buildExtended for the legacy dispatchers (BuildShell ``?builder=``
   // branch + assertStandardModuleInvariants' capability mapping).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
     preview: PreviewWidget,

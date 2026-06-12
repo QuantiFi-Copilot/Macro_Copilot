@@ -165,9 +165,9 @@ function ExpandedViewModal({
 
   // GENERIC dispatch — look up the owning module by toolName and mount its
   // extended Build surface.  No per-tool branching: any module that ships
-  // buildExtended (or the legacy build alias) gets the modal for free.
+  // buildExtended gets the modal for free.
   const mod = getPrimitiveModule(request.decoded.toolName);
-  const Extended = mod?.surfaces?.buildExtended ?? mod?.surfaces?.build ?? null;
+  const Extended = mod?.surfaces?.buildExtended ?? null;
 
   // Decoded with the locally-edited params so the extended view re-fetches
   // when controls change inside the modal.  All DecodedPrimitive variants

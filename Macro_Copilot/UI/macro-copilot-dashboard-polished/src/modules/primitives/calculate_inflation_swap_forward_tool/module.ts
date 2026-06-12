@@ -5,7 +5,6 @@
 //   - methodology_exposure.md §5 standalone-bridge contract (this tool
 //     ships its own typed-detail endpoint at
 //     /api/v1/rates/detail/inflation-swap-forward + its own frontend
-//     surfaces; no shared typedView reuse)
 //   - rendering_density.md §1 dual-view mandate (BOTH buildExtended +
 //     buildCompact REQUIRED; no opt-in)
 //
@@ -52,17 +51,12 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Forward zero-coupon inflation swap rate spanning two pillars on the same ZCIS curve (e.g. USD_ZCIS 5Y5Y, EUR_ZCIS 5Y5Y, GBP_ZCIS 2Y3Y) via the dual-compounding geometric formula.  Output is FORWARD INFLATION COMPENSATION (not a clean forward expected-inflation read — ZCIS still carries an inflation risk premium and a smaller liquidity premium).  Carries forward_zcis_pct + 1D / 5D / 1M change in bps + rolling 252d z-score + trailing 252d high/low/percentile + the two endpoint ZCIS rates so the desk can audit the decomposition end-to-end.',
 
-  // FM9 — routing claims.  STANDALONE pattern per
-  // methodology_exposure.md §5: no shared typedView.  The module owns its
   // own full Build surfaces.
-  typedView: null,
-  richModel: false,
 
   // FM8 — surface refs (rendering_density.md §5):
   //   * buildExtended — full canvas, mounted for single-tool queries
   //   * buildCompact  — grid card, mounted as a node in multi-tool DAGs
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

@@ -2,11 +2,9 @@
 // src/modules/primitives/get_futures_volume_oi_tool/module.ts — Dual-view build.
 // ----------------------------------------------------------------------------
 // Stage upgrade: Stage 3 scaffold (runtime tier only) → standalone-bridge
-// dual-view (typedView=null + surfaces.{build, buildExtended, buildCompact})
 // plus a Monitor bento tile.
 //   - methodology_exposure.md §5 standalone-bridge (own typed-detail
 //     endpoint at /api/v1/rates/detail/futures-volume-oi + own surfaces;
-//     no shared typedView)
 //   - rendering_density.md §1 dual-view mandate (buildExtended +
 //     buildCompact both REQUIRED)
 //
@@ -59,16 +57,9 @@ export const MODULE: PrimitiveModuleSpec = {
   category: 'snapshots',
   oneLineSummary: 'Daily traded volume + end-of-day open interest for ONE rolling-generic bond-futures contract (TY1 / RX1 / G 1 / JB1 …) — current counts, 1-day OI change, 252d OI z-score / percentile / high-low range, and 22d rolling volume context.  Both series are whole-CONTRACT counts (NOT notional — multiply by FUT_CONT_SIZE for notional); pure-INGEST read per ADR 0013.',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared
-  // typedView.  The module owns its own full Build surfaces.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build``
-  // is kept === buildExtended for the legacy VirtualPrimitiveCanvas
-  // dispatcher that reads ``surfaces.build``.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

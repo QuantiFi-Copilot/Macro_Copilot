@@ -2,10 +2,8 @@
 // src/modules/primitives/calculate_cross_market_spread_tool/module.ts
 // ----------------------------------------------------------------------------
 // Migration dispatch — converted from the legacy typed-renderer pattern
-// (``typedView: 'cross_market'`` + ``surfaces.resultRenderer``) to the new
 // dual-view + standalone-bridge contract under:
 //   - methodology_exposure.md §5 standalone-bridge (own typed-detail endpoint
-//     at /api/v1/rates/detail/cross-market + own surfaces; no shared typedView)
 //   - rendering_density.md §1 dual-view mandate (buildExtended + buildCompact
 //     both REQUIRED)
 //
@@ -49,14 +47,9 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Yield differential between the same tenor on two sovereign curves (e.g. BTP-Bund 10Y), in basis points, with rolling 252-day z-score, daily / weekly / monthly change, trailing range, and full time series.',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared typedView.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build`` is
-  // kept === buildExtended for the legacy VirtualPrimitiveCanvas dispatcher.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

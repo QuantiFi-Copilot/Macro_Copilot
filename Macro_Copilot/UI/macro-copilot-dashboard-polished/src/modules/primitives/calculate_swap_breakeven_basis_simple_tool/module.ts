@@ -6,7 +6,6 @@
 // (load-bearing index-family caveat pattern) under the new standards:
 //   - methodology_exposure.md §5 standalone-bridge (own typed-detail endpoint
 //     at /api/v1/rates/detail/swap-breakeven-basis + own surfaces; no shared
-//     typedView)
 //   - rendering_density.md §1 dual-view mandate (buildExtended + buildCompact
 //     both REQUIRED)
 //
@@ -48,14 +47,9 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     "Swap-breakeven basis at a single tenor: same-currency ZCIS rate minus bond-implied breakeven inflation (e.g. USD_ZCIS 10Y minus UST/USD_TIPS 10Y breakeven). Surfaces the liquidity / risk-premium proxy between swap-market and bond-market inflation pricing — NOT a clean liquidity-premium read (also reflects index-lag differences, linker on-the-run effects, and structural ZCIS basis). Sign convention POSITIVE = ZCIS rich vs bond breakeven.",
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared typedView.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build`` is
-  // kept === buildExtended for the legacy VirtualPrimitiveCanvas dispatcher.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

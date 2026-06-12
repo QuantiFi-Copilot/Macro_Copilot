@@ -15,8 +15,8 @@
 //
 //   1. The smoke module is registered in ``ALL_PRIMITIVE_MODULES``.
 //   2. ``getPrimitiveModule('__smoke_test_tool')`` returns it.
-//   3. ``MODULE.surfaces.build``, ``.preview``, ``.ask`` and
-//      ``MODULE.monitorWidgets[0].component`` are populated.
+//   3. ``MODULE.surfaces.buildExtended``, ``.buildCompact``, ``.preview``,
+//      ``.ask`` and ``MODULE.monitorWidgets[0].component`` are populated.
 //   4. The Monitor catalog walker derives a ``__smoke_widget`` entry
 //      from the module (this is the integration-side proof that the
 //      registry walker reached the module without an edit).
@@ -68,7 +68,8 @@ check('smoke module is registered in ALL_PRIMITIVE_MODULES', () => {
 check('getPrimitiveModule returns the smoke module', () => {
   const m = getPrimitiveModule(SMOKE_TOOL);
   assertTruthy(m, 'lookup returns module');
-  assertTruthy(m!.surfaces?.build, 'surfaces.build populated');
+  assertTruthy(m!.surfaces?.buildExtended, 'surfaces.buildExtended populated');
+  assertTruthy(m!.surfaces?.buildCompact, 'surfaces.buildCompact populated');
   assertTruthy(m!.surfaces?.preview, 'surfaces.preview populated');
   assertTruthy(m!.surfaces?.ask, 'surfaces.ask populated');
   assertTruthy(
@@ -112,12 +113,14 @@ check('smoke module excluded from backend-facing registries', () => {
 });
 
 check('Stage 5 architectural locality: dispatcher modules import only registry-level helpers', async () => {
-  // Source-level check.  The three dispatchers that Stage 5 updated
-  // (BuildShell, VirtualPrimitiveCanvas, ConversationCanvas) must
-  // resolve module surfaces via ``getPrimitiveModule`` (registry-
-  // level lookup) and never via per-module folder imports.  FP12
-  // already covers the second half via ``pageShellBoundary.test.ts``;
-  // this check holds the registry-lookup half.
+  // Source-level check.  The dispatchers that mount per-tool surfaces
+  // (VirtualPrimitiveCanvas, ConversationCanvas) must resolve module
+  // surfaces via ``getPrimitiveModule`` (registry-level lookup) and
+  // never via per-module folder imports.  FP12 already covers the
+  // second half via ``pageShellBoundary.test.ts``; this check holds
+  // the registry-lookup half.  (BuildShell left this list in G-3.5:
+  // its ``?builder=`` path now delegates to VirtualPrimitiveCanvas
+  // instead of dispatching surfaces itself.)
   // @ts-ignore - node-only
   const fs = (await import('fs')) as {
     readFileSync: (p: string, e: string) => string;
@@ -125,7 +128,6 @@ check('Stage 5 architectural locality: dispatcher modules import only registry-l
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cwd = (globalThis as any).process?.cwd?.() ?? '.';
   const sources = [
-    'src/components/build/BuildShell.tsx',
     'src/components/build/primitive/VirtualPrimitiveCanvas.tsx',
     'src/components/ask/ConversationCanvas.tsx',
   ];

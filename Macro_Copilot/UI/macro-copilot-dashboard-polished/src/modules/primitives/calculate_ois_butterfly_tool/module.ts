@@ -7,7 +7,6 @@
 // standards:
 //   - methodology_exposure.md §5 standalone-bridge (own typed-detail endpoint
 //     at /api/v1/rates/detail/ois-butterfly + own surfaces; no shared
-//     typedView)
 //   - rendering_density.md §1 dual-view mandate (buildExtended + buildCompact
 //     both REQUIRED)
 //
@@ -66,14 +65,9 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Three-point OIS curve butterfly on a single OIS curve family (e.g. USD SOFR 2-5-10 OIS fly) with fixed (-1, +2, -1) weights. Positive = belly cheap; negative = belly rich. Curvature of the expected policy path under the risk-neutral measure — one curve, one overnight index (SOFR / ESTR / SONIA / TONA / AONIA / CORRA not fungible).',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared typedView.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build`` is
-  // kept === buildExtended for the legacy VirtualPrimitiveCanvas dispatcher.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

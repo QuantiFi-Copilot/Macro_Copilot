@@ -9,7 +9,6 @@
 // risk-neutral policy-pricing caveat) under the new standards:
 //   - methodology_exposure.md §5 standalone-bridge (own typed-detail endpoint
 //     at /api/v1/rates/detail/ois-cross-market-spread + own surfaces; no
-//     shared typedView)
 //   - rendering_density.md §1 dual-view mandate (buildExtended + buildCompact
 //     both REQUIRED)
 //
@@ -46,14 +45,9 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Same-tenor cross-market OIS spread (e.g. USD_SOFR_OIS 2Y minus EUR_ESTR_OIS 2Y) — daily/weekly/monthly bps changes, 252-day rolling z-score, trailing range. Canonical G4 read on relative central-bank policy stance; surfaces the risk-neutral policy-pricing caveat (SOFR / ESTR / SONIA / TONA / AONIA / CORRA are NOT fungible policy benchmarks).',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared typedView.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build`` is
-  // kept === buildExtended for the legacy VirtualPrimitiveCanvas dispatcher.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

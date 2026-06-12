@@ -1,8 +1,6 @@
 // ============================================================================
 // src/modules/primitives/scan_extremes_tool/module.ts — Migration-mode rewrite.
 // ----------------------------------------------------------------------------
-// Migration target: legacy typed-renderer (typedView='scanner' +
-// surfaces.resultRenderer) → standalone-bridge dual-view (typedView=null +
 // surfaces.{build, buildExtended, buildCompact}).
 //
 // PRESERVED VERBATIM per MIGRATION_RULES.md §6 (backward-compat lock):
@@ -22,7 +20,6 @@
 //
 //   - methodology_exposure.md §5 standalone-bridge contract (own typed-detail
 //     endpoint at /api/v1/rates/detail/scanner + own surfaces; no shared
-//     typedView)
 //   - rendering_density.md §1 dual-view mandate (BOTH buildExtended +
 //     buildCompact REQUIRED)
 //
@@ -54,16 +51,10 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Scans every sovereign benchmark instrument in the database, ranks the top-N by absolute 252-day z-score and returns yield, daily change, z-score, percentile, and signal label per row.',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): the legacy
-  // ``typedView: 'scanner'`` dispatch is removed; both Build surfaces fetch
   // the per-tool typed-detail endpoint ``/api/v1/rates/detail/scanner``.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build`` is
-  // kept === buildExtended for the legacy VirtualPrimitiveCanvas dispatcher.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },
@@ -93,7 +84,6 @@ export const MODULE: PrimitiveModuleSpec = {
   // the runtime-status tier is ``manifest_typed_view`` (see
   // ``src/modules/__test-utils.ts`` invariant #8).  The catalog entry's
   // legacy_migration.module_ts_changes.remove_fields list includes
-  // ``unsupportedReason`` for symmetry with the typedView removal, but the
   // framework contract OVERRIDES the catalog here: keeping
   // ``manifest_typed_view`` (which we MUST per MIGRATION_RULES.md §4 step
   // 6) means keeping a populated ``unsupportedReason`` block.  The COPY is

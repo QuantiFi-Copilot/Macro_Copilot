@@ -46,8 +46,6 @@ import {
   SUB_AGENT_LABELS,
   type ManifestTool,
 } from '@/types/library';
-import { hasModelMetadata } from '@/lib/modelRegistry';
-import { getPrimitiveModule } from '@/modules';
 import {
   isKnownBackendTool,
   isRunnablePrimitive,
@@ -329,16 +327,13 @@ function DrawerBody({
 }
 
 // ----------------------------------------------------------------------------
-// R6.5 — clearer CTA wording for model tools
+// R6.5 — clearer CTA wording per Build destination
 // ----------------------------------------------------------------------------
 //
-// When the tool has model-registry metadata, the click opens the
-// standalone playground (controls / output / methodology / lineage).
-// When it's a typed primitive, the click opens the chart canvas.  The
-// underlying destination has been different since R4; R6.5 makes that
-// difference visible on the button so the user knows what they're
-// about to land on instead of relying on the generic "Open in Build"
-// label.
+// Every known tool gets a deterministic Build destination via the
+// ``?context=`` decoder.  The button copy makes the destination
+// visible so the user knows what they're about to land on instead of
+// relying on the generic "Open in Build" label.
 
 function OpenInBuildCta({ tool }: { tool: ManifestTool }) {
   const navigate = useNavigate();
@@ -347,44 +342,27 @@ function OpenInBuildCta({ tool }: { tool: ManifestTool }) {
   // registry keys on the backend-canonical prefixed form (``calculate_
   // half_life_tool``).  Normalise before lookup so both forms resolve.
   const canonicalName = normalizeToolName(tool.implementation.tool_function);
-  const isModel = hasModelMetadata(canonicalName);
-  // PR1 + PR2 — every known tool gets a deterministic Build
+  // PR1 + PR2 + G-3.5 — every known tool gets a deterministic Build
   // destination.  The decoder maps:
-  //   - ``hasModelMetadata`` ⇒ rich-model builder (``?builder=``)
-  //   - typed-view tool ⇒ chart canvas (``?context=``)
-  //   - PR2: ``isRunnablePrimitive`` (no typed view) ⇒ generic
-  //     schema-driven builder (still ``?context=``; decoder emits
-  //     ``generic_builder`` variant)
+  //   - ``isRunnablePrimitive`` ⇒ ``generic_builder`` (module-first
+  //     dispatch mounts the owning module's dual-view Build surface
+  //     when it ships one; otherwise the schema-driven builder)
   //   - ``isUnsupportedKnownTool`` ⇒ explicit unsupported-known card
-  //     (still ``?context=``; decoder emits ``unsupported_known``)
   //   - everything else ⇒ ``?context=`` as a best-effort handoff;
   //     ``VirtualPrimitiveCanvas`` shows the decode-error card only
   //     when the tool name is truly unknown.
-  //
-  // Note ``isRunnablePrimitive`` covers both model-registry tools AND
-  // every other ``_PRIMITIVE_SPECS`` entry; we check ``isModel``
-  // first so the rich playground wins over the generic builder.
-  const isGenericBuilder =
-    !isModel &&
-    isRunnablePrimitive(canonicalName) &&
-    !hasTypedView(canonicalName);
+  const isGenericBuilder = isRunnablePrimitive(canonicalName);
   const isUnsupported =
-    !isModel &&
-    !isGenericBuilder &&
-    isUnsupportedKnownTool(canonicalName);
-  const isKnown = isModel || isKnownBackendTool(canonicalName);
+    !isGenericBuilder && isUnsupportedKnownTool(canonicalName);
+  const isKnown = isKnownBackendTool(canonicalName);
 
   const handleClick = () => {
-    if (isModel) {
-      navigate(`/workspace?builder=${encodeURIComponent(canonicalName)}`);
-      return;
-    }
-    // Every other branch — typed view, generic builder, unsupported,
-    // truly-unknown — rides ``?context=`` with an empty params dict.
+    // Every destination rides ``?context=`` with an empty params dict.
     // The decoder picks the right variant downstream so the canvas
     // mounts the matching surface.  For unsupported / truly-unknown
-    // tools the canvas surfaces an honest card; for generic-builder
-    // tools (PR2) the canvas mounts a schema-driven form.
+    // tools the canvas surfaces an honest card; for runnable tools the
+    // canvas mounts the module's Build surface or the schema-driven
+    // form.
     const context = encodeURIComponent(
       JSON.stringify({
         tools: [{ tool: canonicalName, params: {} }],
@@ -394,22 +372,16 @@ function OpenInBuildCta({ tool }: { tool: ManifestTool }) {
     navigate(`/workspace?context=${context}`);
   };
 
-  // R6.5 + PR1 + PR2 — button copy + tooltip differentiate the four
+  // R6.5 + PR1 + PR2 — button copy + tooltip differentiate the
   // destinations so users know what they're about to land on:
-  //   - model builder → "Open in builder"
-  //   - typed primitive → "Open in Build"
-  //   - PR2 generic builder → "Open builder (schema)"
+  //   - runnable tool → "Open builder"
   //   - unsupported-known → "Open Build (unsupported)"
   let buttonLabel = 'Open in Build';
-  let title = 'Opens the chart canvas with editable parameter dropdowns';
-  if (isModel) {
-    buttonLabel = 'Open in builder';
-    title =
-      'Opens the standalone model builder with editable controls + methodology';
-  } else if (isGenericBuilder) {
+  let title = 'Opens the Build canvas for this tool';
+  if (isGenericBuilder) {
     buttonLabel = 'Open builder';
     title =
-      'Opens a schema-driven builder — editable inputs from this primitive’s ToolCard plus a Run button that posts to /tools/{name}/run';
+      'Opens this tool’s Build surface — editable inputs plus a Run button that executes against the backend';
   } else if (isUnsupported) {
     buttonLabel = 'Open Build (unsupported)';
     title =
@@ -433,21 +405,6 @@ function OpenInBuildCta({ tool }: { tool: ManifestTool }) {
       <span>{buttonLabel}</span>
     </button>
   );
-}
-
-/** Stage 4d — derived from each module's ``typedView`` field.  The
- *  Library CTA uses this to decide whether to label a runnable
- *  primitive as "Open in Build" (typed-view shipped) vs "Open builder"
- *  (PR2 schema-driven fallback).  Pre-Stage-4d this was a hand-
- *  authored set duplicating ``contextDecoder.TOOL_TO_VIEW``; the
- *  decoder itself now derives from the same source so the two are
- *  unambiguously in lock-step.
- *
- *  Stored as a function (rather than a const) to defer the
- *  ``ALL_PRIMITIVE_MODULES`` filter to first call — keeps the
- *  module-init order free of the cycle through ``@/modules``. */
-function hasTypedView(canonicalName: string): boolean {
-  return getPrimitiveModule(canonicalName)?.typedView != null;
 }
 
 // ----------------------------------------------------------------------------

@@ -23,15 +23,15 @@ import type { DecodedPrimitive } from '@/components/build/primitive/contextDecod
 import { getPrimitiveModule } from '@/modules';
 
 /** True when a persisted node can open an extended view: primitive
- *  nodes whose owning module ships ``surfaces.buildExtended`` (or the
- *  transitional ``build`` alias).  Operator nodes have no owning
- *  module — they render through artifact-type widgets only. */
+ *  nodes whose owning module ships ``surfaces.buildExtended`` (the
+ *  dual-view contract).  Operator nodes have no owning module — they
+ *  render through artifact-type widgets only. */
 export function canExpandPersistedNode(node: NodeSummary): boolean {
   if (node.kind !== 'primitive') return false;
   const toolName = persistedNodeToolName(node);
   if (!toolName) return false;
   const mod = getPrimitiveModule(toolName);
-  return Boolean(mod?.surfaces?.buildExtended ?? mod?.surfaces?.build);
+  return Boolean(mod?.surfaces?.buildExtended);
 }
 
 /** The backend tool name of a persisted primitive node.  PR A's

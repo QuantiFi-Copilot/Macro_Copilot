@@ -134,7 +134,7 @@ export async function assertStandardModuleInvariants(
 
   // ---- Invariants 4 + 5: tier ↔ surfaces consistency ------------------
   const surfaces = module.surfaces ?? {};
-  const capabilityToSurfaceKey: Record<string, keyof typeof surfaces> = {
+  const capabilityToSurfaceKey: Record<string, string> = {
     custom_build_surface: 'build',
     custom_preview_widget: 'preview',
     monitor_surface: 'monitor',
@@ -151,14 +151,11 @@ export async function assertStandardModuleInvariants(
   // ``monitor_surface`` claim uses ``monitorWidgets``; ``surfaces.monitor``
   // is reserved for future single-widget modules.
   //
-  // Stage 5 relaxation for ``custom_build_surface``: the tier is
-  // satisfied by EITHER ``surfaces.build`` (full Build experience —
-  // module owns the canvas) OR ``surfaces.resultRenderer`` (payload
-  // renderer for a typed-detail tool — the parent canvas provides
-  // chrome).  Stage 4a migrated 6 typed views to ``surfaces.build``
-  // with the wrong contract; Stage 5 splits them out to
-  // ``surfaces.resultRenderer``.  Both options remain valid; a
-  // module ships EITHER ``build`` OR ``resultRenderer``, never both.
+  // G-3.5 dual-view rule for ``custom_build_surface``: the tier is
+  // satisfied ONLY by shipping BOTH ``surfaces.buildExtended`` AND
+  // ``surfaces.buildCompact`` (rendering_density.md §1 + §11).  The
+  // pre-consolidation single-view fields were deleted from the spec
+  // contract.
   for (const t of tierSet) {
     if (!CAPABILITY_TIERS.has(t as never)) continue;
     const key = capabilityToSurfaceKey[t];
@@ -178,28 +175,20 @@ export async function assertStandardModuleInvariants(
       continue;
     }
     if (key === 'build') {
-      const hasBuild = surfaces.build != null;
-      const hasRenderer = surfaces.resultRenderer != null;
-      if (!hasBuild && !hasRenderer) {
+      const hasExtended = surfaces.buildExtended != null;
+      const hasCompact = surfaces.buildCompact != null;
+      if (!hasExtended || !hasCompact) {
         throw new Error(
-          `FM8 violation — module claims 'custom_build_surface' but ` +
-            `neither surfaces.build (full Build experience) nor ` +
-            `surfaces.resultRenderer (payload renderer for a typed-detail ` +
-            `tool) is populated.  Pick one shape and ship it under the ` +
-            `matching key.`,
-        );
-      }
-      if (hasBuild && hasRenderer) {
-        throw new Error(
-          `FM8 violation — module claims both surfaces.build AND ` +
-            `surfaces.resultRenderer.  Those are mutually exclusive: ` +
-            `surfaces.build owns the whole canvas, surfaces.resultRenderer ` +
-            `is just the result body.  Pick one.`,
+          `FM8 violation — module claims 'custom_build_surface' but the ` +
+            `dual-view contract requires BOTH surfaces.buildExtended AND ` +
+            `surfaces.buildCompact (got buildExtended=${hasExtended}, ` +
+            `buildCompact=${hasCompact}).  Ship both surface files per ` +
+            `rendering_density.md §1.`,
         );
       }
       continue;
     }
-    if (!surfaces[key]) {
+    if (!(surfaces as Record<string, unknown>)[key]) {
       throw new Error(
         `FM8 violation — module claims '${t}' but surfaces.${key} is not ` +
           `populated.  Either remove the tier or add the surface file.`,
@@ -209,17 +198,12 @@ export async function assertStandardModuleInvariants(
 
   // 5 — every populated surface must have a matching capability tier.
   //
-  // Stage 5: ``resultRenderer`` is recognised as a build-surface variant —
-  // it satisfies ``custom_build_surface`` (same tier as the full builder).
   // Dual-view rendering-density contract (rendering_density.md §5.2):
-  // ``buildExtended`` + ``buildCompact`` are the new Build-surface field
-  // names; both satisfy ``custom_build_surface`` (the same tier the legacy
-  // ``build`` / ``resultRenderer`` fields satisfy).
+  // ``buildExtended`` + ``buildCompact`` are the Build-surface field
+  // names; both satisfy ``custom_build_surface``.
   const surfaceKeyToTier: Record<string, string> = {
-    build: 'custom_build_surface',
     buildExtended: 'custom_build_surface',
     buildCompact: 'custom_build_surface',
-    resultRenderer: 'custom_build_surface',
     preview: 'custom_preview_widget',
     monitor: 'monitor_surface',
     ask: 'ask_surface',
@@ -230,7 +214,7 @@ export async function assertStandardModuleInvariants(
     if (!tierForKey) {
       throw new Error(
         `FM8 violation — surfaces.${key} is populated but no capability ` +
-          `tier maps to that key (closed mapping is build/buildExtended/buildCompact/resultRenderer/preview/monitor/ask).`,
+          `tier maps to that key (closed mapping is buildExtended/buildCompact/preview/monitor/ask).`,
       );
     }
     if (!tierSet.has(tierForKey as SurfaceTier)) {
@@ -333,9 +317,7 @@ export async function assertStandardModuleInvariants(
   const expectedSurfaceFiles: Array<{ key: string; path: string }> = [];
   // Dual-view rendering-density contract (rendering_density.md §5.2):
   // ``buildExtended`` → surfaces/BuildExtended.tsx and ``buildCompact`` →
-  // surfaces/BuildCompact.tsx are the canonical Build-surface files.  When a
-  // module ships the dual-view fields, the legacy ``build`` alias points at
-  // BuildExtended (no separate BuildSurface.tsx file is required).
+  // surfaces/BuildCompact.tsx are the canonical Build-surface files.
   if (module.surfaces?.buildExtended != null) {
     expectedSurfaceFiles.push({
       key: 'surfaces.buildExtended',
@@ -346,14 +328,6 @@ export async function assertStandardModuleInvariants(
     expectedSurfaceFiles.push({
       key: 'surfaces.buildCompact',
       path: `${folderPath}/surfaces/BuildCompact.tsx`,
-    });
-  }
-  // Legacy single-view modules (``surfaces.build`` WITHOUT the dual-view
-  // fields) map ``build`` → surfaces/BuildSurface.tsx as before.
-  if (module.surfaces?.build != null && module.surfaces?.buildExtended == null) {
-    expectedSurfaceFiles.push({
-      key: 'surfaces.build',
-      path: `${folderPath}/surfaces/BuildSurface.tsx`,
     });
   }
   if (module.surfaces?.preview != null) {

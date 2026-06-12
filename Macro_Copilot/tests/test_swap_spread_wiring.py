@@ -87,6 +87,19 @@ def _well_formed_swap_spread_output() -> dict:
                 {"date": "2026-04-30", "value": 0.5},
             ],
         },
+        # Consolidation update: SwapSpreadOutput gained a REQUIRED third
+        # canonical series — time_series_change_zscore (rolling z-score
+        # of the day-over-day spread CHANGE, the event-study "widened a
+        # lot today" signal, distinct from the level z-score above).
+        "time_series_change_zscore": {
+            "series_name": "ust_usd_sofr_ois_10y_swap_spread_change_zscore",
+            "units": "z_score",
+            "description": "Test swap spread change z-score series.",
+            "rows": [
+                {"date": "2026-04-29", "value": 0.1},
+                {"date": "2026-04-30", "value": 0.2},
+            ],
+        },
     }
 
 
@@ -275,21 +288,29 @@ class TestResponseModelValidation:
         )
         assert validated.time_series_spread is not None
         assert validated.time_series_zscore is not None
+        assert validated.time_series_change_zscore is not None
         assert validated.time_series_spread.units.value == "bps"
         assert validated.time_series_zscore.units.value == "z_score"
+        assert validated.time_series_change_zscore.units.value == "z_score"
 
     def test_response_model_requires_canonical_time_series_fields(self):
         from rates_agent.ois.tools.swap_spread.schemas import (
             SwapSpreadOutput,
         )
         from pydantic import ValidationError
-        for field in ("time_series_spread", "time_series_zscore"):
+        # time_series_change_zscore joined the required canonical set
+        # in the consolidation (event-study change-stretch signal).
+        for field in (
+            "time_series_spread",
+            "time_series_zscore",
+            "time_series_change_zscore",
+        ):
             bad = _well_formed_swap_spread_output()
             bad.pop(field)
             with pytest.raises(ValidationError):
                 SwapSpreadOutput.model_validate(bad)
 
-    def test_round_trip_preserves_all_three_time_series_fields(self):
+    def test_round_trip_preserves_all_canonical_time_series_fields(self):
         from rates_agent.ois.tools.swap_spread.schemas import (
             SwapSpreadOutput,
         )
@@ -301,6 +322,9 @@ class TestResponseModelValidation:
         assert "time_series" in dumped
         assert "time_series_spread" in dumped
         assert "time_series_zscore" in dumped
+        # Consolidation update: the change-z-score canonical series
+        # must round-trip too.
+        assert "time_series_change_zscore" in dumped
         # Cross-domain-specific snapshot field names — explicit
         # check that sovereign_yield_pct + ois_rate_pct are on the
         # wire (not curve_family_1_yield etc).

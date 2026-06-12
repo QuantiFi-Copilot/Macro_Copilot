@@ -2,10 +2,8 @@
 // src/modules/primitives/calculate_curve_spread_tool/module.ts
 // ----------------------------------------------------------------------------
 // Migration dispatch — converted from the legacy typed-renderer pattern
-// (``typedView: 'spread'`` + ``surfaces.resultRenderer``) to the new dual-
 // view + standalone-bridge contract under:
 //   - methodology_exposure.md §5 standalone-bridge (own typed-detail endpoint
-//     at /api/v1/rates/detail/spread + own surfaces; no shared typedView)
 //   - rendering_density.md §1 dual-view mandate (buildExtended + buildCompact
 //     both REQUIRED)
 //
@@ -49,14 +47,9 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Basis-point spread between two tenors on the same sovereign yield curve, with a fixed 1-year rolling z-score and full chartable time series.',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared typedView.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build`` is
-  // kept === buildExtended for the legacy VirtualPrimitiveCanvas dispatcher.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

@@ -14,7 +14,6 @@
 //
 //   - methodology_exposure.md §5 standalone-bridge contract (own typed-
 //     detail endpoint at /api/v1/rates/detail/policy-futures-scanner +
-//     own surfaces; no shared typedView)
 //   - rendering_density.md §1 dual-view mandate (BOTH buildExtended +
 //     buildCompact REQUIRED; no opt-in)
 //   - ADR 0013 V1 monitors-only scope (CTD analytics, term-premium
@@ -82,14 +81,9 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Universe-wide policy-futures strip sweep — ranks every (curve_family, strip_position) STIR stem (SFR1..8 / ER1..8 / SFI1..8) by absolute 252-day rolling z-score across FOUR metrics (implied-rate LEVEL, 1-day implied-rate CHANGE in bps, volume LEVEL, open-interest LEVEL). Returns the top-N extremes per metric with the load-bearing ADR 0013 V1 monitors-only / RFR-vs-IBOR regime caveat per row. Morning screen ahead of Fed / ECB / BoE meeting clusters — not a meeting-by-meeting policy-path decomposition.',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared typedView.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build`` is
-  // kept === buildExtended for the legacy VirtualPrimitiveCanvas dispatcher.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

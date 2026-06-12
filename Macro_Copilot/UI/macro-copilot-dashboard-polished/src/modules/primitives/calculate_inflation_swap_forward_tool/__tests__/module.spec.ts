@@ -5,7 +5,7 @@
 // Per-module round-trip — calls assertStandardModuleInvariants from
 // src/modules/__test-utils.ts.  Catches FM11 invariants 1-8 in one
 // check.  Plus the dual-view rendering-density contract pins
-// (rendering_density.md §1) and the standalone-bridge typedView=null pin
+// (rendering_density.md §1) and the standalone-bridge contract pins
 // (methodology_exposure.md §5).
 // ============================================================================
 
@@ -90,14 +90,6 @@ check('monitor widget id is the canonical inflation_swap_forward', () => {
   if (!ids.includes('inflation_swap_forward')) {
     throw new Error(
       `monitor widget id 'inflation_swap_forward' missing; got ${JSON.stringify(ids)}`,
-    );
-  }
-});
-
-check('typedView is null (standalone-module pattern)', () => {
-  if (MODULE.typedView != null) {
-    throw new Error(
-      `typedView must be null for new modules under the standalone-bridge contract; got '${MODULE.typedView}'.  See methodology_exposure.md §5.`,
     );
   }
 });

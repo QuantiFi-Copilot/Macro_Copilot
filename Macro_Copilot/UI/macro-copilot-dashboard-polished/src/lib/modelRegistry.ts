@@ -34,11 +34,9 @@
 // 3. (Optional) Add a custom control or renderer if the primitive's
 //    shape needs one.
 //
-// The workspace will read this registry at render time; the catalogue
-// page checks `hasModelMetadata(toolName)` to decide whether the
-// "Open in workspace" CTA routes to the rich model surface
-// (`?tool=model&name=...`) or the simpler primitive surface
-// (`?tool=primitive&name=...`).
+// The workspace reads this registry at render time (``paramHintFor``
+// drives the generic builder's controls; ``getModelMetadata`` lets the
+// output canvas pick a bespoke renderer when an entry exists).
 // ============================================================================
 
 export type ModelCategory =
@@ -142,11 +140,12 @@ export { DEFAULT_LOOKBACK_PRESETS, DEFAULT_WINDOW_PRESETS } from './modelPresets
 // Stage 4b moved the 5 rich-model entries (PCA, rolling regression,
 // attribution, half-life, beta-adjusted spread) onto each owning
 // module's ``MODULE.modelMetadata`` field; the hand-authored set
-// below is now empty.  The public ``MODELS`` export is the union of
+// below is now empty.  The model list is the union of
 // ``_HAND_AUTHORED_MODELS`` (empty today) and the module-derived
-// contribution from ``ALL_PRIMITIVE_MODULES``.  Adding a new rich-
-// model primitive now = ship its module with ``modelMetadata`` +
-// ``richModel: true``; no further edit to this file.
+// contribution from ``ALL_PRIMITIVE_MODULES``.  The G-3.2 dual-view
+// migration retired ``modelMetadata`` on every module, so the list is
+// EMPTY today — the derivation stays as the contract for any future
+// registry-backed metadata; no further edit to this file.
 
 const _HAND_AUTHORED_MODELS: ModelMetadata[] = [
   // ----------------------------------------------------------------
@@ -165,17 +164,17 @@ import { ALL_PRIMITIVE_MODULES, getPrimitiveModule } from '@/modules';
 // Lazy registry initialisation (Stage 4b)
 // ---------------------------------------------------------------------------
 //
-// Why lazy: the rich-model modules' ``module.ts`` files value-import
-// their per-tool ``BuildSurface.tsx`` wrapper, which in turn imports
-// ``BuilderCanvas`` → ``ModelWorkspacePage`` → ``modelRegistry``.
-// Touching ``ALL_PRIMITIVE_MODULES`` at modelRegistry's module-init
-// time would mean reading it MID-cycle, before @/modules has finished
-// populating it (TDZ → undefined → ``.filter`` throws).  Initialising
-// on first lookup defers the read until after @/modules's load
-// settles, breaking the cycle without restructuring the surface
-// graph.  Every public accessor (``getModelMetadata`` / ``hasModelMetadata``
-// / ``listModels`` / ``paramHintFor``) calls ``getRegistry()`` /
-// ``getModels()`` instead of reading the raw module-scope binding.
+// Why lazy: module ``module.ts`` files value-import per-tool Build
+// surfaces, which can transitively import ``modelRegistry`` (e.g. for
+// the shared preset arrays / param-hint helpers).  Touching
+// ``ALL_PRIMITIVE_MODULES`` at modelRegistry's module-init time would
+// mean reading it MID-cycle, before @/modules has finished populating
+// it (TDZ → undefined → ``.filter`` throws).  Initialising on first
+// lookup defers the read until after @/modules's load settles,
+// breaking the cycle without restructuring the surface graph.  Every
+// public accessor (``getModelMetadata`` / ``listModels`` /
+// ``paramHintFor``) calls ``getRegistry()`` / ``getModels()`` instead
+// of reading the raw module-scope binding.
 
 let _modelsCache: ModelMetadata[] | null = null;
 let _registryCache: Record<string, ModelMetadata> | null = null;
@@ -211,10 +210,6 @@ import { normalizeToolName } from '@/lib/toolNames';
 
 export function getModelMetadata(toolName: string): ModelMetadata | null {
   return getRegistry()[normalizeToolName(toolName)] ?? null;
-}
-
-export function hasModelMetadata(toolName: string): boolean {
-  return normalizeToolName(toolName) in getRegistry();
 }
 
 export function listModels(): ModelMetadata[] {

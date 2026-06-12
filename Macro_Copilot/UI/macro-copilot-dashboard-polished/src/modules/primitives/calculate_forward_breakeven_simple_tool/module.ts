@@ -5,7 +5,6 @@
 //   - methodology_exposure.md §5 standalone-bridge contract (this tool
 //     ships its own typed-detail endpoint at
 //     /api/v1/rates/detail/forward-breakeven + its own frontend surfaces;
-//     no shared typedView reuse)
 //   - rendering_density.md §1 dual-view mandate (BOTH buildExtended +
 //     buildCompact REQUIRED; no opt-in)
 //
@@ -51,14 +50,9 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Forward bond-implied breakeven inflation between two same-country pillars (e.g. UST/USD_TIPS 5Y5Y, FR_OAT/EUR_FR_LINKER 5Y10Y) computed as the year-weighted linear forward of two spot bond-implied breakevens.  Carries forward_breakeven_bps + 1d/5d/1m changes + rolling 252d z-score + trailing 252d high/low/percentile + start/end spot breakeven legs for decomposition audit.  Forward inflation compensation — NOT a clean forward expected-inflation read.',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared typedView.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build`` is
-  // kept === buildExtended for the legacy VirtualPrimitiveCanvas dispatcher.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

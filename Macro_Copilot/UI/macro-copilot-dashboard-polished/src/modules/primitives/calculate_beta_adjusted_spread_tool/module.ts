@@ -2,7 +2,6 @@
 // src/modules/primitives/calculate_beta_adjusted_spread_tool/module.ts
 // ----------------------------------------------------------------------------
 // Consolidation (G-3.2) — migrated from the Stage 4b rich-model route
-// (``richModel: true`` + ``modelMetadata`` → BuilderCanvas /
 // RollingRegressionRenderer) to the dual-view standard:
 //   - methodology_exposure.md §5 standalone bridge (own typed-detail
 //     endpoint at /api/v1/rates/detail/beta-adjusted-spread + own
@@ -65,16 +64,11 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Bivariate beta-adjusted RV — rolling OLS regresses one sovereign yield (target) on another (regressor); returns hedge ratio (beta), alpha (yield-percent), residual in bps, and a rolling z-score on the residual.',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared
-  // typedView; the rich-model route is retired.
-  typedView: null,
-  richModel: false,
 
   // FM8 — dual Build-side surfaces (rendering_density.md §5).
   // ``build`` is kept === buildExtended for the legacy
   // VirtualPrimitiveCanvas dispatcher (transitional alias).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
     preview: PreviewWidget,

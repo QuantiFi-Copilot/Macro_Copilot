@@ -6,8 +6,8 @@
 // assertStandardModuleInvariants).  Calls assertStandardModuleInvariants for
 // FM11 invariants 1-8 then adds the rendering_density.md §11 dual-view
 // contract checks (both buildExtended + buildCompact populated) + the
-// SCANNER-shape guardrail + the standalone-bridge contract checks (typedView
-// === null + mockups present) + the migration-mode backward-compat checks
+// SCANNER-shape guardrail + the standalone-bridge contract checks
+// (mockups present) + the migration-mode backward-compat checks
 // (monitor widget id 'scanner' still present; manifest_typed_view tier
 // preserved; legacy ResultRenderer + workspaceLabel + unsupportedReason
 // gone).  Identical boilerplate shape to the sibling
@@ -70,14 +70,6 @@ check('surfaces.buildCompact is populated', () => {
   }
 });
 
-check('typedView is null (standalone-bridge contract)', () => {
-  if (MODULE.typedView != null) {
-    throw new Error(
-      `typedView must be null for migrated modules under the standalone-bridge contract; got '${MODULE.typedView}'.  See methodology_exposure.md §5 + MIGRATION_RULES.md §4.`,
-    );
-  }
-});
-
 // ----------------------------------------------------------------------------
 // Migration-mode backward-compat checks (MIGRATION_RULES.md §6, §9).
 // ----------------------------------------------------------------------------
@@ -125,15 +117,6 @@ check('legacy workspaceLabel field removed', () => {
   if ('workspaceLabel' in m && m.workspaceLabel != null) {
     throw new Error(
       `Legacy 'workspaceLabel' field present (${String(m.workspaceLabel)}); MIGRATION_RULES.md §8 anti-pattern — remove for the dual-view contract.`,
-    );
-  }
-});
-
-check('legacy surfaces.resultRenderer key removed', () => {
-  const surfaces = MODULE.surfaces as unknown as Record<string, unknown> | undefined;
-  if (surfaces && 'resultRenderer' in surfaces && surfaces.resultRenderer != null) {
-    throw new Error(
-      `Legacy surfaces.resultRenderer present; MIGRATION_RULES.md §8 anti-pattern — the typed-view dispatch is removed in favour of surfaces.{build, buildExtended, buildCompact}.`,
     );
   }
 });

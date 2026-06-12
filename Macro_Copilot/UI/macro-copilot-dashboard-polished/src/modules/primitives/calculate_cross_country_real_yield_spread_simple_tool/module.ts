@@ -6,7 +6,6 @@
 // + standalone-bridge contracts:
 //   - methodology_exposure.md §5 standalone-bridge (own typed-detail
 //     endpoint at /api/v1/rates/detail/cross-country-real-yield-spread +
-//     own surfaces; no shared typedView)
 //   - rendering_density.md §1 dual-view mandate (buildExtended +
 //     buildCompact both REQUIRED)
 //
@@ -42,14 +41,9 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Same-tenor cross-country linker real-yield spread (e.g. USD_TIPS 10Y real yield minus GBP_LINKER 10Y real yield) — daily/weekly/monthly bps changes of a percent-units spread, 252-day rolling z-score, trailing range, per-curve real-yield level decomposition. Surfaces the load-bearing index-family mismatch caveat (CPI-U / RPI / HICPxT / Canada CPI are NOT fungible inflation measures) AND the cross-country linker market-structure caveat (liquidity / issuance / on-the-run differences) so the spread is read as a mix of real-rate divergence and structural differences, not a clean real-rate read.',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared typedView.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build`` is
-  // kept === buildExtended for the legacy VirtualPrimitiveCanvas dispatcher.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

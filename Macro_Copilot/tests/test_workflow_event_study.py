@@ -1115,14 +1115,24 @@ class TestResolverCompleteness:
         # to catch accidental deregistration AND to gate the
         # workflow router's catalogue against silent regressions.
         registered = set(known_rates_primitives())
+        # Pin recalibrated for the PR-10F corrective (commit 39173402,
+        # 2026-06-01): registry keys renamed to the calculate_* /
+        # get_* / policy_futures_* conventions (notably
+        # get_ois_rate_level_tool -> calculate_ois_rate_level_tool)
+        # AND previously-unregistered L2 catalogue tools registered
+        # (butterflies, scanners, panel builders, surprise calcs,
+        # bond-futures + policy-futures families).  Canonical set is
+        # now the full 55-tool catalogue.
         canonical_set = {
             # OIS family
             "calculate_ois_curve_spread_tool",
             "calculate_ois_cross_market_spread_tool",
-            "get_ois_rate_level_tool",
+            "calculate_ois_rate_level_tool",
             "calculate_swap_spread_tool",
             "calculate_ois_forward_rate_tool",
+            "calculate_ois_butterfly_tool",
             "compute_financing_rate_tool",
+            "scan_ois_extremes_tool",
             # Sovereign family
             "calculate_curve_spread_tool",
             "calculate_cross_market_spread_tool",
@@ -1130,6 +1140,11 @@ class TestResolverCompleteness:
             "build_sovereign_yield_panel_tool",
             "calculate_breakeven_inflation_tool",
             "calculate_zscore_custom_tool",
+            "calculate_butterfly_tool",
+            "calculate_otr_ofr_spread_tool",
+            "calculate_cpi_surprise_tool",
+            "calculate_nfp_surprise_tool",
+            "scan_extremes_tool",
             # Analytical models (workspace surface)
             "calculate_rolling_regression_tool",
             "calculate_pca_yield_curve_tool",
@@ -1146,6 +1161,8 @@ class TestResolverCompleteness:
             "calculate_cross_country_real_yield_spread_simple_tool",
             "calculate_real_yield_butterfly_tool",
             "calculate_breakeven_butterfly_tool",
+            "build_linker_panel_tool",
+            "get_scan_inflation_linkers_extremes_tool",
             # Inflation-swaps family
             "calculate_inflation_swap_rate_level_tool",
             "calculate_inflation_swap_curve_spread_tool",
@@ -1153,6 +1170,22 @@ class TestResolverCompleteness:
             "calculate_cross_market_inflation_swap_spread_tool",
             "calculate_swap_breakeven_basis_simple_tool",
             "calculate_inflation_swap_butterfly_tool",
+            "build_zcis_panel_tool",
+            "get_scan_inflation_swaps_extremes_tool",
+            # Bond-futures family
+            "get_futures_price_level_tool",
+            "get_futures_volume_oi_tool",
+            "scan_bond_futures_extremes_tool",
+            # Policy-futures family
+            "policy_futures_build_policy_futures_strip_panel_tool",
+            "policy_futures_get_futures_butterfly_simple_tool",
+            "policy_futures_get_futures_calendar_spread_tool",
+            "policy_futures_get_futures_cross_market_spread_tool",
+            "policy_futures_get_futures_pack_average_simple_tool",
+            "policy_futures_get_futures_price_level_tool",
+            "policy_futures_get_futures_strip_snapshot_tool",
+            "policy_futures_get_scan_policy_futures_extremes_tool",
+            "policy_futures_get_volume_open_interest_snapshot_tool",
         }
         missing = canonical_set - registered
         assert not missing, (

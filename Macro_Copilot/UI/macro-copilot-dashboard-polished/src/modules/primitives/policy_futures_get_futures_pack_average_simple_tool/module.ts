@@ -5,7 +5,6 @@
 // (build_order 22; policy_futures domain).  Under the new standards:
 //   - methodology_exposure.md §5 standalone-bridge (own typed-detail
 //     endpoint at /api/v1/rates/detail/policy-futures-pack-average + own
-//     surfaces; no shared typedView)
 //   - rendering_density.md §1 dual-view mandate (buildExtended +
 //     buildCompact both REQUIRED)
 //
@@ -62,16 +61,9 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Pack average across 4 consecutive quarterly STIR contracts (whites = SFR1..SFR4 / SFI1..SFI4 = positions 1-4; reds = SFR5..SFR8 / SFI5..SFI8 = positions 5-8) on ONE policy-futures curve family — the desk-canonical year-anchored implied-policy-path read.  Wire returns the pack-average implied rate in PERCENT (arithmetic mean of the four per-leg rates derived from the per-strip inverse-pricing flag), 1-day change in PERCENT POINTS (display × 100 → bps), rolling 252d z-score, trailing 252d high/low/percentile + per-leg disclosure block.  V1 executes on SOFR_FUT + SONIA_FUT; EUR_SHORT_RATE_FUT returns a clean controlled-error envelope per ADR 0013 V1 scope.  Simple arithmetic mean — NOT duration-weighted, NOT meeting-by-meeting, NOT CTD-of-OIS (PR11 planned-extension territory).',
 
-  // FM9 — STANDALONE pattern per methodology_exposure.md §5: no shared
-  // typedView.  The module owns its own full Build surfaces.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build``
-  // is kept === buildExtended for the legacy VirtualPrimitiveCanvas
-  // dispatcher that reads ``surfaces.build``.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

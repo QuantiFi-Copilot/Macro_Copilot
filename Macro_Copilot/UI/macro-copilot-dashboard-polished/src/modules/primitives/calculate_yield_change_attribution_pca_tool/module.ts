@@ -8,7 +8,6 @@
 //
 // ROUTING MECHANICS (THESIS Q3)
 // -----------------------------
-// ``modelMetadata`` is REMOVED and ``richModel`` is false: the central
 // contextDecoder routes kind='builder' (legacy BuilderCanvas) whenever
 // ``hasModelMetadata(toolName)`` is true, so dropping the block is what
 // lets the decode fall through to the module-first dual-view dispatch
@@ -75,12 +74,8 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Decompose a sovereign yield change at a given tenor over a window into per-PCA-component contributions in bps.  Loadings come from an inline PCA fit or a caller-supplied pasted payload.',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared
-  // typedView; richModel false so the contextDecoder falls through to
   // the module-first dual-view dispatch instead of the legacy
   // BuilderCanvas redirect.
-  typedView: null,
-  richModel: false,
 
   // PM-facing interpretation copy retained from the retired
   // modelMetadata block (THESIS Q3) — the Extended surface renders the
@@ -92,7 +87,6 @@ export const MODULE: PrimitiveModuleSpec = {
   // legacy dispatchers (BuildShell's ?builder= branch +
   // VirtualPrimitiveCanvas's fallback chain) until they are retired.
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
     // KEPT UNCHANGED — persisted-artifact RichModelWidget path.

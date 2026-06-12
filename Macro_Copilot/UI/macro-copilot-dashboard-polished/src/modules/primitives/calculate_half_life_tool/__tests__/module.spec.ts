@@ -12,8 +12,8 @@
 // check is replaced by rich-model-demotion checks — this migration
 // ships NO mockups (the surfaces compose the established rich-model
 // grammar at @/components/shared/build/model), and the migration's
-// load-bearing routing contract (modelMetadata removed + richModel
-// false + persisted-preview retention) deserves a pin instead.
+// load-bearing routing contract (modelMetadata removed +
+// persisted-preview retention) deserves a pin instead.
 // ============================================================================
 
 import { assertStandardModuleInvariants } from '../../../__test-utils';
@@ -72,35 +72,14 @@ check('surfaces.buildCompact is populated', () => {
   }
 });
 
-check('typedView is null (standalone-module pattern)', () => {
-  if (MODULE.typedView != null) {
-    throw new Error(
-      `typedView must be null for new modules under the standalone-bridge contract; got '${MODULE.typedView}'.  See methodology_exposure.md §5.`,
-    );
-  }
-});
-
 // ----------------------------------------------------------------------------
 // Rich-model demotion contract (this migration's load-bearing routing
-// mechanics): modelMetadata removed + richModel false take the tool out
+// mechanics): modelMetadata removed takes the tool out
 // of the legacy BuilderCanvas route (contextDecoder reads the
 // modelRegistry, which derives from modelMetadata).  The persisted-
 // artifact path is RETAINED: modelAdapter + surfaces.preview +
 // custom_preview_widget are orthogonal to Build routing.
 // ----------------------------------------------------------------------------
-
-check('legacy BuilderCanvas routing is OFF (no modelMetadata, richModel false)', () => {
-  if (MODULE.modelMetadata != null) {
-    throw new Error(
-      'modelMetadata must be REMOVED post-migration — its presence re-derives a modelRegistry entry and routes Build back to the legacy BuilderCanvas.',
-    );
-  }
-  if (MODULE.richModel !== false) {
-    throw new Error(
-      `richModel must be explicitly false post-migration; got ${String(MODULE.richModel)}.`,
-    );
-  }
-});
 
 check('persisted-artifact path is retained (modelAdapter + preview)', () => {
   if (MODULE.modelAdapter == null) {

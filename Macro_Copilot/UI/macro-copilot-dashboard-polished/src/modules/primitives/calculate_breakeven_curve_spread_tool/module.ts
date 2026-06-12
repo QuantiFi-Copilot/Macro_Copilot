@@ -6,7 +6,6 @@
 // references under the new standards:
 //   - methodology_exposure.md §5 standalone-bridge (own typed-detail endpoint
 //     at /api/v1/rates/detail/breakeven-curve-spread + own surfaces; no
-//     shared typedView)
 //   - rendering_density.md §1 dual-view mandate (buildExtended + buildCompact
 //     both REQUIRED)
 //
@@ -62,14 +61,9 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Same-country breakeven curve spread between two tenors of one bond-implied breakeven curve (e.g. US 2s10s breakeven, UK 5s30s breakeven). Positive = upward-sloping inflation compensation curve; negative = inverted. Inflation compensation term structure, not pure expected-inflation term structure.',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared typedView.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build`` is
-  // kept === buildExtended for the legacy VirtualPrimitiveCanvas dispatcher.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

@@ -38,14 +38,10 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     "How steep is a country's real-yield curve right now? The real-yield curve spread between two tenors of US TIPS, UK linkers, French OATei, or Canadian RRBs (e.g. TIPS 5s10s) — the curve shape, today's move, and how stretched it is vs the past year.",
 
-  // FM9 — STANDALONE pattern: no shared typedView.
-  typedView: null,
-  richModel: false,
 
   // FM8 — dual Build-side surfaces.  ``build`` === buildExtended for the
   // legacy dispatcher.
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

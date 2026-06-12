@@ -2,10 +2,8 @@
 // src/modules/primitives/get_otr_history_tool/module.ts — Dual-view build.
 // ----------------------------------------------------------------------------
 // Stage upgrade: Stage 3 scaffold (runtime tier only) → standalone-bridge
-// dual-view (typedView=null + surfaces.{build, buildExtended, buildCompact}).
 //   - methodology_exposure.md §5 standalone-bridge (own typed-detail
 //     endpoint at /api/v1/rates/detail/otr-history + own surfaces; no
-//     shared typedView)
 //   - rendering_density.md §1 dual-view mandate (buildExtended +
 //     buildCompact both REQUIRED)
 //
@@ -54,16 +52,9 @@ export const MODULE: PrimitiveModuleSpec = {
   category: 'snapshots',
   oneLineSummary: 'On-the-run transition log for one (country, tenor) sovereign cash-bond slot — current OTR snapshot (CUSIP, ISIN, vendor_ticker, maturity_date, effective_from of the open window) plus the chronological list of OTR transitions intersecting the lookback window.  Pure-INGEST read of macro_data.otr_history (ADR 0003), forward-only per ADR 0007 / TD #27.',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared
-  // typedView.  The module owns its own full Build surfaces.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build``
-  // is kept === buildExtended for the legacy VirtualPrimitiveCanvas
-  // dispatcher that reads ``surfaces.build``.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

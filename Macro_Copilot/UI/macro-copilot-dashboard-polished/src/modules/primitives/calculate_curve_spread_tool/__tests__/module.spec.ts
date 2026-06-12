@@ -7,8 +7,7 @@
 // Extends the standard boilerplate with the dual-view rendering-density
 // contract checks (rendering_density.md §11): every primitive claiming
 // custom_build_surface MUST ship BOTH surfaces.buildExtended AND
-// surfaces.buildCompact, AND typedView MUST be null under the standalone-
-// bridge contract.  Identical shape to the OIS curve-spread sibling test
+// surfaces.buildCompact under the standalone-bridge contract.  Identical shape to the OIS curve-spread sibling test
 // (the migration reference).
 // ============================================================================
 
@@ -64,23 +63,6 @@ check('surfaces.buildCompact is populated', () => {
   if (!MODULE.surfaces?.buildCompact) {
     throw new Error(
       'surfaces.buildCompact is missing.  Dual-view contract requires both buildExtended + buildCompact for every primitive claiming custom_build_surface.',
-    );
-  }
-});
-
-check('typedView is null (standalone-bridge pattern)', () => {
-  if (MODULE.typedView != null) {
-    throw new Error(
-      `typedView must be null under the standalone-bridge contract; got '${MODULE.typedView}'.  See methodology_exposure.md §5.`,
-    );
-  }
-});
-
-check('legacy surfaces.resultRenderer is NOT populated', () => {
-  const s = MODULE.surfaces as Record<string, unknown> | undefined;
-  if (s && 'resultRenderer' in s && s.resultRenderer != null) {
-    throw new Error(
-      'surfaces.resultRenderer is populated; the migration must REMOVE the legacy typed-renderer surface (see MIGRATION_RULES §4).',
     );
   }
 });

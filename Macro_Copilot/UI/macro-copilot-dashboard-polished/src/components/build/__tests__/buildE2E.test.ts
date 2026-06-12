@@ -16,7 +16,7 @@
 // already has a pure-logic seam:
 //
 //   - URL ``?context=`` →   decodePrimitiveContext / decodePrimitiveList
-//   - URL ``?builder=`` →   hasModelMetadata
+//   - URL ``?builder=`` →   decodePrimitiveContext (module-first canvas)
 //   - URL ``?workflow=`` →  classifyWorkflow
 //   - URL ``/<slug>`` →     resolveWorkflowDashboard +
 //                            resolve{EventStudy,Regime,Backtest}Artifacts
@@ -32,7 +32,7 @@ import {
   decodePrimitiveList,
 } from '../primitive/contextDecoder';
 import { classifyWorkflow } from '@/lib/toolNames';
-import { hasModelMetadata } from '@/lib/modelRegistry';
+import { getModelMetadata } from '@/lib/modelRegistry';
 import { buildDagModel } from '../dag/lib/buildDagModel';
 import {
   resolveWorkflowDashboard,
@@ -174,12 +174,12 @@ function encodeContext(
 
 check('row 2: ?builder=calculate_pca_yield_curve_tool → registry entry RETIRED (G-3.2)', () => {
   // Consolidation G-3.2: PCA migrated to the dual-view standard — its
-  // modelMetadata is gone, hasModelMetadata is false, and the legacy
-  // ?builder= route degrades to BuilderCanvas's honest "no builder"
-  // fallback (the canonical entry point is the module-first Build
-  // surface).  This lock makes a modelMetadata regression loud.
+  // modelMetadata is gone and the ?builder= deep-link routes through
+  // the standard module-first canvas (G-3.5 retired the legacy
+  // builder chassis).  This lock makes a modelMetadata regression
+  // loud.
   assertTruthy(
-    !hasModelMetadata('calculate_pca_yield_curve_tool'),
+    getModelMetadata('calculate_pca_yield_curve_tool') === null,
     'PCA migrated off the model registry',
   );
 });

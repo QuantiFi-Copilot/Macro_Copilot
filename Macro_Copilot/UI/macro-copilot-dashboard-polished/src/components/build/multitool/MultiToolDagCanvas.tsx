@@ -41,12 +41,9 @@ import { ExpandedViewProvider, useOpenExtendedView } from './expandedView';
 type Props = {
   /** Raw value of the ``?context=`` URL param (URI-encoded JSON). */
   contextParam: string;
-  /** True when BuildShell saw ``handoff=ask`` — threaded into the legacy
-   *  fallback cards (their missing-param tile gates on it). */
-  askHandoff: boolean;
 };
 
-export function MultiToolDagCanvas({ contextParam, askHandoff }: Props) {
+export function MultiToolDagCanvas({ contextParam }: Props) {
   const model = useMemo(() => buildDagModel(contextParam), [contextParam]);
 
   // The DAG page owns the full viewport width — collapse the workspaces
@@ -75,7 +72,7 @@ export function MultiToolDagCanvas({ contextParam, askHandoff }: Props) {
 
   return (
     <ExpandedViewProvider queryLabel={model.prompt}>
-      <DagCanvasInner model={model} askHandoff={askHandoff} />
+      <DagCanvasInner model={model} />
     </ExpandedViewProvider>
   );
 }
@@ -84,10 +81,8 @@ type DagTab = 'cards' | 'dag';
 
 function DagCanvasInner({
   model,
-  askHandoff,
 }: {
   model: DagModel;
-  askHandoff: boolean;
 }) {
   const { lastOpenedNodeId } = useOpenExtendedView();
   // Default tab is the compact cards — most analysts read the data, not the
@@ -128,11 +123,7 @@ function DagCanvasInner({
                     'ring-1 ring-ice-400/40 shadow-[0_0_0_3px_rgba(122,162,255,0.08)]',
                 )}
               >
-                <DagNodeBody
-                  node={node}
-                  size={model.size}
-                  askHandoff={askHandoff}
-                />
+                <DagNodeBody node={node} size={model.size} />
               </div>
             ))}
           </div>

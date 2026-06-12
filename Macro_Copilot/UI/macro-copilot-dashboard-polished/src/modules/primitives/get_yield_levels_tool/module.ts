@@ -2,7 +2,6 @@
 // src/modules/primitives/get_yield_levels_tool/module.ts
 // ----------------------------------------------------------------------------
 // Migration dispatch — converted from the legacy typed-renderer pattern
-// (``typedView: 'yield'`` + ``surfaces.resultRenderer``) to the new dual-
 // view + standalone-bridge contract under:
 //   - methodology_exposure.md §5 standalone-bridge (reuses the existing
 //     typed-detail endpoint at /api/v1/rates/detail/yield + the existing
@@ -50,14 +49,9 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Single-tenor sovereign yield snapshot — current yield, daily / weekly / monthly change in bps, rolling 252-day z-score, trailing 252-day high / low / percentile, observation count, and full chartable time series.',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared typedView.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build`` is
-  // kept === buildExtended for the legacy VirtualPrimitiveCanvas dispatcher.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

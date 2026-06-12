@@ -4,7 +4,6 @@
 // Stage-B Phase-1 tool — brought to full parity with get_real_yield_level_tool
 // under the new standards:
 //   - methodology_exposure.md §5 standalone-bridge (own typed-detail endpoint
-//     at /api/v1/rates/detail/breakeven + own surfaces; no shared typedView)
 //   - rendering_density.md §1 dual-view mandate (buildExtended + buildCompact
 //     both REQUIRED)
 //
@@ -36,14 +35,9 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     "What inflation rate is the bond market pricing in for the US, UK, France, or Canada? Breakeven inflation — the gap between a nominal government bond yield and the matching inflation-linked bond's real yield — with today's move and how stretched it is vs the past year. (Inflation compensation, not a clean expected-inflation read.)",
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared typedView.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build`` is
-  // kept === buildExtended for the legacy VirtualPrimitiveCanvas dispatcher.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

@@ -3,7 +3,6 @@
 // rich-model migration (consolidation target #4).
 // ----------------------------------------------------------------------------
 // MIGRATED off the legacy rich-model chassis (BuilderCanvas /
-// ModelWorkspacePage): ``modelMetadata`` is REMOVED and ``richModel`` is
 // false, so contextDecoder no longer routes this tool to the legacy
 // BuilderCanvas — the dual-view surfaces below own the Build experience.
 // ``modelAdapter`` + ``surfaces.preview`` are KEPT untouched: the
@@ -59,12 +58,8 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Ornstein-Uhlenbeck / AR(1) fit on a supplied series.  Returns half-life of mean reversion (trading days), long-run mean, current deviation, OU β with confidence interval, and a delta-method CI on the half-life itself.',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared
-  // typedView; richModel demoted to false (the legacy BuilderCanvas
   // route reads the modelRegistry, which derives from ``modelMetadata``
   // — both removed so the dual-view dispatch wins).
-  typedView: null,
-  richModel: false,
 
   // FM5d — persisted-artifact adapter (KEPT — see header note).
   modelAdapter: MODEL_ADAPTER,
@@ -75,7 +70,6 @@ export const MODULE: PrimitiveModuleSpec = {
   // is kept === buildExtended as the transitional alias for the legacy
   // VirtualPrimitiveCanvas dispatcher; ``preview`` is unchanged.
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
     preview: PreviewWidget,

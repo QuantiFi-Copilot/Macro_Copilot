@@ -64,33 +64,12 @@ check('surfaces.buildCompact is populated', () => {
   }
 });
 
-check('typedView is null (standalone-module pattern)', () => {
-  if (MODULE.typedView != null) {
-    throw new Error(
-      `typedView must be null for new modules under the standalone-bridge contract; got '${MODULE.typedView}'.  See methodology_exposure.md §5.`,
-    );
-  }
-});
-
 // ----------------------------------------------------------------------------
 // Dual-view migration invariants (THESIS Q3) — the legacy rich-model
 // BuilderCanvas route is RETIRED for this tool; the persisted-artifact
 // path is RETAINED.  These checks pin both halves so a regression in
 // either direction fails loudly.
 // ----------------------------------------------------------------------------
-
-check('modelMetadata removed + richModel false (legacy builder route retired)', () => {
-  if ((MODULE as any).modelMetadata != null) {
-    throw new Error(
-      'MODULE.modelMetadata must be absent: contextDecoder routes kind=\'builder\' (legacy BuilderCanvas) whenever hasModelMetadata(toolName) is true, which would preempt the dual-view dispatch.',
-    );
-  }
-  if (MODULE.richModel === true) {
-    throw new Error(
-      'MODULE.richModel must be false after the dual-view migration (mutually exclusive with the module-first buildExtended dispatch).',
-    );
-  }
-});
 
 check('persisted-artifact path retained (modelAdapter + surfaces.preview)', () => {
   if (MODULE.modelAdapter == null) {

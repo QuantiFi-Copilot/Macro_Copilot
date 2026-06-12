@@ -5,7 +5,6 @@
 // calculate_breakeven_inflation_simple_tool pilot):
 //   - methodology_exposure.md §5 standalone-bridge (own typed-detail
 //     endpoint at /api/v1/rates/detail/zscore-custom — already live on the
-//     backend — + own surfaces; no shared typedView)
 //   - rendering_density.md §1 dual-view mandate (buildExtended + buildCompact
 //     both REQUIRED)
 //
@@ -37,14 +36,9 @@ export const MODULE: PrimitiveModuleSpec = {
   category: 'rolling_analytics',
   oneLineSummary: 'Rolling z-score of a single sovereign yield with a user-supplied window length (vs the fixed 252-day window in get_yield_levels). Returns current z-score, latest yield, actual window parameters, and full z-score time series.',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared typedView.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build`` is
-  // kept === buildExtended for the legacy VirtualPrimitiveCanvas dispatcher.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

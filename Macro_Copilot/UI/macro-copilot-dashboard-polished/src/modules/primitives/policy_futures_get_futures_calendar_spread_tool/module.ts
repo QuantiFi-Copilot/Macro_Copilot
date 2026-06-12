@@ -5,7 +5,6 @@
 // (build_order 20; policy_futures domain).  Under the new standards:
 //   - methodology_exposure.md §5 standalone-bridge (own typed-detail
 //     endpoint at /api/v1/rates/detail/policy-futures-calendar + own
-//     surfaces; no shared typedView)
 //   - rendering_density.md §1 dual-view mandate (buildExtended +
 //     buildCompact both REQUIRED)
 //
@@ -85,16 +84,9 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Same-curve calendar spread between two strip-position slots on one policy-futures family (e.g. SFR 1-3, ER 1-4). Spread is on the IMPLIED-RATE axis: WIRE convention front-leg − back-leg in PERCENT POINTS; DISPLAY convention back-leg − front-leg in bps (positive = back rate HIGHER than front = steeper policy path). Underlying STIR contracts quote inverse (100-minus-rate) for SFR / ER / SFI. Carries 1d change, rolling 252d z-score, trailing 252d range + percentile, and per-leg disclosure (strip-slot master stems + current-front underlying contracts).',
 
-  // FM9 — STANDALONE pattern per methodology_exposure.md §5: no shared
-  // typedView.  The module owns its own full Build surfaces.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build``
-  // is kept === buildExtended for the legacy VirtualPrimitiveCanvas
-  // dispatcher that reads ``surfaces.build``.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

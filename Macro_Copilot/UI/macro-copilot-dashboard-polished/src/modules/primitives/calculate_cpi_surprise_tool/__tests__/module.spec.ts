@@ -64,14 +64,6 @@ check('surfaces.buildCompact is populated', () => {
   }
 });
 
-check('typedView is null (standalone-module pattern)', () => {
-  if (MODULE.typedView != null) {
-    throw new Error(
-      `typedView must be null for new modules under the standalone-bridge contract; got '${MODULE.typedView}'.  See methodology_exposure.md §5.`,
-    );
-  }
-});
-
 check('mockups folder exists alongside the module', async () => {
   try {
     const fs = await import('node:fs/promises');

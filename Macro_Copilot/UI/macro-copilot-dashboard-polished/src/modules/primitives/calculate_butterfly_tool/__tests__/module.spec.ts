@@ -7,8 +7,8 @@
 // FM11 invariants 1-8 in one check) plus the dual-view rendering-density
 // contract checks (rendering_density.md §11): every module claiming
 // custom_build_surface MUST ship BOTH surfaces.buildExtended AND
-// surfaces.buildCompact, AND typedView must be null under the standalone-
-// bridge contract (methodology_exposure.md §5).  Mirrors the OIS / linker /
+// surfaces.buildCompact under the standalone-bridge contract
+// (methodology_exposure.md §5).  Mirrors the OIS / linker /
 // ZCIS butterfly sibling tests file-for-file.
 // ============================================================================
 
@@ -68,21 +68,12 @@ check('surfaces.buildCompact is populated', () => {
   }
 });
 
-check('typedView is null (standalone-bridge pattern)', () => {
-  if (MODULE.typedView != null) {
-    throw new Error(
-      `typedView must be null under the standalone-bridge contract; got '${MODULE.typedView}'.  See methodology_exposure.md §5.`,
-    );
-  }
-});
-
 // ----------------------------------------------------------------------------
 // Migration-mode backward-compat assertions (MIGRATION_RULES §5 + §8):
 //   - manifest_typed_view tier PRESERVED (backend _PRIMITIVE_SPECS membership
 //     unchanged; do NOT swap to generic_runnable per §8 anti-patterns)
 //   - No monitor widgets (pre-migration module did not claim monitor_surface;
 //     design_guardrails are explicit "do NOT add one")
-//   - surfaces.build aliased to BuildExtended so build-page dispatch (legacy
 //     VirtualPrimitiveCanvas) keeps routing correctly post-migration
 // ----------------------------------------------------------------------------
 
@@ -99,14 +90,6 @@ check('no monitor widgets (migration design guardrail)', () => {
   if (Array.isArray(w) && w.length > 0) {
     throw new Error(
       `monitorWidgets must be empty for this migration (pre-migration module did not claim monitor_surface and design_guardrails are explicit).  Got ${w.length} widget(s).`,
-    );
-  }
-});
-
-check('surfaces.build aliased to buildExtended (legacy dispatcher)', () => {
-  if (MODULE.surfaces?.build !== MODULE.surfaces?.buildExtended) {
-    throw new Error(
-      'surfaces.build must alias surfaces.buildExtended so the legacy VirtualPrimitiveCanvas dispatcher routes Build pages correctly post-migration.',
     );
   }
 });

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // ============================================================================
-// richModelWidgetContract.test.ts — structural assertions on the persisted-
+// RichModelWidget contract test — structural assertions on the persisted-
 // artifact widget contract (PR3).
 // ----------------------------------------------------------------------------
 // PR3's load-bearing invariant for ``RichModelWidget`` is that it

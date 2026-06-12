@@ -4,7 +4,6 @@
 // Frontend module under the new standards:
 //   - methodology_exposure.md §5 standalone-bridge contract (this tool
 //     ships its own typed-detail endpoint at /api/v1/rates/detail/financing-rate
-//     + its own frontend surfaces; no shared typedView reuse)
 //   - rendering_density.md §1 dual-view mandate (BOTH buildExtended +
 //     buildCompact REQUIRED)
 //
@@ -58,14 +57,9 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Daily OIS-implied financing rate at one proxy curve (e.g. USD_SOFR_OIS proxies UST financing).  Snapshot view: current rate, 1d/5d/1m changes in bps, rolling 252-day z-score, trailing 252-day high / low / percentile, and full chartable time series.  Backend Panel-shape is reduced to a snapshot shape by the route handler — see THESIS Backend shape note.',
 
-  // FM9 — routing claims.  STANDALONE pattern per methodology_exposure.md §5:
-  // no shared typedView.  The module owns its own full Build surfaces.
-  typedView: null,
-  richModel: false,
 
   // FM8 — surface refs (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

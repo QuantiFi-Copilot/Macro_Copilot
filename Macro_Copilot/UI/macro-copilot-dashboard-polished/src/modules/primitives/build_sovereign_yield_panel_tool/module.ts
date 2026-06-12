@@ -4,7 +4,6 @@
 // PANEL-BUILDER dual-view module under the new standards:
 //   - methodology_exposure.md §5 standalone bridge (own typed-detail endpoint
 //     at /api/v1/rates/detail/sovereign-yield-panel + own surfaces; no shared
-//     typedView)
 //   - rendering_density.md §1 dual-view mandate (buildExtended + buildCompact
 //     both REQUIRED)
 //
@@ -39,15 +38,9 @@ export const MODULE: PrimitiveModuleSpec = {
   category: 'panel_assembly',
   oneLineSummary: 'Wide multi-instrument Panel of sovereign yields keyed by `<curve_family>_<tenor>` over a date range. Designed as the backtest workflow\'s primary price-source panel — every cash leg in a sovereign-family trade reads its time series from one row of the assembled Panel.',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared typedView.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build`` is
-  // kept === buildExtended for the legacy VirtualPrimitiveCanvas dispatcher
-  // (and FM8 invariant 4, which maps custom_build_surface → surfaces.build).
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

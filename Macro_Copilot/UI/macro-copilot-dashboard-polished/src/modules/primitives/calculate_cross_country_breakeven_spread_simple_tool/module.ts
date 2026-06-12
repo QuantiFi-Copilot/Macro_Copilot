@@ -6,7 +6,6 @@
 // standalone-bridge contracts:
 //   - methodology_exposure.md §5 standalone-bridge (own typed-detail
 //     endpoint at /api/v1/rates/detail/cross-country-breakeven-spread + own
-//     surfaces; no shared typedView)
 //   - rendering_density.md §1 dual-view mandate (buildExtended +
 //     buildCompact both REQUIRED)
 //
@@ -42,14 +41,9 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Same-tenor cross-country bond-implied breakeven spread (e.g. UK 10Y BE minus US 10Y BE) — daily/weekly/monthly bps changes, 252-day rolling z-score, trailing range, per-leg breakeven decomposition. Surfaces the load-bearing index-family-mismatch caveat (CPI-U / RPI / HICPxT / Canada CPI are NOT fungible inflation measures) so the spread is read as cross-country inflation-compensation divergence, not pure expected-inflation divergence.',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared typedView.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build`` is
-  // kept === buildExtended for the legacy VirtualPrimitiveCanvas dispatcher.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

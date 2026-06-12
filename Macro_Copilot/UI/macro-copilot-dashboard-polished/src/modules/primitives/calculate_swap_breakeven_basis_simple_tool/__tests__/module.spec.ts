@@ -73,14 +73,6 @@ check('surfaces.buildCompact is populated', () => {
   }
 });
 
-check('typedView is null (standalone-bridge pattern)', () => {
-  if (MODULE.typedView != null) {
-    throw new Error(
-      `typedView must be null for new modules under the standalone-bridge contract; got '${MODULE.typedView}'.  See methodology_exposure.md §5.`,
-    );
-  }
-});
-
 check('monitorWidgets carries the swap_breakeven_basis_simple tile', () => {
   const widgets = MODULE.monitorWidgets ?? [];
   const hit = widgets.find((w) => w.id === 'swap_breakeven_basis_simple');

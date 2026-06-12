@@ -64,14 +64,6 @@ check('surfaces.buildCompact is populated', () => {
   }
 });
 
-check('typedView is null (standalone-module pattern)', () => {
-  if (MODULE.typedView != null) {
-    throw new Error(
-      `typedView must be null for new modules under the standalone-bridge contract; got '${MODULE.typedView}'.  See methodology_exposure.md §5.`,
-    );
-  }
-});
-
 // NO mockups for this module (THESIS header: the shared-shell catalogue IS
 // the design reference) — so instead of the pilot's mockups/ PNG check we
 // assert the three canonical surface files exist (FM8 file contract).

@@ -110,16 +110,34 @@ pytestmark = pytest.mark.skipif(
 # ============================================================================
 
 
-class _StubTool:
-    """Minimal duck-type of a LangChain BaseTool: exposes ``name`` and
-    ``args_schema``-free behaviour.  We only need ``name`` to satisfy
-    ``MultiServerMCPClient.get_tools()`` and ``ToolNode`` construction.
+# langgraph >= 1.x ``ToolNode`` validates its tools through
+# ``langchain_core.tools.convert.tool`` and rejects duck-typed objects
+# that merely expose ``name``/``ainvoke`` (ValueError: "first argument
+# must be a string or a callable with a __name__").  The stub must be a
+# REAL ``BaseTool`` subclass, exactly like the StructuredTool instances
+# ``MultiServerMCPClient.get_tools()`` returns in production.  Import
+# is guarded so the module still collects (and skips via ``pytestmark``)
+# in lanes without the langchain stack.
+try:
+    from langchain_core.tools import BaseTool as _BaseTool
+except Exception:  # pragma: no cover — skipif lane without langchain
+    _BaseTool = object  # type: ignore[assignment, misc]
+
+
+class _StubTool(_BaseTool):  # type: ignore[valid-type, misc]
+    """Minimal REAL LangChain BaseTool (langgraph 1.x ``ToolNode``
+    no longer accepts duck-types).  We only need ``name`` to satisfy
+    ``MultiServerMCPClient.get_tools()`` and ``ToolNode`` construction;
+    the capture LLM never emits tool calls, so it is never invoked.
     """
 
-    name = "stub_curve_spread_tool"
-    description = "stub tool for tests"
+    name: str = "stub_curve_spread_tool"
+    description: str = "stub tool for tests"
 
-    async def ainvoke(self, *args, **kwargs):
+    def _run(self, *args, **kwargs):
+        return {"value_bps": 50.0, "as_of": "2026-05-12"}
+
+    async def _arun(self, *args, **kwargs):
         return {"value_bps": 50.0, "as_of": "2026-05-12"}
 
 

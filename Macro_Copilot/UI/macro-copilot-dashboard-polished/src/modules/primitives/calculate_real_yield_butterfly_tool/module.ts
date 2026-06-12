@@ -7,7 +7,6 @@
 // new standards:
 //   - methodology_exposure.md §5 standalone-bridge (own typed-detail endpoint
 //     at /api/v1/rates/detail/real-yield-butterfly + own surfaces; no shared
-//     typedView)
 //   - rendering_density.md §1 dual-view mandate (buildExtended + buildCompact
 //     both REQUIRED)
 //
@@ -66,14 +65,9 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Three-point curvature of the linker real-yield curve on a single curve_family (e.g. USD_TIPS 5s10s30s real-yield fly) with fixed 50-50 wing weights. Positive = belly cheap; negative = belly rich. Curvature of real yields, distinct from breakeven-curve or nominal-curve curvature.',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared typedView.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build`` is
-  // kept === buildExtended for the legacy VirtualPrimitiveCanvas dispatcher.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

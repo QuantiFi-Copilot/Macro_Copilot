@@ -190,9 +190,9 @@ const BACKEND_SET: ReadonlySet<string> = new Set(
 //     (``contextDecoder`` routes to one of these for each).
 //   - UNSUPPORTED_KNOWN_TOOLS: honest paused card.
 //   - Model registry tools: rich model builder.
-//   - Manifest-only typed-view tools (subset of KNOWN_BACKEND_TOOLS
-//     that aren't in RUNNABLE_PRIMITIVE_TOOLS): typed view via
-//     contextDecoder's ``TOOL_TO_VIEW`` map.
+//   - Manifest-only tools (subset of KNOWN_BACKEND_TOOLS that aren't
+//     in RUNNABLE_PRIMITIVE_TOOLS): honest unsupported-known card via
+//     the contextDecoder.
 
 function computeFrontendRouteable(): Set<string> {
   const out = new Set<string>();

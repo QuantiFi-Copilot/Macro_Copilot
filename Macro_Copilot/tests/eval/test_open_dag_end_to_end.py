@@ -233,11 +233,22 @@ class _MockRenderer:
     last_hash: Optional[str] = None
     last_intent_chain: Any = None
 
-    async def render(self, **kw) -> str:
+    # Consolidation target #3: OpenDagPipeline now calls
+    # ``render_parts`` (RenderedAnswer with the split-out
+    # ``answer_prose``) instead of ``render``.  Mock updated to the
+    # new L6 contract.
+    async def render_parts(self, **kw):
+        from orchestrator.open_dag.answer import RenderedAnswer
+
         type(self).last_summary = kw.get("executed_summary")
         type(self).last_hash = kw.get("lineage_head_hash")
         type(self).last_intent_chain = kw.get("intent_chain")
-        return f"RENDERED: {kw.get('executed_summary', '(empty)')}"
+        markdown = f"RENDERED: {kw.get('executed_summary', '(empty)')}"
+        return RenderedAnswer(
+            markdown=markdown,
+            answer_prose=markdown,
+            kind="answer",
+        )
 
 
 # ============================================================================
@@ -361,11 +372,18 @@ async def test_pipeline_wiring_with_monkeypatched_executor(monkeypatch, _synthet
 
 
 @pytest.mark.asyncio
-async def test_default_executor_returns_none_on_executor_failure():
-    """The default executor callback returns None when the substrate
-    executor raises — the pipeline treats this as
-    ``run_lineage.compute_lineage = None``."""
+async def test_default_executor_propagates_executor_failure():
+    """Plan D4 (self-correction loop) changed this contract: the
+    default executor callback PROPAGATES substrate-executor exceptions
+    so the pipeline can route the typed failure reason into the
+    bounded self-correction loop (instead of collapsing it to a dead
+    ``compute_lineage = None``).  Only an ExecutedDag-build failure
+    still returns None (internal, non-recoverable).
+
+    This test previously pinned the pre-D4 'returns None on raise'
+    behavior; updated to pin propagation."""
     from orchestrator.open_dag.default_executor import execute_workflow_async
+    from shared.workflow.validate import WorkflowValidationError
 
     # Synthetic workflow with a tool the resolver doesn't know — the
     # substrate executor will raise WorkflowValidationError.
@@ -386,15 +404,12 @@ async def test_default_executor_returns_none_on_executor_failure():
     def _bad_resolver(tool_name):
         raise KeyError(tool_name)
 
-    result = await execute_workflow_async(
-        workflow=wf,
-        engine=None,
-        primitive_resolver=_bad_resolver,
-    )
-    assert result is None, (
-        "PR-10A F2: default executor must return None when the "
-        "substrate executor raises"
-    )
+    with pytest.raises(WorkflowValidationError, match="DOES_NOT_EXIST"):
+        await execute_workflow_async(
+            workflow=wf,
+            engine=None,
+            primitive_resolver=_bad_resolver,
+        )
 
 
 @pytest.mark.asyncio
@@ -472,10 +487,15 @@ async def test_canonical_cross_domain_correlation_pipeline_wiring_monkeypatched(
 
     rendered: List[str] = []
     class _Renderer:
-        async def render(self, **kw) -> str:
+        # Consolidation target #3: pipeline calls render_parts now.
+        async def render_parts(self, **kw):
+            from orchestrator.open_dag.answer import RenderedAnswer
             rendered.append(kw.get("lineage_head_hash", ""))
             summary = kw.get("executed_summary", "")
-            return f"CANONICAL_ANSWER_WITH_REAL_LINEAGE: {summary}"
+            markdown = f"CANONICAL_ANSWER_WITH_REAL_LINEAGE: {summary}"
+            return RenderedAnswer(
+                markdown=markdown, answer_prose=markdown, kind="answer",
+            )
 
     async def selector_cb(*, leaf_id, request, timeout_s):
         # Both leaves bind to the synthetic tool (which the real
@@ -1010,11 +1030,18 @@ async def test_canonical_cross_domain_correlation_REAL_executor(
     rendered_lineage_hashes: List[str] = []
 
     class _Renderer:
-        async def render(self, **kw) -> str:
+        # Consolidation target #3: pipeline calls render_parts now.
+        async def render_parts(self, **kw):
+            from orchestrator.open_dag.answer import RenderedAnswer
             rendered_lineage_hashes.append(
                 kw.get("lineage_head_hash", ""),
             )
-            return f"REAL_E2E_ANSWER: {kw.get('executed_summary', '')}"
+            markdown = (
+                f"REAL_E2E_ANSWER: {kw.get('executed_summary', '')}"
+            )
+            return RenderedAnswer(
+                markdown=markdown, answer_prose=markdown, kind="answer",
+            )
 
     # PR-10F gap #4: TWO distinct per-domain selectors, each binding
     # the REAL production tool with the canonical query parameters.

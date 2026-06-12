@@ -172,9 +172,12 @@ class TestDomainPrompts:
 
 class TestDomainBoundariesLabel:
     """The multi-domain fan-out builds per-domain "stay in your lane"
-    instructions from a label dictionary inside session.py.  Missing
-    entries fall back to the bare enum value — a UX regression for
-    multi-domain queries that route to the linker domain.
+    instructions.  PR-10H gap #3 (commit 8b58f0e2) replaced the
+    hardcoded label dictionary inside session.py with registry-driven
+    labels: ``DOMAIN_SPECS[<id>].domain_label``, sourced from each
+    domain package's ``__domain_label__``.  Missing entries fall back
+    to the bare enum value — a UX regression for multi-domain queries
+    that route to the linker domain.
     """
 
     def test_inflation_indexed_bonds_has_friendly_label(self):
@@ -184,8 +187,11 @@ class TestDomainBoundariesLabel:
             [Domain.SOVEREIGN_BONDS, Domain.INFLATION_INDEXED_BONDS]
         )
         linker_text = boundaries[Domain.INFLATION_INDEXED_BONDS]
-        # The friendly label, not the bare enum value.
-        assert "inflation-linked bonds" in linker_text
+        # The friendly registry label (PR-10H gap #3:
+        # rates_agent/inflation_indexed_bonds/__init__.py
+        # __domain_label__), not the bare enum value.
+        assert "inflation-indexed bonds" in linker_text
+        assert "inflation_indexed_bonds" not in linker_text
         # And the sibling label survives so the boundary names what
         # the OTHER agent owns explicitly.
         assert "cash sovereign bonds" in linker_text
@@ -197,8 +203,11 @@ class TestDomainBoundariesLabel:
             [Domain.SOVEREIGN_BONDS, Domain.INFLATION_SWAPS]
         )
         zcis_text = boundaries[Domain.INFLATION_SWAPS]
-        # The friendly label, not the bare enum value.
-        assert "zero-coupon inflation swaps" in zcis_text
+        # The friendly registry label (PR-10H gap #3:
+        # rates_agent/inflation_swaps/__init__.py __domain_label__),
+        # not the bare enum value.
+        assert "inflation swaps" in zcis_text
+        assert "inflation_swaps" not in zcis_text
         # And the sibling label survives.
         assert "cash sovereign bonds" in zcis_text
 

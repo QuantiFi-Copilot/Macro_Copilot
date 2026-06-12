@@ -280,10 +280,18 @@ async def _drive_two_turns_capture_router_inputs(engine):
 
 
 @pytest.mark.asyncio
-async def test_routing_layer_receives_recent_context(engine):
+async def test_routing_layer_receives_recent_context(engine, monkeypatch):
     """Drive two turns through the real ``_run_turn`` machinery
     and assert that on turn 2 BOTH the supervisor AND the workflow
     router receive a message containing turn 1's content."""
+    # PR-11 / Option A (route-once-then-dispatch) set
+    # DISABLE_TEMPLATE_ROUTER=1 in docker-compose.yml so every chat
+    # turn drops into the open-DAG lane and the template/workflow
+    # router gate is skipped.  This test diagnoses context DELIVERY
+    # to both routers, so force the gate ON regardless of the
+    # container's isolation flag — the gated path is still the
+    # default whenever the env var is unset.
+    monkeypatch.setenv("DISABLE_TEMPLATE_ROUTER", "0")
     result = await _drive_two_turns_capture_router_inputs(engine)
     sup_calls: List[str] = result["sup_calls"]
     wf_calls: List[str] = result["wf_calls"]

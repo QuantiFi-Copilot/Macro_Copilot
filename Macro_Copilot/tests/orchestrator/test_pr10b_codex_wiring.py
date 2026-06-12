@@ -343,17 +343,26 @@ def test_pr10c_f7_composer_exposes_last_compose_rationale():
 def test_pr10c_f7_pipeline_threads_composer_rationale_to_intent_chain():
     """The pipeline must read composer.last_compose_rationale after
     compose() and pass it to IntentChain.from_inputs as
-    composer_llm_rationale."""
+    composer_llm_rationale.
+
+    Phase B (bounded self-correction loop, commit 8933d9cc) moved the
+    L3→L6 attempt body out of ``run`` into ``_attempt``; the rationale
+    threading now lives there, so we inspect the combined source of
+    both methods rather than ``run`` alone.
+    """
     import inspect
     from orchestrator.open_dag import OpenDagPipeline
 
-    src = inspect.getsource(OpenDagPipeline.run)
+    src = inspect.getsource(OpenDagPipeline.run) + inspect.getsource(
+        OpenDagPipeline._attempt
+    )
     assert "last_compose_rationale" in src, (
-        "PR-10C F7: pipeline.run must read composer.last_compose_rationale"
+        "PR-10C F7: the pipeline (run/_attempt) must read "
+        "composer.last_compose_rationale"
     )
     assert "composer_llm_rationale" in src, (
-        "PR-10C F7: pipeline.run must pass composer_llm_rationale to "
-        "IntentChain.from_inputs"
+        "PR-10C F7: the pipeline (run/_attempt) must pass "
+        "composer_llm_rationale to IntentChain.from_inputs"
     )
 
 

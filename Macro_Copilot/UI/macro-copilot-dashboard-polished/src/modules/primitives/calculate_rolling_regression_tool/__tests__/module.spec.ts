@@ -69,32 +69,11 @@ check('surfaces.buildCompact is populated', () => {
   }
 });
 
-check('typedView is null (standalone-module pattern)', () => {
-  if (MODULE.typedView != null) {
-    throw new Error(
-      `typedView must be null for modules under the standalone-bridge contract; got '${MODULE.typedView}'.  See methodology_exposure.md §5.`,
-    );
-  }
-});
-
 // ----------------------------------------------------------------------------
 // Rich-model migration contract (consolidation target #4): the legacy
 // BuilderCanvas route must be unreachable; the persisted-artifact path
 // must survive untouched.
 // ----------------------------------------------------------------------------
-
-check('modelMetadata removed (no builder-kind routing)', () => {
-  if (MODULE.modelMetadata != null) {
-    throw new Error(
-      "modelMetadata is set — contextDecoder would route kind='builder' (legacy BuilderCanvas) and the dual-view surfaces would never mount.  THESIS Q3 documents the removal.",
-    );
-  }
-  if (MODULE.richModel !== false) {
-    throw new Error(
-      `richModel must be false post-migration; got ${JSON.stringify(MODULE.richModel)}.`,
-    );
-  }
-});
 
 check('persisted-artifact path retained (preview + modelAdapter)', () => {
   if (!MODULE.surfaces?.preview) {
@@ -110,14 +89,6 @@ check('persisted-artifact path retained (preview + modelAdapter)', () => {
   if (MODULE.modelAdapter?.toolName !== FOLDER) {
     throw new Error(
       'modelAdapter missing or mis-keyed — RichModelWidget per-tool copy comes from MODULE.modelAdapter.',
-    );
-  }
-});
-
-check('transitional build alias === buildExtended', () => {
-  if (MODULE.surfaces?.build !== MODULE.surfaces?.buildExtended) {
-    throw new Error(
-      'surfaces.build must alias buildExtended until the legacy dispatchers (BuildShell ?builder= branch, invariant helper) read buildExtended natively.',
     );
   }
 });

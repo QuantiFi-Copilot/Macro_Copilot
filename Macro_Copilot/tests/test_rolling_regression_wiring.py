@@ -249,16 +249,18 @@ class TestMcpRollingRegressionWrapper:
 
 
 # ===========================================================================
-# api/routes/rates/detail.py — explicit absence of /detail/rolling-regression
+# api/routes/rates/detail.py — /detail/rolling-regression route exists
 # ===========================================================================
 
-class TestNoFastApiRouteThisSprint:
-    """rolling_regression has nested inputs and ships MCP-only this
-    sprint per the v6 transport rule.  Pin that absence so a future
-    commit can't accidentally add a flat-Query route — it would not
-    fit the input shape and would mislead callers."""
+class TestFastApiRouteExists:
+    """Consolidation update: the old 'MCP-only this sprint' pin is
+    retired.  Per ``docs_revamped/03_standards/methodology_exposure.md
+    §5`` (consolidation target #4) the tool deliberately gained a
+    typed-detail GET route — the nested SeriesSpec list is flattened
+    into parallel ``regressor_curve_families`` + ``regressor_tenors``
+    query lists.  Pin the live route and its contract instead."""
 
-    def test_no_route_for_rolling_regression(self):
+    def test_route_for_rolling_regression_exists(self):
         from api.routes.rates import detail as detail_module
         import inspect
         # All public route handlers in detail.py — anything ending in
@@ -267,12 +269,24 @@ class TestNoFastApiRouteThisSprint:
             name for name, obj in inspect.getmembers(detail_module)
             if inspect.isfunction(obj) and name.endswith("_detail")
         ]
-        assert "rolling_regression_detail" not in handlers, (
-            "rolling_regression has nested inputs and ships MCP-only "
-            "this sprint.  Adding a FastAPI route requires the "
-            "POST/JSON-body decision documented in v6 plan Delta H "
-            "first."
+        assert "rolling_regression_detail" in handlers, (
+            "GET /detail/rolling-regression was added in the "
+            "consolidation (methodology_exposure.md §5, target #4); "
+            "the typed-detail handler must exist in detail.py."
         )
+
+    def test_route_path_method_and_response_model(self):
+        from api.routes.rates import detail as detail_module
+        from rates_agent.sovereign_bonds.tools.rolling_regression import (
+            RollingRegressionOutput,
+        )
+        routes = {
+            route.path: route for route in detail_module.router.routes
+        }
+        assert "/detail/rolling-regression" in routes
+        route = routes["/detail/rolling-regression"]
+        assert "GET" in route.methods
+        assert route.response_model is RollingRegressionOutput
 
 
 # ===========================================================================

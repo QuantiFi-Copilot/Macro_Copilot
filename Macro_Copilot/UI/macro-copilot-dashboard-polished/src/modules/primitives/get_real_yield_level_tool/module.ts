@@ -4,7 +4,6 @@
 // Phase-1 pilot tool under the new standards:
 //   - methodology_exposure.md §5 standalone-bridge contract (this tool
 //     ships its own typed-detail endpoint at /api/v1/rates/detail/real_yield
-//     + its own frontend surfaces; no shared typedView reuse)
 //   - rendering_density.md §1 dual-view mandate (BOTH buildExtended +
 //     buildCompact REQUIRED; no opt-in)
 //
@@ -44,21 +43,11 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Single-tenor sovereign-linker real-yield snapshot — current yield, daily / weekly / monthly change in bps, rolling 252-day z-score (override-tunable per call), trailing 252-day high / low / percentile, and full chartable time series. Linker analogue of get_yield_levels.',
 
-  // FM9 — routing claims.  STANDALONE pattern per methodology_exposure.md §5:
-  // no shared typedView.  The module owns its own full Build surfaces.
-  typedView: null,
-  richModel: false,
 
   // FM8 — surface refs (rendering_density.md §5):
   //   * buildExtended — full canvas, mounted for single-tool queries
   //   * buildCompact  — grid card, mounted as a node in multi-tool DAGs
-  //
-  // ``build`` is set to ``BuildExtended`` for backward compat with the
-  // existing VirtualPrimitiveCanvas dispatcher (which currently reads
-  // ``surfaces.build``).  Once the dispatcher reads ``buildExtended``
-  // first, the ``build`` field is removed for new modules.
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

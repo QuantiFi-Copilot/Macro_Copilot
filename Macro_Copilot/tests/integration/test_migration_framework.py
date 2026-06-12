@@ -43,9 +43,46 @@ import pytest
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_WORKTREE_ROOT = _PROJECT_ROOT.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
+
+
+def _resolve_worktree_root() -> Path | None:
+    """Locate the directory containing ``alembic.ini`` + ``migrations/``.
+
+    Same container-aware resolution as
+    ``tests/state/test_migrations.py::_resolve_worktree_root``.  On the
+    host the Alembic config lives one level above the project
+    (``<repo-root>/alembic.ini`` next to ``<repo-root>/Macro_Copilot/``).
+    Inside the api-server container the project is mounted at ``/app``
+    and the repo root at ``/repo-root`` (docker-compose: ``.:/app`` +
+    ``..:/repo-root``) — NOT parent/child — so the previous naive
+    ``parents[N].parent`` walk resolved to ``/migrations`` and the
+    ``clean_and_upgraded`` fixture dropped the schema, failed the
+    upgrade, and poisoned every later DB-dependent test in the session.
+
+    Resolution order (first hit wins):
+
+    1. ``MACRO_REPO_ROOT`` env var.
+    2. Parents of this test file (host checkouts).
+    3. CWD and its parents.
+    4. ``/repo-root`` (the docker-compose container mount).
+    """
+    candidates: list[Path] = []
+    env_root = os.getenv("MACRO_REPO_ROOT")
+    if env_root:
+        candidates.append(Path(env_root))
+    candidates.extend(Path(__file__).resolve().parents)
+    cwd = Path.cwd().resolve()
+    candidates.extend([cwd, *cwd.parents])
+    candidates.append(Path("/repo-root"))
+    for cand in candidates:
+        if (cand / "alembic.ini").is_file() and (cand / "migrations").is_dir():
+            return cand
+    return None
+
+
+_WORKTREE_ROOT = _resolve_worktree_root()  # contains alembic.ini + migrations/
 
 
 # ============================================================================
@@ -92,10 +129,43 @@ pytestmark = pytest.mark.skipif(
 # ============================================================================
 
 
+@pytest.fixture(scope="module", autouse=True)
+def restore_schema_to_head() -> Iterator[None]:
+    """Guarantee the real ``copilot_state`` schema is rebuilt after this
+    module runs — even when individual tests fail mid-migration.
+
+    Mirrors ``tests/state/test_migrations.py::restore_schema_to_head``:
+    ``clean_and_upgraded`` DROPs the shared schema before upgrading, so
+    a failure between the drop and the re-upgrade used to cascade
+    errors across every later suite that reads ``copilot_state.*``.
+    This module-scoped finalizer runs ``alembic upgrade head`` exactly
+    once after the last test in the module, pass or fail.
+    """
+    yield
+    if _WORKTREE_ROOT is None:
+        # alembic.ini was never found → alembic_config failed at setup
+        # and clean_and_upgraded never dropped anything.  No restore
+        # needed — and none possible without the config.
+        return
+    from alembic import command
+    from alembic.config import Config
+
+    cfg = Config(str(_WORKTREE_ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(_WORKTREE_ROOT / "migrations"))
+    command.upgrade(cfg, "head")
+
+
 @pytest.fixture
 def alembic_config():
     from alembic.config import Config
 
+    if _WORKTREE_ROOT is None:
+        pytest.fail(
+            "alembic.ini + migrations/ not found.  Looked in "
+            "$MACRO_REPO_ROOT, the parents of this test file, the CWD "
+            "and its parents, and /repo-root (the docker-compose "
+            "container mount)."
+        )
     ini_path = _WORKTREE_ROOT / "alembic.ini"
     cfg = Config(str(ini_path))
     cfg.set_main_option(
@@ -108,7 +178,11 @@ def alembic_config():
 def clean_and_upgraded(alembic_config) -> Iterator[None]:
     """Wipe + re-migrate to head.  Same destructive pattern as
     ``test_migrations.py::clean_schema``; only safe under the
-    test-DB env vars confirmed by the module-level skip."""
+    test-DB env vars confirmed by the module-level skip.
+
+    The upgrade runs inside try/finally only at module teardown (see
+    ``restore_schema_to_head``); if the upgrade itself raises here the
+    module-scoped finalizer still rebuilds the schema."""
     from sqlalchemy import create_engine, text
     from alembic import command
 
@@ -176,30 +250,26 @@ class TestForwardMigrationFramework:
         1. After upgrade head, the ``last_accessed_at`` column from
            migration 0006 exists.
         2. INSERT a workspace row.
-        3. Downgrade BY TWO revisions (skip the 0007 no-op
-           sentinel, then drop 0006's column).  Assert the new
+        3. Downgrade BY FIVE revisions (unwind 0010..0007, then
+           drop 0006's column → lands at 0005).  Assert the new
            column is GONE but the workspace's other columns still
            resolve via id.
         4. Re-upgrade head.  Assert the new column is BACK and
            the workspace row is still there with all its old
            columns intact.
 
-        Note on the "-2" step: PR 12 added 0007 as a no-op
-        closed-family-extension sentinel.  Downgrade -1 lands at
-        0006 (column still present); we want to exercise 0006's
-        column drop, so we downgrade -2 → lands at 0005 → the
-        column is gone.  Phase 0 PR 11's framework test used a
-        single -1 step because 0006 was the head at the time; now
-        that 0007 is head, the same data-round-trip exercise
-        requires -2.
+        Note on the step count: Phase 0 PR 11 used -1 (0006 was
+        head); each later migration adds one (0007 → -2, 0008 → -3,
+        0009 → -4, 0010_workspace_run_audit → -5) so the cycle
+        keeps targeting 0005, the revision below 0006's column add.
         """
         from sqlalchemy import create_engine, text
         from alembic import command
 
         engine = create_engine(_DB_URL)
         try:
-            # ---- 1. Confirm we're at head (0009 — workspaces
-            # bound_slot_values + template_id columns) and 0006's
+            # ---- 1. Confirm we're at head (0010 — workspaces
+            # run_audit JSONB column, this consolidation) and 0006's
             # column still exists.
             with engine.connect() as conn:
                 version = conn.execute(
@@ -207,7 +277,7 @@ class TestForwardMigrationFramework:
                         "SELECT version_num FROM copilot_state.alembic_version"
                     )
                 ).scalar_one()
-            assert version == "0009_workspace_bound_slot_values"
+            assert version == "0010_workspace_run_audit"
 
             col_exists = _column_exists(
                 engine, "workspaces", "last_accessed_at",
@@ -230,15 +300,17 @@ class TestForwardMigrationFramework:
                 ).scalar_one()
             assert count_pre == 1
 
-            # ---- 3. Downgrade by FOUR revisions to land at 0005:
-            # 0009's drop of bound_slot_values + template_id (real
-            # column drop) + 0008's no-op backtest-archetype sentinel
-            # + 0007's no-op TradeSet sentinel + 0006's drop of
-            # last_accessed_at.  (Pre-PR-19 head was 0007 → -2; PR 19
-            # added 0008 → -3; PR-B adds 0009 → -4.  Adjust here
-            # whenever a new migration lands so the test continues to
-            # target 0005.)
-            command.downgrade(alembic_config, "-4")
+            # ---- 3. Downgrade by FIVE revisions to land at 0005:
+            # 0010's drop of run_audit (real column drop, this
+            # consolidation) + 0009's drop of bound_slot_values +
+            # template_id (real column drop) + 0008's no-op
+            # backtest-archetype sentinel + 0007's no-op TradeSet
+            # sentinel + 0006's drop of last_accessed_at.  (Pre-PR-19
+            # head was 0007 → -2; PR 19 added 0008 → -3; PR-B added
+            # 0009 → -4; migration 0010_workspace_run_audit → -5.
+            # Adjust here whenever a new migration lands so the test
+            # continues to target 0005.)
+            command.downgrade(alembic_config, "-5")
 
             with engine.connect() as conn:
                 version_after = conn.execute(
@@ -268,7 +340,7 @@ class TestForwardMigrationFramework:
             assert row["dag_hash"] == ids["dag_hash"]
             assert row["created_by"] == "migration-test"
 
-            # ---- 4. Re-upgrade head (re-applies 0006 + 0007).
+            # ---- 4. Re-upgrade head (re-applies 0006 through 0010).
             command.upgrade(alembic_config, "head")
             with engine.connect() as conn:
                 version_back = conn.execute(
@@ -276,7 +348,9 @@ class TestForwardMigrationFramework:
                         "SELECT version_num FROM copilot_state.alembic_version"
                     )
                 ).scalar_one()
-            assert version_back == "0009_workspace_bound_slot_values"
+            # Head pin updated for migration 0010 (run_audit), this
+            # consolidation.
+            assert version_back == "0010_workspace_run_audit"
             assert _column_exists(
                 engine, "workspaces", "last_accessed_at",
             )
@@ -314,8 +388,10 @@ class TestForwardMigrationFramework:
         """After the cycle, the new column accepts WRITES.  A
         regression that left the column as a stub would trip here.
 
-        Downgrade -2 to skip PR 12's no-op sentinel (0007) and
-        actually drop the 0006 column; then re-upgrade to head.
+        Downgrade -5 to land at 0005 and actually drop the 0006
+        column (head moved 0007 → 0010 across PR 19 / PR-B / the
+        run_audit consolidation; -2 would now only cycle 0009+0010
+        and never touch last_accessed_at); then re-upgrade to head.
         """
         from sqlalchemy import create_engine, text
         from alembic import command
@@ -325,7 +401,7 @@ class TestForwardMigrationFramework:
         try:
             with engine.begin() as conn:
                 ids = _insert_dag_and_workspace(conn)
-            command.downgrade(alembic_config, "-2")
+            command.downgrade(alembic_config, "-5")
             command.upgrade(alembic_config, "head")
 
             now = datetime.now(timezone.utc)

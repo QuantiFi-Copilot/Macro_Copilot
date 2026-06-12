@@ -47,13 +47,8 @@ import { VirtualPrimitiveCanvas } from './primitive/VirtualPrimitiveCanvas';
 // MultiPrimitiveCanvas for ≥2-tool contexts.  Registry-driven (renders each
 // tool's surfaces.buildCompact); tool-agnostic.
 import { MultiToolDagCanvas } from './multitool/MultiToolDagCanvas';
-import {
-  decodePrimitiveContext,
-  decodePrimitiveList,
-} from './primitive/contextDecoder';
+import { decodePrimitiveList } from './primitive/contextDecoder';
 import { isAskHandoff } from './primitive/handoffSignal';
-import { BuilderCanvas } from './model/BuilderCanvas';
-import { getPrimitiveModule } from '@/modules';
 import { WorkflowStatusCanvas } from './workflow/WorkflowStatusCanvas';
 // Side-effect import — populates the node renderer registry before
 // any NodeWidgetCard renders.  Must happen at module-init time so
@@ -97,10 +92,11 @@ function SlugFreeShell({
   // Regime / Scanner / Forward).  No workspace is persisted — this is
   // the supervisor-turn handoff path.
   //
-  // Phase R4 — ``/workspace?builder=<tool_name>`` opens the standalone
-  // model builder (ModelWorkspacePage) for the given tool.  Extra URL
-  // params other than ``builder`` are forwarded as initial form values
-  // so deep-links can pre-fill the controls.
+  // Phase R4 (retired chassis, kept deep-link) —
+  // ``/workspace?builder=<tool_name>`` opens the single-tool module-
+  // first canvas for the given tool.  Extra URL params other than
+  // ``builder`` are forwarded as initial form values so deep-links can
+  // pre-fill the controls.
   const [searchParams] = useSearchParams();
   const contextParam = searchParams.get('context');
   const builderParam = searchParams.get('builder');
@@ -191,33 +187,21 @@ function SlugFreeShell({
   // workspace_context, hiding the workflow's status).
   let canvas: React.ReactNode;
   if (builderParam !== null) {
-    // Stage 5 — module-first dispatch: if the owning module ships a
-    // full Build surface (``MODULE.surfaces.build``), mount IT
-    // instead of the shared ``BuilderCanvas``.  Falls back to the
-    // shared canvas when the module didn't override.  The 5 rich-
-    // model modules' ``surfaces.build`` is itself a lazy wrapper
-    // around ``BuilderCanvas``, so the rendered output for those
-    // tools is identical — but a NEW tool can ship a totally
-    // custom Build surface here without editing this file.
-    const moduleSpec = builderParam
-      ? getPrimitiveModule(builderParam)
-      : null;
-    const ModuleBuildSurface = moduleSpec?.surfaces?.build;
-    if (ModuleBuildSurface) {
-      canvas = (
-        <ModuleBuildSurface
-          toolName={builderParam}
-          params={initialBuilderParams}
-        />
-      );
-    } else {
-      canvas = (
-        <BuilderCanvas
-          toolName={builderParam || null}
-          initialParams={initialBuilderParams}
-        />
-      );
-    }
+    // G-3.5 — the legacy BuilderCanvas chassis is retired.  The
+    // ``?builder=<tool>`` deep-link survives for old bookmarks /
+    // share links, but it now routes through the SAME module-first
+    // single-tool canvas the ``?context=`` path uses: the owning
+    // module's ``surfaces.buildExtended`` when it ships the dual-view
+    // contract (every module does today), the schema-driven generic
+    // builder for any other runnable tool, and the honest unsupported
+    // card otherwise.  Extra URL params still pre-fill the controls.
+    const syntheticContext = encodeURIComponent(
+      JSON.stringify({
+        tools: [{ tool: builderParam, params: initialBuilderParams }],
+        tool_count: 1,
+      }),
+    );
+    canvas = <VirtualPrimitiveCanvas contextParam={syntheticContext} />;
   } else if (workflowParam !== null) {
     canvas = (
       <WorkflowStatusCanvas
@@ -259,13 +243,11 @@ function SlugFreeShell({
 // regardless of how the user landed on the route (Library deep-link,
 // Ask handoff, manual URL paste).  The priority chain is:
 //
-//   1. Builder match wins — short-circuit through the single canvas
-//      which has the ``useEffect`` redirect to ``?builder=``.
-//   2. Multiple tool calls (≥2) → MultiToolDagCanvas (Stage-D generic
+//   1. Multiple tool calls (≥2) → MultiToolDagCanvas (Stage-D generic
 //      multi-tool DAG page: query header + node/edge strip + a cards body
 //      that renders each tool's surfaces.buildCompact via the registry).
-//   3. Otherwise → VirtualPrimitiveCanvas (single-card with editable
-//      dropdowns + the decode-error path for unrecognised tools).
+//   2. Otherwise → VirtualPrimitiveCanvas (single-card module-first
+//      dispatch + the decode-error path for unrecognised tools).
 
 function ContextCanvasRouter({
   contextParam,
@@ -273,34 +255,17 @@ function ContextCanvasRouter({
 }: {
   contextParam: string;
   /** PR-B-β — full ``URLSearchParams`` so we can read the
-   *  ``handoff=ask`` marker and gate the missing-param tile on it.
-   *  Library-blank opens lack the marker → existing silent-defaults
-   *  behaviour is preserved. */
+   *  ``handoff=ask`` marker.  Library-blank opens lack the marker →
+   *  existing silent-defaults behaviour is preserved. */
   searchParams: URLSearchParams;
 }) {
   // Compute the handoff origin ONCE at the router level — every
-  // downstream surface (single canvas, multi canvas, individual
-  // cards) inherits the same value so the visible behaviour stays
-  // consistent across the page.
+  // downstream surface inherits the same value so the visible
+  // behaviour stays consistent across the page.
   const askHandoff = isAskHandoff(searchParams);
-  const builderHit = decodePrimitiveContext(contextParam);
-  if (builderHit?.kind === 'builder') {
-    // Single canvas handles the builder redirect via useEffect.
-    return (
-      <VirtualPrimitiveCanvas
-        contextParam={contextParam}
-        askHandoff={askHandoff}
-      />
-    );
-  }
   const list = decodePrimitiveList(contextParam);
   if (list.length > 1) {
-    return (
-      <MultiToolDagCanvas
-        contextParam={contextParam}
-        askHandoff={askHandoff}
-      />
-    );
+    return <MultiToolDagCanvas contextParam={contextParam} />;
   }
   return (
     <VirtualPrimitiveCanvas

@@ -5,7 +5,6 @@
 // (build_order 23; bond_futures domain).  Under the new standards:
 //   - methodology_exposure.md §5 standalone-bridge (own typed-detail
 //     endpoint at /api/v1/rates/detail/bond-futures-price + own
-//     surfaces; no shared typedView)
 //   - rendering_density.md §1 dual-view mandate (buildExtended +
 //     buildCompact both REQUIRED)
 //
@@ -55,16 +54,9 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Single rolling-generic bond-futures price for one (curve_family, contract_code) pair (e.g. TY1 on UST_FUT, RX1 on DE_FUT, G1 on UK_FUT). Carries 1D / 5D / 1M raw-price changes in the contract\'s native quote_units (points / % of par value / 100 - yield / GBP), 252d high/low/percentile, rolling 252d z-score, and the per-contract SCD2 disclosure (security_name, expiry_date, contract_size).',
 
-  // FM9 — STANDALONE pattern per methodology_exposure.md §5: no shared
-  // typedView.  The module owns its own full Build surfaces.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build``
-  // is kept === buildExtended for the legacy VirtualPrimitiveCanvas
-  // dispatcher that reads ``surfaces.build``.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

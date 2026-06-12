@@ -13,7 +13,6 @@
 //
 //   - methodology_exposure.md §5 standalone-bridge contract (own typed-
 //     detail endpoint at /api/v1/rates/detail/bond-futures-scanner +
-//     own surfaces; no shared typedView)
 //   - rendering_density.md §1 dual-view mandate (BOTH buildExtended +
 //     buildCompact REQUIRED; no opt-in)
 //
@@ -71,14 +70,9 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Universe-wide front-month bond-futures sweep — ranks every rolling-generic stem (TY1 / UXY1 / US1 / WN1 / RX1 / UB1 / JB1 / G1 / OAT1 / ...) by absolute 252-day rolling z-score across FOUR metrics (price LEVEL, 1-day price CHANGE, volume LEVEL, open-interest LEVEL). Returns the top-N extremes per metric with the load-bearing V1-monitors-only / CTD-out-of-scope caveat per ADR 0013. Morning screen, not a basis or DV01-stack trade signal.',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared typedView.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build`` is
-  // kept === buildExtended for the legacy VirtualPrimitiveCanvas dispatcher.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

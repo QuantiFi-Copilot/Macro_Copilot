@@ -5,7 +5,6 @@
 // (build_order 9; policy_futures domain).  Under the new standards:
 //   - methodology_exposure.md §5 standalone-bridge (own typed-detail
 //     endpoint at /api/v1/rates/detail/policy-futures-price + own
-//     surfaces; no shared typedView)
 //   - rendering_density.md §1 dual-view mandate (buildExtended +
 //     buildCompact both REQUIRED)
 //
@@ -47,16 +46,9 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Single policy-futures strip-position price + desk-recognised IMPLIED RATE (PERCENT) for one (curve_family, strip_position) pair (e.g. SFR1, ER2, SFI1). Carries 1-day raw-price + implied-rate changes (bps), rolling 252d z-score of the implied rate, trailing 252d high/low/mid/percentile, and the as_of-bounded SCD2 per-strip disclosure (underlying_contract_code, security_name, expiry_date, tick size/value, inverse_priced flag, short_rate_regime label).',
 
-  // FM9 — STANDALONE pattern per methodology_exposure.md §5: no shared
-  // typedView.  The module owns its own full Build surfaces.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build``
-  // is kept === buildExtended for the legacy VirtualPrimitiveCanvas
-  // dispatcher that reads ``surfaces.build``.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

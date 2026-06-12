@@ -4,7 +4,6 @@
 // PANEL-BUILDER dual-view module under the new standards:
 //   - methodology_exposure.md §5 standalone bridge (own typed-detail endpoint
 //     at /api/v1/rates/detail/policy-futures-strip-panel + own surfaces; no
-//     shared typedView)
 //   - rendering_density.md §1 dual-view mandate (buildExtended + buildCompact
 //     both REQUIRED)
 //
@@ -42,15 +41,9 @@ export const MODULE: PrimitiveModuleSpec = {
   category: 'panels',
   oneLineSummary: 'Wide multi-instrument Panel of policy-futures IMPLIED RATES (percent) keyed by `<CURVE_FAMILY>|<STRIP_POSITION>` over a date range, across the SOFR/SONIA/Euribor strips. Designed as the STIR backtest workflow\'s substrate — cross-central-bank comparison, strip-curve PCA and RV scans all read their per-slot implied-rate series from one assembled Panel.',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared typedView.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build`` is
-  // kept === buildExtended for the legacy VirtualPrimitiveCanvas dispatcher
-  // (and FM8 invariant 4, which maps custom_build_surface → surfaces.build).
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

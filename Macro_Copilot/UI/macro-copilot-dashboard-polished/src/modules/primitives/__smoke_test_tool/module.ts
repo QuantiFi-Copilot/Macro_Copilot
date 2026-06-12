@@ -20,7 +20,8 @@
 // ============================================================================
 
 import type { PrimitiveModuleSpec } from '../../types';
-import BuildSurface from './surfaces/BuildSurface';
+import BuildExtended from './surfaces/BuildExtended';
+import BuildCompact from './surfaces/BuildCompact';
 import PreviewWidget from './surfaces/PreviewWidget';
 import AskCard from './surfaces/AskCard';
 import { SmokeMonitorWidget } from './surfaces/monitor/SmokeWidget';
@@ -43,7 +44,8 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Stage 5 acceptance-test fixture.  Ships every surface kind so the test bundle can assert module-first dispatch reaches each surface without central-routing edits.',
   surfaces: {
-    build: BuildSurface,
+    buildExtended: BuildExtended,
+    buildCompact: BuildCompact,
     preview: PreviewWidget,
     ask: AskCard,
   },

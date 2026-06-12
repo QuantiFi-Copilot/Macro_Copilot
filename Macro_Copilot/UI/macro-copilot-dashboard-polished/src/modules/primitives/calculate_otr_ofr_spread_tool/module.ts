@@ -6,7 +6,6 @@
 // dual-view + standalone-bridge contracts:
 //   - methodology_exposure.md §5 standalone-bridge (own typed-detail
 //     endpoint at /api/v1/rates/detail/otr-ofr-spread + own surfaces;
-//     no shared typedView)
 //   - rendering_density.md §1 dual-view mandate (buildExtended +
 //     buildCompact both REQUIRED)
 //
@@ -42,14 +41,9 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     "On-the-run vs first-off-the-run sovereign bond yield spread for one (country, tenor) slot — the desk-standard liquidity-premium PROXY: spread_bps = (OTR yield − OFR yield) × 100, with today's move and how stretched it is vs the trailing year.  Sign POSITIVE = OTR cheap to OFR (inverted-liquidity signature); NEGATIVE = OTR rich (typical signature).  Liquidity-premium proxy, not a clean liquidity read — deviations can also reflect bond-specific scarcity / squeeze / repo-rate differences.",
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared typedView.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build`` is
-  // kept === buildExtended for the legacy VirtualPrimitiveCanvas dispatcher.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

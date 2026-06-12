@@ -73,7 +73,11 @@ def coverage_gate():
 @pytest.fixture(scope="module")
 def supervisor():
     from orchestrator.supervisor import Supervisor
-    s = Supervisor()
+    # Supervisor has required ``model_name`` since the supervisor /
+    # domain-children refactor — this fixture predates that and only
+    # surfaces when ANTHROPIC_API_KEY is set (CI skips the module).
+    # Same model pin as the composer / coverage_gate fixtures above.
+    s = Supervisor(model_name="claude-sonnet-4-5", temperature=0.0)
     return s
 
 

@@ -3,7 +3,7 @@
 // src/modules/primitives/compute_financing_rate_tool/__tests__/module.spec.ts
 // ----------------------------------------------------------------------------
 // Per-module round-trip test.  Asserts the dual-view contract
-// (rendering_density.md §1), the standalone-bridge `typedView: null`
+// (rendering_density.md §1), the standalone-bridge
 // contract (methodology_exposure.md §5), and the mockups-folder
 // presence.  Identical boilerplate across every dual-view factory
 // module — per-module customisation belongs in additional ``check(...)``
@@ -38,7 +38,7 @@ check('module satisfies the standard invariants', async () => {
 
 // ----------------------------------------------------------------------------
 // Dual-view rendering-density contract (rendering_density.md §1) +
-// standalone-bridge `typedView: null` contract (methodology_exposure.md §5).
+// standalone-bridge contract (methodology_exposure.md §5).
 // ----------------------------------------------------------------------------
 
 check('claims custom_build_surface tier', () => {
@@ -61,14 +61,6 @@ check('surfaces.buildCompact is populated', () => {
   if (!MODULE.surfaces?.buildCompact) {
     throw new Error(
       'surfaces.buildCompact is missing.  Dual-view contract requires both buildExtended + buildCompact.',
-    );
-  }
-});
-
-check('typedView is null (standalone-module pattern)', () => {
-  if (MODULE.typedView != null) {
-    throw new Error(
-      `typedView must be null for new modules under the standalone-bridge contract; got '${MODULE.typedView}'.  See methodology_exposure.md §5.`,
     );
   }
 });

@@ -303,14 +303,11 @@ check('every primitive module: tiers ↔ surfaces consistency', () => {
     monitor_surface: 'monitor',
     ask_surface: 'ask',
   };
-  // Stage 5: surfaces.resultRenderer also satisfies custom_build_surface.
   // Dual-view (rendering_density.md §5.2): buildExtended + buildCompact are
-  // the new Build-surface field names; both satisfy custom_build_surface.
+  // the Build-surface field names; both satisfy custom_build_surface.
   const surfaceKeyToTier: Record<string, string> = {
-    build: 'custom_build_surface',
     buildExtended: 'custom_build_surface',
     buildCompact: 'custom_build_surface',
-    resultRenderer: 'custom_build_surface',
     preview: 'custom_preview_widget',
     monitor: 'monitor_surface',
     ask: 'ask_surface',
@@ -322,10 +319,9 @@ check('every primitive module: tiers ↔ surfaces consistency', () => {
     //
     // Stage 4d relaxation for ``monitor_surface``: satisfied by
     // EITHER ``surfaces.monitor`` OR non-empty ``monitorWidgets``.
-    // Stage 5 relaxation for ``custom_build_surface``: satisfied by
-    // EITHER ``surfaces.build`` (full Build experience) OR
-    // ``surfaces.resultRenderer`` (payload renderer).  Mirrors the
-    // relaxation in ``src/modules/__test-utils.ts``.
+    // G-3.5 rule for ``custom_build_surface``: satisfied ONLY by BOTH
+    // ``surfaces.buildExtended`` AND ``surfaces.buildCompact`` (the
+    // dual-view contract).  Mirrors ``src/modules/__test-utils.ts``.
     for (const t of tierSet) {
       if (!(CAPABILITY_TIERS as ReadonlySet<SurfaceTier>).has(t)) continue;
       const key = map[t];
@@ -343,18 +339,14 @@ check('every primitive module: tiers ↔ surfaces consistency', () => {
         continue;
       }
       if (key === 'build') {
-        const hasBuild = surfaces.build != null;
-        const hasRenderer = surfaces.resultRenderer != null;
-        if (!hasBuild && !hasRenderer) {
+        const hasExtended = surfaces.buildExtended != null;
+        const hasCompact = surfaces.buildCompact != null;
+        if (!hasExtended || !hasCompact) {
           throw new Error(
-            `${m.toolName}: claims 'custom_build_surface' but neither ` +
-              `surfaces.build nor surfaces.resultRenderer is populated`,
-          );
-        }
-        if (hasBuild && hasRenderer) {
-          throw new Error(
-            `${m.toolName}: surfaces.build AND surfaces.resultRenderer are ` +
-              `both populated — they are mutually exclusive`,
+            `${m.toolName}: claims 'custom_build_surface' but the ` +
+              `dual-view contract requires BOTH surfaces.buildExtended ` +
+              `AND surfaces.buildCompact (got buildExtended=${hasExtended}, ` +
+              `buildCompact=${hasCompact})`,
           );
         }
         continue;
@@ -391,27 +383,26 @@ check('every primitive module: tiers ↔ surfaces consistency', () => {
 // ---------------------------------------------------------------------------
 
 // ----------------------------------------------------------------------------
-// Stage D — dual-view rendering-density contract (rendering_density.md §1 + §11).
+// Stage D + G-3.5 — dual-view rendering-density contract
+// (rendering_density.md §1 + §11).
 // ----------------------------------------------------------------------------
-// SHARED, loader-level enforcement: any module that has ADOPTED the dual-view
-// Build contract (ships EITHER surfaces.buildExtended OR surfaces.buildCompact)
-// MUST ship BOTH.  This guarantees no future module can land with an
+// SHARED, loader-level enforcement: any module that claims
+// ``custom_build_surface`` MUST ship BOTH surfaces.buildExtended AND
+// surfaces.buildCompact.  This guarantees no module can land with an
 // asymmetric dual-view (one half of the contract) — the multi-tool DAG page
 // relies on buildCompact being present whenever buildExtended is, and the
-// single-tool canvas relies on the reverse.
-//
-// Legacy modules that ship neither dual-view field (only the pre-contract
-// surfaces.build / surfaces.resultRenderer) are an explicit carve-out per
-// rendering_density.md §9 and are NOT flagged here — they fall back to the
-// generic artifact-type card in the DAG.
-check('dual-view contract: adopting either build view requires BOTH', () => {
+// single-tool canvas relies on the reverse.  The pre-contract single-view
+// fields were deleted from the spec in G-3.5, so the dual-view pair is the
+// ONLY way to satisfy the tier.
+check('dual-view contract: custom_build_surface requires BOTH build views', () => {
   const offenders: string[] = [];
   for (const m of ALL_PRIMITIVE_MODULES) {
     const s = (m.surfaces ?? {}) as Record<string, unknown>;
     const hasExtended = s.buildExtended != null;
     const hasCompact = s.buildCompact != null;
-    // Only modules that adopted at least one dual-view field are bound.
-    if (!hasExtended && !hasCompact) continue;
+    const claims = m.tiers.includes('custom_build_surface');
+    // Bound when the tier is claimed OR either dual-view field shipped.
+    if (!claims && !hasExtended && !hasCompact) continue;
     if (!hasExtended || !hasCompact) {
       offenders.push(
         `${m.toolName} (buildExtended=${hasExtended}, buildCompact=${hasCompact})`,
@@ -421,7 +412,7 @@ check('dual-view contract: adopting either build view requires BOTH', () => {
   if (offenders.length > 0) {
     throw new Error(
       'Dual-view contract violation (rendering_density.md §1 + §11) — these ' +
-        'modules ship one Build view but not both:\n  ' +
+        'modules claim custom_build_surface but do not ship both Build views:\n  ' +
         offenders.join('\n  '),
     );
   }

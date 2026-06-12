@@ -871,12 +871,24 @@ class TestProof1_RegistrationOnlyGrowth:
                 "  what_it_does: synthetic; never executed in this test\n",
                 encoding="utf-8",
             )
+            # PR-11 Codex Round 5 corrective: render_tool_catalogue now
+            # filters BRIDGEABLE_SERIES ``available_output_fields`` down
+            # to fields annotated with the canonical
+            # ``shared.schemas.time_series.TimeSeries`` (legacy
+            # dict / List[TimeSeriesRow] shapes are dropped so the
+            # selector LLM cannot pick an un-bridgeable field).  The
+            # synthetic fixture must conform to the CURRENT registration
+            # contract — a registering integrator would type the field
+            # as TimeSeries — so the registration-only-growth proof
+            # still holds with zero substrate edits.
             (TOOL_DIR / "schemas.py").write_text(
-                "from pydantic import BaseModel\n\n"
+                "from typing import Optional\n"
+                "from pydantic import BaseModel\n"
+                "from shared.schemas.time_series import TimeSeries\n\n"
                 "class SyntheticPr10fExtraInput(BaseModel):\n"
                 "    curve_family: str = 'UST'\n\n"
                 "class SyntheticPr10fExtraOutput(BaseModel):\n"
-                "    time_series: dict = {}\n",
+                "    time_series: Optional[TimeSeries] = None\n",
                 encoding="utf-8",
             )
             (TOOL_DIR / "compute.py").write_text(
@@ -1373,19 +1385,26 @@ class TestProof3_TwoBoundary:
         assert "test_adversarial_composite_noun_routes_to_clarify" in attrs
 
     def test_role_mismatch_rejected_by_boundary_a_per_pr10d_f4(self):
-        """PR-10D Codex F4 — Two-boundary proof, hardened.
+        """Two-boundary proof — role discriminant, Codex Round 4 contract.
 
-        Original plan §5 + plan-decision #4: Boundary A rejects
-        semantic-wrong-but-type-legal candidates via the role
-        discriminant.  Prior PR-10 implementation emitted a
-        WARNING and let the DAG reach Boundary B; PR-10D F4
-        hardens it to a HARD ERROR so the DAG is REJECTED at
-        Boundary A.
+        PR-10D F4 originally hardened E_ROLE_DISCRIMINANT_MISMATCH to
+        a HARD ERROR (Boundary A REFUSED).  The Codex Round 4
+        corrective (see the inline narrative in
+        orchestrator/open_dag/assembler.py::_contract_check, item 4)
+        deliberately REVERTED it to a SOFT WARNING: exact
+        normalized-string equality on free-form English rejected every
+        live-LLM paraphrase, and the selector prompt explicitly
+        promises wording differences surface as a soft warning.  The
+        doctrinal rejection of semantically-wrong bindings moved to
+        Boundary B (CoverageGate), which is LLM-judged and consumes
+        Boundary A's warnings via ``warnings_to_string_list``.
 
-        Construct a LeafRequest expecting one semantic_role and a
-        BoundLeaf declaring a contradictory one.  Assembler MUST
-        return REFUSED (not CLEAN) and the validation_result MUST
-        carry E_ROLE_DISCRIMINANT_MISMATCH at severity=ERROR."""
+        Updated pin: a contradictory semantic_role AND
+        requested_output_meaning must leave the DAG CLEAN at Boundary
+        A, but the validation_result MUST carry
+        E_ROLE_DISCRIMINANT_MISMATCH at severity=WARNING for BOTH
+        contradicted fields, and those warnings MUST be consumable by
+        Boundary B's soft_warnings surface — the two-boundary handoff."""
         from orchestrator.open_dag import GOLDEN_TRANSFORM_ROLLING_ZSCORE
         from orchestrator.open_dag.assembler import (
             Assembler,
@@ -1434,25 +1453,64 @@ class TestProof3_TwoBoundary:
         asm = Assembler(primitive_resolver=_stub_resolver)
         result = asm.assemble(GOLDEN_TRANSFORM_ROLLING_ZSCORE, [bound])
 
-        # PR-10D F4: Boundary A now REJECTS role-mismatched DAGs.
-        # Two-boundary proof: the wrong-role DAG never reaches
-        # Boundary B because Boundary A caught it first.
-        assert result.status == AssemblyStatus.REFUSED, (
-            f"PR-10D F4: role-mismatched DAG must be REFUSED by "
-            f"Boundary A; got {result.status}"
+        # Codex Round 4 corrective: Boundary A surfaces the role
+        # contradiction as a SOFT WARNING and lets the DAG through —
+        # Boundary B (CoverageGate, LLM-judged) owns the semantic
+        # rejection.  Type/unit/frequency mismatches are still HARD.
+        assert result.status == AssemblyStatus.CLEAN, (
+            f"Codex Round 4 contract: a role-only mismatch must "
+            f"assemble CLEAN (soft warning, judged at Boundary B); "
+            f"got {result.status} with "
+            f"refusal_reasons={result.refusal_reasons!r}"
         )
 
+        # No hard errors for the role discriminant — that was the
+        # PR-10D F4 behavior the corrective reverted.
         hard = result.validation_result.hard_errors
-        role_errors = [
+        assert not [
             e for e in hard
             if e.code == ErrorCode.E_ROLE_DISCRIMINANT_MISMATCH
-        ]
-        assert len(role_errors) >= 1, (
-            "PR-10D F4 Proof #3: role contradiction did not surface "
-            "as a HARD ERROR in Boundary A."
+        ], (
+            "Codex Round 4 contract: E_ROLE_DISCRIMINANT_MISMATCH "
+            "must not be a HARD error at Boundary A."
         )
-        for e in role_errors:
-            assert e.severity == Severity.ERROR
+
+        # Both contradicted free-form fields surface as WARNINGs so
+        # Boundary B can judge them.
+        role_warnings = [
+            w for w in result.validation_result.warnings
+            if w.code == ErrorCode.E_ROLE_DISCRIMINANT_MISMATCH
+        ]
+        assert len(role_warnings) >= 2, (
+            "Two-boundary proof: contradictory semantic_role AND "
+            "requested_output_meaning must EACH surface as a "
+            f"Boundary-A WARNING; got {len(role_warnings)}."
+        )
+        for w in role_warnings:
+            assert w.severity == Severity.WARNING
+        contradicted_fields = {
+            (w.detail or {}).get("field") for w in role_warnings
+        }
+        assert {"semantic_role", "requested_output_meaning"} <= (
+            contradicted_fields
+        ), (
+            f"Two-boundary proof: expected warnings for both "
+            f"role-discriminant fields; got {contradicted_fields}."
+        )
+
+        # The handoff: Boundary B's soft_warnings surface must carry
+        # the code forward (warnings_to_string_list is what the gate
+        # consumes — see coverage_gate.py).
+        from orchestrator.open_dag.coverage_gate import (
+            warnings_to_string_list,
+        )
+        surfaced = warnings_to_string_list(role_warnings)
+        assert any(
+            "E_ROLE_DISCRIMINANT_MISMATCH" in s for s in surfaced
+        ), (
+            "Two-boundary proof: Boundary A's role warnings did not "
+            "surface on Boundary B's soft_warnings string surface."
+        )
 
     def test_warnings_flow_through_gate_to_verdict(self):
         """The gate (PR-8) must propagate Boundary A's WARNINGs into

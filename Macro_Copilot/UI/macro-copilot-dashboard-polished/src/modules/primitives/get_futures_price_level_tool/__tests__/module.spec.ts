@@ -72,14 +72,6 @@ check('surfaces.buildCompact is populated', () => {
   }
 });
 
-check('typedView is null (standalone-bridge contract)', () => {
-  if (MODULE.typedView != null) {
-    throw new Error(
-      `typedView must be null for modules under the standalone-bridge contract; got '${MODULE.typedView}'.  See methodology_exposure.md §5.`,
-    );
-  }
-});
-
 check('monitorWidgets carries the Bond Futures Price Level tile', () => {
   const widgets = MODULE.monitorWidgets ?? [];
   if (widgets.length === 0) {

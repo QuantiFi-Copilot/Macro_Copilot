@@ -3,7 +3,6 @@
 // ----------------------------------------------------------------------------
 // PANEL-BUILDER dual-view module under the new standards:
 //   - methodology_exposure.md §5 standalone bridge (own typed-detail endpoint
-//     at /api/v1/rates/detail/zcis-panel + own surfaces; no shared typedView)
 //   - rendering_density.md §1 dual-view mandate (buildExtended + buildCompact
 //     both REQUIRED)
 //
@@ -39,15 +38,9 @@ export const MODULE: PrimitiveModuleSpec = {
   category: 'panels',
   oneLineSummary: 'Wide multi-instrument Panel of zero-coupon inflation swap rates keyed by vendor_ticker across the USD_ZCIS / EUR_ZCIS / GBP_ZCIS universe. Designed as the inflation desk\'s cross-curve substrate — regression / PCA / RV-scan operators read each swap\'s time series from one column of the assembled Panel.',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared typedView.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build`` is
-  // kept === buildExtended for the legacy VirtualPrimitiveCanvas dispatcher
-  // (and FM8 invariant 4, which maps custom_build_surface → surfaces.build).
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

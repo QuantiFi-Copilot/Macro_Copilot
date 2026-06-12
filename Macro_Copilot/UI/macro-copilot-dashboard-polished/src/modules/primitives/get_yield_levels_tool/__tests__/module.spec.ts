@@ -66,14 +66,6 @@ check('surfaces.buildCompact is populated', () => {
   }
 });
 
-check('typedView is null (standalone-module pattern)', () => {
-  if (MODULE.typedView != null) {
-    throw new Error(
-      `typedView must be null under the standalone-bridge contract; got '${MODULE.typedView}'.  See methodology_exposure.md §5.`,
-    );
-  }
-});
-
 // ----------------------------------------------------------------------------
 // Migration backward-compat lock (MIGRATION_RULES §6).  The pre-migration
 // ``yield_level`` Monitor widget's id + paramFields MUST be preserved.

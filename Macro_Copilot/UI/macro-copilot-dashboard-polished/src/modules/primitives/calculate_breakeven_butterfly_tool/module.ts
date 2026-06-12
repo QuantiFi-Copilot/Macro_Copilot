@@ -5,7 +5,6 @@
 // calculate_breakeven_inflation_simple_tool reference under the new standards:
 //   - methodology_exposure.md §5 standalone-bridge (own typed-detail endpoint
 //     at /api/v1/rates/detail/breakeven-butterfly + own surfaces; no shared
-//     typedView)
 //   - rendering_density.md §1 dual-view mandate (buildExtended + buildCompact
 //     both REQUIRED)
 //
@@ -64,14 +63,9 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Three-point curvature of the bond-implied breakeven curve on a single same-country pair (e.g. US 2s5s10s breakeven fly) with fixed 50-50 wing weights. Positive = belly cheap; negative = belly rich. Inflation compensation curvature, not pure expected-inflation curvature.',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared typedView.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build`` is
-  // kept === buildExtended for the legacy VirtualPrimitiveCanvas dispatcher.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

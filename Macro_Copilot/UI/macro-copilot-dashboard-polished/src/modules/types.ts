@@ -30,7 +30,6 @@
 import type { ComponentType } from 'react';
 import type {
   DecodedPrimitive,
-  PrimitiveViewKind,
 } from '@/components/build/primitive/contextDecoder';
 import type {
   UnsupportedKnownReason as ToolUnsupportedKnownReason,
@@ -290,67 +289,28 @@ export interface PrimitiveModuleSpec {
   interpretationCards?: ReadonlyArray<{ headline: string; body: string }>;
 
   // -------------------------------------------------------------------
-  // FM9 — routing claims.  Mutually exclusive: at most one of
-  // ``typedView`` / ``richModel`` is non-default at a time, since
-  // those routes preempt the generic builder.
-  // -------------------------------------------------------------------
-  /** When the module routes through an existing typed primitive view
-   *  (Spread / CrossMarket / Butterfly / Yield / Regime / Scanner /
-   *  Forward), set the kind here.  ``null`` (default) means the module
-   *  does NOT claim a typed-view route. */
-  typedView?: PrimitiveViewKind | null;
-  /** True when the module uses the rich-model builder (BuilderCanvas).
-   *  Mutually exclusive with ``typedView``.  Defaults to false. */
-  richModel?: boolean;
-
-  // -------------------------------------------------------------------
   // FM8 — surface references.  Only present for claimed capability
   // tiers.  Each value is a React component matching the matching
   // surface-prop interface above.
   //
-  // Stage 5 — two distinct Build-side contracts
-  // -------------------------------------------
-  // ``surfaces.build`` and ``surfaces.resultRenderer`` are TWO
-  // different concepts the pre-Stage-5 spec conflated under a single
-  // ``surfaces.build`` field:
+  // The Build-side contract is the dual-view rendering-density
+  // standard (docs_revamped/03_standards/rendering_density.md §1):
+  // every module that claims ``custom_build_surface`` ships BOTH
+  // ``buildExtended`` AND ``buildCompact``.  The pre-consolidation
+  // single-view fields were deleted in G-3.5.
   //
-  //   * ``surfaces.build`` — **full Build experience.**  The component
-  //     owns the entire Build canvas: controls strip, fetch dispatch,
-  //     error handling, output rendering.  Receives ``BuildSurfaceProps``
-  //     (toolName + params + decoded + askHandoff).  Mounted directly
-  //     by ``VirtualPrimitiveCanvas`` as the whole canvas.  Examples:
-  //     the rich-model 5 (PCA, rolling regression, etc.) ship this as
-  //     a wrapper around the shared ``BuilderCanvas``.
-  //
-  //   * ``surfaces.resultRenderer`` — **payload renderer.**  The
-  //     component renders ONLY the result body for a typed-detail
-  //     primitive whose chrome (controls strip, fetch dispatch,
-  //     loading / error states) is provided by the parent canvas.
-  //     Receives ``{ payload }`` typed loosely to fit each tool's
-  //     output shape.  Stage 4a-migrated typed views (curve spread,
-  //     cross-market, butterfly, yield levels, regime, scanner)
-  //     ship this.
-  //
-  // Stage 4a/4b relaxation
-  // ----------------------
-  // ``build`` / ``resultRenderer`` / ``preview`` are typed as
+  // Typing relaxation
+  // -----------------
+  // ``buildExtended`` / ``buildCompact`` / ``preview`` are typed as
   // ``ComponentType<any>`` because the per-tool surface families
-  // carry different prop shapes during the migration (typed views
-  // take ``{payload}``, rich-model builders take ``{toolName, params, …}``,
-  // persisted previews take ``NodeRenderProps``).  Strict typing
-  // returns once each family converges (Stage N cleanup).
-  // ``monitor`` keeps its strict type via the catalog walker;
-  // ``ask`` is loosened so per-tool cards can shape the assistant
-  // message however they want.
+  // carry different prop shapes (Build surfaces take
+  // ``{toolName, params, …}``, persisted previews take
+  // ``NodeRenderProps``).  Strict typing returns once each family
+  // converges (Stage N cleanup).  ``monitor`` keeps its strict type
+  // via the catalog walker; ``ask`` is loosened so per-tool cards can
+  // shape the assistant message however they want.
   // -------------------------------------------------------------------
   surfaces?: {
-    /** Full Build experience.  LEGACY field pre-dating the dual-view
-     *  rendering-density contract.  ``VirtualPrimitiveCanvas`` reads
-     *  this directly today; modules under the new standard set BOTH
-     *  ``buildExtended`` AND ``buildCompact`` and ALSO populate ``build``
-     *  with the same component as ``buildExtended`` for backward
-     *  compatibility until the dispatcher is updated. */
-    build?: ComponentType<any>; // relaxed Stage 4a; aspirational ComponentType<BuildSurfaceProps>
     /** Phase-1 dual-view extended Build surface — full canvas mounted
      *  for single-tool queries.  REQUIRED for every new primitive per
      *  docs_revamped/03_standards/rendering_density.md §1.  Mounted by
@@ -364,12 +324,6 @@ export interface PrimitiveModuleSpec {
      *  expand affordance that opens buildExtended via shared modal
      *  infrastructure. */
     buildCompact?: ComponentType<any>; // ComponentType<BuildCompactProps>
-    /** Payload renderer.  Module ships ONLY the result body; the
-     *  parent canvas provides chrome (controls strip, fetch dispatch,
-     *  loading + error states).  Used by typed-view tools.  Mutually
-     *  exclusive with ``surfaces.build`` (a module ships EITHER the
-     *  full builder OR just the renderer — both is meaningless). */
-    resultRenderer?: ComponentType<any>; // Stage 5 — payload renderer contract
     preview?: ComponentType<any>; // relaxed Stage 4b; aspirational ComponentType<PreviewWidgetProps>
     monitor?: ComponentType<MonitorWidgetProps>;
     /** Bespoke assistant-card override.  Replaces the default
@@ -380,18 +334,16 @@ export interface PrimitiveModuleSpec {
   };
 
   // -------------------------------------------------------------------
-  // FM5b — rich-model metadata.  Stage 4b populates this on the 5
+  // FM5b — rich-model metadata.  Historically populated on the 5
   // rich-model primitives (PCA, rolling regression, attribution,
   // half-life, beta-adjusted spread).  When set, the central
-  // ``modelRegistry.MODELS`` array derives this module's entry from
-  // here instead of carrying a duplicate hand-authored entry.
-  // ``richModel: true`` MUST also be set when ``modelMetadata`` is
-  // populated (a defensive invariant the parity check could pick up).
+  // ``modelRegistry`` model list derives this module's entry from
+  // here instead of carrying a duplicate hand-authored entry.  Empty
+  // on every module since the G-3.2 dual-view migration; the field
+  // remains the contract for any future registry-backed metadata.
   // -------------------------------------------------------------------
-  /** Rich-model metadata block.  Populated when the module ships
-   *  the rich-model builder surfaces (``BuilderCanvas`` +
-   *  ``RichModelWidget``); ``modelRegistry`` derives its ``MODELS``
-   *  array from these entries. */
+  /** Rich-model metadata block.  ``modelRegistry`` derives its model
+   *  list from these entries.  Unset on every dual-view module. */
   modelMetadata?: ModelMetadata;
 
   // -------------------------------------------------------------------

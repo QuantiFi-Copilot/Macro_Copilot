@@ -6,7 +6,7 @@
 // assertStandardModuleInvariants for FM11 invariants 1-8 then adds the
 // rendering_density.md §11 dual-view checks (both buildExtended +
 // buildCompact populated) + the standalone-bridge contract checks
-// (typedView === null + mockups present + monitor surface).  Identical
+// (mockups present + monitor surface).  Identical
 // boilerplate shape to the scan_inflation_swaps_extremes_tool sibling.
 // ============================================================================
 
@@ -62,14 +62,6 @@ check('surfaces.buildCompact is populated', () => {
   if (!MODULE.surfaces?.buildCompact) {
     throw new Error(
       'surfaces.buildCompact is missing.  Dual-view contract requires both buildExtended + buildCompact for every primitive claiming custom_build_surface.',
-    );
-  }
-});
-
-check('typedView is null (standalone-module pattern)', () => {
-  if (MODULE.typedView != null) {
-    throw new Error(
-      `typedView must be null for new modules under the standalone-bridge contract; got '${MODULE.typedView}'.  See methodology_exposure.md §5.`,
     );
   }
 });

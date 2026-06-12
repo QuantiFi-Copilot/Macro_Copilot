@@ -312,29 +312,43 @@ class TestMcpHalfLifeWrapper:
 
 
 # ===========================================================================
-# api/routes/rates/detail.py — explicit absence of /detail/half-life
+# api/routes/rates/detail.py — /detail/half-life route exists
 # ===========================================================================
 
-class TestNoFastApiRouteThisSprint:
-    """half_life has nested union inputs and ships MCP-only this
-    sprint per the v6 transport rule.  Pin that absence so a future
-    commit can't accidentally add a flat-Query route — the union
-    wouldn't fit the input shape and a POST/JSON route requires the
-    explicit decision documented in the v6 plan."""
+class TestFastApiRouteExists:
+    """Consolidation update: the old 'MCP-only this sprint' pin is
+    retired.  Per the standalone-bridge standard (consolidation
+    target #4) half_life deliberately gained a typed-detail GET
+    route — the one-of-three source union flattens to query params
+    (series mode = ``curve_family`` + ``tenor``; pair mode adds
+    ``curve_family_2``; ``pasted_series`` stays on the generic run
+    endpoint).  Pin the live route and its contract instead."""
 
-    def test_no_route_for_half_life(self):
+    def test_route_for_half_life_exists(self):
         from api.routes.rates import detail as detail_module
         import inspect
         handlers = [
             name for name, obj in inspect.getmembers(detail_module)
             if inspect.isfunction(obj) and name.endswith("_detail")
         ]
-        assert "half_life_detail" not in handlers, (
-            "half_life has nested union inputs and ships MCP-only "
-            "this sprint.  Adding a FastAPI route requires the "
-            "POST/JSON-body decision documented in v6 plan Delta H "
-            "first."
+        assert "half_life_detail" in handlers, (
+            "GET /detail/half-life was added in the consolidation "
+            "(standalone-bridge standard, target #4); the typed-"
+            "detail handler must exist in detail.py."
         )
+
+    def test_route_path_method_and_response_model(self):
+        from api.routes.rates import detail as detail_module
+        from rates_agent.sovereign_bonds.tools.half_life import (
+            HalfLifeOutput,
+        )
+        routes = {
+            route.path: route for route in detail_module.router.routes
+        }
+        assert "/detail/half-life" in routes
+        route = routes["/detail/half-life"]
+        assert "GET" in route.methods
+        assert route.response_model is HalfLifeOutput
 
 
 # ===========================================================================

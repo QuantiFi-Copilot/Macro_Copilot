@@ -71,14 +71,6 @@ check('surfaces.buildCompact is populated', () => {
   }
 });
 
-check('typedView is null (standalone-module pattern)', () => {
-  if (MODULE.typedView != null) {
-    throw new Error(
-      `typedView must be null for new modules under the standalone-bridge contract; got '${MODULE.typedView}'.  See methodology_exposure.md §5.`,
-    );
-  }
-});
-
 check('monitorWidgets declares the cross-country real-yield tile', () => {
   const widgets = MODULE.monitorWidgets ?? [];
   const id = 'cross_country_real_yield_spread';

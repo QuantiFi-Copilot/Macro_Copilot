@@ -7,7 +7,7 @@
 // rendering_density.md §11 dual-view checks (both buildExtended +
 // buildCompact populated) + the SCANNER-shape guardrail (the compact view
 // MUST be the per-tool table component, NOT a fallback) + the standalone-
-// bridge contract checks (typedView === null + mockups present).  Identical
+// bridge contract checks (mockups present).  Identical
 // boilerplate shape to the calculate_inflation_swap_butterfly_tool sibling.
 // ============================================================================
 
@@ -63,14 +63,6 @@ check('surfaces.buildCompact is populated', () => {
   if (!MODULE.surfaces?.buildCompact) {
     throw new Error(
       'surfaces.buildCompact is missing.  Dual-view contract requires both buildExtended + buildCompact for every primitive claiming custom_build_surface.',
-    );
-  }
-});
-
-check('typedView is null (standalone-module pattern)', () => {
-  if (MODULE.typedView != null) {
-    throw new Error(
-      `typedView must be null for new modules under the standalone-bridge contract; got '${MODULE.typedView}'.  See methodology_exposure.md §5.`,
     );
   }
 });

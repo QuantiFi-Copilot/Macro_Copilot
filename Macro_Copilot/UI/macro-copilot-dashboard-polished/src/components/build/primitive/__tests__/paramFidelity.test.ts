@@ -16,20 +16,17 @@
 //        default to ``"library"`` so pre-PR-B-β bookmarks / Library
 //        opens keep the silent-defaults policy.
 //
-//   §C — ``requiredParamsFor`` + ``missingRequiredTypedParams`` flag
-//        the semantically-required params per typed-view kind.
-//
-//   §D — Source-level contracts: ``MultiPrimitiveCard`` /
-//        ``VirtualPrimitiveCanvas`` import the missing-param helpers,
-//        gate on ``askHandoff``, and render ``MissingParamsCard``
-//        when both conditions hit.
-//
-//   §E — ``MultiPrimitiveCanvas`` computes call-index metadata so
-//        duplicate-tool cards render the ``call N of M`` chip
-//        instead of looking like a rendering bug.
+//   §D — Source-level contracts: ``VirtualPrimitiveCanvas`` /
+//        ``BuildShell`` / ``ActionRow`` thread the ``handoff=ask``
+//        marker so module Build surfaces can distinguish Ask handoffs
+//        from Library-blank opens.
 //
 //   §F — Round-trip lock: a workspace_context with structured params
 //        survives encode → decode without losing nested entries.
+//
+// (G-3.5: the §C/§E typed-view missing-param + call-chip machinery
+// pins were retired with the legacy typed-view substrate; CallMeta
+// ordinals are pinned by ``multitool/__tests__/multiToolDagModel.test.ts``.)
 // ============================================================================
 
 interface NodeFs {
@@ -43,10 +40,6 @@ import {
   decodePrimitiveContext,
   decodePrimitiveList,
 } from '../contextDecoder';
-import {
-  missingRequiredTypedParams,
-  requiredParamsFor,
-} from '../paramSpecs';
 import {
   HANDOFF_ASK_VALUE,
   HANDOFF_QUERY_PARAM,
@@ -304,109 +297,18 @@ check('§B · handoffQueryFragment composes correctly', () => {
 });
 
 // ============================================================================
-// §C — requiredParamsFor / missingRequiredTypedParams
-// ============================================================================
-
-check('§C · regime requires curve_family, front_tenor, back_tenor', () => {
-  assertEqual(
-    [...requiredParamsFor('regime')].sort(),
-    ['back_tenor', 'curve_family', 'front_tenor'],
-    'regime required',
-  );
-});
-
-check('§C · spread requires curve_family, short_tenor, long_tenor', () => {
-  assertEqual(
-    [...requiredParamsFor('spread')].sort(),
-    ['curve_family', 'long_tenor', 'short_tenor'],
-    'spread required',
-  );
-});
-
-check('§C · scanner / forward have no required params', () => {
-  assertEqual([...requiredParamsFor('scanner')], [], 'scanner empty');
-  assertEqual([...requiredParamsFor('forward')], [], 'forward empty');
-});
-
-check('§C · missingRequiredTypedParams flags every empty required field', () => {
-  const out = missingRequiredTypedParams('regime', {
-    curve_family: 'UST',
-    // front_tenor missing
-    back_tenor: '10Y',
-  });
-  assertEqual(out, ['front_tenor'], 'one missing');
-});
-
-check('§C · missingRequiredTypedParams returns [] when all present', () => {
-  const out = missingRequiredTypedParams('regime', {
-    curve_family: 'UST',
-    front_tenor: '2Y',
-    back_tenor: '10Y',
-  });
-  assertEqual(out, [], 'all present');
-});
-
-check('§C · empty-string values count as missing', () => {
-  const out = missingRequiredTypedParams('yield', {
-    curve_family: '',
-    tenor: '10Y',
-  });
-  assertEqual(out, ['curve_family'], 'empty string = missing');
-});
-
-check('§C · undefined input → all required fields missing', () => {
-  const out = missingRequiredTypedParams('yield', undefined);
-  assertEqual(out.sort(), ['curve_family', 'tenor'], 'all missing');
-});
-
-// ============================================================================
 // §D — Source-level contracts on the consumer files
 // ============================================================================
 
-check('§D · MultiPrimitiveCard imports missing-param helpers + MissingParamsCard', async () => {
-  const src = await loadSource(
-    'src/components/build/primitive/MultiPrimitiveCard.tsx',
-  );
-  assertContains(src, 'missingRequiredTypedParams', 'imports validator');
-  assertContains(src, 'MissingParamsCard', 'imports the tile');
-  assertContains(
-    src,
-    'askHandoff && missingForAsk.length > 0',
-    'gates on askHandoff AND missing',
-  );
-});
-
-check('§D · MultiPrimitiveCard skips the fetch when missing-param tile would render', async () => {
-  const src = await loadSource(
-    'src/components/build/primitive/MultiPrimitiveCard.tsx',
-  );
-  assertContains(src, 'shouldFetch', 'tracks shouldFetch flag');
-  assertContains(src, '!(askHandoff && missingForAsk.length > 0)', 'flag derivation');
-});
-
-check('§D · VirtualPrimitiveCanvas takes askHandoff prop + threads to body', async () => {
+check('§D · VirtualPrimitiveCanvas takes askHandoff prop + threads to the module surface', async () => {
   const src = await loadSource(
     'src/components/build/primitive/VirtualPrimitiveCanvas.tsx',
-  );
-  assertContains(src, 'askHandoff', 'prop present');
-  assertContains(src, 'MissingParamsCard', 'imports tile');
-  assertContains(src, 'missingForAsk', 'computes missing');
-  assertContains(
-    src,
-    'if (missingForAsk.length > 0)',
-    'body branches on missing',
-  );
-});
-
-check('§D · MultiPrimitiveCanvas threads askHandoff into each card', async () => {
-  const src = await loadSource(
-    'src/components/build/primitive/MultiPrimitiveCanvas.tsx',
   );
   assertContains(src, 'askHandoff', 'prop present');
   assertContains(
     src,
     'askHandoff={askHandoff}',
-    'forwarded to each MultiPrimitiveCard',
+    'forwarded to the module Build surface',
   );
 });
 
@@ -421,43 +323,6 @@ check('§D · ActionRow appends handoff=ask to context URLs', async () => {
     'src/components/ask/messages/ActionRow.tsx',
   );
   assertContains(src, '&handoff=ask', 'ActionRow sets the marker');
-});
-
-check('§D · MissingParamsCard navigates with handoff=ask preserved', async () => {
-  const src = await loadSource(
-    'src/components/build/primitive/MissingParamsCard.tsx',
-  );
-  assertContains(src, 'HANDOFF_QUERY_PARAM', 'imports the constant');
-  assertContains(src, 'HANDOFF_ASK_VALUE', 'imports the literal');
-  assertContains(
-    src,
-    'handleConfigure',
-    'has the configure-and-open handler',
-  );
-});
-
-// ============================================================================
-// §E — Multi-card identity chip (call N of M)
-// ============================================================================
-
-check('§E · MultiPrimitiveCanvas exports CallMeta type', async () => {
-  const src = await loadSource(
-    'src/components/build/primitive/MultiPrimitiveCanvas.tsx',
-  );
-  assertContains(src, 'export interface CallMeta', 'CallMeta exported');
-  assertContains(src, 'computeCallIndex', 'computation present');
-});
-
-check('§E · MultiPrimitiveCard renders the chip via data-testid', async () => {
-  const src = await loadSource(
-    'src/components/build/primitive/MultiPrimitiveCard.tsx',
-  );
-  assertContains(
-    src,
-    'data-testid="multi-card-call-chip"',
-    'chip test hook',
-  );
-  assertContains(src, 'call {callMeta.n} of {callMeta.m}', 'chip label');
 });
 
 // ============================================================================
@@ -524,23 +389,17 @@ check('§F · realistic multi-tool Ask handoff round-trips with structured fidel
   );
   // Single-best lookup still surfaces structured fidelity.
   const best = decodePrimitiveContext(ctx);
-  assertTruthy(best!.kind !== 'builder', 'builder kind never decodes');
+  assertTruthy(
+    ['generic_builder', 'workflow_incompatible', 'unsupported_known'].includes(
+      best!.kind,
+    ),
+    'decode kind is in the closed three-variant set',
+  );
   assertEqual(
     (best!.paramsStructured.target_spec as Record<string, unknown>)
       .curve_family,
     'UST',
     'nested target_spec preserved',
-  );
-});
-
-check('§F · empty regime params → missing-param check would fire', () => {
-  // Empty params for a typed view (regime: classify_curve_move) → without
-  // PR-B-β this defaults silently.  PR-B-β reports the missing fields explicitly.
-  const out = missingRequiredTypedParams('regime', {});
-  assertEqual(
-    out.sort(),
-    ['back_tenor', 'curve_family', 'front_tenor'],
-    'all three required fields flagged',
   );
 });
 

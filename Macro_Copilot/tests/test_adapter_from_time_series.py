@@ -508,7 +508,12 @@ class TestHighLevelWrapper_Synthetic:
         params = Input(
             curve_family="USD_SOFR_OIS", short_tenor="2Y", long_tenor="10Y",
         )
-        with pytest.raises(ValueError, match="not declared"):
+        # Multi-component output_field contract: unknown fields now
+        # fail through the unified resolution error ("did not resolve
+        # ... neither a TimeSeries field nor a token-match of a
+        # List[TimeSeries] component") instead of the old
+        # "not declared" message.
+        with pytest.raises(ValueError, match="did not resolve"):
             tool_output_to_artifact_series(
                 self._output_dict(),
                 output_class=Output,
@@ -526,7 +531,11 @@ class TestHighLevelWrapper_Synthetic:
         params = Input(
             curve_family="USD_SOFR_OIS", short_tenor="2Y", long_tenor="10Y",
         )
-        with pytest.raises(ValueError, match="not a TimeSeries"):
+        # Multi-component output_field contract: a non-TimeSeries field
+        # now falls through direct-attribute AND List[TimeSeries]
+        # component resolution, raising the unified "did not resolve"
+        # error (was "not a TimeSeries").
+        with pytest.raises(ValueError, match="did not resolve"):
             tool_output_to_artifact_series(
                 self._output_dict(),
                 output_class=Output,

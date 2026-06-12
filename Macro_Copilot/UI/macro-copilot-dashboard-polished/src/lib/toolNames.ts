@@ -129,11 +129,11 @@ const KNOWN_TOOL_ALIASES: Record<string, string> = {
  *       canonical name on both sides and don't need rewriting.
  *
  *  This function is pure + side-effect-free; safe to call from any
- *  layer.  Used by ``hasModelMetadata``, ``getModelMetadata``,
- *  ``paramHintFor``, ``decodePrimitiveContext``, ``ToolDetailDrawer``'s
- *  "Open in Build" CTA, ``WorkspaceButton``, ``ActionRow.resolveBuildHref``,
- *  and any future surface that bridges the manifest into a Build / Ask
- *  / Library chassis lookup. */
+ *  layer.  Used by ``getModelMetadata``, ``paramHintFor``,
+ *  ``decodePrimitiveContext``, ``ToolDetailDrawer``'s "Open in Build"
+ *  CTA, ``WorkspaceButton``, ``ActionRow.resolveBuildHref``, and any
+ *  future surface that bridges the manifest into a Build / Ask /
+ *  Library chassis lookup. */
 export function normalizeToolName(name: string): string {
   if (!name) return name;
   const alias = KNOWN_TOOL_ALIASES[name];
@@ -385,8 +385,8 @@ export function isRunnablePrimitive(name: string): boolean {
 //
 // ``classify_curve_move_tool`` joined this set with the G-3.1c
 // dual-view migration: it is workflow-incompatible on the backend and
-// previously decoded via its typed-view path ('regime'), which
-// pre-empted this check.  That typedView claim is retired — the
+// previously decoded via its legacy typed-view path ('regime'), which
+// pre-empted this check.  That legacy routing claim is retired — the
 // decode now flows through here (the module-first dispatch still
 // mounts its dual-view Build surfaces; this kind only governs the
 // honest card in non-module contexts).

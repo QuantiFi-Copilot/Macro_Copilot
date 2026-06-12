@@ -5,7 +5,6 @@
 // (build_order 21; policy_futures domain).  Under the new standards:
 //   - methodology_exposure.md §5 standalone-bridge (own typed-detail
 //     endpoint at /api/v1/rates/detail/policy-futures-cross-market + own
-//     surfaces; no shared typedView)
 //   - rendering_density.md §1 dual-view mandate (buildExtended +
 //     buildCompact both REQUIRED)
 //
@@ -62,16 +61,9 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Matched-strip cross-market implied-rate differential between two policy-futures curve families at one strip position (e.g. SOFR_FUT vs SONIA_FUT strip 1 = SFR1 − SFI1, SOFR_FUT vs EUR_SHORT_RATE_FUT strip 4 = SFR4 − ER4). Wire-frozen A − B sign convention in PERCENT POINTS; display in bps (positive = leg A pricing above leg B at this strip slot — cross-CB divergence direction). Carries 1d change, rolling 252d z-score, trailing 252d range + percentile, per-leg disclosure block (strip-slot master stems + current-front underlying contracts) AND per-leg short-rate regime labels (RFR vs IBOR — surfaced INDEPENDENTLY for mixed-regime pairs; NO pack-average collapse). RAW differential — NOT basis-adjusted, NOT beta-adjusted.',
 
-  // FM9 — STANDALONE pattern per methodology_exposure.md §5: no shared
-  // typedView.  The module owns its own full Build surfaces.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build``
-  // is kept === buildExtended for the legacy VirtualPrimitiveCanvas
-  // dispatcher that reads ``surfaces.build``.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

@@ -2,10 +2,8 @@
 // src/modules/primitives/classify_curve_move_tool/module.ts
 // ----------------------------------------------------------------------------
 // Consolidation (G-3.1c) — migrated from the legacy typed-view route
-// (``typedView: 'regime'`` + ``surfaces.resultRenderer``) to the
-// dual-view standard.  THIS RETIRES THE LAST ``typedView`` CLAIM IN
-// THE CODEBASE — the PrimitiveViewKind routing substrate is now dead
-// code awaiting deletion (consolidation target #5).
+// to the dual-view standard; the legacy routing substrate was deleted
+// in consolidation target #5 (G-3.5).
 //   - methodology_exposure.md §5 standalone bridge (the existing
 //     /api/v1/rates/detail/regime endpoint + own surfaces; the legacy
 //     shared RegimeView route is unclaimed)
@@ -40,17 +38,12 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Deterministically classify a two-point sovereign curve move over a discrete lookback into one of six canonical labels.',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): the
-  // typedView('regime') route is RETIRED; the module owns its own
   // dual-view surfaces on the same /detail/regime bridge.
-  typedView: null,
-  richModel: false,
 
   // FM8 — dual Build-side surfaces (rendering_density.md §5).
   // ``build`` is kept === buildExtended for the legacy
   // VirtualPrimitiveCanvas dispatcher (transitional alias).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

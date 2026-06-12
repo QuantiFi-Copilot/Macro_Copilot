@@ -5,7 +5,6 @@
 //   - methodology_exposure.md §5 standalone-bridge contract (this tool
 //     ships its own typed-detail endpoint at
 //     /api/v1/rates/detail/ois-forward-rate + its own frontend surfaces;
-//     no shared typedView reuse)
 //   - rendering_density.md §1 dual-view mandate (BOTH buildExtended +
 //     buildCompact REQUIRED; no opt-in)
 //
@@ -52,17 +51,12 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Implied forward rate spanning two tenors on an OIS curve (1Y1Y, 5Y5Y, 2Y1Y, etc) via the dual-compounding bootstrap (simple for T ≤ 1Y, annual for T > 1Y).  Carries forward_rate_pct + 1-day change in bps + rolling 252d z-score + trailing 252d high/low/percentile + interpolated start/end spot rates.  Risk-neutral implied policy-path read; OIS forwards price the EXPECTED policy path, not realised central-bank decisions.',
 
-  // FM9 — routing claims.  STANDALONE pattern per
-  // methodology_exposure.md §5: no shared typedView.  The module owns its
   // own full Build surfaces.
-  typedView: null,
-  richModel: false,
 
   // FM8 — surface refs (rendering_density.md §5):
   //   * buildExtended — full canvas, mounted for single-tool queries
   //   * buildCompact  — grid card, mounted as a node in multi-tool DAGs
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

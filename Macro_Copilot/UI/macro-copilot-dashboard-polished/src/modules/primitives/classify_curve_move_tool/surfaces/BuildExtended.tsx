@@ -14,9 +14,9 @@
 //   methodology — wire fields + the config.yaml-locked thresholds
 //   lineage   — the standard footer
 //
-// This migration retires the legacy ``typedView: 'regime'`` route —
-// the LAST typedView claim in the codebase (consolidation target #5
-// becomes a pure deletion once this lands).
+// This migration retired the legacy 'regime' typed-view route — the
+// LAST legacy view claim in the codebase; the routing substrate
+// itself was deleted in consolidation target #5 (G-3.5).
 // ============================================================================
 
 import { useNavigate } from 'react-router-dom';

@@ -233,6 +233,28 @@ class TestBuildRunAudit:
         assert audit is not None
         assert audit["expected_answer_shape"] == "scalar"
 
+    def test_list_shape_stored_as_list(self):
+        # RouteDecision carries a LIST of shape tokens — it must land
+        # in the sidecar as a JSON list, not a stringified repr
+        # (caught live: "['scalar']" poisoned the first persisted
+        # audit row's renderer-facing field).
+        from enum import Enum
+
+        from orchestrator.session import _build_run_audit
+
+        class _Shape(str, Enum):
+            SCALAR = "scalar"
+
+        audit = _build_run_audit(
+            self._outcome(
+                route_decision=SimpleNamespace(
+                    expected_answer_shape=[_Shape.SCALAR, "series"],
+                ),
+            ),
+        )
+        assert audit is not None
+        assert audit["expected_answer_shape"] == ["scalar", "series"]
+
     def test_no_chain_returns_none(self):
         from orchestrator.session import _build_run_audit
 

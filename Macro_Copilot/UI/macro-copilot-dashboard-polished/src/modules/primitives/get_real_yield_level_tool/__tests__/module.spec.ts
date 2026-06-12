@@ -69,14 +69,6 @@ check('surfaces.buildCompact is populated', () => {
   }
 });
 
-check('typedView is null (standalone-module pattern)', () => {
-  if (MODULE.typedView != null) {
-    throw new Error(
-      `typedView must be null for new modules under the standalone-bridge contract; got '${MODULE.typedView}'.  See methodology_exposure.md §5.`,
-    );
-  }
-});
-
 check('mockups folder exists alongside the module', async () => {
   // Mockup PNGs are committed in mockups/ per the user's mockup-first
   // workflow.  At minimum we expect Compact.png + Extended.png.  We

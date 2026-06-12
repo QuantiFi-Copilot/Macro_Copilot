@@ -7,7 +7,6 @@
 // (CPI-family caveat threading) under the new standards:
 //   - methodology_exposure.md §5 standalone-bridge (own typed-detail endpoint
 //     at /api/v1/rates/detail/zcis-butterfly + own surfaces; no shared
-//     typedView)
 //   - rendering_density.md §1 dual-view mandate (buildExtended + buildCompact
 //     both REQUIRED)
 //
@@ -66,14 +65,9 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Three-point ZCIS butterfly on a single ZCIS curve family (e.g. USD ZCIS 2-5-10 fly) with fixed (-0.5, +1.0, -0.5) weights. Positive = belly cheap; negative = belly rich. Curvature of zero-coupon inflation swap rates — one curve, one inflation index (CPI-U / HICPxT / RPI not fungible).',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): no shared typedView.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build`` is
-  // kept === buildExtended for the legacy VirtualPrimitiveCanvas dispatcher.
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

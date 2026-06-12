@@ -144,9 +144,20 @@ async def test_pr11_outcome_carries_workflow_and_executed_dag(
     rendered_lineage_hashes: List[str] = []
 
     class _Renderer:
-        async def render(self, **kw) -> str:
+        # Consolidation target #3: the pipeline now calls the
+        # structured ``render_parts`` (RenderedAnswer with
+        # ``answer_prose``) instead of the legacy string-returning
+        # ``render`` — see orchestrator/open_dag/answer.py
+        # ``AnswerRenderer.render_parts`` and pipeline.py's L6 call.
+        async def render_parts(self, **kw):
+            from orchestrator.open_dag.answer import RenderedAnswer
+
             rendered_lineage_hashes.append(kw.get("lineage_head_hash", ""))
-            return f"PR11_E2E_ANSWER: {kw.get('executed_summary', '')}"
+            return RenderedAnswer(
+                markdown=f"PR11_E2E_ANSWER: {kw.get('executed_summary', '')}",
+                answer_prose="PR11_E2E_PROSE",
+                kind="answer",
+            )
 
     async def sovereign_selector_cb(*, leaf_id, request, timeout_s):
         return BoundLeaf(

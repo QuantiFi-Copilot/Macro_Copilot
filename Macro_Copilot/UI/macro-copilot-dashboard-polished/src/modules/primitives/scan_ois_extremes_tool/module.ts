@@ -2,7 +2,6 @@
 // src/modules/primitives/scan_ois_extremes_tool/module.ts — Dual-view build.
 // ----------------------------------------------------------------------------
 // Stage upgrade: Stage 3 scaffold (tiers ['paused'] — "no live route yet")
-// → standalone-bridge dual-view (typedView=null +
 // surfaces.{build, buildExtended, buildCompact}).  The backend route IS live
 // now: /api/v1/rates/detail/ois-scanner (api/routes/rates/detail.py) wraps
 // rates_agent/ois/tools/scan_ois_extremes — so the stale 'paused' claim is
@@ -28,7 +27,6 @@
 //
 //   - methodology_exposure.md §5 standalone-bridge contract (own typed-detail
 //     endpoint at /api/v1/rates/detail/ois-scanner + own surfaces; no shared
-//     typedView)
 //   - rendering_density.md §1 dual-view mandate (BOTH buildExtended +
 //     buildCompact REQUIRED)
 //
@@ -58,17 +56,11 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Scans every OIS instrument in the database, ranks the top-N by absolute 252-day z-score and returns rate, daily change, z-score, percentile, and signal label per row.  OIS analogue of scan_extremes.',
 
-  // FM9 — STANDALONE pattern (methodology_exposure.md §5): both Build
   // surfaces fetch the per-tool typed-detail endpoint
   // ``/api/v1/rates/detail/ois-scanner``.
-  typedView: null,
-  richModel: false,
 
-  // FM8 — dual Build-side surfaces (rendering_density.md §5).  ``build`` is
-  // kept === buildExtended for the legacy VirtualPrimitiveCanvas dispatcher
-  // (transitional alias until the dispatcher reads ``buildExtended``).
+  // FM8 — dual Build-side surfaces (rendering_density.md §5).
   surfaces: {
-    build: BuildExtended,
     buildExtended: BuildExtended,
     buildCompact: BuildCompact,
   },

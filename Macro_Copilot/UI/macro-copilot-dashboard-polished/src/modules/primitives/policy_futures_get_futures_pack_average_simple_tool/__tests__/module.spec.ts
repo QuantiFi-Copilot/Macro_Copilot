@@ -79,14 +79,6 @@ check('declares a monitor widget', () => {
   }
 });
 
-check('typedView is null (standalone-module pattern)', () => {
-  if (MODULE.typedView != null) {
-    throw new Error(
-      `typedView must be null for new modules under the standalone-bridge contract; got '${MODULE.typedView}'.  See methodology_exposure.md §5.`,
-    );
-  }
-});
-
 check('default curve_family is a recognised policy-futures family', () => {
   const cf = MODULE.defaultParams?.curve_family;
   const RECOGNISED = new Set(['SOFR_FUT', 'EUR_SHORT_RATE_FUT', 'SONIA_FUT']);

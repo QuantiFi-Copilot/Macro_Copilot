@@ -17,8 +17,6 @@
 // ============================================================================
 
 import { getPrimitiveModule } from '@/modules';
-import { isTypedPrimitive } from '../primitive/fetchDispatcher';
-import { MultiPrimitiveCard } from '../primitive/MultiPrimitiveCard';
 import { MultiGenericBuilderCard } from '../primitive/MultiGenericBuilderCard';
 import { MultiUnsupportedKnownCard } from '../primitive/MultiUnsupportedKnownCard';
 import { useOpenExtendedView } from './expandedView';
@@ -27,11 +25,9 @@ import type { DagNode } from './dagModel';
 export function DagNodeBody({
   node,
   size,
-  askHandoff,
 }: {
   node: DagNode;
   size: 'small' | 'medium';
-  askHandoff: boolean;
 }) {
   const { open } = useOpenExtendedView();
 
@@ -53,19 +49,10 @@ export function DagNodeBody({
     );
   }
 
-  // 2. Legacy fallback — the tool predates the dual-view contract (no
-  //    buildCompact).  Render the existing artifact-type card so the node
-  //    still shows useful content.  Migrating such a tool to dual-view
-  //    automatically promotes it to path (1) above.
-  if (isTypedPrimitive(node.decoded)) {
-    return (
-      <MultiPrimitiveCard
-        decoded={node.decoded}
-        askHandoff={askHandoff}
-        callMeta={node.callMeta}
-      />
-    );
-  }
+  // 2. Fallback — the tool ships no buildCompact (no owning module /
+  //    module without the dual-view surfaces).  Render the generic
+  //    cards so the node still shows useful content.  Migrating such a
+  //    tool to dual-view automatically promotes it to path (1) above.
   if (node.decoded.kind === 'generic_builder') {
     return (
       <MultiGenericBuilderCard toolName={node.toolName} params={node.params} />

@@ -362,24 +362,44 @@ check('decode: truly unknown tool → null', () => {
   assertNull(out, 'unknown tool returns null');
 });
 
-check('decode: NO tool produces the legacy builder kind (G-3.2 lock)', () => {
-  // The rich-model migration retired ``modelMetadata`` on every
-  // module — the model registry is EMPTY and the 'builder' decode
-  // branch is dead code awaiting deletion (consolidation target #5).
-  // This lock makes a regression (a module re-adding modelMetadata)
-  // loud.
+check('decode: three-variant contract — every decode kind is one of the closed set (G-3.5 lock)', () => {
+  // Consolidation target #5 deleted the legacy typed-view and
+  // rich-model decode branches: ``DecodedPrimitive`` is a closed
+  // three-variant union.  The model registry stays EMPTY (the G-3.2
+  // migration retired ``modelMetadata`` on every module) — this lock
+  // makes a regression (a module re-adding modelMetadata) loud.
   assertEqual(listModels().length, 0, 'model registry is empty');
-  const out = decodePrimitiveContext(
+  const allowed = new Set([
+    'generic_builder',
+    'workflow_incompatible',
+    'unsupported_known',
+  ]);
+  const list = decodePrimitiveList(
+    encodeContext([
+      { tool: 'calculate_curve_spread_tool' },
+      { tool: 'calculate_pca_yield_curve_tool' },
+      { tool: 'classify_curve_move_tool' },
+      { tool: 'scan_ois_extremes_tool' },
+    ]),
+  );
+  assertEqual(list.length, 4, 'all four decode');
+  for (const d of list) {
+    assertTruthy(
+      allowed.has(d.kind),
+      `${d.toolName}: kind '${d.kind}' is in the closed three-variant set`,
+    );
+  }
+  const best = decodePrimitiveContext(
     encodeContext([
       { tool: 'calculate_curve_spread_tool' },
       { tool: 'calculate_pca_yield_curve_tool' },
     ]),
   );
-  assertTruthy(out!.kind !== 'builder', 'builder kind never decodes');
+  assertTruthy(allowed.has(best!.kind), 'single-best kind in the closed set');
 });
 
 check('decode: generic_builder + migrated classifier → generic_builder wins (priority)', () => {
-  // classify_curve_move_tool retired the LAST typedView claim ('regime');
+  // classify_curve_move_tool retired the LAST legacy view claim ('regime');
   // it now decodes via the workflow_incompatible branch (priority 0.25),
   // which loses to the runnable generic builder (priority 0.5).  Build
   // still mounts its dual-view surfaces via module-first dispatch.
@@ -685,7 +705,7 @@ check('decode: generic_builder + workflow_incompatible → generic_builder wins 
 });
 
 check('decode: two workflow_incompatible tools → first wins (tie-break)', () => {
-  // No typedView modules remain post classify_curve_move migration; pin
+  // No legacy view-claiming modules remain post classify_curve_move migration; pin
   // the workflow_incompatible tie-break instead (>= keeps the LAST equal-
   // priority entry, matching decodePrimitiveContext's score >= bestScore).
   const out = decodePrimitiveContext(
@@ -730,9 +750,8 @@ check('unsupportedKnownReasonFor: workflow_incompatible tools have explicit copy
 check('Stage 1: every net-new runnable primitive decodes to generic_builder', () => {
   // Smoke check that the 18 net-new Stage 1 primitives all surface
   // honestly through the schema-driven generic builder.  Any failure
-  // here means the primitive landed in RUNNABLE_PRIMITIVE_TOOLS but
-  // a higher-priority registry (TOOL_TO_VIEW / model registry) is
-  // claiming it — which would silently break the routing intent.
+  // here means the primitive fell out of RUNNABLE_PRIMITIVE_TOOLS —
+  // which would silently break the routing intent.
   const stage1NetNew = [
     'calculate_otr_ofr_spread_tool',
     'calculate_cpi_surprise_tool',
