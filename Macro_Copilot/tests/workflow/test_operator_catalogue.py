@@ -70,12 +70,20 @@ from shared.workflow.operator_catalogue import (
 # (tmp/fable_plan_2.md §7 / ADR 0016 OPR4) targets ≈25–35 operators;
 # at the measured ~830-token average with the 1,000 per-card hard cap,
 # 35 operators bound the catalogue at ≤35k worst-case (~29k expected).
-# 36k total leaves >160k for the rest of the L3 prompt + tool messages
-# on a 200k window — the same comfort margin the PoC budget assumed.
-# The PER-CARD cap is unchanged: card discipline is enforced per
-# operator, the total is the fleet-size budget.
+#
+# The A1–A7 build overshot that estimate: the buildable finance-blind
+# toolbox is 44 operators (the A5 statistical-test family —
+# stationarity_adf/ljung_box/normality_test/variance_ratio/
+# hurst_exponent — plus the A1 cycle filters etc.), measuring 36.4k at
+# the ~830-token average, and the A4 model engines will push it higher.
+# The TOTAL cap is therefore raised to 40k — the fleet-size budget
+# scales mechanically with operator count (the same growth the count
+# pin tracks), and 40k still leaves >150k for the rest of the L3 prompt
+# + tool messages on a 200k window.  The PER-CARD cap is UNCHANGED at
+# 1,000: card discipline is enforced per operator (every card is under
+# it); the total is only the fleet-size budget.
 _PER_CARD_TOKEN_CAP = 1_000
-_TOTAL_CATALOGUE_TOKEN_CAP = 36_000
+_TOTAL_CATALOGUE_TOKEN_CAP = 40_000
 
 
 # Per the plan's "Decisions enforced" #3:
@@ -128,8 +136,8 @@ class TestEveryOperatorHasCard:
     def test_catalogue_size_matches_registry(
         self, catalogue: Dict[str, OperatorCard],
     ) -> None:
-        assert len(catalogue) == len(OPERATOR_REGISTRY) == 43, (
-            f"Expected 43 registered operators; got "
+        assert len(catalogue) == len(OPERATOR_REGISTRY) == 44, (
+            f"Expected 44 registered operators; got "
             f"registry={len(OPERATOR_REGISTRY)} catalogue={len(catalogue)}.  "
             "If this changed deliberately, update the assertion AND review "
             "tmp/orchestration.md §2.1 for the operator inventory."

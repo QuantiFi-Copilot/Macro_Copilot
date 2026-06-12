@@ -274,6 +274,7 @@ class TestComposerPromptContent:
         assert sorted(OPERATOR_REGISTRY.keys()) == [
             "align_series",
             "apply_mask",
+            "bandpass",
             "beta",
             "cointegration",
             "conditional_aggregate",
@@ -349,14 +350,17 @@ class TestComposerPromptContent:
     # "Composer's prompt input ≤ 25K tokens" — sized for the
     # 16-operator PoC catalogue.  Track-A (fable_build) re-sized the
     # budget for the growing toolbox exactly like the catalogue's
-    # _TOTAL_CATALOGUE_TOKEN_CAP (16k→36k): the plan targets ≈25–35
-    # operators; at the 1,000-token per-card hard cap, 35 cards bound
-    # the catalogue portion at ≤35k, plus ~8k of instructions → 45k
-    # bounds the worst case while leaving >150k for tool messages on a
-    # 200k window.  The prompt is byte-stable (Anthropic-cache-pinned),
-    # so the marginal cost of the larger prefix amortizes across calls.
-    # orchestration.md §PR-7's acceptance line is updated in lock-step.
-    _COMPOSER_PROMPT_TOKEN_CAP = 45_000
+    # _TOTAL_CATALOGUE_TOKEN_CAP: the A1–A7 build overshot the ≈25–35
+    # estimate to 44 operators (the A5 statistical-test family + the A1
+    # cycle filters etc.), so the catalogue portion (raised to 40k) +
+    # ~9k of instructions → 49k bounds the worst case, still leaving
+    # >150k for tool messages on a 200k window.  Tracks the catalogue
+    # cap in lock-step (40k→49k as the fleet grows; the A4 model engines
+    # will push it higher).  The prompt is byte-stable
+    # (Anthropic-cache-pinned), so the marginal cost of the larger
+    # prefix amortizes across calls.  orchestration.md §PR-7's
+    # acceptance line is updated in lock-step.
+    _COMPOSER_PROMPT_TOKEN_CAP = 49_000
 
     def test_prompt_token_budget(self, composer_system_text):
         token_count = approx_tokens(composer_system_text)

@@ -1,0 +1,84 @@
+operator:
+  name: bandpass
+  method_family: single_series_transform
+  version: "1.0.0"
+  description: >-
+    Christiano-Fitzgerald band-pass cycle of one Series (statsmodels
+    cffilter), extracting the component whose period lies in a chosen
+    [low, high] band and emitting it as a Series in the input's units.
+    Finance-blind. low/high are REQUIRED (no honest default — the band
+    is frequency-dependent methodology; 6-32 is the business cycle for
+    QUARTERLY data, a different band at another frequency). The filter
+    is ASYMMETRIC / full-sample (look-ahead — disclosed in lineage as
+    filter_scope='full_sample_two_sided'; never feed into point-in-time
+    compositions). drift=True is design-locked (removes a unit-root /
+    drift component). Two-tier NaN policy: contiguous leading/trailing
+    warmup NaN tolerated and passed through; interior NaN refused.
+
+# bandpass has NO config defaults: low/high are required-no-default
+# (the hp_filter lamb precedent) and the filter (Christiano-Fitzgerald)
+# + drift=True are design-locked, not config-contested.
+#
+# DESIGN LOCKS (OPR7, lineage-stamped):
+# (1) the Christiano-Fitzgerald asymmetric full-sample filter — it is
+#     full-length (no endpoint loss).  The Baxter-King SYMMETRIC filter
+#     truncates K observations at each end (real edge data loss) and is
+#     a declared planned extension with its own truncation-disclosure
+#     surface, never a method flag here.
+# (2) drift=True — removes a unit-root / linear-drift component (the
+#     right default for near-unit-root series); a no-drift variant is a
+#     planned extension.
+defaults: {}
+
+methodology:
+  what_it_does: >-
+    Tolerates contiguous LEADING/TRAILING warmup NaN (passed through as
+    NaN; the filter runs on the interior finite block — trimming a
+    contiguous edge leaves the remaining rows genuinely adjacent) and
+    REFUSES interior NaN (the band-pass filter is a moving average over
+    ADJACENT rows; dropping interior gaps would silently splice
+    non-adjacent observations — the remedy align_series ffill is named
+    in the refusal). Runs statsmodels cffilter with the design-locked
+    drift=True over the interior block and emits the band-pass CYCLE
+    (the component whose period is in [low, high]). The filter is
+    ASYMMETRIC and uses the WHOLE sample, so the cycle at every position
+    is fitted against the entire series — genuine full-sample look-ahead
+    (filter_scope='full_sample_two_sided' in lineage; never feed the
+    output into point-in-time compositions). Units passthrough — the
+    filter is linear, so a band-pass cycle of a BPS series is BPS.
+    Refusals: missing params (low/high have no honest default), a
+    non-Series input, an INTERIOR NaN, fewer than 2*high finite
+    observations (the longest band period is otherwise unidentified), a
+    non-finite output. The output index is the input index (CF is
+    full-length); leading/trailing NaN counts ride in lineage.
+  planned_extensions:
+    - "Baxter-King (symmetric) band-pass: a distinct estimator that truncates K observations at each end (real edge data loss) — its own operator with its own truncation-disclosure surface, not a method flag here."
+    - "no-drift variant (drift=False): for already-detrended / stationary inputs — a declared variant, not a silent knob."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Christiano-Fitzgerald band-pass cycle — ONE Series (the component whose period is in [low, high]; in the input's units; two-sided look-ahead in lineage).
+  when_to_use:
+    - "User asks for the CYCLE / oscillation of a chosen frequency band ('extract the 6-32 period cycle of X', 'the medium-frequency swings of X') — emits that band as a Series."
+    - "Isolating a band before a downstream amplitude/variance read (pair with summarize_series(std) for cycle strength)."
+  when_not_to_use:
+    - "POINT-IN-TIME compositions: the filter is TWO-SIDED / full-sample (the cycle at t uses the whole sample — look-ahead disclosed in lineage); never feed it into as-of/walk-forward chains."
+    - "User wants a smooth TREND or the trend/cycle split tuned by a smoothness penalty — hp_filter (a different method: penalised smoothing, not a frequency band)."
+    - "User wants the band's SIGNIFICANCE / persistence — that is a statistical test (variance_ratio / hurst_exponent), not a filter."
+  upstream_requirements:
+    - "Input is ONE Series (any units), >= 2*high finite observations, interior-gap-free.  Contiguous leading/trailing warmup NaN is tolerated; INTERIOR NaN is refused (fill upstream via align_series).  low/high (the period band) are REQUIRED."
+  downstream_pattern:
+    - "Output is a Series (the band-pass cycle; series_key bandpass_cycle__<key>) in the input's units.  Feed summarize_series for amplitude, or a statistical test for the band's character.  Lineage records low/high, drift and filter_scope."
+  knobs_quick_ref:
+    low: "REQUIRED — the shortest period (>= 2) admitted into the band."
+    high: "REQUIRED — the longest period (> low) admitted into the band; needs >= 2*high finite observations."
+  example_shapes:
+    - description: "Strength of a series' medium-frequency (6-32 period) cycle."
+      shape: "[Series A] -> bandpass(low=6, high=32) -> summarize_series(std) -> ScalarMetric  [terminal]"
+  sibling_operators:
+    - hp_filter: "Penalised-smoothing trend/cycle split tuned by lambda; bandpass isolates a specific FREQUENCY BAND tuned by low/high — a different method."
+    - detrend: "Removes a polynomial trend; bandpass removes everything outside a frequency band."
+  intent_hints: [transform]

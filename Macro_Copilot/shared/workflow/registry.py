@@ -112,6 +112,10 @@ from shared.operators.hp_filter import (
     hp_filter, HpFilterParams,
     CONFIG_PATH as _HP_FILTER_CONFIG_PATH,
 )
+from shared.operators.bandpass import (
+    bandpass, BandpassParams,
+    CONFIG_PATH as _BANDPASS_CONFIG_PATH,
+)
 from shared.operators.lag import (
     lag, LagParams,
     CONFIG_PATH as _LAG_CONFIG_PATH,
@@ -2063,6 +2067,55 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "summarize_series(last) ('the current streak'), "
                 "direct surface.  Raises StreakError on a non-Series "
                 "or all-NaN input."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — single_series_transform: Christiano-
+    # Fitzgerald band-pass cycle (full-sample two-sided, statsmodels).
+    # One Series in, one Series out (units passthrough); low/high are
+    # REQUIRED (frequency-dependent methodology).
+    "bandpass": OperatorSpec(
+        operator_name="bandpass",
+        callable=bandpass,
+        params_class=BandpassParams,
+        config_path=_BANDPASS_CONFIG_PATH,
+        input_slots={
+            "series": SlotDescriptor.of(
+                "Series",
+                (
+                    "The single typed Series to band-pass filter — no "
+                    "INTERIOR NaN gaps (refused; fill upstream with "
+                    "align_series ffill), though contiguous "
+                    "leading/trailing warmup NaN from rolling/ewm/lag "
+                    "upstreams passes through; >= 2*high finite rows.  "
+                    "USE to extract the CYCLE whose period lies in a "
+                    "chosen [low, high] band ('the 6-32 period swings "
+                    "of X'); low/high MUST be supplied and are "
+                    "frequency-dependent (6-32 is the business cycle "
+                    "for QUARTERLY data).  TWO-SIDED: the cycle at "
+                    "every position uses the whole sample (look-ahead "
+                    "disclosed in lineage; never for point-in-time "
+                    "compositions).  DO NOT use for a smooth trend or "
+                    "the penalty-tuned trend/cycle split (hp_filter), "
+                    "a polynomial detrend (detrend), or the band's "
+                    "significance (variance_ratio / hurst_exponent)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            (
+                "The band-pass cycle on the input index, in the "
+                "input's units (series_key bandpass_cycle__<key>).  "
+                "Lineage records low/high, the design-locked "
+                "Christiano-Fitzgerald filter + drift=True, "
+                "filter_scope='full_sample_two_sided' (the look-ahead "
+                "disclosure) and the edge-NaN counts.  Typical "
+                "follow-ons: summarize_series(std) for cycle "
+                "amplitude, a statistical test for the band's "
+                "character.  Raises BandpassError on missing low/high, "
+                "interior NaN, < 2*high finite rows, or a non-finite "
+                "output."
             ),
         ),
     ),

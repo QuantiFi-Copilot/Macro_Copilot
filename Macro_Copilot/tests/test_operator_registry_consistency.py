@@ -49,6 +49,7 @@ from shared.workflow.slots import OutputDescriptor, SlotDescriptor
 # The full OPR16 conformance gate runs over this set; Step 3 grew it
 # from {correlation} to include the 8 migrated finance-blind operators.
 _V2_CONFORMANT = {
+    "bandpass",
     "beta",
     "cointegration",
     "correlation",
