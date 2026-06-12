@@ -19,10 +19,20 @@ choice, and is the same exempt pattern documented at
 ``shared/workflow/validate.py:368`` (``output_field_units={}``).
 Extending ``TimeSeriesUnits`` is ADR-gated per
 ``docs_revamped/03_standards/closed_family_discipline.md`` §6, and
-ADR 0013 (which sanctions this primitive) does NOT authorise that
+ADR 0013 (which sanctions this primitive) did NOT authorise that
 extension. The per-strip ``inverse_priced`` flag + the regime label
 are carried on the snapshot so a downstream consumer cannot misread
 a raw price as a rate.
+
+ADR 0017 (futures-series bridging) authorises a canonical companion
+for the SINGLE-unit-space facet desks actually read: this Output NOW
+ALSO carries ``time_series_implied_rate: TimeSeries`` (closed-enum
+``TimeSeriesUnits.PERCENT``), built from the SAME display slice as
+the bespoke rows (1-to-1 by construction) — that is what the
+open-DAG Series bridge lifts as a typed leaf
+(``output_field='time_series_implied_rate'``). The raw-price facet
+stays bespoke-only (its quote space is per-contract; the desk read
+is the rate).
 
 Field-name discipline on the snapshot (PR14 frozen)
 ---------------------------------------------------
@@ -104,6 +114,8 @@ from datetime import date
 from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from shared.schemas import TimeSeries
 
 
 class FuturesPriceLevelInput(BaseModel):
@@ -471,6 +483,11 @@ class FuturesPriceLevelOutput(BaseModel):
         per-row fields are rounded with the same conventions the
         snapshot uses, so the snapshot equals ``time_series[-1]``
         STRICTLY at the latest row.
+      - ``time_series_implied_rate``: canonical TimeSeries companion
+        of the implied-rate facet (``TimeSeriesUnits.PERCENT`` per
+        ADR 0017) — the open-DAG Series bridge's typed leaf. Values
+        match ``time_series[i].implied_rate_pct`` 1-to-1 by
+        construction.
       - ``methodology_disclosure``: the P5 / ADR 0013 caveat carried
         on every response so consumers cannot drop the disclosure
         when relaying the snapshot.
@@ -486,9 +503,20 @@ class FuturesPriceLevelOutput(BaseModel):
             "strip slot over the display window (cleaned, ffilled, "
             "rounded). Bespoke shape — not ``shared.schemas."
             "TimeSeries`` — because each row carries two unit spaces "
-            "side-by-side and ``TimeSeriesUnits`` has no PRICE member "
-            "in V1 (ADR-gated extension per P8). See module "
-            "docstring."
+            "side-by-side. The single-unit canonical companion for "
+            "substrate consumption is ``time_series_implied_rate``. "
+            "See module docstring."
+        ),
+    )
+    time_series_implied_rate: TimeSeries = Field(
+        ...,
+        description=(
+            "Historical desk-recognised implied rate for the strip "
+            "slot in PERCENT (closed-enum ``TimeSeriesUnits.PERCENT`` "
+            "per ADR 0017); series_name = ``'<curve_family_lower>_"
+            "<strip_position>_implied_rate'``. Values match "
+            "``time_series[i].implied_rate_pct`` 1-to-1 by "
+            "construction."
         ),
     )
     methodology_disclosure: str = Field(

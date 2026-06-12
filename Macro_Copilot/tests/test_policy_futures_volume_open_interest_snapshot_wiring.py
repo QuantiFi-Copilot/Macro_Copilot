@@ -27,10 +27,11 @@ Key load-bearing properties under test:
     date.fromisoformat; empty string ⇒ None (post-fetch data-max
     anchor); malformed ⇒ controlled error envelope.
   - Workflow registration is honest: PrimitiveSpec is registered with
-    the correct CONFIG_PATH and with ``output_field_units = {}``
-    (because the contract-count unit is not a member of the closed-
-    enum TimeSeriesUnits family in V1 — see schemas module docstring
-    + workflows registration comment).
+    the correct CONFIG_PATH and with the ADR 0017 canonical
+    declaration ``output_field_units = {"time_series_volume":
+    "contracts", "time_series_open_interest": "contracts"}`` (the
+    canonical TimeSeries companions the open-DAG Series bridge lifts;
+    the bespoke ``time_series`` row list stays undeclared).
 """
 
 from __future__ import annotations
@@ -96,6 +97,30 @@ def _well_formed_output() -> dict:
             {"date": "2026-04-29", "volume": 600000.0, "open_interest": 1033333.0},
             {"date": "2026-04-30", "volume": 612345.0, "open_interest": 1045678.0},
         ],
+        "time_series_volume": {
+            "series_name": "sofr_fut_1_volume",
+            "units": "contracts",
+            "description": (
+                "Daily traded volume for SOFR_FUT strip position 1 "
+                "in CONTRACTS."
+            ),
+            "rows": [
+                {"date": "2026-04-29", "value": 600000.0},
+                {"date": "2026-04-30", "value": 612345.0},
+            ],
+        },
+        "time_series_open_interest": {
+            "series_name": "sofr_fut_1_open_interest",
+            "units": "contracts",
+            "description": (
+                "End-of-day open interest for SOFR_FUT strip "
+                "position 1 in CONTRACTS."
+            ),
+            "rows": [
+                {"date": "2026-04-29", "value": 1033333.0},
+                {"date": "2026-04-30", "value": 1045678.0},
+            ],
+        },
         "methodology_disclosure": _METHODOLOGY_DISCLOSURE_FIXTURE,
     }
 
@@ -151,9 +176,13 @@ class TestMcpVolumeOpenInterestSnapshotWiring:
             "verbatim (catalog standardness guardrail)"
         )
         assert "OI z-score lookback" in md
-        # time_series stripped from the LLM-facing payload (frontend
-        # REST gets the full payload via the dict result).
+        # time_series + the canonical companions stripped from the
+        # LLM-facing payload (frontend REST gets the full payload via
+        # the dict result; the open-DAG Series bridge reads the
+        # canonical fields from the raw dict).
         assert "time_series" not in parsed
+        assert "time_series_volume" not in parsed
+        assert "time_series_open_interest" not in parsed
 
     def test_mcp_wrapper_has_no_field_name_param(self):
         """The MCP wrapper MUST NOT accept ``field_name`` — the volume /
@@ -327,19 +356,34 @@ class TestWorkflowRegistration:
         )
         assert spec.config_path == VOLUME_OPEN_INTEREST_SNAPSHOT_CONFIG_PATH
 
-    def test_output_field_units_is_empty_by_design(self):
-        """P8 / P5: policy-futures volume + OI live in contract-count
-        space, which has no honest member of the closed-enum
-        ``TimeSeriesUnits`` family in V1. Declaring ``percent`` /
-        ``bps`` / ``count`` would silently lie. ``{}`` is the
-        documented exempt mode (see shared/workflow/validate.py:368)
-        until a future ADR extends TimeSeriesUnits with a CONTRACTS
-        member."""
+    def test_output_field_units_declares_canonical_contract_counts(self):
+        """ADR 0017 extended ``TimeSeriesUnits`` with the CONTRACTS
+        member; the two canonical companions are declared with it.
+        The bespoke ``time_series`` row list stays UNDECLARED so the
+        validator refuses a binding the Series bridge cannot lift."""
         from rates_agent.workflows import rates_primitive_resolver
         spec = rates_primitive_resolver(
             "policy_futures_get_volume_open_interest_snapshot_tool"
         )
-        assert spec.output_field_units == {}
+        assert spec.output_field_units == {
+            "time_series_volume": "contracts",
+            "time_series_open_interest": "contracts",
+        }
+
+    def test_classified_bridgeable_series(self):
+        """The composability audit must classify this primitive
+        BRIDGEABLE_SERIES post-ADR-0017 (despite the tool's name the
+        output carries dated volume/OI history rows)."""
+        from orchestrator.open_dag.composability_audit import (
+            Composability,
+            classify_primitive,
+        )
+        from rates_agent.workflows import rates_primitive_resolver
+        spec = rates_primitive_resolver(
+            "policy_futures_get_volume_open_interest_snapshot_tool"
+        )
+        entry = classify_primitive(spec)
+        assert entry.classification is Composability.BRIDGEABLE_SERIES
 
     def test_registered_input_and_output_classes(self):
         from rates_agent.workflows import rates_primitive_resolver

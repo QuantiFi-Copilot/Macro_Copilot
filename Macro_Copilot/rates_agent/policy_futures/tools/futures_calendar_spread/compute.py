@@ -184,6 +184,7 @@ from shared.analytics.spreads import (
     safe_float,
 )
 from shared.config import ToolConfig, load_tool_config
+from shared.schemas import TimeSeries, TimeSeriesRow, TimeSeriesUnits
 
 
 # Bundled config — public symbol so external callers (mcp_server,
@@ -806,10 +807,18 @@ def calculate_futures_calendar_spread(
         raw_price_round_decimals=raw_price_round_decimals,
         implied_rate_round_decimals=implied_rate_round_decimals,
     )
+    canonical_spread = _build_canonical_spread_implied_rate(
+        display_implied_spread=display_implied_spread,
+        curve_family=params.curve_family,
+        strip_position_short=params.strip_position_short,
+        strip_position_long=params.strip_position_long,
+        implied_rate_round_decimals=implied_rate_round_decimals,
+    )
 
     output = FuturesCalendarSpreadOutput(
         current_metrics=metrics,
         time_series=time_series,
+        time_series_spread_implied_rate=canonical_spread,
         methodology_disclosure=methodology_disclosure,
     )
     return output.model_dump()
@@ -856,3 +865,47 @@ def _build_time_series(
             )
         )
     return rows
+
+
+def _build_canonical_spread_implied_rate(
+    *,
+    display_implied_spread: pd.Series,
+    curve_family: str,
+    strip_position_short: int,
+    strip_position_long: int,
+    implied_rate_round_decimals: int,
+) -> TimeSeries:
+    """Build the canonical ``TimeSeries`` companion of the bespoke
+    rows' implied-rate spread facet (closed-enum
+    ``TimeSeriesUnits.PERCENT`` per ADR 0017 — the spread of two
+    implied rates is in PERCENT POINTS).
+
+    Built from the SAME ``display_implied_spread`` slice with the SAME
+    rounding as ``_build_time_series`` so the canonical values match
+    ``time_series[i].spread_implied_rate_pct`` 1-to-1 by construction.
+    """
+    series_name = (
+        f"{curve_family.lower()}_{strip_position_short}_"
+        f"{strip_position_long}_calendar_spread"
+    )
+    rows = []
+    for ts, rate_v in display_implied_spread.items():
+        if pd.isna(rate_v):
+            continue
+        rows.append(
+            TimeSeriesRow(
+                date=ts.strftime("%Y-%m-%d"),
+                value=round(float(rate_v), implied_rate_round_decimals),
+            )
+        )
+    return TimeSeries(
+        series_name=series_name,
+        units=TimeSeriesUnits.PERCENT,
+        description=(
+            f"Implied-rate calendar spread (short_leg − long_leg = "
+            f"fronter − backer) on {curve_family} strip positions "
+            f"({strip_position_short}, {strip_position_long}) in "
+            f"PERCENT POINTS over the displayed window."
+        ),
+        rows=rows,
+    )

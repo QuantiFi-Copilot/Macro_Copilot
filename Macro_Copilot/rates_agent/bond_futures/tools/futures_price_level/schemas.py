@@ -14,10 +14,18 @@ is a closed-enum family (P8) and has no ``PRICE`` member; declaring
 ``PERCENT`` or ``BPS`` on a bond-futures price series would silently
 lie. Extending ``TimeSeriesUnits`` is ADR-gated per
 ``docs_revamped/03_standards/closed_family_discipline.md`` §6, and
-ADR 0013 (which sanctions this primitive) does NOT authorise that
-extension. The honest export is therefore a bespoke per-row
-``{date, price}`` list, with the per-contract ``quote_units`` carried
+ADR 0013 (which sanctions this primitive) did NOT authorise that
+extension. The bespoke per-row ``{date, price}`` list remains the
+frontend wire shape, with the per-contract ``quote_units`` carried
 on the snapshot so downstream consumers cannot misread.
+
+ADR 0017 authorises the ``TimeSeriesUnits.PRICE`` member ("a quoted
+price in the contract's NATIVE quote space; ``quote_units`` is the
+authoritative disclosure of the exact space"), so this Output NOW
+ALSO carries a canonical companion ``time_series_price: TimeSeries``
+built from the SAME display slice as the bespoke rows (1-to-1 by
+construction) — that is what the open-DAG Series bridge lifts as a
+typed leaf (``output_field='time_series_price'``).
 
 Field-name discipline on the snapshot
 -------------------------------------
@@ -67,6 +75,8 @@ from __future__ import annotations
 from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from shared.schemas import TimeSeries
 
 
 class FuturesPriceLevelInput(BaseModel):
@@ -288,6 +298,10 @@ class FuturesPriceLevelOutput(BaseModel):
         ``price_round_decimals`` convention the snapshot uses, so
         ``current_metrics.current_price`` equals
         ``time_series[-1].price`` STRICTLY at the latest row.
+      - ``time_series_price``: canonical TimeSeries companion of the
+        SAME price history (``TimeSeriesUnits.PRICE`` per ADR 0017) —
+        the open-DAG Series bridge's typed leaf. Values match
+        ``time_series[i].price`` 1-to-1 by construction.
       - ``methodology_disclosure``: the P5 / ADR 0013 caveat verbatim
         so every consumer carries the rolling-generic-price reading
         forward.
@@ -301,11 +315,21 @@ class FuturesPriceLevelOutput(BaseModel):
         description=(
             "Historical front-month prices for the rolling-generic over "
             "the display window (cleaned, ffilled, rounded to "
-            "``price_round_decimals``). Bespoke shape — not "
-            "``shared.schemas.TimeSeries`` — because the price unit "
-            "(``quote_units``) is not a member of the closed-enum "
-            "``TimeSeriesUnits`` family in V1 (ADR-gated extension per "
-            "P8). See module docstring."
+            "``price_round_decimals``). Bespoke shape kept for the "
+            "frontend wire; the canonical companion for substrate "
+            "consumption is ``time_series_price``. See module docstring."
+        ),
+    )
+    time_series_price: TimeSeries = Field(
+        ...,
+        description=(
+            "Canonical TimeSeries of the rolling-generic price history "
+            "in the contract's NATIVE quote space (closed-enum "
+            "``TimeSeriesUnits.PRICE`` per ADR 0017; read "
+            "``current_metrics.quote_units`` for the exact space). "
+            "series_name = ``'<curve_family_lower>_<contract_code_lower>"
+            "_price'``. Values match ``time_series[i].price`` 1-to-1 by "
+            "construction."
         ),
     )
     methodology_disclosure: str = Field(

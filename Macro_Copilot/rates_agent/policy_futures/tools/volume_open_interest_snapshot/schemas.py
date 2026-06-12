@@ -19,12 +19,20 @@ silently lie. The row also carries TWO semantically distinct series
 the canonical ``TimeSeries`` payload assumes a single value column.
 Extending ``TimeSeriesUnits`` is ADR-gated per
 ``docs_revamped/03_standards/closed_family_discipline.md`` §6, and
-ADR 0013 (which sanctions this primitive) does NOT authorise that
-extension. The honest export is therefore a bespoke per-row
-``{date, volume, open_interest}`` list, with the ``contract_size``
+ADR 0013 (which sanctions this primitive) did NOT authorise that
+extension. The bespoke per-row ``{date, volume, open_interest}``
+list remains the frontend wire shape, with the ``contract_size``
 disclosure carried on the snapshot so downstream consumers can
-convert to notional if they want it. Same exempt pattern the sibling
+convert to notional if they want it. Same pattern the sibling
 bond_futures.futures_volume_oi uses.
+
+ADR 0017 authorises the ``TimeSeriesUnits.CONTRACTS`` member
+(futures contract counts — distinct from ``COUNT``'s observation-
+count / flag semantics), so this Output NOW ALSO carries canonical
+single-column companions ``time_series_volume: TimeSeries`` and
+``time_series_open_interest: TimeSeries`` built from the SAME
+display slices as the bespoke rows (1-to-1 by construction) — those
+are what the open-DAG Series bridge lifts as typed leaves.
 
 Field-name discipline on the snapshot
 -------------------------------------
@@ -111,6 +119,8 @@ from datetime import date
 from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from shared.schemas import TimeSeries
 
 
 class VolumeOpenInterestSnapshotInput(BaseModel):
@@ -407,10 +417,31 @@ class VolumeOpenInterestSnapshotOutput(BaseModel):
             "Historical aligned daily volume + open-interest rows for "
             "the strip slot over the display window (cleaned, "
             "ffilled, intersected on shared dates, rounded). Bespoke "
-            "shape — not ``shared.schemas.TimeSeries`` — because the "
-            "contract-count unit is not a member of the closed-enum "
-            "``TimeSeriesUnits`` family in V1 (ADR-gated extension per "
-            "P8). See module docstring."
+            "shape — not ``shared.schemas.TimeSeries`` — because each "
+            "row carries two semantically distinct count series. The "
+            "single-column canonical companions for substrate "
+            "consumption are ``time_series_volume`` and "
+            "``time_series_open_interest``. See module docstring."
+        ),
+    )
+    time_series_volume: TimeSeries = Field(
+        ...,
+        description=(
+            "Canonical TimeSeries of daily traded volume in CONTRACTS "
+            "(closed-enum ``TimeSeriesUnits.CONTRACTS`` per ADR 0017); "
+            "series_name = ``'<curve_family_lower>_<strip_position>_"
+            "volume'``. Values match ``time_series[i].volume`` 1-to-1 "
+            "by construction."
+        ),
+    )
+    time_series_open_interest: TimeSeries = Field(
+        ...,
+        description=(
+            "Canonical TimeSeries of end-of-day open interest in "
+            "CONTRACTS (closed-enum ``TimeSeriesUnits.CONTRACTS`` per "
+            "ADR 0017); series_name = ``'<curve_family_lower>_"
+            "<strip_position>_open_interest'``. Values match "
+            "``time_series[i].open_interest`` 1-to-1 by construction."
         ),
     )
     methodology_disclosure: str = Field(

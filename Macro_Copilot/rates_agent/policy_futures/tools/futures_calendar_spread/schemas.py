@@ -50,12 +50,20 @@ member; declaring ``percent`` would only cover the implied-rate axis
 and silently mis-label the raw-price spread axis. Extending
 ``TimeSeriesUnits`` is ADR-gated per
 ``docs_revamped/03_standards/closed_family_discipline.md`` §6, and
-ADR 0013 (which sanctions this primitive) does NOT authorise that
+ADR 0013 (which sanctions this primitive) did NOT authorise that
 extension. The bespoke ``{date, raw_price_spread,
-spread_implied_rate_pct}`` shape keeps both reads honest, mirrors the
-sibling ``futures_price_level`` choice, and is the same exempt
-pattern documented at ``shared/workflow/validate.py:368``
-(``output_field_units={}``).
+spread_implied_rate_pct}`` shape keeps both reads honest and mirrors
+the sibling ``futures_price_level`` choice.
+
+ADR 0017 (futures-series bridging) authorises a canonical companion
+for the SINGLE-unit-space facet desks actually read: this Output NOW
+ALSO carries ``time_series_spread_implied_rate: TimeSeries``
+(closed-enum ``TimeSeriesUnits.PERCENT``; the spread of two implied
+rates is in PERCENT POINTS), built from the SAME display slice as
+the bespoke rows (1-to-1 by construction) — that is what the
+open-DAG Series bridge lifts as a typed leaf
+(``output_field='time_series_spread_implied_rate'``). The raw-price
+spread facet stays bespoke-only.
 
 Field-name discipline on the snapshot (PR14 frozen)
 ---------------------------------------------------
@@ -138,6 +146,8 @@ from datetime import date
 from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from shared.schemas import TimeSeries
 
 
 class FuturesCalendarSpreadInput(BaseModel):
@@ -568,9 +578,21 @@ class FuturesCalendarSpreadOutput(BaseModel):
             "Historical calendar-spread observations over the display "
             "window (cleaned, intersected, rounded). Bespoke shape — "
             "not ``shared.schemas.TimeSeries`` — because each row "
-            "carries two unit spaces side-by-side and "
-            "``TimeSeriesUnits`` has no PRICE member in V1 (ADR-gated "
-            "extension per P8). See module docstring."
+            "carries two unit spaces side-by-side. The single-unit "
+            "canonical companion for substrate consumption is "
+            "``time_series_spread_implied_rate``. See module docstring."
+        ),
+    )
+    time_series_spread_implied_rate: TimeSeries = Field(
+        ...,
+        description=(
+            "Historical implied-rate calendar spread (`short_leg − "
+            "long_leg` = `fronter − backer`) in PERCENT POINTS "
+            "(closed-enum ``TimeSeriesUnits.PERCENT`` per ADR 0017); "
+            "series_name = ``'<curve_family_lower>_<strip_position_"
+            "short>_<strip_position_long>_calendar_spread'``. Values "
+            "match ``time_series[i].spread_implied_rate_pct`` 1-to-1 "
+            "by construction."
         ),
     )
     methodology_disclosure: str = Field(

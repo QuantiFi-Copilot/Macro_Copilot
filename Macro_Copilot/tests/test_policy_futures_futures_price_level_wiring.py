@@ -23,10 +23,11 @@ Key load-bearing properties under test:
     rows but PRESERVES the P5 ``methodology_disclosure`` (so the
     rolling-generic-strip-read caveat is propagated upward).
   - Workflow registration is honest: PrimitiveSpec is registered with
-    the correct CONFIG_PATH and with ``output_field_units = {}``
-    (because the policy-futures raw-price space is not a member of
-    the closed-enum TimeSeriesUnits family in V1 — see schemas
-    module docstring + workflows registration comment).
+    the correct CONFIG_PATH and with the ADR 0017 canonical
+    declaration ``output_field_units = {"time_series_implied_rate":
+    "percent"}`` (the canonical implied-rate companion the open-DAG
+    Series bridge lifts; the bespoke two-unit-space ``time_series``
+    row list stays undeclared).
 """
 
 from __future__ import annotations
@@ -101,6 +102,18 @@ def _well_formed_output() -> dict:
             {"date": "2026-04-29", "raw_price": 96.13500, "implied_rate_pct": 3.8650},
             {"date": "2026-04-30", "raw_price": 96.12500, "implied_rate_pct": 3.8750},
         ],
+        "time_series_implied_rate": {
+            "series_name": "sofr_fut_1_implied_rate",
+            "units": "percent",
+            "description": (
+                "Desk-recognised implied rate for SOFR_FUT strip "
+                "position 1 in PERCENT."
+            ),
+            "rows": [
+                {"date": "2026-04-29", "value": 3.8650},
+                {"date": "2026-04-30", "value": 3.8750},
+            ],
+        },
         "methodology_disclosure": _METHODOLOGY_DISCLOSURE_FIXTURE,
     }
 
@@ -148,9 +161,12 @@ class TestMcpFuturesPriceLevelWiring:
         assert "current_metrics" in parsed
         # P5 disclosure must reach the LLM-facing payload.
         assert parsed.get("methodology_disclosure") == _METHODOLOGY_DISCLOSURE_FIXTURE
-        # time_series is stripped from the LLM-facing payload (frontend
-        # REST surfaces get the full payload via the dict result).
+        # time_series + the canonical companion are stripped from the
+        # LLM-facing payload (frontend REST surfaces get the full
+        # payload via the dict result; the open-DAG Series bridge
+        # reads the canonical field from the raw dict).
         assert "time_series" not in parsed
+        assert "time_series_implied_rate" not in parsed
 
     def test_field_name_default_is_empty_string_sentinel(self):
         """The MCP wrapper's field_name default must be the empty-
@@ -342,19 +358,37 @@ class TestWorkflowRegistration:
         assert spec.tool_name == "policy_futures_get_futures_price_level_tool"
         assert spec.config_path == FUTURES_PRICE_LEVEL_CONFIG_PATH
 
-    def test_output_field_units_is_empty_by_design(self):
-        """P8 / P5: policy-futures raw-price space has no honest
-        member of the closed-enum ``TimeSeriesUnits`` family in V1
-        (each row carries TWO unit spaces side-by-side). Declaring
-        ``percent`` would only cover the implied-rate axis and
-        silently mis-label the raw-price axis. ``{}`` is the
-        documented exempt mode (see shared/workflow/validate.py:368)
-        until a future ADR extends TimeSeriesUnits."""
+    def test_output_field_units_declares_canonical_implied_rate(self):
+        """ADR 0017: the single-unit-space canonical companion
+        ``time_series_implied_rate`` is declared in PERCENT (the
+        desk-recognised facet).  The bespoke two-unit-space
+        ``time_series`` row list stays UNDECLARED so the validator
+        refuses a binding the Series bridge cannot lift, and the
+        raw-price facet is NOT exported canonically (per-contract
+        quote space)."""
         from rates_agent.workflows import rates_primitive_resolver
         spec = rates_primitive_resolver(
             "policy_futures_get_futures_price_level_tool"
         )
-        assert spec.output_field_units == {}
+        assert spec.output_field_units == {
+            "time_series_implied_rate": "percent",
+        }
+
+    def test_classified_bridgeable_series(self):
+        """The composability audit must classify this primitive
+        BRIDGEABLE_SERIES post-ADR-0017 (it was TERMINAL_ONLY_SNAPSHOT
+        while output_field_units was empty — campaign refusals k03 /
+        k04)."""
+        from orchestrator.open_dag.composability_audit import (
+            Composability,
+            classify_primitive,
+        )
+        from rates_agent.workflows import rates_primitive_resolver
+        spec = rates_primitive_resolver(
+            "policy_futures_get_futures_price_level_tool"
+        )
+        entry = classify_primitive(spec)
+        assert entry.classification is Composability.BRIDGEABLE_SERIES
 
     def test_registered_input_and_output_classes(self):
         from rates_agent.workflows import rates_primitive_resolver

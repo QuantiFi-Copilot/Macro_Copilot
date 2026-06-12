@@ -127,6 +127,7 @@ from shared.analytics.rates_fetch import (
 )
 from shared.analytics.spreads import rolling_zscore, safe_float
 from shared.config import ToolConfig, load_tool_config
+from shared.schemas import TimeSeries, TimeSeriesRow, TimeSeriesUnits
 
 
 # Bundled config — public symbol so external callers (mcp_server,
@@ -653,10 +654,17 @@ def calculate_futures_price_level(
         raw_price_round_decimals=raw_price_round_decimals,
         implied_rate_round_decimals=implied_rate_round_decimals,
     )
+    canonical_implied_rate = _build_canonical_implied_rate(
+        display_implied_rates=display_implied_rates,
+        curve_family=params.curve_family,
+        strip_position=params.strip_position,
+        implied_rate_round_decimals=implied_rate_round_decimals,
+    )
 
     output = FuturesPriceLevelOutput(
         current_metrics=metrics,
         time_series=time_series,
+        time_series_implied_rate=canonical_implied_rate,
         methodology_disclosure=methodology_disclosure,
     )
     return output.model_dump()
@@ -707,3 +715,44 @@ def _build_time_series(
             )
         )
     return rows
+
+
+def _build_canonical_implied_rate(
+    *,
+    display_implied_rates: pd.Series,
+    curve_family: str,
+    strip_position: int,
+    implied_rate_round_decimals: int,
+) -> TimeSeries:
+    """Build the canonical ``TimeSeries`` companion of the bespoke
+    rows' implied-rate facet (closed-enum ``TimeSeriesUnits.PERCENT``
+    per ADR 0017).
+
+    Built from the SAME ``display_implied_rates`` slice with the SAME
+    rounding as ``_build_time_series`` so the canonical values match
+    ``time_series[i].implied_rate_pct`` 1-to-1 by construction.
+    """
+    series_name = (
+        f"{curve_family.lower()}_{strip_position}_implied_rate"
+    )
+    rows = []
+    for ts, rate_v in display_implied_rates.items():
+        if pd.isna(rate_v):
+            continue
+        rows.append(
+            TimeSeriesRow(
+                date=ts.strftime("%Y-%m-%d"),
+                value=round(float(rate_v), implied_rate_round_decimals),
+            )
+        )
+    return TimeSeries(
+        series_name=series_name,
+        units=TimeSeriesUnits.PERCENT,
+        description=(
+            f"Desk-recognised implied rate for {curve_family} strip "
+            f"position {strip_position} in PERCENT (implied-rate "
+            f"conversion per the strip's inverse-pricing rule), "
+            f"cleaned + ffilled over the displayed window."
+        ),
+        rows=rows,
+    )

@@ -23,9 +23,12 @@ Key load-bearing properties under test:
     rows but PRESERVES the P5 ``methodology_disclosure`` (sign
     convention, regime label, scope-limit caveats).
   - Workflow registration is honest: PrimitiveSpec is registered with
-    the correct CONFIG_PATH and with ``output_field_units = {}``
-    (because the policy-futures raw-price-spread space is not a
-    member of the closed-enum TimeSeriesUnits family in V1).
+    the correct CONFIG_PATH and with the ADR 0017 canonical
+    declaration ``output_field_units =
+    {"time_series_spread_implied_rate": "percent"}`` (the canonical
+    implied-rate-spread companion the open-DAG Series bridge lifts;
+    the bespoke two-unit-space ``time_series`` row list stays
+    undeclared).
 """
 
 from __future__ import annotations
@@ -115,6 +118,18 @@ def _well_formed_output() -> dict:
                 "spread_implied_rate_pct": -0.1250,
             },
         ],
+        "time_series_spread_implied_rate": {
+            "series_name": "sofr_fut_1_2_calendar_spread",
+            "units": "percent",
+            "description": (
+                "Implied-rate calendar spread (fronter − backer) on "
+                "SOFR_FUT strip positions (1, 2) in PERCENT POINTS."
+            ),
+            "rows": [
+                {"date": "2026-04-29", "value": -0.1300},
+                {"date": "2026-04-30", "value": -0.1250},
+            ],
+        },
         "methodology_disclosure": _METHODOLOGY_DISCLOSURE_FIXTURE,
     }
 
@@ -166,8 +181,11 @@ class TestMcpFuturesCalendarSpreadWiring:
         assert "current_metrics" in parsed
         # P5 disclosure must reach the LLM-facing payload.
         assert parsed.get("methodology_disclosure") == _METHODOLOGY_DISCLOSURE_FIXTURE
-        # time_series is stripped from the LLM-facing payload.
+        # time_series + the canonical companion are stripped from the
+        # LLM-facing payload (the open-DAG Series bridge reads the
+        # canonical field from the raw dict).
         assert "time_series" not in parsed
+        assert "time_series_spread_implied_rate" not in parsed
 
     def test_field_name_default_is_empty_string_sentinel(self):
         from rates_agent.policy_futures import mcp_server as mcp_module
@@ -380,19 +398,36 @@ class TestWorkflowRegistration:
         assert spec.tool_name == "policy_futures_get_futures_calendar_spread_tool"
         assert spec.config_path == FUTURES_CALENDAR_SPREAD_CONFIG_PATH
 
-    def test_output_field_units_is_empty_by_design(self):
-        """P8 / P5: the calendar-spread's ``time_series`` carries TWO
-        unit spaces per row (raw_price_spread in the contract's
-        price-spread space, AND spread_implied_rate_pct in PERCENT
-        POINTS). The closed-enum ``TimeSeriesUnits`` family has no
-        PRICE member; declaring ``percent`` would only cover the
-        implied-rate-spread axis and silently mis-label the raw-
-        price-spread axis."""
+    def test_output_field_units_declares_canonical_spread(self):
+        """ADR 0017: the single-unit-space canonical companion
+        ``time_series_spread_implied_rate`` is declared in PERCENT
+        (implied-rate spread in percent points — same declaration as
+        the already-bridged cross_market_spread).  The bespoke
+        two-unit-space ``time_series`` row list stays UNDECLARED so
+        the validator refuses a binding the Series bridge cannot
+        lift."""
         from rates_agent.workflows import rates_primitive_resolver
         spec = rates_primitive_resolver(
             "policy_futures_get_futures_calendar_spread_tool"
         )
-        assert spec.output_field_units == {}
+        assert spec.output_field_units == {
+            "time_series_spread_implied_rate": "percent",
+        }
+
+    def test_classified_bridgeable_series(self):
+        """The composability audit must classify this primitive
+        BRIDGEABLE_SERIES post-ADR-0017 (it was TERMINAL_ONLY_SNAPSHOT
+        while output_field_units was empty — campaign refusal k03)."""
+        from orchestrator.open_dag.composability_audit import (
+            Composability,
+            classify_primitive,
+        )
+        from rates_agent.workflows import rates_primitive_resolver
+        spec = rates_primitive_resolver(
+            "policy_futures_get_futures_calendar_spread_tool"
+        )
+        entry = classify_primitive(spec)
+        assert entry.classification is Composability.BRIDGEABLE_SERIES
 
     def test_registered_input_and_output_classes(self):
         from rates_agent.workflows import rates_primitive_resolver

@@ -87,6 +87,7 @@ from shared.analytics.rates_fetch import (
 )
 from shared.analytics.spreads import rolling_zscore, safe_float
 from shared.config import ToolConfig, load_tool_config
+from shared.schemas import TimeSeries, TimeSeriesRow, TimeSeriesUnits
 
 
 # Bundled config — public symbol so external callers (mcp_server,
@@ -480,10 +481,28 @@ def calculate_futures_volume_oi(
         volume_round_decimals=volume_round_decimals,
         oi_round_decimals=oi_round_decimals,
     )
+    canonical_volume = _build_canonical_contract_count_series(
+        display_values=display_volume,
+        facet="volume",
+        facet_label="daily traded volume",
+        curve_family=params.curve_family,
+        contract_code=params.contract_code,
+        round_decimals=volume_round_decimals,
+    )
+    canonical_oi = _build_canonical_contract_count_series(
+        display_values=display_oi,
+        facet="open_interest",
+        facet_label="end-of-day open interest",
+        curve_family=params.curve_family,
+        contract_code=params.contract_code,
+        round_decimals=oi_round_decimals,
+    )
 
     output = FuturesVolumeOIOutput(
         current_metrics=metrics,
         time_series=time_series,
+        time_series_volume=canonical_volume,
+        time_series_open_interest=canonical_oi,
         methodology_disclosure=_build_methodology_disclosure(z_window),
     )
     return output.model_dump()
@@ -525,3 +544,47 @@ def _build_volume_oi_time_series(
             )
         )
     return rows
+
+
+def _build_canonical_contract_count_series(
+    *,
+    display_values: pd.Series,
+    facet: str,
+    facet_label: str,
+    curve_family: str,
+    contract_code: str,
+    round_decimals: int,
+) -> TimeSeries:
+    """Build one canonical ``TimeSeries`` companion of the bespoke
+    rows (closed-enum ``TimeSeriesUnits.CONTRACTS`` per ADR 0017) for
+    a single count facet (``volume`` or ``open_interest``).
+
+    Built from the SAME display slice with the SAME rounding as
+    ``_build_volume_oi_time_series`` so the canonical values match the
+    bespoke rows 1-to-1 by construction (modulo rows the bespoke
+    builder skips because the OTHER facet is NaN — both views skip
+    nothing after the intersection-align step by construction).
+    """
+    series_name = (
+        f"{curve_family.lower()}_{contract_code.lower()}_{facet}"
+    )
+    rows = []
+    for ts, v in display_values.items():
+        if pd.isna(v):
+            continue
+        rows.append(
+            TimeSeriesRow(
+                date=ts.strftime("%Y-%m-%d"),
+                value=round(float(v), round_decimals),
+            )
+        )
+    return TimeSeries(
+        series_name=series_name,
+        units=TimeSeriesUnits.CONTRACTS,
+        description=(
+            f"Rolling-generic {contract_code} {facet_label} on "
+            f"{curve_family} in CONTRACTS over the displayed window "
+            f"(aligned on the volume/OI intersection of trading days)."
+        ),
+        rows=rows,
+    )

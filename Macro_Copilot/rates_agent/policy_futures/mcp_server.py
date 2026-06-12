@@ -370,12 +370,15 @@ def get_futures_price_level_tool(
     if "error" in result:
         return json.dumps(result, default=str)
 
-    # Strip time_series before returning to the LLM (frontend REST
-    # path returns the full payload). The LLM doesn't need every
-    # historical row to answer "where's SFR1?" — but it MUST see
-    # ``methodology_disclosure`` so the P5 caveat is propagated.
+    # Strip time_series + canonical series before returning to the
+    # LLM (frontend REST path returns the full payload; the open-DAG
+    # Series bridge reads the canonical field from the raw dict). The
+    # LLM doesn't need every historical row to answer "where's SFR1?"
+    # — but it MUST see ``methodology_disclosure`` so the P5 caveat is
+    # propagated.
     llm_response: dict = {
-        k: v for k, v in result.items() if k != "time_series"
+        k: v for k, v in result.items()
+        if k not in ("time_series", "time_series_implied_rate")
     }
     ts_rows = len(result.get("time_series", []) or [])
     if ts_rows:
@@ -551,13 +554,19 @@ def get_volume_open_interest_snapshot_tool(
     if "error" in result:
         return json.dumps(result, default=str)
 
-    # Strip time_series before returning to the LLM (frontend REST
-    # path returns the full payload). The LLM doesn't need every
-    # historical row to answer "where's SFR1 OI?" — but it MUST see
-    # ``methodology_disclosure`` so the P5 caveat + OI-z-score-window
-    # disclosure is propagated.
+    # Strip time_series + canonical series before returning to the
+    # LLM (frontend REST path returns the full payload; the open-DAG
+    # Series bridge reads the canonical fields from the raw dict).
+    # The LLM doesn't need every historical row to answer "where's
+    # SFR1 OI?" — but it MUST see ``methodology_disclosure`` so the
+    # P5 caveat + OI-z-score-window disclosure is propagated.
     llm_response: dict = {
-        k: v for k, v in result.items() if k != "time_series"
+        k: v for k, v in result.items()
+        if k not in (
+            "time_series",
+            "time_series_volume",
+            "time_series_open_interest",
+        )
     }
     ts_rows = len(result.get("time_series", []) or [])
     if ts_rows:
@@ -769,13 +778,16 @@ def get_futures_calendar_spread_tool(
     if "error" in result:
         return json.dumps(result, default=str)
 
-    # Strip time_series before returning to the LLM (frontend REST
-    # path returns the full payload). The LLM doesn't need every
-    # historical row to answer "where's SFR1-SFR2?" — but it MUST see
-    # ``methodology_disclosure`` so the P5 caveats (sign convention,
-    # regime label, scope-limits) are propagated.
+    # Strip time_series + canonical series before returning to the
+    # LLM (frontend REST path returns the full payload; the open-DAG
+    # Series bridge reads the canonical field from the raw dict). The
+    # LLM doesn't need every historical row to answer "where's
+    # SFR1-SFR2?" — but it MUST see ``methodology_disclosure`` so the
+    # P5 caveats (sign convention, regime label, scope-limits) are
+    # propagated.
     llm_response: dict = {
-        k: v for k, v in result.items() if k != "time_series"
+        k: v for k, v in result.items()
+        if k not in ("time_series", "time_series_spread_implied_rate")
     }
     ts_rows = len(result.get("time_series", []) or [])
     if ts_rows:

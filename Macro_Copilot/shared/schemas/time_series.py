@@ -62,6 +62,16 @@ class TimeSeriesUnits(str, Enum):
     PCT_RANK = "pct_rank"          # 0–100 percentile rank
     FACTOR_LEVEL = "factor_level"  # PCA factor scores (eigen-units)
     COUNT = "count"                # observation counts, quality flags as 0/1
+    # ADR 0017 — futures-series bridging extension.  PRICE is a quoted
+    # futures/contract price in the contract's NATIVE quote space (TY1
+    # points, RX1 % of par, SFR ``100 - rate``); the emitting tool's
+    # ``quote_units`` snapshot field is the authoritative disclosure of
+    # the exact space.  CONTRACTS counts futures contracts (trade volume,
+    # open interest).  Neither member participates in ``convert_units``
+    # dimensional conversion (no exact factor to/from percent/bps exists
+    # for either) — cross-unit operations refuse per ADR 0016 Decision 4.
+    PRICE = "price"                # quoted price, native quote space
+    CONTRACTS = "contracts"        # futures contract counts (volume / OI)
 
 
 # ============================================================================

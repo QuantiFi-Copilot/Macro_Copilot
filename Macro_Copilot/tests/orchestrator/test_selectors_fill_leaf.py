@@ -150,19 +150,16 @@ class TestRenderToolCatalogue:
             "policy_futures_get_futures_butterfly_simple_tool"
         )
 
-    def test_bond_futures_has_no_bridgeable_primitives_in_v1(self) -> None:
-        # bond_futures registered primitives today are all
-        # TERMINAL_ONLY_SNAPSHOT (price_level, volume_oi, scanner).
-        # Catalogue legitimately empties; dropped list records the
-        # exclusion classifications so downstream observability sees
-        # the situation honestly.
-        from rates_agent.workflows import (
-            known_rates_primitives, rates_primitive_resolver,
-        )
-        from orchestrator.open_dag.composability_audit import Composability
+    def test_bond_futures_primitives_are_bridged_post_adr_0017(self) -> None:
+        # ADR 0017: the bond_futures dated-history primitives
+        # (price_level, volume_oi) now carry canonical TimeSeries
+        # companions + output_field_units declarations, so the
+        # catalogue keeps them with exactly the canonical fields
+        # (the bespoke ``time_series`` row lists stay excluded).
+        # Pre-ADR they were TERMINAL_ONLY_SNAPSHOT and dropped —
+        # the campaign l01/l03 refusal mode this closes.
+        from rates_agent.workflows import rates_primitive_resolver
 
-        # Use the actual MCP names bond_futures would expose.  Both
-        # are classified TERMINAL_ONLY for bond_futures.
         tools = [
             _Tool("get_futures_price_level_tool", "front-month price"),
             _Tool("get_futures_volume_oi_tool", "front-month volume"),
@@ -170,16 +167,22 @@ class TestRenderToolCatalogue:
         cat, dropped = render_tool_catalogue(
             Domain.BOND_FUTURES, tools, rates_primitive_resolver,
         )
-        assert cat == []
-        assert len(dropped) == 2
-        for entry in dropped:
-            assert entry.composability == Composability.TERMINAL_ONLY_SNAPSHOT
+        assert dropped == []
+        fields_by_name = {
+            e.mcp_tool_name: e.available_output_fields for e in cat
+        }
+        # available_output_fields is sorted (declare_primitive_output
+        # sorts the declared keys for stable catalogue prompts).
+        assert fields_by_name == {
+            "get_futures_price_level_tool": ("time_series_price",),
+            "get_futures_volume_oi_tool": (
+                "time_series_open_interest", "time_series_volume",
+            ),
+        }
 
     def test_bond_futures_bare_resolver_key_derivation(self) -> None:
         # PR-3 seam: bond_futures uses bare resolver keys; policy_futures
-        # uses prefixed.  Verified directly via domain_to_resolver_key
-        # since the bond_futures price_level primitive is now
-        # TERMINAL_ONLY_SNAPSHOT and excluded from the catalogue.
+        # uses prefixed.  Verified directly via domain_to_resolver_key.
         from orchestrator.open_dag.resolver_keys import (
             domain_to_resolver_key,
         )
@@ -943,22 +946,23 @@ class TestP11CatalogueIsolation:
 
     The collision case (``get_futures_price_level_tool`` exists in
     both bond_futures and policy_futures MCP servers) demonstrates
-    the per-domain seam.  Both primitives are currently classified
-    as ``TERMINAL_ONLY_SNAPSHOT`` so they both drop from the
-    catalogue — but the dropped record + the direct
-    ``domain_to_resolver_key`` derivation prove that the per-domain
-    resolver-key convention is respected (different domain → different
-    key for the same MCP name)."""
+    the per-domain seam.  Post-ADR-0017 both primitives are
+    BRIDGEABLE_SERIES and KEPT — with the SAME mcp_tool_name but
+    DIFFERENT resolver keys AND different canonical output fields
+    (``time_series_price`` in PRICE space for bond_futures vs
+    ``time_series_implied_rate`` in PERCENT for policy_futures),
+    which proves the per-domain resolver-key convention is respected
+    end-to-end (different domain → different key → different spec
+    for the same MCP name)."""
 
-    def test_collision_drops_with_per_domain_resolver_keys_intact(self) -> None:
+    def test_collision_keeps_per_domain_resolver_keys_intact(self) -> None:
         from rates_agent.workflows import rates_primitive_resolver
         from orchestrator.open_dag.resolver_keys import (
             domain_to_resolver_key,
         )
 
-        # Both domains' price_level primitives are TERMINAL_ONLY in V1;
-        # both drop with the SAME mcp_tool_name but logically DIFFERENT
-        # resolver keys (verified directly).
+        # Same MCP name in both domains → two DIFFERENT catalogue
+        # entries (different resolver key, different canonical field).
         tools = [_Tool("get_futures_price_level_tool", "doc")]
         cat_bond, dropped_bond = render_tool_catalogue(
             Domain.BOND_FUTURES, tools, rates_primitive_resolver,
@@ -966,8 +970,20 @@ class TestP11CatalogueIsolation:
         cat_policy, dropped_policy = render_tool_catalogue(
             Domain.POLICY_FUTURES, tools, rates_primitive_resolver,
         )
-        assert cat_bond == cat_policy == []
-        assert len(dropped_bond) == len(dropped_policy) == 1
+        assert dropped_bond == dropped_policy == []
+        assert len(cat_bond) == len(cat_policy) == 1
+        assert cat_bond[0].resolver_tool_key == (
+            "get_futures_price_level_tool"
+        )
+        assert cat_policy[0].resolver_tool_key == (
+            "policy_futures_get_futures_price_level_tool"
+        )
+        assert cat_bond[0].available_output_fields == (
+            "time_series_price",
+        )
+        assert cat_policy[0].available_output_fields == (
+            "time_series_implied_rate",
+        )
 
         # Direct derivation: different domain → different resolver
         # key for the same MCP name (PR-3's collision-disambiguation

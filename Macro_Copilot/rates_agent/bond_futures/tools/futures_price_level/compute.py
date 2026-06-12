@@ -85,6 +85,7 @@ from shared.analytics.rates_fetch import (
 )
 from shared.analytics.spreads import rolling_zscore, safe_float
 from shared.config import ToolConfig, load_tool_config
+from shared.schemas import TimeSeries, TimeSeriesRow, TimeSeriesUnits
 
 
 # Bundled config — public symbol so external callers (mcp_server,
@@ -366,21 +367,30 @@ def calculate_futures_price_level(
     )
 
     # ------------------------------------------------------------------
-    # 7. Bespoke time_series (NOT canonical TimeSeries — see schemas
-    #    module docstring). Built from the SAME ``display_prices``
-    #    slice the snapshot was computed against, rounded with the
-    #    SAME ``price_round_decimals`` convention, so
+    # 7. Bespoke + canonical time series (see schemas module
+    #    docstring). BOTH built from the SAME ``display_prices`` slice
+    #    the snapshot was computed against, rounded with the SAME
+    #    ``price_round_decimals`` convention, so
     #    ``current_metrics.current_price`` equals
-    #    ``time_series[-1].price`` STRICTLY at the latest row.
+    #    ``time_series[-1].price`` STRICTLY at the latest row and the
+    #    canonical companion cannot drift from the bespoke rows.
     # ------------------------------------------------------------------
     time_series = _build_price_time_series(
         display_prices,
+        price_round_decimals=price_round_decimals,
+    )
+    canonical_price = _build_canonical_price(
+        display_prices,
+        curve_family=params.curve_family,
+        contract_code=params.contract_code,
+        quote_units=reference.get("quote_units"),
         price_round_decimals=price_round_decimals,
     )
 
     output = FuturesPriceLevelOutput(
         current_metrics=metrics,
         time_series=time_series,
+        time_series_price=canonical_price,
         methodology_disclosure=METHODOLOGY_DISCLOSURE,
     )
     return output.model_dump()
@@ -415,3 +425,47 @@ def _build_price_time_series(
             )
         )
     return rows
+
+
+def _build_canonical_price(
+    display_prices: pd.Series,
+    *,
+    curve_family: str,
+    contract_code: str,
+    quote_units: Optional[str],
+    price_round_decimals: int,
+) -> TimeSeries:
+    """Build the canonical ``TimeSeries`` companion of the bespoke
+    price rows (closed-enum ``TimeSeriesUnits.PRICE`` per ADR 0017).
+
+    Built from the SAME ``display_prices`` slice with the SAME rounding
+    as ``_build_price_time_series`` so the two views match 1-to-1 by
+    construction. The unit member deliberately does not claim a
+    dimensional identity — the snapshot's ``quote_units`` (echoed in
+    the description) is the authoritative disclosure of the exact
+    quote space.
+    """
+    series_name = (
+        f"{curve_family.lower()}_{contract_code.lower()}_price"
+    )
+    rows = []
+    for ts, v in display_prices.items():
+        if pd.isna(v):
+            continue
+        rows.append(
+            TimeSeriesRow(
+                date=ts.strftime("%Y-%m-%d"),
+                value=round(float(v), price_round_decimals),
+            )
+        )
+    return TimeSeries(
+        series_name=series_name,
+        units=TimeSeriesUnits.PRICE,
+        description=(
+            f"Rolling-generic {contract_code} price history on "
+            f"{curve_family} in the contract's native quote space "
+            f"({quote_units or 'quote_units undisclosed'}), cleaned + "
+            f"ffilled over the displayed window."
+        ),
+        rows=rows,
+    )

@@ -1130,13 +1130,26 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             "time_series_zscore": "z_score",
         },
     ),
+    # ADR 0017 — futures-series bridging.  The five dated-history
+    # futures primitives below declare ONLY their canonical TimeSeries
+    # companion fields here (the bespoke ``time_series`` row lists stay
+    # undeclared so the validator refuses a binding the Series bridge
+    # cannot lift).  Units are the closed-enum values the canonical
+    # fields actually carry: PRICE (native quote space; ADR 0017),
+    # PERCENT (implied rates / implied-rate spreads), CONTRACTS
+    # (volume / open-interest counts; ADR 0017).
     "get_futures_price_level_tool": PrimitiveSpec(
         tool_name="get_futures_price_level_tool",
         callable=calculate_futures_price_level,
         input_class=FuturesPriceLevelInput,
         output_class=FuturesPriceLevelOutput,
         config_path=FUTURES_PRICE_LEVEL_CONFIG_PATH,
-        output_field_units={},
+        output_field_units={
+            # Rolling-generic price in the contract's NATIVE quote
+            # space (TY1 points, RX1 % of par, ...); the snapshot's
+            # ``quote_units`` field is the authoritative disclosure.
+            "time_series_price": "price",
+        },
     ),
     "get_futures_volume_oi_tool": PrimitiveSpec(
         tool_name="get_futures_volume_oi_tool",
@@ -1144,7 +1157,12 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         input_class=FuturesVolumeOIInput,
         output_class=FuturesVolumeOIOutput,
         config_path=FUTURES_VOLUME_OI_CONFIG_PATH,
-        output_field_units={},
+        output_field_units={
+            # Whole-contract counts (volume = contracts traded; OI =
+            # contracts outstanding) — ADR 0017 CONTRACTS member.
+            "time_series_volume": "contracts",
+            "time_series_open_interest": "contracts",
+        },
     ),
     "policy_futures_get_scan_policy_futures_extremes_tool": PrimitiveSpec(
         tool_name="policy_futures_get_scan_policy_futures_extremes_tool",
@@ -1172,7 +1190,12 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         input_class=FuturesCalendarSpreadInput,
         output_class=FuturesCalendarSpreadOutput,
         config_path=POLICY_FUTURES_CALENDAR_SPREAD_CONFIG_PATH,
-        output_field_units={},
+        output_field_units={
+            # Implied-rate calendar spread (fronter − backer) in
+            # PERCENT POINTS — same declaration as the sibling
+            # cross_market_spread (ADR 0017 canonical companion).
+            "time_series_spread_implied_rate": "percent",
+        },
     ),
     "policy_futures_get_futures_cross_market_spread_tool": PrimitiveSpec(
         tool_name="policy_futures_get_futures_cross_market_spread_tool",
@@ -1204,7 +1227,12 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         input_class=PolicyFuturesPriceLevelInput,
         output_class=PolicyFuturesPriceLevelOutput,
         config_path=POLICY_FUTURES_PRICE_LEVEL_CONFIG_PATH,
-        output_field_units={},
+        output_field_units={
+            # Desk-recognised strip-slot implied rate in PERCENT (ADR
+            # 0017 canonical companion).  The raw-price facet stays
+            # bespoke-only — its quote space is per-contract.
+            "time_series_implied_rate": "percent",
+        },
     ),
     "policy_futures_get_futures_strip_snapshot_tool": PrimitiveSpec(
         tool_name="policy_futures_get_futures_strip_snapshot_tool",
@@ -1220,7 +1248,13 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         input_class=VolumeOpenInterestSnapshotInput,
         output_class=VolumeOpenInterestSnapshotOutput,
         config_path=POLICY_FUTURES_VOLUME_OPEN_INTEREST_SNAPSHOT_CONFIG_PATH,
-        output_field_units={},
+        output_field_units={
+            # Despite the tool's name the output carries dated
+            # volume/OI HISTORY rows; the canonical companions are
+            # bridgeable (ADR 0017 CONTRACTS member).
+            "time_series_volume": "contracts",
+            "time_series_open_interest": "contracts",
+        },
     ),
     "scan_bond_futures_extremes_tool": PrimitiveSpec(
         tool_name="scan_bond_futures_extremes_tool",
