@@ -112,6 +112,10 @@ from shared.operators.lead_lag import (
     lead_lag, LeadLagParams,
     CONFIG_PATH as _LEAD_LAG_CONFIG_PATH,
 )
+from shared.operators.resample import (
+    resample, ResampleParams,
+    CONFIG_PATH as _RESAMPLE_CONFIG_PATH,
+)
 from shared.operators.rolling_regression import (
     rolling_regression,
     RollingRegressionParams,
@@ -1524,6 +1528,56 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "the rolling beta the user usually asks for; or all "
                 "three for full diagnostic.  Beta is in (lhs_units / "
                 "rhs_units); alpha in lhs_units; r_squared in RATIO."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — single_series_transform: downsample a
+    # Series to W/M/Q/Y buckets (period-end labelled).  THE frequency-
+    # transition site (the convert_units analogue for the time axis).
+    # One Series in, one Series out (units passthrough; frequency tag
+    # stamped to the target).
+    "resample": OperatorSpec(
+        operator_name="resample",
+        callable=resample,
+        params_class=ResampleParams,
+        config_path=_RESAMPLE_CONFIG_PATH,
+        input_slots={
+            "series": SlotDescriptor.of(
+                "Series",
+                (
+                    "The single typed Series to downsample — "
+                    "canonically business-daily; a KNOWN input "
+                    "frequency must be strictly higher than the "
+                    "target.  USE when the user wants a COARSER view "
+                    "('weekly closes', 'monthly averages') or two "
+                    "series must meet at a common lower frequency "
+                    "before comparison (resample the finer one, then "
+                    "align_series).  Buckets anchor to period END "
+                    "(W-FRI / month-end / quarter-end / year-end; "
+                    "design-locked); the final partial bucket is "
+                    "included and disclosed in lineage.  DO NOT use "
+                    "for smoothing on the same index (use "
+                    "rolling_statistic / ewm_statistic), for "
+                    "upsampling (refused — fabrication), or for "
+                    "same-frequency calendar alignment (align_series)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            (
+                "One value per target period, indexed by period-end "
+                "dates, in the input's units; the frequency tag is "
+                "STAMPED to the target — the toolbox's only licensed "
+                "frequency transition.  Lineage records the locked "
+                "rule/label/closed and final_period_complete "
+                "(frequency-aware for B/D inputs; one-sided for "
+                "unknown: True proves complete, False does not imply "
+                "missing).  Typical "
+                "follow-ons: align_series, series_arithmetic, "
+                "rolling_statistic at the new frequency.  Raises "
+                "ResampleError on upsampling/identity targets, the "
+                "row-count fabrication guard, or an all-NaN output."
             ),
         ),
     ),

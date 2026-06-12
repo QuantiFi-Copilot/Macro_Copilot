@@ -1,0 +1,103 @@
+operator:
+  name: resample
+  method_family: single_series_transform
+  version: "1.0.0"
+  description: >-
+    Downsample one Series to a lower frequency — weekly (Friday-
+    anchored), monthly, quarterly or yearly (period-end anchored) —
+    reducing each bucket with last/mean/first/max/min. THE FREQUENCY-
+    TRANSITION SITE: the only operator licensed to change a Series'
+    frequency tag (the convert_units analogue for the time axis).
+    Finance-blind; units passthrough; upsampling refused
+    (fabrication); the final partial period is included and disclosed
+    in lineage.
+
+# Every user-choosable method choice is offloaded here so the operator
+# is not opinionated and the caller can switch seamlessly (OPR7/OPR8).
+# The schema defaults in schemas.py mirror these values and a test
+# asserts they do not diverge.
+#
+# DESIGN LOCKS (OPR7, documented in operator.py/schemas.py, recorded
+# in lineage): weekly buckets anchor to FRIDAY (W-FRI); monthly/
+# quarterly/yearly anchor to period END (ME/QE/YE); label='right' and
+# closed='right' (each bucket is labelled by its period-end date).
+# Allowing label/closed/anchor variants would silently re-date
+# observations — a P5 hazard with no analytical gain.
+defaults:
+  target_frequency:
+    value: W
+    source: operator_v1_default
+    rationale: >-
+      Weekly (Friday-anchored) is the most common first downsampling
+      step from business-daily data; M/Q/Y are the explicit
+      alternatives.  DOWNSAMPLING ONLY — a known input frequency must
+      be strictly higher than the target.
+    valid_values: [W, M, Q, Y]
+  method:
+    value: last
+    source: operator_v1_default
+    rationale: >-
+      The period-end reading (last) is the canonical downsampling for
+      level series — the value standing at the bucket's close; mean
+      (period average), first, max and min are the explicit
+      alternatives.
+    valid_values: [last, mean, first, max, min]
+
+methodology:
+  what_it_does: >-
+    Buckets the input with pandas resample using the design-locked
+    rule (W-FRI / ME / QE / YE; label='right', closed='right' — each
+    bucket is labelled by its period-end date) and reduces each
+    bucket with the chosen method over the rows that exist. The
+    output's frequency tag is STAMPED to the target — the licensed
+    exception to metadata passthrough (every other operator preserves
+    or drops the tag; this is the time-axis convert_units). Upsampling
+    is refused two ways: a known input frequency must be strictly
+    higher than the target, and (for unknown/irregular inputs) an
+    output with more rows than the input raises (buckets would have
+    been CREATED, not reduced). Empty interior buckets emit NaN —
+    legitimate missingness, never filled. The FINAL bucket may be
+    incomplete (a series ending mid-week still emits that week's
+    bucket reduced over available rows): it is INCLUDED — dropping it
+    would silently discard the freshest data — and disclosed via
+    final_period_complete in lineage. Completeness is FREQUENCY-AWARE
+    where possible (completeness_basis in lineage): for B inputs the
+    reference is the last EXPECTED business day on or before the
+    calendar label (a complete month whose calendar end falls on a
+    weekend still flags True); for D inputs it is the label itself;
+    for unknown/irregular inputs only the one-sided calendar-label
+    comparison is available — True PROVES completeness, False does
+    NOT imply data is missing. An all-NaN output raises
+    ResampleError. Units and missingness policy pass through.
+  planned_extensions:
+    - "alternative weekly anchors (W-MON etc.) and calendar-aware month conventions: re-dating semantics that need their own disclosure surface — never silent knobs here."
+    - "interpolating upsampler: fabrication by construction — would be a separate, explicitly-named operator with its own honesty contract, if ever."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Downsample a Series to weekly/monthly/quarterly/yearly buckets (period-end labelled) — the toolbox's only frequency-changing node.
+  when_to_use:
+    - "User asks for a coarser view of a daily series ('weekly closes', 'monthly averages') — target_frequency + method=last/mean."
+    - "Two series must meet at a common LOWER frequency before comparison — resample the finer one, then align_series."
+  when_not_to_use:
+    - "User wants a SMOOTHED daily series (not fewer rows) — use rolling_statistic or ewm_statistic (same index, smoothed values)."
+    - "User wants MORE rows (daily from weekly) — upsampling is refused (interpolation fabricates data; no operator offers it)."
+    - "User wants calendar alignment of multiple series at the SAME frequency — align_series handles that without changing frequency."
+  upstream_requirements:
+    - "Input is ONE Series, canonically business-daily (B) or daily (D); a known input frequency must be STRICTLY higher than the target."
+  downstream_pattern:
+    - "Output is a Series at the target frequency (period-end dates: Fridays / month-ends / quarter-ends / year-ends), units passthrough, frequency tag = target.  The final bucket may be partial — final_period_complete in lineage discloses it (frequency-aware for B/D inputs; one-sided for unknown frequencies: True proves complete, False does not imply missing).  Typical follow-ons: align_series with other coarse series, series_arithmetic, rolling_statistic at the new frequency."
+  knobs_quick_ref:
+    target_frequency: "W (default; Friday-anchored) | M | Q | Y (period-end anchored)."
+    method: "last (default; period-end reading) | mean | first | max | min."
+  example_shapes:
+    - description: "Weekly closes of a daily series, compared to another weekly series."
+      shape: "[Series daily] -> resample(W, last) + [Series weekly] -> align_series -> SeriesSet"
+  sibling_operators:
+    - align_series: "Calendar alignment at an unchanged frequency — use before cross-series ops; use resample first only when the FREQUENCY must drop."
+    - rolling_statistic: "Smoothing on the SAME index — use when fewer rows are not wanted."
+    - convert_units: "The units analogue of this operator — the sole unit-transition site."
+  intent_hints: [transform]
