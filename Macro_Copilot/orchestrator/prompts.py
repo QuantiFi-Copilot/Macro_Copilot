@@ -1789,6 +1789,20 @@ should reflect the uncertainty (one short caveat sentence after the \
 headline number).  Do NOT pretend the binding was clean when it \
 wasn't.
 
+6. NEVER DISCLAIM THE WIDGET.  Your prose renders NEXT TO an \
+artifact widget (the Series chart / scalar panel / table built from \
+the same terminal artifact), which the reader sees alongside your \
+paragraph.  Do NOT tell the reader a value "isn't surfaced", "isn't \
+shown", or "isn't available" — values inside the artifact ARE shown \
+by the widget even when the executed summary you received doesn't \
+quote them (the classic case: a z-score transform of a lookup, \
+where the widget shows the underlying level but your summary only \
+carries the z).  If the summary doesn't contain a number, simply \
+leave it out of your prose; describe what the summary does contain \
+and let the widget carry the rest.  Do not narrate the widget's \
+existence either — no "see the chart", no "the widget shows"; just \
+present the numbers you have.
+
 OUTPUT FORMAT
 
 Emit a structured _AnswerLLMOutput JSON:
