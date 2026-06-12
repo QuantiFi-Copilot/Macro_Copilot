@@ -87,6 +87,63 @@ export interface WorkspaceDetail {
   // null = locked (legacy workspace).
   template_id: string | null;
   bound_slot_values: Record<string, unknown> | null;
+  // Phase D / D9 — the open-DAG intent-audit sidecar (additive;
+  // null on pre-audit rows and lanes without an IntentChain).  The
+  // build page renders "what I understood / checked / fixed" from
+  // this: the DAG tab's understanding header, per-leaf selector
+  // verdicts in the inspector, and the self-correction trace on the
+  // Notes tab.
+  run_audit?: WorkspaceRunAudit | null;
+}
+
+/** Phase D / D9 — the persisted intent-audit sidecar (versioned).
+ *  The intent chain is the backend ``IntentChain.model_dump(mode=
+ *  "json")`` — typed loosely here (renderers read only the stable,
+ *  documented spine and treat everything as optional; the chain is
+ *  audit metadata, never re-executed — FP9/P4). */
+export interface WorkspaceRunAudit {
+  schema_version: number;
+  expected_answer_shape?: string | string[] | null;
+  intent_chain?: {
+    user_prompt?: string;
+    router?: {
+      intent_tag?: string;
+      rationale?: string;
+      decomposition?: Array<{
+        name?: string;
+        nl_description?: string;
+        domain_hint?: string;
+      }>;
+    };
+    selectors?: Array<{
+      leaf_id?: string;
+      domain?: string;
+      bound_tool_name?: string;
+      declared_semantic_role?: string;
+      declared_output_meaning?: string;
+      fit_confidence?: number;
+      rationale?: string;
+      refusal?: string | null;
+    }>;
+    composer?: {
+      workflow_id?: string;
+      operator_names?: string[];
+      terminal_operator_name?: string;
+      terminal_artifact_type?: string;
+      rationale?: string;
+      refusal?: string | null;
+    };
+    gate?: {
+      status?: string;
+      reason?: string;
+      clarification_question?: string | null;
+    };
+  } | null;
+  recompose_trace?: Array<{
+    attempt_index?: number;
+    failed_status?: string;
+    reason?: string;
+  }>;
 }
 
 export interface CreateWorkspaceResponse {

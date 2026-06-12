@@ -2162,6 +2162,114 @@ export type PolicyFuturesPriceLevelOutput = {
   methodology_disclosure: string;
 };
 
+// --- /detail/policy-futures-strip-snapshot ---
+// Standalone-bridge type for the policy_futures whole-strip snapshot
+// primitive (one row per configured strip position on ONE curve_family,
+// all aligned to a single as_of_date).  Mirrors the bespoke Pydantic
+// schema (FuturesStripSnapshotOutput) byte-for-byte.  NOTE: the output
+// is FLAT — no current_metrics wrapper; the snapshot rows ARE the data.
+
+export type FuturesStripSnapshotRow = {
+  /** 1-based strip slot index (1 = front). */
+  strip_position: number;
+  /** Strip-slot master stem (e.g. 'SFR1') — stable across rolls. */
+  contract_code: string;
+  /** Current-front underlying the slot resolves to as_of (e.g. 'SFRM26'). */
+  underlying_contract_code: string | null;
+  security_name: string | null;
+  /** LAST_TRADEABLE_DT for the current front, YYYY-MM-DD. */
+  expiry_date: string | null;
+  contract_size: number | null;
+  /** Latest aligned cleaned price in the contract's native quote space (NOT a rate). */
+  raw_price: number;
+  /** Desk-recognised implied rate in PERCENT (PR14 wire-frozen name). */
+  implied_rate_pct: number;
+  /** 1-day implied-rate change in PERCENT POINTS (NOT bps; ×100 for bps). */
+  daily_change_implied_rate_pct: number | null;
+  /** Rolling 252-trading-day z-score of the IMPLIED-RATE level. */
+  z_score_implied_rate: number | null;
+  /** Latest end-of-day open interest in CONTRACTS (null when unaligned). */
+  open_interest: number | null;
+  /** Per-row P5 / ADR 0013 disclosure (regime label + conversion rule). */
+  row_methodology_card: string;
+};
+
+export type FuturesStripSnapshotOutput = {
+  /** Aligned anchor date — every row's reads are taken at this date. */
+  as_of_date: string;
+  curve_family: string;
+  /** Shared inverse-pricing flag (verified equal across all legs). */
+  inverse_priced: boolean;
+  /** 'RFR' (SOFR / SONIA) or 'IBOR' (Euribor) disclosure label. */
+  short_rate_regime: string;
+  /** Quote-unit label for raw_price ('100 - rate' or 'rate (%)'). */
+  quote_units: string;
+  /** Ordered strip positions included; zips 1-to-1 with `snapshot`. */
+  strip_positions: number[];
+  snapshot: FuturesStripSnapshotRow[];
+  /** Aligned trading days inside the rolling z-score window. */
+  observation_count: number;
+  /** Output-level P5 / ADR 0013 caveat — surfaced verbatim on the
+   *  methodology card (NOT a hardcoded TS literal). */
+  methodology_disclosure: string;
+};
+
+// --- /detail/policy-futures-voi-snapshot ---
+// Standalone-bridge type for the policy_futures strip-position volume +
+// open-interest snapshot (positioning / flow read for ONE
+// (curve_family, strip_position) pair).  Mirrors the bespoke Pydantic
+// schema (VolumeOpenInterestSnapshotOutput) byte-for-byte.  Both series
+// are whole-CONTRACT counts (NOT notional) — multiply by contract_size
+// for notional.  Bespoke row shape: TimeSeriesUnits has no CONTRACTS
+// member in V1 (ADR-gated extension), and each row carries TWO series.
+
+export type VolumeOpenInterestSnapshotTimeSeriesRow = {
+  date: string;
+  /** Daily traded volume in CONTRACTS (NOT notional). */
+  volume: number;
+  /** End-of-day open interest in CONTRACTS (NOT notional). */
+  open_interest: number;
+};
+
+export type VolumeOpenInterestSnapshotCurrentMetrics = {
+  /** Most recent trade date where BOTH volume AND OI are observed. */
+  as_of_date: string;
+  curve_family: string;
+  strip_position: number;
+  /** Strip-slot master stem (e.g. 'SFR1') — stable across rolls. */
+  contract_code: string;
+  /** Current-front underlying the slot resolves to as_of (e.g. 'SFRM26'). */
+  underlying_contract_code: string | null;
+  security_name: string | null;
+  expiry_date: string | null;
+  /** FUT_CONT_SIZE — notional per contract in the curve's home currency. */
+  contract_size: number | null;
+  current_volume: number;
+  current_open_interest: number;
+  /** 1-day OI change in CONTRACTS (raw subtraction; NOT bps). */
+  delta_open_interest_1d: number | null;
+  /** Rolling 252-trading-day z-score of the OI level. */
+  oi_z_score: number | null;
+  oi_high_252d: number | null;
+  oi_low_252d: number | null;
+  /** Percentile rank of current OI within the trailing 252d range (0-100). */
+  oi_percentile_252d: number | null;
+  /** Rolling 22-trading-day mean of daily volume, CONTRACTS. */
+  volume_rolling_mean_22d: number | null;
+  /** Rolling 22-trading-day max of daily volume, CONTRACTS. */
+  volume_rolling_max_22d: number | null;
+  /** Aligned trading days (BOTH series) within the lookback window. */
+  observation_count: number;
+};
+
+export type VolumeOpenInterestSnapshotOutput = {
+  current_metrics: VolumeOpenInterestSnapshotCurrentMetrics;
+  time_series: VolumeOpenInterestSnapshotTimeSeriesRow[];
+  /** P5 / ADR 0013 caveat (includes the OI z-score window verbatim) —
+   *  surfaced on the methodology card (NOT a hardcoded TS literal). */
+  methodology_disclosure: string;
+};
+
 // --- /detail/bond-futures-price ---
 // Standalone-bridge type for the BOND_FUTURES front-month rolling-generic
 // price-level primitive (TY1 / UXY1 / US1 / WN1 / TU1 / FV1 / RX1 / UB1 /
@@ -3420,4 +3528,332 @@ export type YieldChangeAttributionPcaMetrics = {
 
 export type YieldChangeAttributionPcaOutput = {
   current_metrics: YieldChangeAttributionPcaMetrics;
+};
+
+// --- /detail/otr-history (get_otr_history_tool) ---
+// Standalone-bridge type for the sovereign cash-bond ON-THE-RUN transition
+// log.  CATEGORICAL TIMELINE shape — the wire carries an SCD2 window list
+// (identity fields + effective ranges), NOT a numeric time series.  Mirrors
+// rates_agent/sovereign_bonds/tools/get_otr_history/schemas.py
+// field-for-field.  All identity fields on the snapshot are nullable —
+// honest absence (P6) when no OTR window currently covers the slot.
+
+/** One SCD2 window of the OTR history for a (country, tenor) slot.
+ *  ``effective_to`` is null while the window is still open (the bond is
+ *  currently on-the-run). */
+export type OtrHistoryTransitionRow = {
+  effective_from: string;
+  effective_to?: string | null;
+  otr_instrument_id: number;
+  cusip?: string | null;
+  isin?: string | null;
+  vendor_ticker?: string | null;
+  maturity_date?: string | null;
+};
+
+export type OtrHistoryCurrentMetrics = {
+  country: string;
+  tenor: string;
+  as_of_date: string;
+  otr_instrument_id?: number | null;
+  cusip?: string | null;
+  isin?: string | null;
+  vendor_ticker?: string | null;
+  maturity_date?: string | null;
+  current_effective_from?: string | null;
+  transition_count_in_window: number;
+  lookback_days: number;
+};
+
+export type OtrHistoryOutput = {
+  current_metrics: OtrHistoryCurrentMetrics;
+  /** Chronological (ascending by effective_from); empty on honest absence. */
+  transitions: OtrHistoryTransitionRow[];
+  /** TD #27 forward-only + detection-date-precision disclosure — surfaced
+   *  verbatim on the extended view's methodology card (P5). */
+  methodology_note: string;
+};
+
+// --- /detail/ois-scanner ---
+// Standalone-bridge type for the universe-wide OIS rate-extremes scanner
+// (``scan_ois_extremes_tool``).  SCANNER shape — the wire returns a ranked
+// LIST of (curve_family, tenor) extremes ordered by |z| of the 252d-rolling
+// PX_LAST par-swap-rate z-score across the OIS universe (USD_SOFR_OIS /
+// EUR_ESTR_OIS / GBP_SONIA_OIS / JPY_OIS / AUD_OIS / CAD_OIS).  Mirrors the
+// backend ``OISScannerOutput`` from
+// rates_agent/ois/tools/scan_ois_extremes/schemas.py field-for-field.
+// OIS analogue of ``ScanExtremesOutput`` — the row carries
+// ``current_rate_pct`` (par swap RATE, percent) where the sovereign row
+// carries ``current_yield_pct``.
+
+/** One ranked extreme on the OIS par-swap-rate universe scan.  Mirrors
+ *  ``OISScannerResultRow``. */
+export type ScanOisExtremesResultRow = {
+  rank: number;
+  curve_family: string;
+  tenor: string;
+  as_of_date: string;
+  /** Latest par swap rate (PERCENT — not bps). */
+  current_rate_pct: number | null;
+  daily_change_bps: number | null;
+  z_score: number | null;
+  high_252d_pct: number | null;
+  low_252d_pct: number | null;
+  percentile_252d: number | null;
+  /** Closed enum derived from z-score sign on rows that pass the
+   *  ``min_abs_z_score`` filter. */
+  signal: 'EXTREME_HIGH' | 'EXTREME_LOW';
+};
+
+export type ScanOisExtremesOutput = {
+  /** Human-readable one-line summary (e.g. "Scanned 42 instruments.  Found
+   *  7 with |z-score| >= 1.5.  Showing top 10 by absolute z-score."). */
+  scan_summary: string;
+  results: ScanOisExtremesResultRow[];
+};
+
+// ---------------------------------------------------------------------------
+// build_sovereign_yield_panel_tool — /detail/sovereign-yield-panel
+// ---------------------------------------------------------------------------
+// Wire mirror of rates_agent/sovereign_bonds/tools/sovereign_yield_panel/
+// schemas.py::SovereignYieldPanelOutput MINUS the ``panel`` field — the typed
+// Panel artifact is workflow-side only; the MCP layer (and the detail route,
+// which replicates the drop) strips it before serialisation.  The wire is the
+// panel's CONTRACT: dims, column keys, date range, units, disclosures.
+
+export type SovereignYieldPanelOutput = {
+  /** Earliest trade_date in the assembled Panel (YYYY-MM-DD). */
+  as_of_start: string;
+  /** Latest trade_date in the assembled Panel (YYYY-MM-DD). */
+  as_of_end: string;
+  /** Column names, one per leg, '<curve_family>_<tenor>' (e.g. 'UST_10Y'). */
+  columns: string[];
+  /** Number of rows (trade dates) in the assembled Panel. */
+  n_observations: number;
+  /** Per-column unit tag (closed-enum TimeSeriesUnits value, e.g. 'percent'). */
+  units_by_column: Record<string, string>;
+  /** Inline disclosure block — V1 limitations declared explicitly (P5).
+   *  Threaded VERBATIM onto the methodology card. */
+  methodology_disclosures: string[];
+};
+
+// ---------------------------------------------------------------------------
+// build_linker_panel_tool — /detail/linker-panel
+// ---------------------------------------------------------------------------
+// Wire mirror of rates_agent/inflation_indexed_bonds/tools/build_linker_panel/
+// schemas.py::BuildLinkerPanelOutput MINUS the ``panel`` field (typed Panel
+// artifact is workflow-side only; route replicates the MCP drop).  The
+// methodology_card is Dict[str, Any] on the wire; the known keys produced by
+// compute.py (verified at compute.py:375-436) are typed explicitly so the
+// surfaces can thread the caveats VERBATIM (P5); the index signature keeps
+// the mirror honest about forward-compatible extra keys.
+
+export type LinkerPanelBondReference = {
+  /** Canonical Bloomberg identifier (the Panel column key). */
+  vendor_ticker?: string;
+  tenor?: string | null;
+  country?: string | null;
+  /** YYYY-MM-DD. */
+  maturity_date?: string | null;
+  security_name_attr?: string | null;
+  [key: string]: unknown;
+};
+
+export type LinkerPanelCurveFamilyReference = {
+  inflation_index_family?: string | null;
+  pricing_type?: string | null;
+  bond_count?: number;
+  bonds?: LinkerPanelBondReference[];
+  [key: string]: unknown;
+};
+
+export type BuildLinkerPanelMethodologyCard = {
+  field_name?: string;
+  calendar_policy?: string;
+  missing_data_policy?: string;
+  ffill_limit_days?: number;
+  ffill_source_tag?: string;
+  curve_families?: string[];
+  vendor_ticker_column_key?: boolean;
+  /** Column-key honesty disclosure — vendor_ticker substitutes for the
+   *  universally-NULL security_name.  Surface VERBATIM (P5). */
+  security_name_caveat?: string;
+  /** US_CPI_URBAN / UK_RPI / EU_HICP / CAN_CPI are NOT a harmonised
+   *  expected-inflation surface.  Surface VERBATIM (P5). */
+  index_family_caveat?: string;
+  /** Cross-country issuance / liquidity / deflation-floor caveat for RV
+   *  consumers.  Surface VERBATIM (P5). */
+  market_structure_caveat?: string;
+  /** Mon-Fri union across US/UK/FR/CA sessions is an approximation.
+   *  Surface VERBATIM (P5). */
+  cross_region_business_days_caveat?: string;
+  curve_family_reference?: Record<string, LinkerPanelCurveFamilyReference>;
+  methodology_label?: string;
+  [key: string]: unknown;
+};
+
+export type BuildLinkerPanelOutput = {
+  /** Earliest trade_date in the assembled Panel (YYYY-MM-DD). */
+  start_date: string;
+  /** Latest trade_date in the assembled Panel (YYYY-MM-DD). */
+  end_date: string;
+  row_count: number;
+  column_count: number;
+  /** Families that actually flowed into the Panel (input order). */
+  curve_families: string[];
+  /** Panel column keys — one canonical Bloomberg vendor_ticker per bond. */
+  vendor_tickers: string[];
+  /** Per-column unit tag (every linker column carries 'percent'). */
+  units_by_column: Record<string, string>;
+  methodology_card: BuildLinkerPanelMethodologyCard;
+};
+
+// ---------------------------------------------------------------------------
+// build_zcis_panel_tool — /detail/zcis-panel
+// ---------------------------------------------------------------------------
+// Wire mirror of rates_agent/inflation_swaps/tools/build_zcis_panel/
+// schemas.py::BuildZcisPanelOutput MINUS the ``panel`` field (typed Panel
+// artifact is workflow-side only; route replicates the MCP drop).  The
+// methodology_card is Dict[str, Any] on the wire; the known keys produced by
+// compute.py (verified at compute.py:339-375) are typed explicitly so the
+// surfaces can thread the caveats VERBATIM (P5); the index signature keeps
+// the mirror honest about forward-compatible extra keys.
+
+export type ZcisPanelCurveFamilyReference = {
+  inflation_index_family?: string | null;
+  /** Indexation lag convention (e.g. '3M'). */
+  index_lag?: string | null;
+  interpolation?: string | null;
+  underlying_index?: string | null;
+  [key: string]: unknown;
+};
+
+export type BuildZcisPanelMethodologyCard = {
+  field_name?: string;
+  calendar_policy?: string;
+  missing_data_policy?: string;
+  ffill_limit_days?: number;
+  ffill_source_tag?: string;
+  curve_families?: string[];
+  tenors?: string[];
+  vendor_ticker_column_key?: boolean;
+  /** Column-key honesty disclosure — vendor_ticker substitutes for the
+   *  universally-NULL security_name.  Surface VERBATIM (P5). */
+  security_name_caveat?: string;
+  /** CPI-U / HICP-xT / RPI are NOT a harmonised expected-inflation
+   *  surface.  Surface VERBATIM (P5). */
+  index_family_caveat?: string;
+  /** Per-family index-family / index_lag / interpolation / underlying_index
+   *  reference metadata. */
+  curve_family_reference?: Record<string, ZcisPanelCurveFamilyReference>;
+  methodology_label?: string;
+  [key: string]: unknown;
+};
+
+export type BuildZcisPanelOutput = {
+  /** Earliest trade_date in the assembled Panel (YYYY-MM-DD). */
+  start_date: string;
+  /** Latest trade_date in the assembled Panel (YYYY-MM-DD). */
+  end_date: string;
+  row_count: number;
+  column_count: number;
+  /** ZCIS families that actually flowed into the Panel. */
+  curve_families: string[];
+  /** Tenor pillars that actually flowed into the Panel (sorted). */
+  tenors: string[];
+  /** Panel column keys — one canonical Bloomberg vendor_ticker per swap. */
+  vendor_tickers: string[];
+  /** Per-column unit tag (every ZCIS column carries 'percent'). */
+  units_by_column: Record<string, string>;
+  methodology_card: BuildZcisPanelMethodologyCard;
+};
+
+// ---------------------------------------------------------------------------
+// build_policy_futures_strip_panel_tool — /detail/policy-futures-strip-panel
+// ---------------------------------------------------------------------------
+// Wire mirror of rates_agent/policy_futures/tools/
+// build_policy_futures_strip_panel/schemas.py::
+// BuildPolicyFuturesStripPanelOutput MINUS the ``panel`` field (typed Panel
+// artifact is workflow-side only; route replicates the MCP drop).  The
+// methodology_card is Dict[str, Any] on the wire; the known keys produced by
+// compute.py (verified at compute.py:509-573) are typed explicitly so the
+// surfaces can thread the caveats VERBATIM (P5); the index signature keeps
+// the mirror honest about forward-compatible extra keys.
+
+export type PolicyFuturesStripPanelCellReference = {
+  /** Flat '<CURVE_FAMILY>|<STRIP_POSITION>' column key. */
+  column_key?: string;
+  curve_family?: string;
+  strip_position?: number;
+  vendor_ticker?: string | null;
+  contract_code?: string | null;
+  country?: string | null;
+  currency?: string | null;
+  inverse_pricing?: boolean;
+  [key: string]: unknown;
+};
+
+export type PolicyFuturesStripPanelCurveFamilyReference = {
+  /** 'RFR' | 'IBOR' regime label per ADR 0013. */
+  short_rate_regime?: string;
+  inverse_pricing?: boolean | null;
+  cell_count?: number;
+  /** Per-column (curve_family, strip_position, vendor_ticker) decomposition. */
+  cells?: PolicyFuturesStripPanelCellReference[];
+  /** Per-family RFR/IBOR caveat.  Surface VERBATIM (P5). */
+  regime_caveat?: string;
+  /** EUR_SHORT_RATE_FUT only — serial+quarterly Buba mix disclosure.
+   *  Surface VERBATIM (P5). */
+  buba_mix_caveat?: string;
+  [key: string]: unknown;
+};
+
+export type BuildPolicyFuturesStripPanelMethodologyCard = {
+  field_name?: string;
+  /** Always 'implied_rate_pct' — cells are implied rates, not raw prices. */
+  panel_value_field?: string;
+  calendar_policy?: string;
+  missing_data_policy?: string;
+  ffill_limit_days?: number;
+  ffill_source_tag?: string;
+  curve_families?: string[];
+  strip_positions?: number[];
+  /** Why the column axis is the flat '<CURVE_FAMILY>|<STRIP_POSITION>'
+   *  string encoding.  Surface VERBATIM (P5). */
+  column_axis_encoding?: string;
+  column_axis_encoding_separator?: string;
+  /** implied_rate_pct = 100 − raw_price for inverse-priced cells.
+   *  Surface VERBATIM (P5). */
+  inverse_pricing_handling?: string;
+  /** Mon-Fri union across US/UK/EUR sessions is an approximation.
+   *  Surface VERBATIM (P5). */
+  cross_region_business_days_caveat?: string;
+  /** Rolling-generic strip slots mix contracts across rolls — NOT a single
+   *  underlying contract's price history.  Surface VERBATIM (P5). */
+  rolling_generic_strip_caveat?: string;
+  curve_family_reference?: Record<
+    string,
+    PolicyFuturesStripPanelCurveFamilyReference
+  >;
+  methodology_label?: string;
+  [key: string]: unknown;
+};
+
+export type BuildPolicyFuturesStripPanelOutput = {
+  /** Earliest trade_date in the assembled Panel (YYYY-MM-DD). */
+  start_date: string;
+  /** Latest trade_date in the assembled Panel (YYYY-MM-DD). */
+  end_date: string;
+  row_count: number;
+  column_count: number;
+  /** Policy-futures families that actually flowed into the Panel. */
+  curve_families: string[];
+  /** Strip positions that actually flowed into the Panel (ascending). */
+  strip_positions: number[];
+  /** Flat '<CURVE_FAMILY>|<STRIP_POSITION>' column keys in deterministic
+   *  column-axis order. */
+  column_keys: string[];
+  /** Per-column unit tag (every implied-rate column carries 'percent'). */
+  units_by_column: Record<string, string>;
+  methodology_card: BuildPolicyFuturesStripPanelMethodologyCard;
 };

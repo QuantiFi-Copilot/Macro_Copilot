@@ -1248,12 +1248,20 @@ export function fetchDetailOtrOfrSpread(
 
 import type {
   BetaAdjustedSpreadOutput,
+  BuildLinkerPanelOutput,
+  BuildPolicyFuturesStripPanelOutput,
+  BuildZcisPanelOutput,
   CpiSurpriseOutput,
+  FuturesStripSnapshotOutput,
   FuturesVolumeOiOutput,
   HalfLifeOutput,
   NfpSurpriseOutput,
+  OtrHistoryOutput,
+  ScanOisExtremesOutput,
   PcaYieldCurveOutput,
   RollingRegressionOutput,
+  SovereignYieldPanelOutput,
+  VolumeOpenInterestSnapshotOutput,
   WirpMeetingPricingOutput,
   YieldChangeAttributionPcaOutput,
   ZscoreCustomOutput,
@@ -1439,3 +1447,256 @@ export function fetchDetailYieldChangeAttribution(
   );
 }
 // === END TEMP SIBLING STUBS ===
+
+// ---------------------------------------------------------------------------
+// /detail/otr-history  — sovereign cash-bond OTR transition-log bridge
+// ---------------------------------------------------------------------------
+// CATEGORICAL TIMELINE shape — the wire carries the SCD2 on-the-run window
+// list for one (country, tenor) slot plus the current-OTR snapshot, NOT a
+// numeric time series.  Own typed helper per the standalone-bridge contract;
+// consumed by BOTH Build views (no Monitor tile — the read cadence is
+// auction-event-driven, not daily-glance).  ``lookback_days`` is the single
+// central methodology knob (PR8).
+
+export type OtrHistoryDetailParams = {
+  country: string;
+  tenor: string;
+  lookback_days?: number;
+};
+
+export function fetchDetailOtrHistory(
+  params: OtrHistoryDetailParams,
+): Promise<OtrHistoryOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/otr-history${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/ois-scanner  — universe-wide OIS rate-extremes scanner bridge
+// ---------------------------------------------------------------------------
+// SCANNER-shape primitive under the standalone-bridge contract.  Wire returns
+// a ranked LIST of (curve_family, tenor) OIS par-swap-rate extremes — the
+// per-tool BuildCompact renders a top-N table (NOT a sparkline), the
+// BuildExtended renders the universe scan + full ranked detail.  Rolling-
+// z-score conventions are YAML-locked on this primitive (mirrors the
+// sovereign / ZCIS / linker / bond-futures / policy-futures scanners);
+// ``curve_families`` / ``top_n`` / ``min_abs_z_score`` / ``field_name``
+// remain exposed.  OIS analogue of ``fetchDetailScanner``.
+
+export type OisScannerDetailParams = {
+  /** Comma-separated list of OIS curve families to scan (e.g.
+   *  "USD_SOFR_OIS,EUR_ESTR_OIS"). Omit for the full OIS universe. */
+  curve_families?: string;
+  /** Number of extreme stems to return; omit for the schema default (10). */
+  top_n?: number;
+  /** Minimum absolute z-score threshold; omit for the schema default (1.5). */
+  min_abs_z_score?: number;
+  /** Bloomberg observation field to scan.  Omit for the schema default
+   *  (PX_LAST — mid par swap rate). */
+  field_name?: string;
+};
+
+export function fetchDetailOisScanner(
+  params: OisScannerDetailParams,
+): Promise<ScanOisExtremesOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/ois-scanner${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/policy-futures-strip-snapshot — policy_futures whole-strip snapshot
+// ---------------------------------------------------------------------------
+// One row per configured strip position (V1: 1..8) on ONE policy-futures
+// curve_family, all aligned to a single as_of_date (intersection-of-trading-
+// days anchor — the date on which "the strip is steep / flat / inverted"
+// makes sense).  Own typed helper per the standalone-bridge contract;
+// consumed by BOTH Build views.  Conventions (z window, strip-positions
+// list, rounding) are YAML-locked; only curve_family / as_of_date plus the
+// two Bloomberg field-name overrides are exposed (mirrors the MCP wrapper).
+
+export type PolicyFuturesStripSnapshotDetailParams = {
+  curve_family: string;
+  /** YYYY-MM-DD; omit to anchor at the universe's last observed
+   *  trade_date where ALL configured strip positions have a value
+   *  (post-fetch data-max anchor). */
+  as_of_date?: string;
+  /** Bloomberg price-field override; omit for the YAML default (PX_LAST). */
+  last_price_field_name?: string;
+  /** Bloomberg OI-field override; omit for the YAML default (OPEN_INT). */
+  open_interest_field_name?: string;
+};
+
+export function fetchDetailPolicyFuturesStripSnapshot(
+  params: PolicyFuturesStripSnapshotDetailParams,
+): Promise<FuturesStripSnapshotOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/policy-futures-strip-snapshot${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/policy-futures-voi-snapshot — policy_futures volume + OI snapshot
+// ---------------------------------------------------------------------------
+// Daily volume + open interest + ΔOI + OI z-score + percentile-of-range +
+// 22d rolling volume context for ONE (curve_family, strip_position) pair —
+// the positioning / flow read on the STIR strip slot (the price / implied-
+// rate read lives on the sibling policy-futures-price bridge).  Own typed
+// helper per the standalone-bridge contract; consumed by BOTH Build views.
+// Conventions (OI z window 252d, volume window 22d, field mnemonics) are
+// YAML-locked; NO field_name input by design (PR9 — the volume / OI
+// mnemonics are owned by the YAML, not per-query knobs).
+
+export type PolicyFuturesVoiSnapshotDetailParams = {
+  curve_family: string;
+  strip_position: number;
+  lookback_days?: number;
+  /** YYYY-MM-DD; omit to anchor at the universe's last observed
+   *  trade_date for the requested strip (post-fetch data-max anchor). */
+  as_of_date?: string;
+};
+
+export function fetchDetailPolicyFuturesVoiSnapshot(
+  params: PolicyFuturesVoiSnapshotDetailParams,
+): Promise<VolumeOpenInterestSnapshotOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/policy-futures-voi-snapshot${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/sovereign-yield-panel — panel-builder standalone bridge
+// ---------------------------------------------------------------------------
+// Per docs_revamped/03_standards/methodology_exposure.md §5 every new tool
+// ships its OWN typed-detail endpoint + service helper.  Consumed by BOTH the
+// extended and compact Build views (rendering_density dual-view).  The Input's
+// nested leg-spec list flattens to PAIRED repeated query lists
+// (leg_curve_families[i] ↔ leg_tenors[i]) — same flattening discipline as the
+// /detail/rolling-regression regressor specs.  The wire carries the panel
+// CONTRACT only (the Panel artifact itself is dropped route-side, mirroring
+// the MCP layer).
+
+export type SovereignYieldPanelDetailParams = {
+  /** One entry per leg, paired index-wise with ``leg_tenors``. */
+  leg_curve_families: ReadonlyArray<string>;
+  /** One entry per leg, paired index-wise with ``leg_curve_families``. */
+  leg_tenors: ReadonlyArray<string>;
+  /** Earliest trade_date to include (inclusive, YYYY-MM-DD). */
+  start_date: string;
+  /** Latest trade_date (inclusive).  Omit → latest in the DB. */
+  end_date?: string;
+  /** Bloomberg field mnemonic applied to ALL legs.  Omit → YAML default. */
+  field_name?: string;
+  /** 'raise' | 'forward_fill_only' | 'drop_rows_any_missing'.  Omit → YAML. */
+  missing_data_policy?: string;
+};
+
+export function fetchDetailSovereignYieldPanel(
+  params: SovereignYieldPanelDetailParams,
+): Promise<SovereignYieldPanelOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/sovereign-yield-panel${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/linker-panel — panel-builder standalone bridge
+// ---------------------------------------------------------------------------
+// Per docs_revamped/03_standards/methodology_exposure.md §5.  Consumed by
+// BOTH the extended and compact Build views (rendering_density dual-view).
+// ``curve_families`` renders as repeated query params via buildQuery.  The
+// wire carries the panel CONTRACT only (Panel artifact dropped route-side,
+// mirroring the MCP layer).  NO tenors knob — linkers are specific-maturity
+// bonds, not tenor-pillar swaps.
+
+export type LinkerPanelDetailParams = {
+  /** Earliest trade_date to include (inclusive, YYYY-MM-DD). */
+  start_date: string;
+  /** Latest trade_date (inclusive).  Omit → latest in the DB. */
+  end_date?: string;
+  /** Subset of USD_TIPS | GBP_LINKER | EUR_FR_LINKER | CAD_RRB.
+   *  Omit → full universe. */
+  curve_families?: ReadonlyArray<string>;
+  /** Bloomberg field mnemonic.  Omit → YAML default ('YLD_YTM_MID'). */
+  field_name?: string;
+  /** 'business_days' | 'instrument_native'.  Omit → YAML default. */
+  calendar_policy?: string;
+  /** 'raise' | 'forward_fill_only' | 'drop_rows_any_missing'.  Omit → YAML. */
+  missing_data_policy?: string;
+};
+
+export function fetchDetailLinkerPanel(
+  params: LinkerPanelDetailParams,
+): Promise<BuildLinkerPanelOutput> {
+  return fetchJSON(`${RATES_PREFIX}/detail/linker-panel${buildQuery(params)}`);
+}
+
+// ---------------------------------------------------------------------------
+// /detail/zcis-panel — panel-builder standalone bridge
+// ---------------------------------------------------------------------------
+// Per docs_revamped/03_standards/methodology_exposure.md §5.  Consumed by
+// BOTH the extended and compact Build views (rendering_density dual-view).
+// ``curve_families`` / ``tenors`` render as repeated query params via
+// buildQuery.  The wire carries the panel CONTRACT only (Panel artifact
+// dropped route-side, mirroring the MCP layer).
+
+export type ZcisPanelDetailParams = {
+  /** Earliest trade_date to include (inclusive, YYYY-MM-DD). */
+  start_date: string;
+  /** Latest trade_date (inclusive).  Omit → latest in the DB. */
+  end_date?: string;
+  /** Subset of USD_ZCIS | EUR_ZCIS | GBP_ZCIS.  Omit → full universe. */
+  curve_families?: ReadonlyArray<string>;
+  /** Tenor pillars (e.g. ['1Y','5Y','10Y']).  Omit → every tenor present.
+   *  Tenors absent on a family are silently dropped backend-side; the wire
+   *  echoes the resolved set. */
+  tenors?: ReadonlyArray<string>;
+  /** Bloomberg field mnemonic.  Omit → YAML default ('PX_MID'). */
+  field_name?: string;
+  /** 'business_days' | 'instrument_native'.  Omit → YAML default. */
+  calendar_policy?: string;
+  /** 'raise' | 'forward_fill_only' | 'drop_rows_any_missing'.  Omit → YAML. */
+  missing_data_policy?: string;
+};
+
+export function fetchDetailZcisPanel(
+  params: ZcisPanelDetailParams,
+): Promise<BuildZcisPanelOutput> {
+  return fetchJSON(`${RATES_PREFIX}/detail/zcis-panel${buildQuery(params)}`);
+}
+
+// ---------------------------------------------------------------------------
+// /detail/policy-futures-strip-panel — panel-builder standalone bridge
+// ---------------------------------------------------------------------------
+// Per docs_revamped/03_standards/methodology_exposure.md §5.  Consumed by
+// BOTH the extended and compact Build views (rendering_density dual-view).
+// ``curve_families`` / ``strip_positions`` render as repeated query params
+// via buildQuery.  The wire carries the panel CONTRACT only (Panel artifact
+// dropped route-side, mirroring the MCP layer).
+
+export type PolicyFuturesStripPanelDetailParams = {
+  /** Earliest trade_date to include (inclusive, YYYY-MM-DD). */
+  start_date: string;
+  /** Latest trade_date (inclusive).  Omit → latest in the DB. */
+  end_date?: string;
+  /** Subset of SOFR_FUT | SONIA_FUT | EUR_SHORT_RATE_FUT.
+   *  Omit → full universe. */
+  curve_families?: ReadonlyArray<string>;
+  /** Strip positions 1..8.  Omit → the full strip. */
+  strip_positions?: ReadonlyArray<number>;
+  /** Bloomberg field mnemonic.  Omit → YAML default ('PX_LAST'). */
+  field_name?: string;
+  /** 'business_days' | 'instrument_native'.  Omit → YAML default. */
+  calendar_policy?: string;
+  /** 'raise' | 'forward_fill_only' | 'drop_rows_any_missing'.  Omit → YAML. */
+  missing_data_policy?: string;
+};
+
+export function fetchDetailPolicyFuturesStripPanel(
+  params: PolicyFuturesStripPanelDetailParams,
+): Promise<BuildPolicyFuturesStripPanelOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/policy-futures-strip-panel${buildQuery(params)}`,
+  );
+}

@@ -41,6 +41,7 @@ import { StageCard } from './StageCard';
 import { DagEdgesLayer } from './DagEdgesLayer';
 import { DagInspector } from './DagInspector';
 import { DagWarningsBanner } from './DagWarningsBanner';
+import { AuditHeader } from './AuditHeader';
 import { buildDagModel, type DagModel } from './lib/buildDagModel';
 
 type Density = 'compact' | 'comfortable';
@@ -78,6 +79,17 @@ export function DagView({ detail }: Props) {
   );
 
   const model = useMemo(() => buildDagModel(detail), [detail]);
+
+  // Phase D / D9 — surface the run's bounded self-correction as a DAG
+  // warning.  Derived from the persisted run_audit sidecar, NOT from
+  // topology (buildDagModel stays a pure function of nodes + edges).
+  const warnings = useMemo(
+    () =>
+      (detail.run_audit?.recompose_trace?.length ?? 0) > 0
+        ? ([...model.warnings, 'self_corrected'] as const)
+        : model.warnings,
+    [model, detail.run_audit],
+  );
 
   // Compute pixel positions for each node.  The grid below is
   // styled with fixed track sizes, so the SVG edge layer can read
@@ -132,7 +144,9 @@ export function DagView({ detail }: Props) {
         nodeCount={model.nodes.length}
       />
 
-      <DagWarningsBanner warnings={model.warnings} />
+      <AuditHeader audit={detail.run_audit} />
+
+      <DagWarningsBanner warnings={[...warnings]} />
 
       <div className="relative min-h-0 flex-1 overflow-hidden">
         {/* Scroll container for the canvas. */}
@@ -221,6 +235,7 @@ export function DagView({ detail }: Props) {
       <DagInspector
         modelNode={selectedModelNode}
         model={model}
+        audit={detail.run_audit}
         onClose={() => setSelectedNodeId(null)}
       />
     </div>

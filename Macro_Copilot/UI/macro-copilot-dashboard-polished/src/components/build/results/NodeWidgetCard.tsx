@@ -32,11 +32,17 @@
 // ============================================================================
 
 import { useMemo } from 'react';
+import { ArrowUpRight } from 'lucide-react';
 import {
   WidgetCard,
   WidgetHeader,
 } from '@/components/monitor/WidgetCard';
 import type { NodeSummary, WorkspaceDetail } from '@/services/workspaceApi';
+import { useOpenExtendedViewOptional } from '@/components/build/multitool/expandedView';
+import {
+  canExpandPersistedNode,
+  decodedForPersistedNode,
+} from '@/components/build/lib/persistedExpand';
 import {
   resolveNodeRenderer,
 } from '@/components/build/lib/nodeRendererRegistry';
@@ -61,6 +67,20 @@ export function NodeWidgetCard({ node, workspace, size }: Props) {
 
   const title = prettyStageTitle(node.name ?? node.node_id);
   const kicker = columnLabelForCategory(stageCategory);
+
+  // Consolidation target #2 — the persisted node card gains the SAME
+  // expand→buildExtended affordance the live multi-tool DAG has.
+  // Tolerant hook: outside an ExpandedViewProvider (older mounts /
+  // unit tests) the arrow simply doesn't render.  Primitive-only —
+  // operator nodes have no owning module (finance-blind artifact
+  // widgets are their whole story).
+  const expandCtx = useOpenExtendedViewOptional();
+  const canExpand = expandCtx != null && canExpandPersistedNode(node);
+  const handleExpand = () => {
+    if (!expandCtx) return;
+    const decoded = decodedForPersistedNode(node);
+    if (decoded) expandCtx.open(decoded, -1);
+  };
 
   // Always read from the registry — branchless w.r.t. artifact type.
   const Renderer = useMemo(
@@ -88,15 +108,28 @@ export function NodeWidgetCard({ node, workspace, size }: Props) {
         kicker={kicker}
         title={title}
         meta={
-          headerLineage ? (
-            <span
-              className="lineage-chip"
-              title={`Artifact lineage ${node.artifact?.hash}`}
-            >
-              <span className="opacity-70">lineage</span>
-              <span>{headerLineage}</span>
-            </span>
-          ) : null
+          <span className="flex items-center gap-1.5">
+            {headerLineage ? (
+              <span
+                className="lineage-chip"
+                title={`Artifact lineage ${node.artifact?.hash}`}
+              >
+                <span className="opacity-70">lineage</span>
+                <span>{headerLineage}</span>
+              </span>
+            ) : null}
+            {canExpand && (
+              <button
+                type="button"
+                onClick={handleExpand}
+                aria-label="Open the live extended view of this tool"
+                title="Open live extended view (saved card stays frozen)"
+                className="rounded-md border border-line-subtle bg-surface-overlay p-1 text-fg-muted transition-colors hover:border-line-strong hover:text-fg-primary"
+              >
+                <ArrowUpRight size={12} strokeWidth={1.75} />
+              </button>
+            )}
+          </span>
         }
       />
 

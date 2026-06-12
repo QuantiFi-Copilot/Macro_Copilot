@@ -74,13 +74,28 @@ export function useOpenExtendedView(): ExpandedViewContextValue {
   return ctx;
 }
 
+/** Tolerant variant for cards that render BOTH inside and outside an
+ *  ``ExpandedViewProvider`` (the persisted-slug node cards predate the
+ *  expand affordance and also mount in provider-less unit-test
+ *  contexts).  Returns ``null`` outside a provider — the card simply
+ *  omits its expand arrow. */
+export function useOpenExtendedViewOptional(): ExpandedViewContextValue | null {
+  return useContext(ExpandedViewCtx);
+}
+
 export function ExpandedViewProvider({
   queryLabel,
+  contextNote,
   children,
 }: {
   /** Originating query / prompt — shown in the modal breadcrumb
    *  ("← Back to <query>").  Falls back to a generic label when absent. */
   queryLabel?: string;
+  /** Optional honesty banner rendered inside the modal under the
+   *  breadcrumb.  The persisted-slug page sets this to disclose that
+   *  the expanded view is a LIVE re-query (today's numbers) while the
+   *  saved card behind it stays frozen, read-only by hash (P4/P5). */
+  contextNote?: string;
   children: ReactNode;
 }) {
   const [request, setRequest] = useState<OpenRequest | null>(null);
@@ -107,6 +122,7 @@ export function ExpandedViewProvider({
         <ExpandedViewModal
           request={request}
           queryLabel={queryLabel}
+          contextNote={contextNote}
           onClose={close}
         />
       )}
@@ -121,10 +137,12 @@ function truncateLabel(label: string, max = 64): string {
 function ExpandedViewModal({
   request,
   queryLabel,
+  contextNote,
   onClose,
 }: {
   request: OpenRequest;
   queryLabel?: string;
+  contextNote?: string;
   onClose: () => void;
 }) {
   // Local params — seeded from the node, updated by the extended view's
@@ -197,6 +215,18 @@ function ExpandedViewModal({
             <X size={14} aria-hidden />
           </button>
         </div>
+
+        {/* Honesty banner (persisted-slug contexts) — discloses that
+            this expanded view is a LIVE re-query while the saved card
+            behind it stays frozen, read-only by hash (P4/P5). */}
+        {contextNote && (
+          <div className="flex shrink-0 items-center gap-2 border-b border-amber-400/15 bg-amber-400/[0.04] px-4 py-1.5">
+            <span className="kicker text-amber-300">LIVE RE-QUERY</span>
+            <span className="text-[11px] leading-snug text-amber-200/80">
+              {contextNote}
+            </span>
+          </div>
+        )}
 
         {/* Body — mirrors the single-tool Build dispatch
             (VirtualPrimitiveCanvas): a migrated tool's bespoke extended view,

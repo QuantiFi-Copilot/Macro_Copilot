@@ -14,6 +14,7 @@
 
 import { useState } from 'react';
 import type { WorkspaceDetail, WorkspaceReplay } from '@/services/workspaceApi';
+import { ExpandedViewProvider } from '../multitool/expandedView';
 import { BuildHeader } from './BuildHeader';
 import { BuildTabs, type BuildTabId } from './BuildTabs';
 import { DagView } from '../dag/DagView';
@@ -47,6 +48,15 @@ export function BuildCompleted({
       : 'completed';
 
   return (
+    // Consolidation target #2 — the persisted slug page hosts the SAME
+    // expand-to-modal provider the live multi-tool DAG uses, so every
+    // primitive node card can open its module's buildExtended.  The
+    // contextNote is the P4/P5 honesty banner: the modal is a LIVE
+    // re-query; the saved cards stay frozen, read-only by hash.
+    <ExpandedViewProvider
+      queryLabel={detail.name ?? detail.slug}
+      contextNote="Fetches today's data with this node's saved parameters — the saved workspace below stays frozen (read-only by artifact hash)."
+    >
     <div className="flex h-full min-h-0 flex-col">
       <BuildHeader detail={detail} status={status} />
       <VariantStrip detail={detail} />
@@ -67,5 +77,6 @@ export function BuildCompleted({
         {active === 'notes' && <NotesView detail={detail} />}
       </div>
     </div>
+    </ExpandedViewProvider>
   );
 }

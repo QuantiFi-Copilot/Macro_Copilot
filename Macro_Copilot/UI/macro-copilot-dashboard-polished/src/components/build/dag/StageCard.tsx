@@ -25,6 +25,11 @@
 
 import { ArrowUpRight, Loader2 } from 'lucide-react';
 import type { NodeSummary, WorkspaceDetail } from '@/services/workspaceApi';
+import { useOpenExtendedViewOptional } from '@/components/build/multitool/expandedView';
+import {
+  canExpandPersistedNode,
+  decodedForPersistedNode,
+} from '@/components/build/lib/persistedExpand';
 import {
   prettyStageTitle,
   stageKindLabel,
@@ -54,6 +59,20 @@ export function StageCard({ node, workspace, index, isTerminal = false }: Props)
   const railColor = railColorForStage(category);
   const title = prettyStageTitle(node.name ?? node.node_id);
   const kind = stageKindLabel(node.kind);
+
+  // Consolidation target #2 — primitive stage cards gain the SAME
+  // expand→buildExtended affordance the live multi-tool DAG has
+  // (tolerant outside an ExpandedViewProvider: the arrow stays the
+  // original decorative glyph).  Operator nodes keep the decorative
+  // arrow — no owning module to expand into.
+  const expandCtx = useOpenExtendedViewOptional();
+  const canExpand = expandCtx != null && canExpandPersistedNode(node);
+  const handleExpand = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!expandCtx) return;
+    const decoded = decodedForPersistedNode(node);
+    if (decoded) expandCtx.open(decoded, -1);
+  };
   const hasArtifact = node.artifact_hash != null;
   const artifactType = node.artifact?.artifact_type ?? null;
   const shortHash = node.artifact_hash
@@ -77,12 +96,24 @@ export function StageCard({ node, workspace, index, isTerminal = false }: Props)
             <h4 className="truncate text-[12.5px] font-semibold tracking-[-0.008em] text-fg-primary">
               {title}
             </h4>
-            <ArrowUpRight
-              size={12}
-              strokeWidth={1.75}
-              aria-hidden
-              className="mt-0.5 shrink-0 text-fg-faint transition-colors group-hover:text-ice-200"
-            />
+            {canExpand ? (
+              <button
+                type="button"
+                onClick={handleExpand}
+                aria-label="Open the live extended view of this tool"
+                title="Open live extended view (saved card stays frozen)"
+                className="mt-0.5 shrink-0 rounded text-fg-faint transition-colors hover:text-ice-200"
+              >
+                <ArrowUpRight size={12} strokeWidth={1.75} aria-hidden />
+              </button>
+            ) : (
+              <ArrowUpRight
+                size={12}
+                strokeWidth={1.75}
+                aria-hidden
+                className="mt-0.5 shrink-0 text-fg-faint transition-colors group-hover:text-ice-200"
+              />
+            )}
           </div>
           <div className="mt-0.5 font-mono text-[9.5px] font-medium uppercase tracking-[0.18em] text-fg-faint">
             {kind}

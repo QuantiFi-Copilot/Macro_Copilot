@@ -84,7 +84,15 @@ export type DagWarning =
   | 'cycle_detected'
   | 'missing_edges_fallback'
   | 'orphan_edges'
-  | 'no_nodes';
+  | 'no_nodes'
+  // Phase D / D9 — the run's bounded self-correction fired: the
+  // composer's first attempt failed a deterministic check / the gate
+  // and was re-composed once before this DAG executed.  Derived from
+  // ``WorkspaceDetail.run_audit.recompose_trace`` by the DAG tab (NOT
+  // from topology — buildDagModel itself stays a pure function of
+  // nodes + edges); the banner copy points at the Notes tab's full
+  // trace.
+  | 'self_corrected';
 
 export interface DagModelNode {
   /** Underlying node summary — passed through so the renderer can
@@ -472,5 +480,7 @@ export function describeWarning(w: DagWarning): string {
       return 'One or more edges reference unknown nodes and were skipped.';
     case 'no_nodes':
       return 'This workspace has no persisted nodes.';
+    case 'self_corrected':
+      return 'The system caught and fixed its own mistake on this run — the first composition failed a deterministic check and was re-composed before executing.  The full self-correction trace is on the Notes tab.';
   }
 }

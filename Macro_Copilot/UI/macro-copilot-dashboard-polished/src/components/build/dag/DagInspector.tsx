@@ -21,6 +21,7 @@ import type {
   DagModelEdge,
   DagModelNode,
 } from './lib/buildDagModel';
+import type { WorkspaceRunAudit } from '@/services/workspaceApi';
 import { stageParamRows } from '@/components/build/lib/stageDisplay';
 import { prettyStageTitle } from '@/components/build/lib/stageDisplay';
 
@@ -28,9 +29,14 @@ type Props = {
   modelNode: DagModelNode | null;
   model: DagModel;
   onClose: () => void;
+  /** Phase D / D9 — the persisted intent-audit sidecar; when present
+   *  and the selected node is a primitive leaf the L2 selector bound,
+   *  the inspector surfaces that selector's verdict (role, meaning,
+   *  fit confidence, rationale).  Optional — older callers omit it. */
+  audit?: WorkspaceRunAudit | null;
 };
 
-export function DagInspector({ modelNode, model, onClose }: Props) {
+export function DagInspector({ modelNode, model, onClose, audit }: Props) {
   if (!modelNode) {
     return (
       <div className="shrink-0 border-t border-line-subtle px-6 py-3 text-[10.5px] text-fg-faint">
@@ -44,6 +50,19 @@ export function DagInspector({ modelNode, model, onClose }: Props) {
   const params = stageParamRows(node, { maxRows: 12 });
   const incoming = model.edges.filter((e) => e.to === node.node_id);
   const outgoing = model.edges.filter((e) => e.from === node.node_id);
+  // Phase D / D9 — match the persisted selector record for this node:
+  // leaf node ids in the composed workflow ARE the selector leaf_ids;
+  // fall back to bound_tool_name when ids drifted (defensive).
+  const selectorVerdict =
+    node.kind === 'primitive'
+      ? (audit?.intent_chain?.selectors ?? []).find(
+          (sel) =>
+            sel.leaf_id === node.node_id ||
+            (sel.bound_tool_name != null &&
+              sel.bound_tool_name === node.params?.tool_name),
+        ) ?? null
+      : null;
+
   const artifactType = node.artifact?.artifact_type ?? null;
   const artifactUnits = node.artifact?.units ?? null;
   const shortHash = node.artifact_hash
@@ -106,6 +125,43 @@ export function DagInspector({ modelNode, model, onClose }: Props) {
           <EdgeList edges={outgoing} field="to" />
         </Section>
       </div>
+
+      {/* Phase D / D9 — the L2 selector's persisted verdict for this
+          leaf: what the run UNDERSTOOD this node to be before it
+          executed (role + meaning + fit confidence + rationale). */}
+      {selectorVerdict && (
+        <div className="rounded-md border border-ice-400/15 bg-ice-400/[0.03] px-3 py-2">
+          <div className="kicker mb-1 text-ice-300">
+            SELECTOR VERDICT
+            {typeof selectorVerdict.fit_confidence === 'number' && (
+              <span className="ml-2 font-mono normal-case tracking-normal text-fg-secondary">
+                fit {selectorVerdict.fit_confidence.toFixed(2)}
+              </span>
+            )}
+          </div>
+          {selectorVerdict.refusal ? (
+            <p className="text-[11px] leading-snug text-coral-300">
+              REFUSED: {selectorVerdict.refusal}
+            </p>
+          ) : (
+            <p className="text-[11px] leading-snug text-fg-secondary">
+              {selectorVerdict.declared_semantic_role && (
+                <span className="mono text-fg-primary">
+                  {selectorVerdict.declared_semantic_role}
+                </span>
+              )}
+              {selectorVerdict.declared_output_meaning && (
+                <span> — {selectorVerdict.declared_output_meaning}</span>
+              )}
+              {selectorVerdict.rationale && (
+                <span className="mt-0.5 block text-[10.5px] text-fg-muted">
+                  {selectorVerdict.rationale}
+                </span>
+              )}
+            </p>
+          )}
+        </div>
+      )}
 
       {(artifactType || shortHash) && (
         <div className="flex flex-wrap items-center gap-2 border-t border-line-subtle pt-2 text-[10.5px]">

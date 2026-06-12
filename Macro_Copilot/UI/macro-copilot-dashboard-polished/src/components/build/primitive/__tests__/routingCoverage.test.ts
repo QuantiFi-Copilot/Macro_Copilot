@@ -378,17 +378,18 @@ check('decode: NO tool produces the legacy builder kind (G-3.2 lock)', () => {
   assertTruthy(out!.kind !== 'builder', 'builder kind never decodes');
 });
 
-check('decode: typed primitive + generic_builder → typed wins (priority)', () => {
-  // PR2 priority: BUILDER > typed view > generic_builder > unsupported_known.
-  // A typed chart conveys more information than a configure-and-run
-  // form, so classify_curve_move (typed view 'regime') wins over swap_spread (generic_builder).
+check('decode: generic_builder + migrated classifier → generic_builder wins (priority)', () => {
+  // classify_curve_move_tool retired the LAST typedView claim ('regime');
+  // it now decodes via the workflow_incompatible branch (priority 0.25),
+  // which loses to the runnable generic builder (priority 0.5).  Build
+  // still mounts its dual-view surfaces via module-first dispatch.
   const out = decodePrimitiveContext(
     encodeContext([
       { tool: 'calculate_swap_spread_tool' }, // generic_builder
-      { tool: 'classify_curve_move_tool' }, // typed view
+      { tool: 'classify_curve_move_tool' }, // workflow_incompatible (dual-view module)
     ]),
   );
-  assertEqual(out!.kind, 'regime', 'regime wins over generic_builder');
+  assertEqual(out!.kind, 'generic_builder', 'generic_builder beats workflow_incompatible');
 });
 
 check('decode: generic_builder + unsupported_known → generic_builder wins (priority)', () => {
@@ -597,11 +598,16 @@ check('KNOWN_BACKEND_TOOLS contains the audited 58 names (52 runnable + 4 manife
 // Stage 1 — WORKFLOW_INCOMPATIBLE_TOOLS registry + decoder coverage.
 // ----------------------------------------------------------------------------
 
-check('WORKFLOW_INCOMPATIBLE_TOOLS contains exactly the 2 Stage-1 entries', () => {
-  // classify_curve_move_tool is also workflow-incompatible on the
-  // backend BUT routes through a typed-view path on the frontend,
-  // so it stays out of this set per the decoder's priority order.
-  const expected = ['get_otr_history_tool', 'calculate_wirp_meeting_pricing_tool'];
+check('WORKFLOW_INCOMPATIBLE_TOOLS mirrors the backend set exactly', () => {
+  // G-3.1c: classify_curve_move_tool joined when its typed-view path
+  // ('regime' — which used to pre-empt this set in the decoder) was
+  // retired by the dual-view migration.  The set now mirrors the
+  // backend's WORKFLOW_INCOMPATIBLE_TOOLS dict 1:1.
+  const expected = [
+    'classify_curve_move_tool',
+    'get_otr_history_tool',
+    'calculate_wirp_meeting_pricing_tool',
+  ];
   assertEqual(
     WORKFLOW_INCOMPATIBLE_TOOLS.size,
     expected.length,
@@ -629,11 +635,9 @@ check('isWorkflowIncompatibleTool: negative cases', () => {
     false,
     'typed-view tool is NOT workflow_incompatible',
   );
-  assertEqual(
-    isWorkflowIncompatibleTool('classify_curve_move_tool'),
-    false,
-    'classify_curve_move is workflow-incompatible on backend but routes via typed view',
-  );
+  // classify_curve_move_tool moved to the POSITIVE set with the
+  // G-3.1c migration (typed-view retired) — asserted in the
+  // positive-cases check above.
   assertEqual(
     isWorkflowIncompatibleTool('totally_made_up_tool'),
     false,
@@ -680,28 +684,30 @@ check('decode: generic_builder + workflow_incompatible → generic_builder wins 
   assertEqual(out!.kind, 'generic_builder', 'generic_builder beats workflow_incompatible');
 });
 
-check('decode: typed-view + workflow_incompatible → typed-view wins (priority)', () => {
-  // A real chart beats every unsupported card.
+check('decode: two workflow_incompatible tools → first wins (tie-break)', () => {
+  // No typedView modules remain post classify_curve_move migration; pin
+  // the workflow_incompatible tie-break instead (>= keeps the LAST equal-
+  // priority entry, matching decodePrimitiveContext's score >= bestScore).
   const out = decodePrimitiveContext(
     encodeContext([
-      { tool: 'get_otr_history_tool' },                     // workflow_incompatible
-      { tool: 'classify_curve_move_tool' },                 // typed view 'regime'
+      { tool: 'get_otr_history_tool' },     // workflow_incompatible
+      { tool: 'classify_curve_move_tool' }, // workflow_incompatible (dual-view module)
     ]),
   );
-  assertEqual(out!.kind, 'regime', 'typed-view beats workflow_incompatible');
+  assertEqual(out!.kind, 'workflow_incompatible', 'workflow_incompatible decode survives');
 });
 
 check('decodeList: workflow_incompatible entries retained in order', () => {
   const list = decodePrimitiveList(
     encodeContext([
-      { tool: 'classify_curve_move_tool' },            // typed view
+      { tool: 'classify_curve_move_tool' },            // workflow_incompatible (dual-view module)
       { tool: 'get_otr_history_tool' },                // workflow_incompatible
       { tool: 'calculate_wirp_meeting_pricing_tool' }, // workflow_incompatible
       { tool: 'scan_ois_extremes_tool' },              // unsupported_known
     ]),
   );
   assertEqual(list.length, 4, 'four entries');
-  assertEqual(list[0].kind, 'regime', '0: typed view');
+  assertEqual(list[0].kind, 'workflow_incompatible', '0: migrated classifier (dual-view module)');
   assertEqual(list[1].kind, 'workflow_incompatible', '1: workflow_incompatible');
   assertEqual(list[2].kind, 'workflow_incompatible', '2: workflow_incompatible');
   assertEqual(list[3].kind, 'unsupported_known', '3: unsupported_known');

@@ -353,7 +353,7 @@ check('decodeList: generic_builder entries are retained in order', () => {
   );
   assertEqual(list.length, 3, 'three entries');
   assertEqual(list[0].kind, 'generic_builder', '0: generic_builder');
-  assertEqual(list[1].kind, 'regime', '1: typed view');
+  assertEqual(list[1].kind, 'workflow_incompatible', '1: migrated classifier (dual-view module)');
   assertEqual(list[2].kind, 'generic_builder', '2: generic_builder');
 });
 

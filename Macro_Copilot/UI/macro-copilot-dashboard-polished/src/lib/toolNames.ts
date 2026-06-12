@@ -383,12 +383,16 @@ export function isRunnablePrimitive(name: string): boolean {
 // contextDecoder kind so the user sees an honest unsupported card
 // instead of being routed into a generic builder that would fail.
 //
-// ``classify_curve_move_tool`` is also workflow-incompatible on the
-// backend but already has a typed-view path (``regime``) which the
-// contextDecoder selects before the workflow-incompatible check,
-// so it does NOT appear here.
+// ``classify_curve_move_tool`` joined this set with the G-3.1c
+// dual-view migration: it is workflow-incompatible on the backend and
+// previously decoded via its typed-view path ('regime'), which
+// pre-empted this check.  That typedView claim is retired — the
+// decode now flows through here (the module-first dispatch still
+// mounts its dual-view Build surfaces; this kind only governs the
+// honest card in non-module contexts).
 
 export const WORKFLOW_INCOMPATIBLE_TOOLS: ReadonlySet<string> = new Set<string>([
+  'classify_curve_move_tool',
   'get_otr_history_tool',
   'calculate_wirp_meeting_pricing_tool',
 ]);

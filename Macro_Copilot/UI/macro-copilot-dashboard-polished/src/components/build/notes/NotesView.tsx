@@ -73,6 +73,42 @@ export function NotesView({ detail }: Props) {
         </div>
       </header>
 
+      {/* Phase D / D9 — the run's bounded self-correction trace ("the
+          system caught + fixed its own mistake"), rendered from the
+          persisted run_audit sidecar.  Absent on runs that composed
+          clean on the first attempt. */}
+      {(detail.run_audit?.recompose_trace?.length ?? 0) > 0 && (
+        <section className="shrink-0 border-b border-line-subtle px-5 py-3">
+          <p className="kicker mb-1.5 text-amber-300">SELF-CORRECTION TRACE</p>
+          <p className="mb-2 text-[11px] leading-snug text-fg-muted">
+            The first composition failed a deterministic check; the system
+            re-composed once with the failure reason before executing —
+            the floor held: a wrong DAG never ran.
+          </p>
+          <ol className="space-y-1.5">
+            {(detail.run_audit?.recompose_trace ?? []).map((step, i) => (
+              <li
+                key={step.attempt_index ?? i}
+                className="rounded-md border border-amber-400/15 bg-amber-400/[0.04] px-3 py-2 text-[11.5px] leading-snug text-fg-secondary"
+              >
+                <span className="mono text-amber-300">
+                  attempt {step.attempt_index ?? i + 1}
+                </span>
+                <span className="text-fg-faint"> failed </span>
+                <span className="mono text-fg-primary">
+                  {step.failed_status ?? 'UNKNOWN'}
+                </span>
+                {step.reason && (
+                  <span className="block text-[11px] text-fg-muted">
+                    {step.reason}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
       <div className="min-h-0 flex-1 overflow-hidden px-5 py-5">
         <textarea
           value={value}
