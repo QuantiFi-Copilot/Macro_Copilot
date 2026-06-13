@@ -316,6 +316,26 @@ fully supported request.  Test: "would the \
 desk's one-click tool card already display every number asked for?"  If yes \
 → ``direct_fetch``.
 
+  TYPED-VIEW CARVE-OUT, PART 2 — SCANNERS, POLICY PRICING, MOVE \
+CLASSIFICATION.  Three more families have dedicated one-click tools and are \
+ALWAYS ``direct_fetch``, no matter how much computational vocabulary the \
+prompt uses:
+    - UNIVERSE SCANS: "scan ALL sovereign curves for yields more than 2 \
+sigma from their 1-year mean", "top 3 OIS tenors by absolute z-score" — \
+scanner / extremes tools sweep the whole universe and rank by z/sigma \
+NATIVELY.  The sigma/z vocabulary does NOT promote a scan to open_dag: the \
+open-DAG lane operates on a FIXED, named set of instruments and has no \
+universe-broadcast operator, so routing a scan there guarantees a refusal.  \
+The derived-transform SCOPE LIMIT above never applies to scans.
+    - POLICY-MEETING PRICING: "how much Fed easing is priced in over the \
+next four meetings?" — the meeting-pricing (WIRP-style) typed card carries \
+per-meeting priced moves natively.  Do NOT route to open_dag to difference \
+futures-strip legs; that proxies the card badly.
+    - MOVE ATTRIBUTION / CLASSIFICATION: "what's been driving the recent \
+curve move — the front end or the long end?" — the curve-move \
+classification tool returns the driver LABEL natively; the open-DAG \
+catalogue has no labeling operator.
+
   BIAS TOWARD ``open_dag`` WHEN UNSURE — it is the more reliable, verified \
 lane.  Pick ``direct_fetch`` for a MULTI-instrument prompt ONLY when it is \
 UNAMBIGUOUSLY a pure "show / display / list these things" request with no \
@@ -1331,6 +1351,33 @@ sovereign_bonds refusing a CPI-release leaf), RE-EMIT the LeafHole \
 with the domain_hint the refusal points to (CPI surprise lives in \
 inflation_swaps; NFP in sovereign_bonds).  A single-domain refusal \
 is routing evidence, not proof the quantity is unavailable.
+  - REALIZED VOLATILITY ALWAYS DIFFS FIRST: "realized vol", \
+"volatility of X", "how volatile" = the std of CHANGES, never the \
+std of LEVELS.  The chain is series_arithmetic(op='diff', period=1) \
+→ rolling_statistic(statistic='std', window=…) (or summarize(std) \
+for a single full-window number).  A rolling std applied directly \
+to yield/spread LEVELS measures level dispersion — a DIFFERENT \
+quantity that silently mis-answers vol asks; a reviewer will check \
+the chain structurally.  Skip the diff ONLY when the user \
+explicitly asks for the std OF THE LEVEL.
+  - CROSS-SECTIONAL RANKING EXISTS: "rank the G7 10Y yields by \
+their 1-year z-score — which is most stretched?" is fully \
+composable: one leaf PER instrument → rolling_zscore (or the asked \
+transform) applied PER LEAF in parallel arms → align_series \
+(distinct output_keys) → cross_sectional_rank.  The catalogue DOES \
+carry the cross_sectional family — do not refuse claiming a \
+rank/argmax operator is missing, and do not claim single-Series \
+transforms cannot fan out (parallel arms ARE the fan-out).
+  - POSITION-FRAME GUARD: the catalogue is POSITION-BLIND — no \
+DV01, notional, holding-period, or PnL scaling exists.  Asks framed \
+as POSITION risk/performance ("VaR of a steepener POSITION", \
+"Sharpe of being LONG X", "PnL of the trade") must be REFUSED \
+honestly, even though a descriptive cousin (an empirical quantile \
+of the series' daily changes) is composable — emitting the cousin \
+and labeling it VaR/Sharpe answers a different question with a \
+confident wrong label.  Descriptive tail asks WITHOUT a position \
+frame ("the 5th percentile of daily 2s10s changes") remain fully \
+composable via summarize_series(statistic='quantile').
 
 DECOMPOSITION → LEAF-HOLES MAPPING
 
@@ -1710,6 +1757,30 @@ match the prompt's asked history span under the trading-day table \
 above (window=252 for a "vs 2 years" ask is a mismatch — refuse or \
 hint the recompose).
 
+SEMANTIC STRUCTURAL CHECKS (quantity identity, not just wiring)
+  - VOLATILITY NEEDS DIFFS: a prompt asking for "realized vol" / \
+"volatility" / "how volatile" is about the std of CHANGES.  A \
+rolling/summary std applied directly to LEVELS (no diff node \
+upstream) computes level dispersion — a different quantity.  REFUSE \
+such a chain with the missing-diff reason so the recompose inserts \
+it (unless the user explicitly asked for the std of the level).
+  - POSITION METRICS DON'T EXIST: a chain whose terminal is an \
+empirical quantile / std of series changes CANNOT be passed as the \
+"VaR / Sharpe / PnL of a POSITION" — no node carries DV01, notional \
+or holding-period scaling.  If the prompt is position-framed, \
+REFUSE (the catalogue is position-blind); never PASS a descriptive \
+statistic wearing a position-risk label.
+
+SALVAGEABLE MULTI-FACET → CLARIFY, NOT REFUSE: when the DAG \
+faithfully serves ONE facet of a multi-facet ask and the remaining \
+facet is impossible only because of the single-terminal contract \
+(e.g. "today's basis AND its 6-month average"), prefer \
+status=CLARIFY offering the facet choice ("Which would you like \
+first — the current value or the 6-month average?") over REFUSE.  \
+The user can salvage the turn; REFUSE forecloses it.  REFUSE remains \
+correct when the served facet itself is wrong or the ask is \
+position-framed / out of scope.
+
 DISPERSION CONVENTION (one ScalarMetric, two numbers)
 
 The summarize_series operator carries an optional ``dispersion`` \
@@ -2009,6 +2080,19 @@ observed trading ranges.
    - No dated market episodes ("the 2022 repricing", "September's \
 FOMC") unless the executed data and span actually cover them — and \
 even then, only what the numbers support.
+
+10. NO DERIVED ARITHMETIC, NO SIGN REINTERPRETATION.
+   - Quote only numbers that appear in the executed summary (unit \
+restatements like 0.42% → 42 bps are fine).  Do NOT compute NEW \
+statistics in prose — no σ-distances ("that's ~1.8σ above the \
+mid"), ratios, annualizations, or percentile↔σ conversions; if the \
+summary doesn't carry the number, the prose doesn't either.
+   - State direction exactly as the wired construction implies.  If \
+the terminal is A−B = −0.32, the prose says A is BELOW B by 0.32 — \
+never flip the sign to fit a narrative ("32 bps of easing priced") \
+the construction doesn't support.  When unsure which direction a \
+sign means, describe the construction ("front-leg minus fourth-leg \
+prints −32 bps") rather than an interpretation.
 
 OUTPUT FORMAT
 
