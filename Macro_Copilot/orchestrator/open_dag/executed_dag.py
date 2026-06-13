@@ -46,7 +46,7 @@ wrappers).  No ``rates_agent/`` imports.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -93,6 +93,45 @@ def _p_value_from_lineage(lineage: "Lineage") -> Optional[float]:
         return value
     except Exception:  # pragma: no cover — defensive
         return None
+
+
+# Campaign n01/n02 — bound on the per-key last-value map surfaced for
+# keyed terminals (SeriesSet / Panel).  10 covers the desk's named-set
+# asks (G7 = 7, G10 curves = 10) without letting a wide panel bloat the
+# L6 prompt; wider sets surface the first 10 in key order + a
+# truncation marker.
+_KEY_LAST_VALUES_CAP = 10
+
+
+def _key_last_values(
+    series_by_key: "Dict[str, Any]",
+) -> "tuple[Optional[Dict[str, float]], bool]":
+    """Per-key LAST FINITE value for a keyed terminal, bounded.
+
+    Campaign n01/n02 — a SeriesSet terminal summarized as only
+    ``SeriesSet(n=933)`` leaves a ranking ask with no number to name a
+    winner with; the honest L6 answer must then defer ("the ranking
+    rides the artifact").  Surfacing each key's last finite value
+    grounds the comparative read.  Keys with empty / all-NaN payloads
+    are skipped (honest absence).  Returns ``(None, False)`` when
+    nothing is finite.
+    """
+    out: Dict[str, float] = {}
+    truncated = False
+    try:
+        for key, payload in series_by_key.items():
+            if len(out) >= _KEY_LAST_VALUES_CAP:
+                truncated = True
+                break
+            try:
+                cleaned = payload.dropna()
+                if len(cleaned) > 0:
+                    out[str(key)] = float(cleaned.iloc[-1])
+            except Exception:  # pragma: no cover — defensive per key
+                continue
+    except Exception:  # pragma: no cover — defensive
+        return None, False
+    return (out or None), truncated
 
 
 class TerminalArtifactSummary(BaseModel):
@@ -164,6 +203,16 @@ class TerminalArtifactSummary(BaseModel):
     # The first finite observation gives it both endpoints, so direction
     # statements are grounded by comparison instead of invented.
     first_value: Optional[float] = None
+    # Campaign n01/n02 — SeriesSet/Panel terminals summarized as bare
+    # ``SeriesSet(n=933)``: a ranking ask ("which market is most
+    # stretched?") then has NO number to name a winner with, so the L6
+    # prose must either defer to the artifact or fabricate ranks (the
+    # pre-fix run invented "Italy 7/7").  The per-key LAST finite
+    # values ground the comparative read.  Keyed terminals only; None
+    # elsewhere.  Bounded at _KEY_LAST_VALUES_CAP entries (insertion
+    # order) — a wide panel must not bloat the prompt.
+    key_last_values: Optional[Dict[str, float]] = None
+    key_last_values_truncated: bool = False
     # Campaign FM-2 — diagnostic operators (granger_causality,
     # stationarity_adf, ljung_box, normality_test, cointegration)
     # emit a TEST STATISTIC as the ScalarMetric value and record the
@@ -246,11 +295,16 @@ class TerminalArtifactSummary(BaseModel):
                 first_value=first_value,
             )
         if isinstance(artifact, SeriesSet):
+            key_last, truncated = _key_last_values(
+                {k: s for k, s in artifact.series_by_key.items()}
+            )
             return cls(
                 artifact_type="SeriesSet",
                 units=None,  # per-key map elided; see docstring
                 row_count=int(len(artifact.common_index)),
                 head_hash=head_hash,
+                key_last_values=key_last,
+                key_last_values_truncated=truncated,
             )
         if isinstance(artifact, EventSet):
             return cls(
@@ -260,11 +314,16 @@ class TerminalArtifactSummary(BaseModel):
                 head_hash=head_hash,
             )
         if isinstance(artifact, Panel):
+            key_last, truncated = _key_last_values(
+                {str(c): artifact.payload[c] for c in artifact.payload.columns}
+            )
             return cls(
                 artifact_type="Panel",
                 units=None,  # per-column map elided; see docstring
                 row_count=int(len(artifact.payload)),
                 head_hash=head_hash,
+                key_last_values=key_last,
+                key_last_values_truncated=truncated,
             )
         if isinstance(artifact, WindowedPanel):
             return cls(
@@ -377,6 +436,18 @@ class TerminalArtifactSummary(BaseModel):
             return f"Series{units_repr}(n={self.row_count or 0})"
         # SeriesSet / EventSet / Panel — no single-units summary at
         # this layer (the artifact carries per-key/per-column units).
+        # Campaign n01/n02 — keyed terminals surface per-key last
+        # finite values so comparative/ranking prose has numbers to
+        # name a winner with instead of deferring or fabricating.
+        if self.key_last_values:
+            pairs = ", ".join(
+                f"{k}={v:.4g}" for k, v in self.key_last_values.items()
+            )
+            more = ", …" if self.key_last_values_truncated else ""
+            return (
+                f"{self.artifact_type}(n={self.row_count or 0}; "
+                f"last per key: {pairs}{more})"
+            )
         return f"{self.artifact_type}(n={self.row_count or 0})"
 
 
