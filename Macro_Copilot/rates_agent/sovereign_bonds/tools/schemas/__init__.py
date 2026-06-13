@@ -133,6 +133,13 @@ from rates_agent.sovereign_bonds.tools.curve_fair_value.schemas import (
     CurveFairValueTimeSeriesRow,
     CurveFairValueOutput,
 )
+# Bucket-2 GARCH conditional-vol regime primitive.
+from rates_agent.sovereign_bonds.tools.rates_vol_regime.schemas import (
+    RatesVolRegimeInput,
+    RatesVolRegimeCurrentMetrics,
+    RatesVolRegimeTimeSeriesRow,
+    RatesVolRegimeOutput,
+)
 
 __all__ = [
     "CurveSpreadInput", "CurveSpreadCurrentMetrics", "CurveSpreadTimeSeriesRow", "CurveSpreadOutput",
@@ -146,4 +153,5 @@ __all__ = [
     "NfpSurpriseInput", "NfpSurpriseCurrentMetrics", "NfpSurpriseTimeSeriesRow", "NfpSurpriseOutput",
     "SovereignCurveRegimeInput", "RegimeFeatureMeans", "SovereignCurveRegimeCurrentMetrics", "SovereignCurveRegimeTimeSeriesRow", "SovereignCurveRegimeOutput",
     "CurveFairValueInput", "TenorRichness", "CurveFairValueCurrentMetrics", "CurveFairValueTimeSeriesRow", "CurveFairValueOutput",
+    "RatesVolRegimeInput", "RatesVolRegimeCurrentMetrics", "RatesVolRegimeTimeSeriesRow", "RatesVolRegimeOutput",
 ]

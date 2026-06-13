@@ -121,6 +121,11 @@ from rates_agent.sovereign_bonds.tools.curve_fair_value import (  # noqa: E402
     CurveFairValueInput,
     calculate_curve_fair_value,
 )
+from rates_agent.sovereign_bonds.tools.rates_vol_regime import (  # noqa: E402
+    CONFIG_PATH as RATES_VOL_REGIME_CONFIG_PATH,
+    RatesVolRegimeInput,
+    calculate_rates_vol_regime,
+)
 from shared.schemas import PastedPcaLoadings  # noqa: E402
 from rates_agent.sovereign_bonds.tools.scan_extremes import scan_extremes  # noqa: E402
 from shared.schemas import (  # noqa: E402
@@ -911,6 +916,96 @@ def calculate_curve_fair_value_tool(
     if ts_rows:
         logger.info(
             "Withheld %d residual time_series rows from LLM context.", ts_rows,
+        )
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 4d: rates_vol_regime (Bucket-2 model-state primitive)
+# ===========================================================================
+@mcp.tool()
+def calculate_rates_vol_regime_tool(
+    curve_family: str,
+    tenor: str = "10Y",
+    lookback_days: int = 2520,
+    field_name: str = "",
+) -> str:
+    """GARCH(1,1) conditional-volatility REGIME of one sovereign tenor's
+    yield changes: the current conditional vol (daily + annualized bps),
+    its regime label (calm / normal / elevated by historical percentile),
+    and the fitted GARCH model state — persistence (alpha+beta), omega,
+    alpha, beta, and whether vol is near-integrated (sticky).
+
+    This DESCRIBES the current vol state — it is NOT a vol forecast and
+    NOT a trade signal.
+
+    Use this tool when the user asks about:
+    - Rate / yield volatility regime, vol clustering, calm vs stressed vol
+    - Whether high vol is sticky / persistent (the GARCH persistence)
+    - "How volatile is the 10Y right now vs its history"
+
+    Parameters
+    ----------
+    curve_family : str
+        Curve identifier, e.g. 'UST', 'DE_BUND'.
+    tenor : str, optional
+        The tenor whose yield-change volatility to model (default 10Y).
+    lookback_days : int, optional
+        Calendar days of history to fit the GARCH over (default ~10y).
+    field_name : str, optional
+        Bloomberg field.  Leave "" to use the bundled default (YLD_YTM_MID).
+    """
+    field_name_arg = field_name if field_name else None
+    try:
+        params = RatesVolRegimeInput(
+            curve_family=curve_family, tenor=tenor,
+            lookback_days=lookback_days, field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning("Input validation failed: %s", exc)
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"}, default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception("Failed to connect to TimescaleDB")
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"}, default=str,
+        )
+
+    try:
+        cfg = load_tool_config(RATES_VOL_REGIME_CONFIG_PATH)
+        result = calculate_rates_vol_regime(
+            engine=engine, params=params, config=cfg,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Unhandled error in calculate_rates_vol_regime for %s %s",
+            params.curve_family, params.tenor,
+        )
+        return json.dumps(
+            {"error": f"Calculation failed for {params.curve_family} "
+             f"{params.tenor}: {exc}"}, default=str,
+        )
+
+    logger.info(
+        "Tool call complete: rates_vol_regime %s %s → %s",
+        params.curve_family, params.tenor,
+        "error" if "error" in result else "OK",
+    )
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    llm_response = {
+        "current_metrics": result.get("current_metrics", {}),
+        "methodology_disclosures": result.get("methodology_disclosures", []),
+    }
+    ts_rows = len(result.get("time_series", []))
+    if ts_rows:
+        logger.info(
+            "Withheld %d conditional-vol rows from LLM context.", ts_rows,
         )
     return json.dumps(llm_response, default=str)
 

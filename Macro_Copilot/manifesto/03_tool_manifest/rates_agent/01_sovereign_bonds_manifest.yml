@@ -946,6 +946,60 @@ tools:
       Not validated yet
 
   # ---------------------------------------------------------------------------
+  # RATES VOL REGIME (Bucket-2 model-state: GARCH conditional-vol regime)
+  # ---------------------------------------------------------------------------
+
+  - name: calculate_rates_vol_regime
+    domain: rates
+    sub_agent: sovereign_bonds
+    bucket: 2
+    category: model_fits
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/sovereign_bonds/mcp_server.py
+      tool_function: calculate_rates_vol_regime_tool
+      schema: rates_agent/sovereign_bonds/tools/rates_vol_regime/schemas.py::RatesVolRegimeInput
+      compute: rates_agent/sovereign_bonds/tools/rates_vol_regime/compute.py::calculate_rates_vol_regime
+      config: rates_agent/sovereign_bonds/tools/rates_vol_regime/config.yaml
+
+    one_liner: >-
+      GARCH(1,1) conditional-volatility regime of one sovereign tenor's
+      yield changes — the current conditional vol (daily + annualized bps),
+      its regime label (calm/normal/elevated by historical percentile), and
+      the fitted GARCH model state (persistence alpha+beta, omega/alpha/beta,
+      near-integrated). A Bucket-2 model-state primitive over the shipped
+      fit_garch operator. Describes the current vol state; never a forecast.
+
+    bucket_rationale: >-
+      Bucket-2: the GARCH model state rides in the operator's lineage and is
+      surfaced in current_metrics. The persistence read ("is high vol sticky
+      or transient") is the GARCH-specific content no diff->fit_garch->
+      percentile chain can surface (the model state lives in lineage; no
+      operator hoists it). The primitive carries the FINANCE (the series
+      choice, naming the vol regime) and ZERO statistical math — GARCH is
+      the finance-blind fit_garch operator.
+
+    pm_overridable:
+      - curve_family
+      - tenor
+      - lookback_days
+
+    related_tools:
+      - calculate_sovereign_curve_regime_tool
+      - get_yield_levels_tool
+
+    workflows:
+      - analysis
+
+    references:
+      - tmp/fable_plan_2.md  # §7-B — Bucket-2 model-state primitives
+
+    built_date: 2026-06-13
+    validation_status: >-
+      Not validated yet
+
+  # ---------------------------------------------------------------------------
   # BOND-IMPLIED BREAKEVEN INFLATION (cross-domain composition: nominal − linker)
   # ---------------------------------------------------------------------------
 

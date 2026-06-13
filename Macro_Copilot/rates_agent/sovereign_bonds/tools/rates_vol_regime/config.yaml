@@ -1,0 +1,155 @@
+# =============================================================================
+# calculate_rates_vol_regime_tool — tool configuration
+# =============================================================================
+# A Bucket-2 model-state primitive (plan §7-B).  Fits a GARCH(1,1) to one
+# sovereign tenor's yield CHANGES (via the finance-blind fit_garch
+# operator) and surfaces the CURRENT conditional-volatility STATE: the
+# latest conditional vol, its regime label (calm / normal / elevated by
+# historical percentile), and — the reason this tool exists — the fitted
+# GARCH model state (persistence α+β, ω/α/β, near-integrated flag) read
+# back from the operator's lineage.  The persistence answers "is high vol
+# STICKY or transient" — a GARCH-specific read no diff→fit_garch→percentile
+# chain can surface (the model state lives in lineage; no operator hoists
+# it).  The primitive carries THE FINANCE (the series choice, naming the
+# vol regime) and ZERO statistical math (GARCH is the operator /
+# shared/quant/garch.py).
+#
+# Bucket-2 model-state: the GARCH fit rides in the operator's lineage and
+# is surfaced in current_metrics — the fit, not just a snapshot.  No new
+# artifact type.
+#
+# DESCRIBE, NOT FORECAST: the CURRENT in-sample conditional vol
+# (fit_scope='full_sample', look-ahead — disclosed).  NEVER the GARCH
+# one-step vol forecast σ_{t+1} (the operator emits no σ_{T+1}; this
+# primitive adds none).
+#
+# Cross-config consistency (shared.config.lint): default_field_name and
+# ffill_limit_days MUST agree with the other sovereign tools.
+# =============================================================================
+
+tool:
+  name: calculate_rates_vol_regime_tool
+  domain: sovereign_bonds
+  category: quant_standard_analytic
+  description: |
+    GARCH(1,1) conditional-volatility regime of one sovereign tenor's
+    yield changes.  Surfaces the current conditional vol (daily +
+    annualized bps), its historical percentile + regime label (calm /
+    normal / elevated), and the fitted GARCH model state (persistence
+    α+β, ω/α/β, near-integrated / sticky-vol flag).  Describes the current
+    vol state — never a vol forecast.
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Bloomberg observation field (cross-config consistency-linted)
+  # ---------------------------------------------------------------------------
+  default_field_name:
+    value: YLD_YTM_MID
+    source: bloomberg_field_convention
+    rationale: >-
+      Mid yield-to-maturity — the standard sovereign field.  Same value as
+      the sibling sovereign tools (lint-enforced).
+
+  # ---------------------------------------------------------------------------
+  # Holiday-gap forward-fill limit (cross-config consistency-linted)
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Maximum consecutive missing days bridged by forward-fill before
+      differencing.  Matches every other rates tool.
+    valid_range: [0, 10]
+
+  # ---------------------------------------------------------------------------
+  # Return method for the GARCH input (yield CHANGES)
+  # ---------------------------------------------------------------------------
+  return_method:
+    value: diff
+    source: industry_standard_yield_changes
+    rationale: >-
+      GARCH is fit on yield LEVEL CHANGES (first differences) — the
+      standard rates convention; pct_change is ill-defined near zero
+      yields.  fit_garch operates on the series as given, so the primitive
+      differences first.
+
+  # ---------------------------------------------------------------------------
+  # Annualization day-count for the DISPLAYED vol
+  # ---------------------------------------------------------------------------
+  vol_annualization_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      Trading days per year used to annualize the daily conditional vol
+      (× sqrt(252)) for the desk-readable annualized figure.  Display-only
+      — the regime percentile + the GARCH fit use the raw daily σ_t.
+    valid_range: [248, 262]
+
+  # ---------------------------------------------------------------------------
+  # Vol-regime classification thresholds (percentile of the conditional vol)
+  # ---------------------------------------------------------------------------
+  vol_calm_percentile_max:
+    value: 33.0
+    source: desk_convention_vol_regimes
+    rationale: >-
+      Conditional vol at or below this percentile of its own history is
+      the 'calm' regime.
+    valid_range: [10.0, 45.0]
+
+  vol_elevated_percentile_min:
+    value: 67.0
+    source: desk_convention_vol_regimes
+    rationale: >-
+      Conditional vol at or above this percentile of its own history is
+      the 'elevated' regime; in between is 'normal'.
+    valid_range: [55.0, 90.0]
+
+  regime_label_calm:
+    value: calm
+    source: desk_convention_vol_regimes
+    rationale: "Descriptive name for the low conditional-vol regime."
+
+  regime_label_normal:
+    value: normal
+    source: desk_convention_vol_regimes
+    rationale: "Descriptive name for the mid conditional-vol regime."
+
+  regime_label_elevated:
+    value: elevated
+    source: desk_convention_vol_regimes
+    rationale: "Descriptive name for the high conditional-vol regime."
+
+  # ---------------------------------------------------------------------------
+  # Display rounding
+  # ---------------------------------------------------------------------------
+  vol_round_decimals:
+    value: 4
+    source: display_convention
+    rationale: >-
+      Decimal places for the surfaced vol (bps), percentile, persistence,
+      and GARCH params.  Display-only — never affects the fit.  (Unique
+      name to clear the cross-config consistency lint.)
+    valid_range: [1, 8]
+
+methodology:
+  what_it_does: |
+    Fetches one sovereign tenor's yields, first-differences them into a
+    yield-change series, and passes that RAW series to the finance-blind
+    fit_garch operator (GARCH(1,1)-Gaussian-constant-mean), which emits
+    the in-sample conditional-volatility path and stamps the fitted model
+    (ω, α, β, persistence α+β, μ, loglik, near-integrated) into its
+    lineage.  Reads that model state back out and surfaces it, scales the
+    latest conditional vol to bps (daily ×100; annualized ×100×sqrt(252)),
+    computes its historical percentile, and names the current vol regime
+    (calm / normal / elevated).  All statistical math is the operator /
+    shared/quant/garch.py.
+  assumptions:
+    - "Yields stored as percent; vol reported in bps (×100); annualized vol ×sqrt(252)."
+    - "FULL-SAMPLE GARCH fit (fit_scope='full_sample') — look-ahead; describes the CURRENT in-sample conditional vol, NOT a forecast of σ_{t+1}."
+    - "persistence = α+β < 1 (the operator refuses the integrated boundary); near-integrated = sticky high vol."
+    - "Regime labels are descriptive (percentile of the conditional vol), never a trade signal."
+  citations: []
+  planned_extensions:
+    - "Vol of a 2-leg spread (e.g. 2s10s vol) and cross-tenor vol comparison."
+    - "Student-t / asymmetric (GJR) GARCH once the operator ships those variants."

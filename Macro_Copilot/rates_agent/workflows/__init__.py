@@ -192,6 +192,12 @@ from rates_agent.sovereign_bonds.tools.curve_fair_value import (
     CurveFairValueOutput,
     calculate_curve_fair_value,
 )
+from rates_agent.sovereign_bonds.tools.rates_vol_regime import (
+    CONFIG_PATH as RATES_VOL_REGIME_CONFIG_PATH,
+    RatesVolRegimeInput,
+    RatesVolRegimeOutput,
+    calculate_rates_vol_regime,
+)
 from rates_agent.sovereign_bonds.tools.breakeven_inflation import (
     CONFIG_PATH as BREAKEVEN_INFLATION_CONFIG_PATH,
     BreakevenInflationInput,
@@ -732,6 +738,18 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         config_path=CURVE_FAIR_VALUE_CONFIG_PATH,
         output_field_units={
             "time_series_residual": "bps",
+        },
+    ),
+    # Bucket-2 GARCH conditional-vol regime.  Composable headline is the
+    # conditional-vol history (daily bps) → BRIDGEABLE_SERIES.
+    "calculate_rates_vol_regime_tool": PrimitiveSpec(
+        tool_name="calculate_rates_vol_regime_tool",
+        callable=calculate_rates_vol_regime,
+        input_class=RatesVolRegimeInput,
+        output_class=RatesVolRegimeOutput,
+        config_path=RATES_VOL_REGIME_CONFIG_PATH,
+        output_field_units={
+            "time_series_conditional_vol": "bps",
         },
     ),
     "calculate_breakeven_inflation_tool": PrimitiveSpec(
