@@ -95,6 +95,11 @@ from rates_agent.ois.tools.wirp_meeting_pricing import (  # noqa: E402
     WirpMeetingPricingInput,
     calculate_wirp_meeting_pricing,
 )
+from rates_agent.ois.tools.ois_policy_path_regime import (  # noqa: E402
+    CONFIG_PATH as OIS_POLICY_PATH_REGIME_CONFIG_PATH,
+    OISPolicyPathRegimeInput,
+    calculate_ois_policy_path_regime,
+)
 from shared.config import load_tool_config  # noqa: E402
 
 logging.basicConfig(
@@ -1337,6 +1342,94 @@ def calculate_wirp_meeting_pricing_tool(
     )
 
     return json.dumps(result, default=str)
+
+
+# ===========================================================================
+# TOOL: ois_policy_path_regime (Bucket-2 model-state primitive)
+# ===========================================================================
+@mcp.tool()
+def calculate_ois_policy_path_regime_tool(
+    curve_family: str,
+    n_states: int = 3,
+    lookback_days: int = 2520,
+) -> str:
+    """Gaussian-HMM regime of the PRICED policy path on a policy-futures
+    STIR strip (SOFR_FUT / SONIA_FUT / EUR_SHORT_RATE_FUT).  Labels which
+    policy regime the market is CURRENTLY PRICING — easing / neutral /
+    tightening priced — by the strip's front level, slope (back − front),
+    curvature, and front-rate realized vol, with the regime persistence and
+    the fitted HMM model state.
+
+    This DESCRIBES what the market prices (the strip encodes the expectation)
+    — it is NOT our forecast of the policy path and NOT a trade signal.
+
+    Use this tool when the user asks about:
+    - What rate path / policy is priced in (hikes vs cuts vs on-hold)
+    - Policy / front-end regime, the priced tightening or easing stance
+    - SOFR / SONIA / EUR short-rate futures strip regime
+
+    Parameters
+    ----------
+    curve_family : str
+        The strip family: 'SOFR_FUT', 'SONIA_FUT', or 'EUR_SHORT_RATE_FUT'.
+    n_states : int, optional
+        Number of priced-regime states K (default 3 — easing/neutral/
+        tightening priced).
+    lookback_days : int, optional
+        Calendar days of strip history to fit over (default ~10y).
+    """
+    try:
+        params = OISPolicyPathRegimeInput(
+            curve_family=curve_family, n_states=n_states,
+            lookback_days=lookback_days,
+        )
+    except ValidationError as exc:
+        logger.warning("[ois_policy_path_regime] input validation failed: %s", exc)
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"}, default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception("[ois_policy_path_regime] failed to connect to DB")
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"}, default=str,
+        )
+
+    try:
+        cfg = load_tool_config(OIS_POLICY_PATH_REGIME_CONFIG_PATH)
+        result = calculate_ois_policy_path_regime(
+            engine=engine, params=params, config=cfg,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[ois_policy_path_regime] unhandled error for %s", params.curve_family,
+        )
+        return json.dumps(
+            {"error": f"Calculation failed for {params.curve_family}: {exc}"},
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[ois_policy_path_regime] tool call complete: %s K=%d → %s",
+        params.curve_family, params.n_states, status,
+    )
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    llm_response = {
+        "current_metrics": result.get("current_metrics", {}),
+        "methodology_disclosures": result.get("methodology_disclosures", []),
+    }
+    ts_rows = len(result.get("time_series") or [])
+    if ts_rows:
+        logger.info(
+            "[ois_policy_path_regime] withheld %d regime rows from LLM.", ts_rows,
+        )
+    return json.dumps(llm_response, default=str)
+
 
 # ===========================================================================
 # ENTRY POINT

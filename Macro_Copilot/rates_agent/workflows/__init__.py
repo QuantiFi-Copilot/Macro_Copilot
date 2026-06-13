@@ -198,6 +198,12 @@ from rates_agent.sovereign_bonds.tools.rates_vol_regime import (
     RatesVolRegimeOutput,
     calculate_rates_vol_regime,
 )
+from rates_agent.ois.tools.ois_policy_path_regime import (
+    CONFIG_PATH as OIS_POLICY_PATH_REGIME_CONFIG_PATH,
+    OISPolicyPathRegimeInput,
+    OISPolicyPathRegimeOutput,
+    calculate_ois_policy_path_regime,
+)
 from rates_agent.sovereign_bonds.tools.breakeven_inflation import (
     CONFIG_PATH as BREAKEVEN_INFLATION_CONFIG_PATH,
     BreakevenInflationInput,
@@ -750,6 +756,18 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         config_path=RATES_VOL_REGIME_CONFIG_PATH,
         output_field_units={
             "time_series_conditional_vol": "bps",
+        },
+    ),
+    # Bucket-2 priced policy-path regime (OIS domain, policy-futures strip).
+    # Composable headline = the regime-label series (FACTOR_LEVEL).
+    "calculate_ois_policy_path_regime_tool": PrimitiveSpec(
+        tool_name="calculate_ois_policy_path_regime_tool",
+        callable=calculate_ois_policy_path_regime,
+        input_class=OISPolicyPathRegimeInput,
+        output_class=OISPolicyPathRegimeOutput,
+        config_path=OIS_POLICY_PATH_REGIME_CONFIG_PATH,
+        output_field_units={
+            "time_series_regime": "factor_level",
         },
     ),
     "calculate_breakeven_inflation_tool": PrimitiveSpec(

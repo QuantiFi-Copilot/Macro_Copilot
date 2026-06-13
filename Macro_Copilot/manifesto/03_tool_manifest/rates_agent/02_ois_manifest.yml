@@ -482,3 +482,57 @@ tools:
       PR15 parity fixture present; SQL validation runs read-only
       against macro_data.v_market_data_daily_enriched.
 
+  # ---------------------------------------------------------------------------
+  # POLICY-PATH REGIME (Bucket-2 model-state: HMM on the policy-futures strip)
+  # ---------------------------------------------------------------------------
+
+  - name: calculate_ois_policy_path_regime
+    domain: rates
+    sub_agent: ois
+    bucket: 2
+    category: model_fits
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/ois/mcp_server.py
+      tool_function: calculate_ois_policy_path_regime_tool
+      schema: rates_agent/ois/tools/ois_policy_path_regime/schemas.py::OISPolicyPathRegimeInput
+      compute: rates_agent/ois/tools/ois_policy_path_regime/compute.py::calculate_ois_policy_path_regime
+      config: rates_agent/ois/tools/ois_policy_path_regime/config.yaml
+
+    one_liner: >-
+      Gaussian-HMM regime of the PRICED policy path on a policy-futures STIR
+      strip (SOFR/SONIA/EUR_SHORT_RATE) — labels which regime the market is
+      currently pricing (easing/neutral/tightening) by the strip's front
+      level, slope, curvature, and front-rate realized vol, with the regime
+      persistence and the fitted HMM model state. A Bucket-2 model-state
+      primitive over the shipped fit_regime_hmm operator. Describes what is
+      priced; never a forecast.
+
+    bucket_rationale: >-
+      Bucket-2: the fitted HMM model state (transition matrix, per-regime
+      means) rides in the operator's lineage and is surfaced in
+      current_metrics. The primitive carries the FINANCE (the strip choice,
+      the metadata-driven implied-rate conversion, naming the priced regime)
+      and ZERO statistical math — the HMM is the finance-blind fit_regime_hmm
+      operator. Consumes the cross-domain policy-futures strip substrate.
+
+    pm_overridable:
+      - curve_family
+      - n_states
+      - lookback_days
+
+    related_tools:
+      - build_policy_futures_strip_panel_tool
+      - calculate_wirp_meeting_pricing_tool
+
+    workflows:
+      - analysis
+
+    references:
+      - tmp/fable_plan_2.md  # §7-B — Bucket-2 model-state primitives
+
+    built_date: 2026-06-13
+    validation_status: >-
+      Not validated yet
+

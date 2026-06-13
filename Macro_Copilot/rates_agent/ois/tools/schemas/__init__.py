@@ -126,6 +126,12 @@ __all__ = [
     "OISScannerInput",
     "OISScannerOutput",
     "OISScannerResultRow",
+    # ois_policy_path_regime (Bucket-2 model-state)
+    "OISPolicyPathRegimeInput",
+    "PolicyRegimeFeatureMeans",
+    "OISPolicyPathRegimeCurrentMetrics",
+    "OISPolicyPathRegimeTimeSeriesRow",
+    "OISPolicyPathRegimeOutput",
 ]
 
 from rates_agent.ois.tools.wirp_meeting_pricing.schemas import (
@@ -133,4 +139,11 @@ from rates_agent.ois.tools.wirp_meeting_pricing.schemas import (
     WirpMeetingPricingInput,
     WirpMeetingPricingOutput,
     WirpMeetingSnapshot,
+)
+from rates_agent.ois.tools.ois_policy_path_regime.schemas import (
+    OISPolicyPathRegimeCurrentMetrics,
+    OISPolicyPathRegimeInput,
+    OISPolicyPathRegimeOutput,
+    OISPolicyPathRegimeTimeSeriesRow,
+    PolicyRegimeFeatureMeans,
 )
