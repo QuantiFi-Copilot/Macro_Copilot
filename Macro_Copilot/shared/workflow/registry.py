@@ -243,6 +243,10 @@ from shared.operators.fit_regime_gmm import (
     fit_regime_gmm, FitRegimeGmmParams,
     CONFIG_PATH as _FIT_REGIME_GMM_CONFIG_PATH,
 )
+from shared.operators.pca_decompose import (
+    pca_decompose, PcaDecomposeParams,
+    CONFIG_PATH as _PCA_DECOMPOSE_CONFIG_PATH,
+)
 
 
 # ============================================================================
@@ -1910,6 +1914,60 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "Raises FitGarchError on < 12 finite rows, zero "
                 "variance, MLE non-convergence, a near-integrated/"
                 "degenerate fit, or an interior NaN."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — cross_sectional (A4 model-fit engines):
+    # principal-component decomposition.  One PANEL in, one SeriesSet
+    # out (the factor scores pc1..pcK, FACTOR_LEVEL units; loadings +
+    # explained-variance in lineage).  n_components REQUIRED;
+    # correlation PCA + canonical sign (deterministic); full-sample;
+    # math in shared/quant.
+    "pca_decompose": OperatorSpec(
+        operator_name="pca_decompose",
+        callable=pca_decompose,
+        params_class=PcaDecomposeParams,
+        config_path=_PCA_DECOMPOSE_CONFIG_PATH,
+        input_slots={
+            "features": SlotDescriptor.of(
+                "Panel",
+                (
+                    "The feature Panel to decompose into principal "
+                    "components (>= 2 feature columns; >= max(12, "
+                    "n_features+1) complete-case rows, non-constant "
+                    "features; rows with a NaN feature are dropped and "
+                    "carry a NaN factor).  USE when the user asks to "
+                    "DECOMPOSE a multi-feature history into its common "
+                    "factors / principal components ('what factors "
+                    "drive X,Y,Z?', 'extract the level/slope factors') "
+                    "— n_components is REQUIRED (1..n_features).  "
+                    "FULL-SAMPLE: the loadings use the whole Panel "
+                    "(look-ahead disclosed in lineage; never for "
+                    "point-in-time compositions — a windowed re-fit is "
+                    "the planned rolling_pca).  DO NOT use for DISCRETE "
+                    "regime labels (fit_regime_gmm), a fixed per-date "
+                    "statistic (cross_sectional_statistic), or the "
+                    "fair-value RESIDUAL (the planned "
+                    "reconstruct_from_factors)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "SeriesSet",
+            (
+                "The principal-component factor scores as a SeriesSet "
+                "(keys pc1..pcK) on the full Panel index, every member "
+                "in FACTOR_LEVEL units (the eigen-units; NaN on dropped "
+                "dates).  Lineage carries the loadings (eigenvectors), "
+                "the explained-variance ratios, the singular values, a "
+                "near_degenerate flag, the locked correlation-PCA/SVD/"
+                "largest-|loading|-sign spec and fit_scope='full_sample'."
+                "  Feed select_from_series_set to pull one factor (pc1) "
+                "or the planned reconstruct_from_factors for a residual."
+                "  Raises PcaDecomposeError on missing n_components, < 2 "
+                "features, n_components out of [1, n_features], too few "
+                "complete rows, a zero-variance column, or a "
+                "rank-deficient component."
             ),
         ),
     ),

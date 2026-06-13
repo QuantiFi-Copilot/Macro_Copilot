@@ -1,0 +1,91 @@
+operator:
+  name: pca_decompose
+  method_family: cross_sectional
+  version: "1.0.0"
+  description: >-
+    Principal Component Analysis of a feature Panel (correlation PCA via
+    SVD in shared/quant/pca.py), emitting the principal-component
+    FACTOR-SCORE time series as a SeriesSet (one member per component:
+    pc1, pc2, ...), every member in FACTOR_LEVEL units. Finance-blind:
+    the finance-blind generalisation of yield-curve PCA to ANY feature
+    Panel (it never anchors on a tenor/curve position). The loadings
+    (eigenvectors) and explained-variance ratios ride in lineage (NOT a
+    new artifact type — the residual/fair-value reconstruction is the
+    separate reconstruct_from_factors operator). Correlation PCA
+    (z-score each column), the SVD estimator and the canonical sign
+    convention (largest-|loading| element positive) are design-locked;
+    near-tied singular values are disclosed (near_degenerate), not
+    refused. FULL-SAMPLE fit (the loadings use the whole Panel — never
+    feed into point-in-time compositions). Order-insensitive NaN policy:
+    rows with a NaN feature are dropped (the factor Series carry a NaN
+    label there).
+
+# n_components (the number of components to retain) is required-no-
+# default (the fit_regime_gmm n_states precedent). Everything else is
+# design-locked (zero further knobs).
+#
+# DESIGN LOCKS (OPR7, lineage-stamped): correlation PCA (z-score each
+# column — so one large-scale feature cannot dominate); the SVD
+# estimator; the canonical sign convention (flip each component so its
+# largest-|loading| element is positive — finance-blind, NOT the rates
+# primitive's curve-position anchor). Covariance PCA (demean-only), a
+# variance-threshold K, a rolling re-fit (rolling_pca) and the
+# reconstruct_from_factors residual are declared planned extensions,
+# never silent knobs.
+defaults: {}
+
+methodology:
+  what_it_does: >-
+    Drops rows with any NaN feature (order-insensitive — the per-date
+    projection is not a sequential recursion, so complete-case dropping
+    is exact; the factor Series carry a NaN on those dates), sorts the
+    feature columns into a canonical order (so the SVD input and the
+    sign tie-break are reproducible), z-score-standardises each column,
+    and computes the principal directions via the SVD of the
+    standardised matrix. The factor SCORES are the projections of the
+    standardised features onto the top n_components components; the
+    explained-variance ratio per component is its eigenvalue over the
+    full eigenvalue spectrum (it sums to 1 only when n_components equals
+    the feature count — the truncation is disclosed). Each component is
+    flipped so its largest-|loading| element is positive (ties broken by
+    the lowest column index) — a finance-blind canonical sign that makes
+    the factor scores reproducible across reruns. FACTOR_LEVEL units —
+    the eigen-units of a principal component. fit_scope='full_sample'
+    rides in lineage — the loadings use the whole Panel, so this
+    DESCRIBES the observed history and is not point-in-time. Refusals: a
+    non-Panel input, fewer than 2 feature columns, n_components out of
+    [1, n_features], fewer than max(12, n_features+1) complete-case
+    rows, a zero-variance feature column, a rank-deficient retained
+    component.
+  planned_extensions:
+    - "reconstruct_from_factors: rebuild from the top-k factors and emit the RESIDUAL (the fair-value signal) — a SeriesSet->Series operator, hence separate (OPR2)."
+    - "rolling_pca: a windowed re-fit of the loadings (point-in-time-safe factor rotation) — a distinct operator."
+    - "covariance PCA (demean-only) and a variance-threshold n_components: distinct methodology — declared, not silent knobs."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Principal Component Analysis (correlation PCA) — ONE SeriesSet of the factor scores (pc1..pcK, FACTOR_LEVEL units; loadings + explained-variance in lineage).
+  when_to_use:
+    - "User asks to DECOMPOSE a multi-feature history into its principal components / common factors ('what are the main factors driving X, Y, Z?', 'extract the level/slope/curve factors') — emits the per-date factor scores."
+    - "Dimensionality reduction or a factor-score Series to feed a downstream analysis (select_from_series_set to pull pc1; the planned reconstruct_from_factors for a fair-value residual)."
+  when_not_to_use:
+    - "POINT-IN-TIME compositions: the loadings are fit over the WHOLE Panel (full-sample look-ahead disclosed in lineage); never feed into as-of/walk-forward chains (a windowed re-fit is the planned rolling_pca)."
+    - "User wants DISCRETE regime LABELS — fit_regime_gmm (a categorical clustering); pca_decompose emits CONTINUOUS factor scores."
+    - "User wants a fixed per-date statistic over a SeriesSet (cross_sectional_statistic — no fitted model), or the fair-value RESIDUAL (the planned reconstruct_from_factors)."
+  upstream_requirements:
+    - "Input is ONE Panel (>= 2 feature columns; >= max(12, n_features+1) complete-case rows, non-constant features).  Rows with a NaN feature are dropped (the factor Series carry a NaN there).  n_components is REQUIRED (1 <= K <= n_features)."
+  downstream_pattern:
+    - "Output is a SeriesSet (keys pc1..pcK) in FACTOR_LEVEL units on the full Panel index.  Lineage records the loadings, explained-variance ratios, the locked correlation-PCA/SVD/sign spec and fit_scope='full_sample'.  Feed select_from_series_set to pull a single factor, or the planned reconstruct_from_factors for a residual."
+  knobs_quick_ref:
+    n_components: "REQUIRED — the number of principal components to retain (1 <= K <= n_features)."
+  example_shapes:
+    - description: "Decompose a [level, slope, curvature] feature panel into its top 2 factors."
+      shape: "[Panel of features] -> pca_decompose(n_components=2) -> SeriesSet  -> select_from_series_set(key='pc1')"
+  sibling_operators:
+    - fit_regime_gmm: "Clusters a feature Panel into DISCRETE regime labels; pca_decompose extracts CONTINUOUS factor scores (a linear factor model)."
+    - cross_sectional_statistic: "A FIXED per-date statistic over a SeriesSet (no fitted model); pca_decompose fits a linear factor model over the whole sample."
+    - select_from_series_set: "Pulls one named factor Series (pc1) out of the output SeriesSet for downstream single-series analysis."
+  intent_hints: [relationship]

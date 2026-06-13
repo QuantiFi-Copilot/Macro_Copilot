@@ -301,6 +301,7 @@ class TestComposerPromptContent:
             "ljung_box",
             "normality_test",
             "pairwise_spread_matrix",
+            "pca_decompose",
             "percentile_rank",
             "regression_residual",
             "resample",

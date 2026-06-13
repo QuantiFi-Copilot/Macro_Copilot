@@ -77,6 +77,7 @@ _V2_CONFORMANT = {
     "normality_test",
     "variance_ratio",
     "hurst_exponent",
+    "pca_decompose",
     "pairwise_spread_matrix",
     "percentile_rank",
     "regression_residual",
