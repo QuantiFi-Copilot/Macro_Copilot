@@ -890,6 +890,62 @@ tools:
       Not validated yet
 
   # ---------------------------------------------------------------------------
+  # CURVE FAIR VALUE (Bucket-2 model-state: PCA fair-value residual per tenor)
+  # ---------------------------------------------------------------------------
+
+  - name: calculate_curve_fair_value
+    domain: rates
+    sub_agent: sovereign_bonds
+    bucket: 2
+    category: model_fits
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/sovereign_bonds/mcp_server.py
+      tool_function: calculate_curve_fair_value_tool
+      schema: rates_agent/sovereign_bonds/tools/curve_fair_value/schemas.py::CurveFairValueInput
+      compute: rates_agent/sovereign_bonds/tools/curve_fair_value/compute.py::calculate_curve_fair_value
+      config: rates_agent/sovereign_bonds/tools/curve_fair_value/config.yaml
+
+    one_liner: >-
+      PCA fair-value of a sovereign curve: for each tenor, the residual of
+      the observed yield vs its top-k principal-component reconstruction
+      (positive = cheap, negative = rich, in bps), with the richest/cheapest
+      point ranked and named, plus the fitted PCA model state (loadings,
+      explained-variance). A Bucket-2 model-state primitive over the
+      shipped reconstruct_from_factors operator. Describes relative value;
+      never a forecast or a buy/sell recommendation.
+
+    bucket_rationale: >-
+      Bucket-2: the fitted PCA model state rides in the operator's lineage
+      and is surfaced in current_metrics. The primitive carries the FINANCE
+      (curve assembly, ranking/naming the rich/cheap point) and ZERO
+      statistical math — the correlation-PCA + reconstruction is the
+      finance-blind reconstruct_from_factors operator, which explicitly
+      defers naming the richness to this primitive.
+
+    pm_overridable:
+      - curve_family
+      - tenors
+      - focus_tenor
+      - lookback_days
+
+    related_tools:
+      - calculate_pca_yield_curve_tool
+      - calculate_butterfly_tool
+      - build_sovereign_yield_panel_tool
+
+    workflows:
+      - analysis
+
+    references:
+      - tmp/fable_plan_2.md  # §7-B — Bucket-2 model-state primitives
+
+    built_date: 2026-06-13
+    validation_status: >-
+      Not validated yet
+
+  # ---------------------------------------------------------------------------
   # BOND-IMPLIED BREAKEVEN INFLATION (cross-domain composition: nominal − linker)
   # ---------------------------------------------------------------------------
 

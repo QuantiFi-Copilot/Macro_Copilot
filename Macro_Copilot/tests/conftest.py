@@ -71,6 +71,7 @@ collect_ignore = [
     "test_ois_forward_rate_sql_validation.py",
     "test_otr_ofr_spread_sql_validation.py",
     "test_sovereign_curve_regime_sql_validation.py",
+    "test_curve_fair_value_sql_validation.py",
     "test_policy_futures_futures_butterfly_simple_sql_validation.py",
     "test_policy_futures_futures_calendar_spread_sql_validation.py",
     "test_policy_futures_futures_cross_market_spread_sql_validation.py",

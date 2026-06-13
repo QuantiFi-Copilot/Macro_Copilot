@@ -186,6 +186,12 @@ from rates_agent.sovereign_bonds.tools.sovereign_curve_regime import (
     SovereignCurveRegimeOutput,
     calculate_sovereign_curve_regime,
 )
+from rates_agent.sovereign_bonds.tools.curve_fair_value import (
+    CONFIG_PATH as CURVE_FAIR_VALUE_CONFIG_PATH,
+    CurveFairValueInput,
+    CurveFairValueOutput,
+    calculate_curve_fair_value,
+)
 from rates_agent.sovereign_bonds.tools.breakeven_inflation import (
     CONFIG_PATH as BREAKEVEN_INFLATION_CONFIG_PATH,
     BreakevenInflationInput,
@@ -714,6 +720,18 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         output_field_units={
             # Categorical regime labels — eigen-/factor-level (non-arith).
             "time_series_regime": "factor_level",
+        },
+    ),
+    # Bucket-2 PCA curve fair-value.  The composable headline is the focus
+    # tenor's residual history (bps); the bridge lifts it BRIDGEABLE_SERIES.
+    "calculate_curve_fair_value_tool": PrimitiveSpec(
+        tool_name="calculate_curve_fair_value_tool",
+        callable=calculate_curve_fair_value,
+        input_class=CurveFairValueInput,
+        output_class=CurveFairValueOutput,
+        config_path=CURVE_FAIR_VALUE_CONFIG_PATH,
+        output_field_units={
+            "time_series_residual": "bps",
         },
     ),
     "calculate_breakeven_inflation_tool": PrimitiveSpec(

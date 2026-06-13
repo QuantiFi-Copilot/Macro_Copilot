@@ -125,6 +125,14 @@ from rates_agent.sovereign_bonds.tools.sovereign_curve_regime.schemas import (
     SovereignCurveRegimeTimeSeriesRow,
     SovereignCurveRegimeOutput,
 )
+# Bucket-2 PCA curve fair-value primitive.
+from rates_agent.sovereign_bonds.tools.curve_fair_value.schemas import (
+    CurveFairValueInput,
+    TenorRichness,
+    CurveFairValueCurrentMetrics,
+    CurveFairValueTimeSeriesRow,
+    CurveFairValueOutput,
+)
 
 __all__ = [
     "CurveSpreadInput", "CurveSpreadCurrentMetrics", "CurveSpreadTimeSeriesRow", "CurveSpreadOutput",
@@ -137,4 +145,5 @@ __all__ = [
     "OtrOfrSpreadInput", "OtrOfrSpreadCurrentMetrics", "OtrOfrSpreadTimeSeriesRow", "OtrOfrSpreadOutput",
     "NfpSurpriseInput", "NfpSurpriseCurrentMetrics", "NfpSurpriseTimeSeriesRow", "NfpSurpriseOutput",
     "SovereignCurveRegimeInput", "RegimeFeatureMeans", "SovereignCurveRegimeCurrentMetrics", "SovereignCurveRegimeTimeSeriesRow", "SovereignCurveRegimeOutput",
+    "CurveFairValueInput", "TenorRichness", "CurveFairValueCurrentMetrics", "CurveFairValueTimeSeriesRow", "CurveFairValueOutput",
 ]

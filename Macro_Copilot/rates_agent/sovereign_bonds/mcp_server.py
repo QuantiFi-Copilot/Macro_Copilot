@@ -116,6 +116,11 @@ from rates_agent.sovereign_bonds.tools.sovereign_curve_regime import (  # noqa: 
     SovereignCurveRegimeInput,
     calculate_sovereign_curve_regime,
 )
+from rates_agent.sovereign_bonds.tools.curve_fair_value import (  # noqa: E402
+    CONFIG_PATH as CURVE_FAIR_VALUE_CONFIG_PATH,
+    CurveFairValueInput,
+    calculate_curve_fair_value,
+)
 from shared.schemas import PastedPcaLoadings  # noqa: E402
 from rates_agent.sovereign_bonds.tools.scan_extremes import scan_extremes  # noqa: E402
 from shared.schemas import (  # noqa: E402
@@ -806,6 +811,106 @@ def calculate_sovereign_curve_regime_tool(
     if ts_rows:
         logger.info(
             "Withheld %d regime time_series rows from LLM context.", ts_rows,
+        )
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 4c: curve_fair_value (Bucket-2 model-state primitive)
+# ===========================================================================
+@mcp.tool()
+def calculate_curve_fair_value_tool(
+    curve_family: str,
+    tenors: Optional[List[str]] = None,
+    focus_tenor: str = "10Y",
+    lookback_days: int = 2520,
+    field_name: str = "",
+) -> str:
+    """PCA fair-value of a sovereign curve: for each tenor, the residual of
+    the observed yield vs its top-k principal-component reconstruction
+    (positive = CHEAP, negative = RICH, in bps), with the richest/cheapest
+    point ranked and named.
+
+    This DESCRIBES relative value on the curve we already hold — never a
+    forecast and never a buy/sell recommendation.
+
+    Use this tool when the user asks about:
+    - Which point on the curve is cheap/rich (e.g. "is the 7Y cheap on the
+      UST curve?")
+    - PCA / model fair value, curve relative value, the richest/cheapest
+      tenor
+
+    Parameters
+    ----------
+    curve_family : str
+        Curve identifier, e.g. 'UST', 'DE_BUND'.
+    tenors : list[str], optional
+        The curve points to fit PCA across (>= 4 distinct; default
+        2Y/3Y/5Y/7Y/10Y/30Y).
+    focus_tenor : str, optional
+        Which tenor's residual history is the composable output series
+        (default 10Y; must be one of `tenors`).
+    lookback_days : int, optional
+        Calendar days of history to fit over (default ~10y).
+    field_name : str, optional
+        Bloomberg field.  Leave "" to use the bundled default (YLD_YTM_MID).
+    """
+    field_name_arg = field_name if field_name else None
+    # Omit `tenors` when not supplied so the schema's default set applies
+    # (the List[str] field rejects an explicit None).
+    optional_kwargs = {"tenors": tenors} if tenors else {}
+    try:
+        params = CurveFairValueInput(
+            curve_family=curve_family,
+            focus_tenor=focus_tenor,
+            lookback_days=lookback_days,
+            field_name=field_name_arg,
+            **optional_kwargs,
+        )
+    except ValidationError as exc:
+        logger.warning("Input validation failed: %s", exc)
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"}, default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception("Failed to connect to TimescaleDB")
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"}, default=str,
+        )
+
+    try:
+        cfg = load_tool_config(CURVE_FAIR_VALUE_CONFIG_PATH)
+        result = calculate_curve_fair_value(
+            engine=engine, params=params, config=cfg,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Unhandled error in calculate_curve_fair_value for %s",
+            params.curve_family,
+        )
+        return json.dumps(
+            {"error": f"Calculation failed for {params.curve_family}: {exc}"},
+            default=str,
+        )
+
+    logger.info(
+        "Tool call complete: curve_fair_value %s → %s",
+        params.curve_family, "error" if "error" in result else "OK",
+    )
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    llm_response = {
+        "current_metrics": result.get("current_metrics", {}),
+        "methodology_disclosures": result.get("methodology_disclosures", []),
+    }
+    ts_rows = len(result.get("time_series_by_tenor", []))
+    if ts_rows:
+        logger.info(
+            "Withheld %d residual time_series rows from LLM context.", ts_rows,
         )
     return json.dumps(llm_response, default=str)
 

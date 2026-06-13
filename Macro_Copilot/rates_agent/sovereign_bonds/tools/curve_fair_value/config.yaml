@@ -1,0 +1,111 @@
+# =============================================================================
+# calculate_curve_fair_value_tool — tool configuration
+# =============================================================================
+# A Bucket-2 model-state primitive (plan §7-B).  Assembles one sovereign
+# curve's tenor-yield Panel and runs the finance-blind
+# `reconstruct_from_factors` operator across EVERY tenor to produce each
+# tenor's PCA fair-value residual (observed yield − the top-k principal-
+# component reconstruction).  Positive residual = the yield sits ABOVE its
+# curve-implied fair value = the point is CHEAP; negative = RICH.  The
+# primitive carries THE FINANCE — assembling the curve, RANKING the
+# richest/cheapest point, naming them — and ZERO statistical math (the
+# correlation-PCA + reconstruction is the operator / shared/quant/pca.py).
+#
+# Bucket-2 model-state: the fitted PCA model (loadings, explained-variance
+# ratio) rides in the operator's lineage and is read back into
+# current_metrics — the fit, not just a snapshot.  No new artifact type.
+#
+# DESCRIBE, NOT RECOMMEND / NOT FORECAST: rich/cheap is SURFACED, never a
+# buy/sell verdict.  The loadings are full-sample (fit_scope='full_sample',
+# look-ahead — disclosed); never feed into a point-in-time chain.
+#
+# Cross-config consistency (shared.config.lint): default_field_name and
+# ffill_limit_days MUST agree with the other sovereign tools.
+# =============================================================================
+
+tool:
+  name: calculate_curve_fair_value_tool
+  domain: sovereign_bonds
+  category: quant_standard_analytic
+  description: |
+    PCA fair-value of a sovereign curve: for each tenor, the residual of
+    the observed yield vs its top-k principal-component reconstruction
+    (positive = cheap, negative = rich), in bps.  Surfaces the per-tenor
+    richness, the richest/cheapest point, a full-sample richness z-score,
+    and the fitted PCA model state (loadings, explained-variance).
+    Describes relative value on the curve we already hold — never a
+    forecast or a buy/sell recommendation.
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Bloomberg observation field (cross-config consistency-linted)
+  # ---------------------------------------------------------------------------
+  default_field_name:
+    value: YLD_YTM_MID
+    source: bloomberg_field_convention
+    rationale: >-
+      Mid yield-to-maturity — the standard sovereign-curve field.  Same
+      value as the sibling sovereign tools (lint-enforced).
+
+  # ---------------------------------------------------------------------------
+  # Holiday-gap forward-fill limit (cross-config consistency-linted)
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Maximum consecutive missing days bridged by forward-fill when
+      assembling the tenor panel.  Matches every other rates tool.
+    valid_range: [0, 10]
+
+  # ---------------------------------------------------------------------------
+  # Number of principal components defining "fair value"
+  # ---------------------------------------------------------------------------
+  n_components:
+    value: 3
+    source: industry_standard_3factor
+    rationale: >-
+      Level/slope/curvature — the Litterman-Scheinkman three-factor curve
+      decomposition.  The reconstruction uses the top 3 PCs; the residual
+      is what the first three factors do NOT explain (the idiosyncratic
+      richness of each point).  Same factor count as pca_yield_curve.
+    valid_range: [1, 6]
+
+  # ---------------------------------------------------------------------------
+  # Display rounding for the surfaced bps metrics
+  # ---------------------------------------------------------------------------
+  fair_value_round_decimals:
+    value: 2
+    source: display_convention
+    rationale: >-
+      Decimal places for the surfaced residual (bps), z-scores, and
+      explained-variance ratios.  Display-only — never affects the fit.
+      (Distinct name from sibling tools' rounding conventions — the
+      cross-config consistency lint treats a shared convention NAME as a
+      shared value.)
+    valid_range: [1, 6]
+
+methodology:
+  what_it_does: |
+    Fetches the requested tenor yields for one sovereign curve and
+    assembles them into a wide level Panel.  For each tenor, calls the
+    finance-blind reconstruct_from_factors operator (which fits
+    correlation PCA on the full Panel and emits observed − top-k
+    reconstruction in the tenor's units) to get that tenor's fair-value
+    residual, then scales to bps (×100).  Ranks the tenors by their latest
+    residual to name the cheapest (most positive) and richest (most
+    negative) points, and computes a full-sample z-score of each tenor's
+    residual history (how extreme the current richness is vs its own
+    past).  Reads the fitted PCA model state (loadings, explained-variance
+    ratio, near-degeneracy flag) back out of the operator's lineage and
+    surfaces it.  All statistical math is the operator / shared/quant.
+  assumptions:
+    - "Yields stored as percent (4.25 = 4.25%); residuals reported in bps (×100)."
+    - "Positive residual = observed yield above curve-implied fair = CHEAP; negative = RICH (a description, never a buy/sell signal)."
+    - "FULL-SAMPLE PCA fit (fit_scope='full_sample') — look-ahead; describes relative value over the fitted window, NOT point-in-time, never an as-of chain."
+    - "RAW tenor levels are passed to the operator — it z-scores each column internally (no pre-standardization)."
+  citations: []
+  planned_extensions:
+    - "Rolling / point-in-time fair value (a separate as-of variant) once a rolling-PCA reconstruction operator ships."
+    - "DV01-weighted curve fair value and butterfly fair value."
