@@ -292,6 +292,7 @@ class TestComposerPromptContent:
             "ewm_statistic",
             "fit_garch",
             "fit_ou",
+            "fit_regime_gmm",
             "granger_causality",
             "hp_filter",
             "hurst_exponent",
@@ -363,7 +364,7 @@ class TestComposerPromptContent:
     # (Anthropic-cache-pinned), so the marginal cost of the larger
     # prefix amortizes across calls.  orchestration.md §PR-7's
     # acceptance line is updated in lock-step.
-    _COMPOSER_PROMPT_TOKEN_CAP = 49_000
+    _COMPOSER_PROMPT_TOKEN_CAP = 53_000
 
     def test_prompt_token_budget(self, composer_system_text):
         token_count = approx_tokens(composer_system_text)

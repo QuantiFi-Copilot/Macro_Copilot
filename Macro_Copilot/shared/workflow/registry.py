@@ -239,6 +239,10 @@ from shared.operators.fit_garch import (
     fit_garch, FitGarchParams,
     CONFIG_PATH as _FIT_GARCH_CONFIG_PATH,
 )
+from shared.operators.fit_regime_gmm import (
+    fit_regime_gmm, FitRegimeGmmParams,
+    CONFIG_PATH as _FIT_REGIME_GMM_CONFIG_PATH,
+)
 
 
 # ============================================================================
@@ -1906,6 +1910,57 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "Raises FitGarchError on < 12 finite rows, zero "
                 "variance, MLE non-convergence, a near-integrated/"
                 "degenerate fit, or an interior NaN."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — cross_sectional (A4 model-fit engines):
+    # Gaussian-mixture regime labelling.  One PANEL in (the first
+    # Panel-consuming operator), one Series out (the per-date regime
+    # label, FACTOR_LEVEL units; means/weights in lineage).  n_states
+    # REQUIRED; deterministic + full-sample; math in shared/quant.
+    "fit_regime_gmm": OperatorSpec(
+        operator_name="fit_regime_gmm",
+        callable=fit_regime_gmm,
+        params_class=FitRegimeGmmParams,
+        config_path=_FIT_REGIME_GMM_CONFIG_PATH,
+        input_slots={
+            "features": SlotDescriptor.of(
+                "Panel",
+                (
+                    "The feature Panel to cluster into regimes (>= 2 "
+                    "feature columns; >= max(12, n_states*10) "
+                    "complete-case rows, non-constant features; rows "
+                    "with a NaN feature are dropped and carry a NaN "
+                    "label).  USE when the user asks WHICH REGIME each "
+                    "date is in / to cluster a multi-feature history "
+                    "into states ('what regime is the curve in?', "
+                    "'label the vol/level regimes') — n_states is "
+                    "REQUIRED.  FULL-SAMPLE: the mixture params use the "
+                    "whole Panel (look-ahead disclosed in lineage; "
+                    "never for point-in-time compositions).  DO NOT use "
+                    "for finding WHEN one series broke "
+                    "(changepoint_detection), a fixed per-date "
+                    "statistic over a SeriesSet "
+                    "(cross_sectional_statistic — no fitted model), or "
+                    "any ARITHMETIC on the categorical label."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            (
+                "The per-date regime label (0..K-1) on the full Panel "
+                "index, in FACTOR_LEVEL units (a CATEGORICAL "
+                "NON-arithmetic index — feed transition_events / "
+                "apply_mask, never series_arithmetic; series_key "
+                "regime_gmm__k<K>__<n>feat; NaN on dropped dates).  "
+                "Lineage carries the fitted means/weights/loglik, the "
+                "locked EM/full-covariance/canonical-order spec, "
+                "label_semantics='categorical_nonarithmetic' and "
+                "fit_scope='full_sample'.  Feed transition_events for "
+                "the regime changes.  Raises FitRegimeGmmError on "
+                "missing n_states, < 2 features, too few complete "
+                "rows, a zero-variance column, or EM non-convergence."
             ),
         ),
     ),

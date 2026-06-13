@@ -61,6 +61,7 @@ _V2_CONFORMANT = {
     "demean_cross_section",
     "fit_garch",
     "fit_ou",
+    "fit_regime_gmm",
     "align_series",
     "apply_mask",
     "conditional_aggregate",

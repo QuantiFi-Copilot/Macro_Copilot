@@ -1,0 +1,90 @@
+operator:
+  name: fit_regime_gmm
+  method_family: cross_sectional
+  version: "1.0.0"
+  description: >-
+    Gaussian-mixture regime labelling of a feature Panel (EM in
+    shared/quant/gmm.py), emitting the per-date most-likely REGIME
+    LABEL (0..K-1) as a Series in FACTOR_LEVEL units. Finance-blind:
+    clusters the per-date feature vectors into n_states regimes; the
+    fitted model (means/covariances/weights) rides in lineage (NOT a
+    new artifact type — the naming of regimes is the B2 primitive's
+    job). The label is CATEGORICAL / NON-ARITHMETIC (you cannot average
+    regime 0 and regime 2 — disclosed in lineage; feed transition_events
+    / apply_mask, never an arithmetic operator). DETERMINISTIC: the EM
+    runs on column-standardised features from a fixed-seed k-means++
+    init and the components are relabelled into a canonical order so
+    'state 0' is the same regime across reruns. FULL-SAMPLE fit (params
+    use the whole Panel — never feed into point-in-time compositions).
+    Order-insensitive NaN policy: rows with a NaN feature are dropped
+    (the output carries a NaN label on those dates). Refuses
+    non-convergence and a collapsed component.
+
+# n_states (the number of regimes) is required-no-default (the
+# changepoint n_changepoints precedent). Everything else is design-
+# locked (zero further knobs).
+#
+# DESIGN LOCKS (OPR7, lineage-stamped): full covariances with a ridge;
+# the EM estimator; the fixed-seed k-means++ init
+# (init_method='kmeans2_pp_seed0'); column z-score standardisation; the
+# canonical relabel (ascending standardised-centroid grand-mean); the
+# max_iter/tol/ridge constants. Diagonal/spherical covariances, a
+# state-probabilities Panel output and a Hidden-Markov (temporal
+# transition) variant are declared planned extensions, never silent
+# knobs.
+defaults: {}
+
+methodology:
+  what_it_does: >-
+    Drops rows with any NaN feature (order-insensitive — the per-date
+    clustering is not a sequential recursion, so complete-case dropping
+    is exact; the output carries a NaN label on those dates), then fits
+    a K-component Gaussian mixture by EM on the column-standardised
+    feature matrix: E-step soft-assigns each per-date feature vector to
+    the K Gaussians (log-sum-exp stable), M-step updates the weights,
+    means and full covariances (with a ridge for positive-definiteness),
+    iterating to convergence. The per-date regime label is the
+    most-likely component (argmax responsibility). The components are
+    RELABELLED into a canonical order (ascending by the standardised
+    centroid grand-mean, ties broken lexicographically) so the label
+    assignment is reproducible across reruns and overlapping windows.
+    FACTOR_LEVEL units — a latent-model categorical index, NON-
+    arithmetic (label_semantics='categorical_nonarithmetic' in lineage).
+    fit_scope='full_sample' rides in lineage — the mixture params use
+    the whole Panel, so this DESCRIBES the observed history and is not
+    point-in-time. Refusals: a non-Panel input, fewer than 2 feature
+    columns, fewer than max(12, n_states*10) complete-case rows, a
+    zero-variance feature column, EM non-convergence or a collapsed
+    component.
+  planned_extensions:
+    - "fit_regime_gmm_probs: the per-date state-PROBABILITIES as a Panel — a Panel output, hence a SEPARATE operator (OPR2)."
+    - "fit_regime_hmm: a Hidden-Markov variant with temporal transition probabilities — a distinct model, a separate operator."
+    - "diagonal / spherical covariances: distinct covariance structures — declared, not silent knobs."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Gaussian-mixture regime labelling — ONE Series (the per-date regime index 0..K-1, FACTOR_LEVEL units; a CATEGORICAL non-arithmetic label; means/weights in lineage).
+  when_to_use:
+    - "User asks WHICH REGIME each date is in / to cluster a multi-feature history into states ('what regime is the curve in?', 'label the vol/level regimes of X') — emits the per-date regime index."
+    - "A regime-state Series to condition downstream analysis on (feed transition_events for the regime CHANGES, or apply_mask to slice a series by regime)."
+  when_not_to_use:
+    - "POINT-IN-TIME compositions: the mixture params are fit over the WHOLE Panel (full-sample look-ahead disclosed in lineage); never feed into as-of/walk-forward chains."
+    - "Any ARITHMETIC on the label: the regime index is CATEGORICAL (you cannot average regime 0 and regime 2) — feed transition_events / apply_mask / summarize_series, never series_arithmetic."
+    - "Finding WHEN one series broke (changepoint_detection) or a fixed per-date statistic over a SeriesSet (cross_sectional_statistic — no fitted model)."
+  upstream_requirements:
+    - "Input is ONE Panel (>= 2 feature columns; >= max(12, n_states*10) complete-case rows; non-constant features).  Rows with a NaN feature are dropped (the output carries a NaN label there).  n_states (the number of regimes) is REQUIRED."
+  downstream_pattern:
+    - "Output is a Series (the regime label; series_key regime_gmm__k<K>__<n>feat) in FACTOR_LEVEL units on the full Panel index.  Lineage records the fitted means/weights/loglik, the locked EM/full-cov/canonical-order spec and fit_scope='full_sample'.  Feed transition_events (regime changes) or apply_mask (slice by regime)."
+  knobs_quick_ref:
+    n_states: "REQUIRED — the number of regimes K (>= 2)."
+  example_shapes:
+    - description: "Label the regimes of a [level, slope, curvature] feature panel into 3 states."
+      shape: "[Panel of features] -> fit_regime_gmm(n_states=3) -> Series  -> transition_events  [the regime changes]"
+  sibling_operators:
+    - changepoint_detection: "Finds structural BREAKS in ONE continuous series (EventSet); fit_regime_gmm clusters a MULTIVARIATE Panel into labelled regimes."
+    - transition_events: "The state-CHANGES of an already-labelled series — the natural consumer of this operator's regime-label output."
+    - cross_sectional_statistic: "A FIXED per-date statistic over a SeriesSet (no fitted model); fit_regime_gmm fits a multivariate clustering model."
+  intent_hints: [event_regime]

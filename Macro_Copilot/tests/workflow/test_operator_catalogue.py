@@ -76,14 +76,17 @@ from shared.workflow.operator_catalogue import (
 # stationarity_adf/ljung_box/normality_test/variance_ratio/
 # hurst_exponent — plus the A1 cycle filters etc.), measuring 36.4k at
 # the ~830-token average, and the A4 model engines will push it higher.
-# The TOTAL cap is therefore raised to 40k — the fleet-size budget
-# scales mechanically with operator count (the same growth the count
-# pin tracks), and 40k still leaves >150k for the rest of the L3 prompt
-# + tool messages on a 200k window.  The PER-CARD cap is UNCHANGED at
-# 1,000: card discipline is enforced per operator (every card is under
-# it); the total is only the fleet-size budget.
+# The A4 model-fit engines (fit_ou / changepoint_detection / fit_garch /
+# fit_regime_gmm ...) push the fleet to 48, and the catalogue measures
+# ~39.2k at the ~830-token average — so the TOTAL cap is raised again
+# to 44k.  The fleet-size budget scales mechanically with operator
+# count (the same growth the count pin tracks), and 44k still leaves
+# >150k for the rest of the L3 prompt + tool messages on a 200k window.
+# The PER-CARD cap is UNCHANGED at 1,000: card discipline is enforced
+# per operator (every card is under it); the total is only the
+# fleet-size budget.
 _PER_CARD_TOKEN_CAP = 1_000
-_TOTAL_CATALOGUE_TOKEN_CAP = 40_000
+_TOTAL_CATALOGUE_TOKEN_CAP = 44_000
 
 
 # Per the plan's "Decisions enforced" #3:
@@ -136,8 +139,8 @@ class TestEveryOperatorHasCard:
     def test_catalogue_size_matches_registry(
         self, catalogue: Dict[str, OperatorCard],
     ) -> None:
-        assert len(catalogue) == len(OPERATOR_REGISTRY) == 47, (
-            f"Expected 47 registered operators; got "
+        assert len(catalogue) == len(OPERATOR_REGISTRY) == 48, (
+            f"Expected 48 registered operators; got "
             f"registry={len(OPERATOR_REGISTRY)} catalogue={len(catalogue)}.  "
             "If this changed deliberately, update the assertion AND review "
             "tmp/orchestration.md §2.1 for the operator inventory."
