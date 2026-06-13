@@ -111,6 +111,11 @@ from rates_agent.sovereign_bonds.tools.nfp_surprise import (  # noqa: E402
     NfpSurpriseInput,
     calculate_nfp_surprise,
 )
+from rates_agent.sovereign_bonds.tools.sovereign_curve_regime import (  # noqa: E402
+    CONFIG_PATH as SOVEREIGN_CURVE_REGIME_CONFIG_PATH,
+    SovereignCurveRegimeInput,
+    calculate_sovereign_curve_regime,
+)
 from shared.schemas import PastedPcaLoadings  # noqa: E402
 from rates_agent.sovereign_bonds.tools.scan_extremes import scan_extremes  # noqa: E402
 from shared.schemas import (  # noqa: E402
@@ -697,6 +702,111 @@ def calculate_butterfly_tool(
     ts_rows = len(result.get("time_series", []))
     if ts_rows:
         logger.info("Withheld %d time_series rows from LLM context (frontend-only data).", ts_rows)
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 4b: sovereign_curve_regime (Bucket-2 model-state primitive)
+# ===========================================================================
+@mcp.tool()
+def calculate_sovereign_curve_regime_tool(
+    curve_family: str,
+    short_tenor: str = "2Y",
+    belly_tenor: str = "5Y",
+    long_tenor: str = "10Y",
+    n_states: int = 2,
+    lookback_days: int = 2520,
+    field_name: str = "",
+) -> str:
+    """Fit a Gaussian HMM to a sovereign curve's [level, 2s10s slope,
+    curvature, realized-vol] features and label each date's MARKET REGIME.
+
+    Returns the current regime, its descriptive name (ordered by
+    realized-vol: low / intermediate / high volatility), its persistence
+    (the fitted transition-matrix diagonal — how sticky the regime is),
+    the per-regime feature means, and the full regime time series.
+
+    This DESCRIBES which regime each HISTORICAL date sat in (a full-sample
+    fit) — it is NOT a forecast of the next regime and NOT a trade signal.
+
+    Use this tool when the user asks about:
+    - Market regimes / states  (e.g. "what curve regime is the UST in?")
+    - Calm vs stressed / risk-on vs risk-off curve states
+    - Regime persistence / how sticky the current state is
+
+    Parameters
+    ----------
+    curve_family : str
+        Curve identifier, e.g. 'UST', 'DE_BUND', 'UK_GILT'.
+    short_tenor, belly_tenor, long_tenor : str
+        The three curve points (default 2Y/5Y/10Y).  level = long_tenor
+        yield; slope = long − short; curvature = 2×belly − short − long.
+        All three must differ.
+    n_states : int, optional
+        Number of regimes K (default 2 — calm/stressed).
+    lookback_days : int, optional
+        Calendar days of history to fit on (default ~10y).
+    field_name : str, optional
+        Bloomberg field.  Leave "" to use the bundled default_field_name
+        (YLD_YTM_MID).
+    """
+    field_name_arg = field_name if field_name else None
+    try:
+        params = SovereignCurveRegimeInput(
+            curve_family=curve_family, short_tenor=short_tenor,
+            belly_tenor=belly_tenor, long_tenor=long_tenor,
+            n_states=n_states, lookback_days=lookback_days,
+            field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning("Input validation failed: %s", exc)
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"}, default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception("Failed to connect to TimescaleDB")
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"}, default=str,
+        )
+
+    try:
+        cfg = load_tool_config(SOVEREIGN_CURVE_REGIME_CONFIG_PATH)
+        result = calculate_sovereign_curve_regime(
+            engine=engine, params=params, config=cfg,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Unhandled error in calculate_sovereign_curve_regime for %s",
+            params.curve_family,
+        )
+        return json.dumps(
+            {"error": f"Calculation failed for {params.curve_family}: {exc}"},
+            default=str,
+        )
+
+    logger.info(
+        "Tool call complete: curve_regime %s K=%d → %s",
+        params.curve_family, params.n_states,
+        "error" if "error" in result else "OK",
+    )
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Withhold the full per-row regime series + the composable TimeSeries
+    # from the LLM context (frontend / open-DAG data); surface the fitted
+    # snapshot + disclosures only.
+    llm_response = {
+        "current_metrics": result.get("current_metrics", {}),
+        "methodology_disclosures": result.get("methodology_disclosures", []),
+    }
+    ts_rows = len(result.get("time_series", []))
+    if ts_rows:
+        logger.info(
+            "Withheld %d regime time_series rows from LLM context.", ts_rows,
+        )
     return json.dumps(llm_response, default=str)
 
 

@@ -831,6 +831,65 @@ tools:
       Not validated yet
 
   # ---------------------------------------------------------------------------
+  # SOVEREIGN CURVE REGIME (Bucket-2 model-state: HMM regime labels)
+  # ---------------------------------------------------------------------------
+
+  - name: calculate_sovereign_curve_regime
+    domain: rates
+    sub_agent: sovereign_bonds
+    bucket: 2
+    category: regime_model
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/sovereign_bonds/mcp_server.py
+      tool_function: calculate_sovereign_curve_regime_tool
+      schema: rates_agent/sovereign_bonds/tools/sovereign_curve_regime/schemas.py::SovereignCurveRegimeInput
+      compute: rates_agent/sovereign_bonds/tools/sovereign_curve_regime/compute.py::calculate_sovereign_curve_regime
+      config: rates_agent/sovereign_bonds/tools/sovereign_curve_regime/config.yaml
+
+    one_liner: >-
+      The first Bucket-2 model-state primitive: fits a Gaussian HMM to one
+      sovereign curve's [level, 2s10s slope, curvature, realized-vol]
+      features (via the finance-blind fit_regime_hmm operator) and labels
+      each date's regime — surfacing the current regime, its name
+      (low/intermediate/high volatility), its persistence, and the
+      per-regime feature means. Describes which regime history sat in;
+      never a forecast.
+
+    bucket_rationale: >-
+      Bucket-2: the fitted model state (transition matrix, per-state means,
+      loglik) is a first-class output — read back from the operator's
+      lineage and surfaced in current_metrics ("the fit, not just a
+      snapshot"). The primitive carries the FINANCE (which features, what
+      the regimes mean — it names them by realized-vol) and ZERO
+      statistical math: the HMM (Baum-Welch + Viterbi) lives entirely in
+      shared/quant/hmm.py behind the fit_regime_hmm operator.
+
+    pm_overridable:
+      - curve_family
+      - n_states
+      - lookback_days
+      - short_tenor
+      - belly_tenor
+      - long_tenor
+
+    related_tools:
+      - calculate_butterfly_tool
+      - calculate_curve_spread_tool
+      - build_sovereign_yield_panel_tool
+
+    workflows:
+      - analysis
+
+    references:
+      - tmp/fable_plan_2.md  # §7-B — Bucket-2 model-state primitives
+
+    built_date: 2026-06-13
+    validation_status: >-
+      Not validated yet
+
+  # ---------------------------------------------------------------------------
   # BOND-IMPLIED BREAKEVEN INFLATION (cross-domain composition: nominal − linker)
   # ---------------------------------------------------------------------------
 

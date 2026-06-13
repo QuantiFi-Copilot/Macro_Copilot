@@ -115,6 +115,16 @@ from rates_agent.sovereign_bonds.tools.nfp_surprise.schemas import (
     NfpSurpriseTimeSeriesRow,
     NfpSurpriseOutput,
 )
+# Bucket-2 model-state primitive (the first): surfaces the fitted HMM
+# regime model state (transition matrix / per-regime means), not just a
+# current snapshot.
+from rates_agent.sovereign_bonds.tools.sovereign_curve_regime.schemas import (
+    SovereignCurveRegimeInput,
+    RegimeFeatureMeans,
+    SovereignCurveRegimeCurrentMetrics,
+    SovereignCurveRegimeTimeSeriesRow,
+    SovereignCurveRegimeOutput,
+)
 
 __all__ = [
     "CurveSpreadInput", "CurveSpreadCurrentMetrics", "CurveSpreadTimeSeriesRow", "CurveSpreadOutput",
@@ -126,4 +136,5 @@ __all__ = [
     "OtrHistoryInput", "OtrHistoryCurrentMetrics", "OtrHistoryTransitionRow", "OtrHistoryOutput",
     "OtrOfrSpreadInput", "OtrOfrSpreadCurrentMetrics", "OtrOfrSpreadTimeSeriesRow", "OtrOfrSpreadOutput",
     "NfpSurpriseInput", "NfpSurpriseCurrentMetrics", "NfpSurpriseTimeSeriesRow", "NfpSurpriseOutput",
+    "SovereignCurveRegimeInput", "RegimeFeatureMeans", "SovereignCurveRegimeCurrentMetrics", "SovereignCurveRegimeTimeSeriesRow", "SovereignCurveRegimeOutput",
 ]

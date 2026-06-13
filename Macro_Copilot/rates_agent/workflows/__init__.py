@@ -180,6 +180,12 @@ from rates_agent.sovereign_bonds.tools.sovereign_yield_panel import (
     SovereignYieldPanelOutput,
     build_sovereign_yield_panel,
 )
+from rates_agent.sovereign_bonds.tools.sovereign_curve_regime import (
+    CONFIG_PATH as SOV_CURVE_REGIME_CONFIG_PATH,
+    SovereignCurveRegimeInput,
+    SovereignCurveRegimeOutput,
+    calculate_sovereign_curve_regime,
+)
 from rates_agent.sovereign_bonds.tools.breakeven_inflation import (
     CONFIG_PATH as BREAKEVEN_INFLATION_CONFIG_PATH,
     BreakevenInflationInput,
@@ -692,6 +698,23 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             "panel": "percent",
         },
         output_artifact_type="Panel",
+    ),
+    # Bucket-2 model-state primitive (the first).  Emits a canonical
+    # ``time_series_regime`` TimeSeries of categorical regime labels; the
+    # Series bridge lifts it into a FACTOR_LEVEL Series (the same
+    # bridgeable class as pca_yield_curve's pc-factor series).  The
+    # fitted HMM model state rides in the operator's lineage and is
+    # surfaced in current_metrics — never a separate artifact type.
+    "calculate_sovereign_curve_regime_tool": PrimitiveSpec(
+        tool_name="calculate_sovereign_curve_regime_tool",
+        callable=calculate_sovereign_curve_regime,
+        input_class=SovereignCurveRegimeInput,
+        output_class=SovereignCurveRegimeOutput,
+        config_path=SOV_CURVE_REGIME_CONFIG_PATH,
+        output_field_units={
+            # Categorical regime labels — eigen-/factor-level (non-arith).
+            "time_series_regime": "factor_level",
+        },
     ),
     "calculate_breakeven_inflation_tool": PrimitiveSpec(
         tool_name="calculate_breakeven_inflation_tool",
