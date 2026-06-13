@@ -259,6 +259,10 @@ from shared.operators.rolling_pca import (
     rolling_pca, RollingPcaParams,
     CONFIG_PATH as _ROLLING_PCA_CONFIG_PATH,
 )
+from shared.operators.fit_kalman import (
+    fit_kalman, FitKalmanParams,
+    CONFIG_PATH as _FIT_KALMAN_CONFIG_PATH,
+)
 
 
 # ============================================================================
@@ -1980,6 +1984,60 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "Raises RollingPcaError on missing params, < 2 "
                 "features, n_components out of range, an out-of-range "
                 "window, an interior NaN, or a degenerate window."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — statistical_relationship (A4 model engines):
+    # the FILTERED time-varying-parameter regression (a random-walk-
+    # coefficient Kalman filter).  One SeriesSet in (target + regressors),
+    # one SeriesSet out (the filtered beta_<regressor> + alpha paths).
+    # Descriptive current-state read — NO forecast of the observable.
+    "fit_kalman": OperatorSpec(
+        operator_name="fit_kalman",
+        callable=fit_kalman,
+        params_class=FitKalmanParams,
+        config_path=_FIT_KALMAN_CONFIG_PATH,
+        input_slots={
+            "series_set": SlotDescriptor.of(
+                "SeriesSet",
+                (
+                    "An aligned SeriesSet of >= 2 members sharing ONE "
+                    "common index — the target (params.target_key) plus "
+                    ">= 1 regressor.  Canonical upstream is align_series; "
+                    "interior-gap-free (contiguous leading/trailing NaN "
+                    "tolerated, INTERIOR NaN refused).  USE when the user "
+                    "wants how a regression coefficient / BETA has EVOLVED "
+                    "SMOOTHLY over time with NO fixed window ('the "
+                    "time-varying beta of A on B', 'how the hedge ratio "
+                    "drifts') — a recursive (Kalman) estimate weighting "
+                    "all history with decay — or a current-state read of "
+                    "a DYNAMIC relationship (the coefficients that fit "
+                    "NOW).  target_key and signal_to_noise_ratio are "
+                    "REQUIRED.  DO NOT use for a FIXED-WINDOW rolling "
+                    "beta/alpha/R^2 (rolling_regression, two Series in), "
+                    "to FORECAST the dependent series (this NEVER "
+                    "forecasts the observable), or for a single STATIC "
+                    "coefficient (correlation / full-sample regression)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "SeriesSet",
+            (
+                "The FILTERED time-varying coefficients as a SeriesSet — "
+                "one 'beta_<regressor>' member per regressor (RATIO "
+                "units) plus 'alpha' (the target's effective unit) when "
+                "add_constant — on the full input index (NaN in the "
+                "warmup head + edge rows).  beta_{t|t} is the "
+                "CURRENT-STATE read (causal in the state; the noise scale "
+                "is a disclosed full-sample hyperparameter), NOT a "
+                "forecast.  Lineage carries the static-OLS anchor, the "
+                "residual variance R, the signal_to_noise_ratio, the "
+                "diffuse prior and fit_scope='filtered'.  Feed "
+                "select_from_series_set to pull one beta path.  Raises "
+                "FitKalmanError on missing params, an absent target_key, "
+                "< 2 members, too few finite rows, an interior NaN, or a "
+                "rank-deficient design."
             ),
         ),
     ),

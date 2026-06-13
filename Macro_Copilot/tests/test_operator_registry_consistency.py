@@ -60,6 +60,7 @@ _V2_CONFORMANT = {
     "cross_sectional_zscore",
     "demean_cross_section",
     "fit_garch",
+    "fit_kalman",
     "fit_ou",
     "fit_regime_gmm",
     "fit_regime_hmm",

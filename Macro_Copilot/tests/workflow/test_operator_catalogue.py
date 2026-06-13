@@ -79,8 +79,9 @@ from shared.workflow.operator_catalogue import (
 # The A4 model-fit engines push the fleet onward: the full A4 family
 # (fit_ou / changepoint_detection / fit_garch / fit_regime_gmm /
 # pca_decompose / reconstruct_from_factors / fit_regime_hmm /
-# rolling_pca) brings the fleet to 52, measuring ~43.1k at the
-# ~830-token average — so the TOTAL cap is raised again to 46k.  The
+# rolling_pca / fit_kalman — the last engine, the filtered time-varying-
+# parameter Kalman filter) brings the fleet to 53, measuring ~44.9k at
+# the ~830-token average — so the TOTAL cap is raised again to 46k.  The
 # fleet-size budget scales mechanically with operator count (the same
 # growth the count pin tracks), and 46k still leaves >150k for the rest
 # of the L3 prompt + tool messages on a 200k window.  The PER-CARD cap
@@ -140,8 +141,8 @@ class TestEveryOperatorHasCard:
     def test_catalogue_size_matches_registry(
         self, catalogue: Dict[str, OperatorCard],
     ) -> None:
-        assert len(catalogue) == len(OPERATOR_REGISTRY) == 52, (
-            f"Expected 52 registered operators; got "
+        assert len(catalogue) == len(OPERATOR_REGISTRY) == 53, (
+            f"Expected 53 registered operators; got "
             f"registry={len(OPERATOR_REGISTRY)} catalogue={len(catalogue)}.  "
             "If this changed deliberately, update the assertion AND review "
             "tmp/orchestration.md §2.1 for the operator inventory."

@@ -1,0 +1,86 @@
+operator:
+  name: fit_kalman
+  method_family: statistical_relationship
+  version: "1.0.0"
+  description: >-
+    FILTERED time-varying-parameter linear regression of one designated
+    target member of a SeriesSet on the remaining members (a random-walk-
+    coefficient dynamic linear model run as a Kalman FILTER, reusing
+    shared/quant/kalman.py), emitting the filtered coefficient paths
+    beta_{t|t} as a SeriesSet (keys beta_<regressor> in RATIO units, plus
+    a time-varying intercept alpha when add_constant). DESCRIPTIVE, not a
+    forecast: beta_{t|t} is the current-state read of the relationship
+    (which coefficients fit NOW, using observations only up to t) — like
+    the HMM's "which regime now" or rolling_pca's "current loadings"; the
+    operator NEVER emits a one-step-ahead observation forecast nor any
+    coefficient beyond the last observation (fit_scope='filtered').
+    Distinct from rolling_regression's windowed OLS: this is recursive
+    Bayesian state estimation (every past point informs beta_t with
+    decaying weight, no fixed window). Finance-blind. Two-tier NaN:
+    contiguous leading/trailing tolerated; interior refused. Warmup head
+    (first n_params-1 rows) carries NaN.
+
+# target_key and signal_to_noise_ratio are required-no-default (OPR8):
+# which member is the target is an intent choice, and the SNR is the
+# load-bearing adaptivity knob — neither has an honest default.
+#
+# DESIGN LOCKS (OPR7, lineage-stamped): the random-walk-coefficient state
+# model, the diffuse prior (beta_0=0, P_0=kappa*I), the full-sample-OLS
+# noise calibration (R = the static residual variance), and Q = delta * R
+# * I (isotropic). A smoother (beta_{t|T}, full-sample look-ahead), a
+# per-coefficient Q, and an expanding-window noise calibration are
+# declared planned extensions, never silent knobs.
+defaults: {}
+
+methodology:
+  what_it_does: >-
+    Assembles the target + every regressor onto the SeriesSet's common
+    index and applies the two-tier NaN gate (a row is finite iff the
+    target AND every regressor is finite; contiguous leading/trailing
+    tolerated, interior refused — remedy align_series ffill named). Applies
+    the basis (level_change diffs every member; raw_value keeps levels)
+    UNIFORMLY. Calibrates the noise scale ONCE on the full finite block
+    (R = static OLS residual variance; Q = signal_to_noise_ratio * R * I),
+    then runs a single forward Kalman pass from a diffuse zero prior,
+    emitting the filtered coefficient beta_{t|t} at each date. The STATE
+    recursion is causal (each beta_t uses data only up to t); the noise
+    SCALE is a single full-sample hyperparameter (disclosed in lineage as
+    noise_calibration='full_sample_ols_residual_variance') — filtered and
+    causal in the state, NOT the strict truncation-invariance of
+    rolling_pca. Refusals: a non-SeriesSet input, a target_key absent,
+    fewer than 2 members, too few finite rows after the basis, an interior
+    NaN, a rank-deficient/zero-variance design, or a zero-residual fit.
+  planned_extensions:
+    - "Smoother (beta_{t|T}): the full-sample (look-ahead) coefficient path — a separate operator, like pca_decompose is to rolling_pca."
+    - "Per-coefficient process variance Q and an expanding-window (point-in-time) noise calibration: distinct methodology, declared not silent."
+    - "A filtered one-step innovation series: a realized residual diagnostic (never a forecast of the observable)."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator.
+# ============================================================================
+card:
+  one_line: >-
+    FILTERED time-varying regression betas — ONE SeriesSet of the causal coefficient paths (beta_<regressor> RATIO + alpha; current-state read, NOT a forecast).
+  when_to_use:
+    - "User wants how a regression coefficient / beta has EVOLVED smoothly over time with NO fixed window ('time-varying beta of A on B', 'how the hedge ratio drifts') — a recursive (Kalman) estimate weighting all history with decay."
+    - "A current-state read of a DYNAMIC relationship (the coefficients that fit NOW) — descriptive, like the HMM regime or rolling_pca loadings."
+  when_not_to_use:
+    - "A FIXED-WINDOW rolling beta/alpha/R^2 (equal-weight box) — use rolling_regression (two Series in). fit_kalman has no window."
+    - "To FORECAST the dependent series, or for a single static coefficient (correlation / full-sample regression). This NEVER forecasts the observable."
+  upstream_requirements:
+    - "ONE aligned SeriesSet of >= 2 members (target + >= 1 regressor) on a common index; interior-gap-free. Upstream: align_series. target_key and signal_to_noise_ratio REQUIRED."
+  downstream_pattern:
+    - "A SeriesSet (beta_<regressor> RATIO + alpha) on the full input index (NaN warmup head); lineage carries the OLS anchor, R, the SNR, the diffuse prior, fit_scope='filtered'. Feed select_from_series_set for one beta path."
+  knobs_quick_ref:
+    target_key: "REQUIRED — which SeriesSet member is the dependent y (every other member is a regressor)."
+    signal_to_noise_ratio: "REQUIRED — delta=Q/R; larger ⇒ faster-moving coefficients, smaller ⇒ stiffer (near static OLS)."
+    basis: "raw_value | level_change (uniform; default level_change)."
+    add_constant: "fit the time-varying intercept alpha (default True)."
+  example_shapes:
+    - description: "Time-varying beta of series U1 on U2, U3 with a stiff SNR."
+      shape: "[SeriesSet of U1,U2,U3] -> fit_kalman(target_key='U1', signal_to_noise_ratio=0.01) -> SeriesSet -> select_from_series_set(key='beta_U2')"
+  sibling_operators:
+    - rolling_regression: "FIXED-WINDOW OLS beta/alpha/R^2 (two Series in); fit_kalman is the windowless recursive (Kalman) time-varying version."
+    - fit_regime_hmm: "Discrete regime labels; fit_kalman emits continuous time-varying coefficients."
+    - select_from_series_set: "Pulls one beta path out of the output SeriesSet."
+  intent_hints: [relationship]

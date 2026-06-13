@@ -291,6 +291,7 @@ class TestComposerPromptContent:
             "event_windows",
             "ewm_statistic",
             "fit_garch",
+            "fit_kalman",
             "fit_ou",
             "fit_regime_gmm",
             "fit_regime_hmm",
