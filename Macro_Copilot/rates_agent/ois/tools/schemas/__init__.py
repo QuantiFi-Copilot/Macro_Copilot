@@ -132,6 +132,11 @@ __all__ = [
     "OISPolicyPathRegimeCurrentMetrics",
     "OISPolicyPathRegimeTimeSeriesRow",
     "OISPolicyPathRegimeOutput",
+    # swap_carry_and_roll (§7-C analytic)
+    "SwapCarryAndRollInput",
+    "SwapCarryAndRollCurrentMetrics",
+    "SwapCarryAndRollTimeSeriesRow",
+    "SwapCarryAndRollOutput",
 ]
 
 from rates_agent.ois.tools.wirp_meeting_pricing.schemas import (
@@ -146,4 +151,10 @@ from rates_agent.ois.tools.ois_policy_path_regime.schemas import (
     OISPolicyPathRegimeOutput,
     OISPolicyPathRegimeTimeSeriesRow,
     PolicyRegimeFeatureMeans,
+)
+from rates_agent.ois.tools.swap_carry_and_roll.schemas import (
+    SwapCarryAndRollCurrentMetrics,
+    SwapCarryAndRollInput,
+    SwapCarryAndRollOutput,
+    SwapCarryAndRollTimeSeriesRow,
 )

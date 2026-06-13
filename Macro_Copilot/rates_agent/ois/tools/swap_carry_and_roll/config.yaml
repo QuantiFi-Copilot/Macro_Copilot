@@ -1,0 +1,87 @@
+# =============================================================================
+# calculate_swap_carry_and_roll_tool — tool configuration
+# =============================================================================
+# A §7-C data-ready analytic primitive (Bucket-1B; deterministic, no model
+# state).  Decomposes the carry + roll-down of a par OIS swap held over a
+# horizon h, from the OIS par curve we already hold (NOT the cash-bond
+# carry/roll, which is data-gated → DEFER LOG).
+#
+# Decomposition (RECEIVER, annualized bps, curve-unchanged assumption — all
+# disclosed):
+#   roll  = s(T) − s(T−h)    the curve slide-down (reference tenor shortens)
+#   carry = s(T) − s(h)      coupon received minus the horizon OIS financing
+#   total = roll + carry
+# where s(·) is the interpolated par OIS rate (shared/analytics/
+# curve_bootstrap.interpolate_rate) and s(h) approximates the OIS
+# floating-leg financing by the h-tenor par rate.  Pure curve interpolation
+# — no forward-swap-rate / par-as-zero approximation needed.
+#
+# Cross-config consistency (shared.config.lint): default_swap_rate_field and
+# ffill_limit_days MUST agree with the other OIS tools.
+# =============================================================================
+
+tool:
+  name: calculate_swap_carry_and_roll_tool
+  domain: ois
+  category: quant_standard_analytic
+  description: |
+    Carry + roll-down of a par OIS swap held over a horizon, decomposed
+    from the OIS par curve: roll = s(T) − s(T−h) (the curve slide-down),
+    carry = s(T) − s(h) (coupon received minus the horizon OIS financing),
+    total = roll + carry, all in annualized bps for a receiver under the
+    curve-unchanged convention.  Surfaces the current carry / roll / total +
+    the spot, rolled, and financing legs + the full time series.
+
+conventions:
+
+  default_swap_rate_field:
+    value: PX_LAST
+    source: bloomberg_field_convention
+    rationale: >-
+      OIS par swap rate field.  Same value as the other OIS tools
+      (curve_spread / forward_rate / rate_level) — the consistency lint
+      enforces the match.
+
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Maximum consecutive missing days bridged by forward-fill on the
+      carry/roll series.  Matches every other rates tool.
+    valid_range: [0, 10]
+
+  default_horizon:
+    value: 3M
+    source: desk_convention_carry_roll
+    rationale: >-
+      The standard 3-month carry/roll horizon (the desk's most-quoted
+      holding period).  6M is the common alternative; both are valid
+      per-query inputs.
+
+  carry_roll_round_decimals:
+    value: 2
+    source: display_convention
+    rationale: >-
+      Decimal places for the surfaced carry / roll / total (bps) and the
+      spot / forward legs.  Display-only.  (Unique name to clear the
+      cross-config consistency lint.)
+    valid_range: [1, 6]
+
+methodology:
+  what_it_does: |
+    For each trading day, assembles the OIS par curve (sorted tenors, rates
+    in decimal) and interpolates the spot rate at the swap tenor T, the
+    rolled tenor T−h, and the horizon tenor h.  Then roll = s(T) − s(T−h)
+    (the curve slide-down), carry = s(T) − s(h) (coupon minus financing),
+    total = roll + carry, each scaled to bps (×10000).  Emits the current
+    carry/roll/total + the legs and the full series.  Pure deterministic
+    curve interpolation — no model, no fit, no forward approximation.
+  assumptions:
+    - "RECEIVER convention (annualized bps): positive roll = slide down to a lower rate; positive carry = coupon received above the horizon financing — both positive for a receiver on an upward curve."
+    - "s(h) approximates the OIS floating-leg financing by the h-tenor par rate (a standard OIS-curve approximation)."
+    - "CURVE-UNCHANGED carry/roll: assumes the curve is static over the horizon (the standard carry/roll assumption); NOT a forecast."
+    - "Requires T > h (the swap tenor must exceed the horizon) and >= 2 curve tenors to interpolate; days where T is past the quoted grid are skipped."
+  citations: []
+  planned_extensions:
+    - "DV01-scaled carry/roll (needs the analytic swap annuity — see the cross_market_dv01_spread DEFER)."
+    - "Sovereign-curve carry/roll once a non-cash-bond proxy is in scope."

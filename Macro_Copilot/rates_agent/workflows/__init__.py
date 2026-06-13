@@ -204,6 +204,12 @@ from rates_agent.ois.tools.ois_policy_path_regime import (
     OISPolicyPathRegimeOutput,
     calculate_ois_policy_path_regime,
 )
+from rates_agent.ois.tools.swap_carry_and_roll import (
+    CONFIG_PATH as SWAP_CARRY_AND_ROLL_CONFIG_PATH,
+    SwapCarryAndRollInput,
+    SwapCarryAndRollOutput,
+    calculate_swap_carry_and_roll,
+)
 from rates_agent.sovereign_bonds.tools.breakeven_inflation import (
     CONFIG_PATH as BREAKEVEN_INFLATION_CONFIG_PATH,
     BreakevenInflationInput,
@@ -768,6 +774,18 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         config_path=OIS_POLICY_PATH_REGIME_CONFIG_PATH,
         output_field_units={
             "time_series_regime": "factor_level",
+        },
+    ),
+    # §7-C analytic: OIS swap carry + roll-down.  Composable headline = the
+    # total carry+roll history (bps).
+    "calculate_swap_carry_and_roll_tool": PrimitiveSpec(
+        tool_name="calculate_swap_carry_and_roll_tool",
+        callable=calculate_swap_carry_and_roll,
+        input_class=SwapCarryAndRollInput,
+        output_class=SwapCarryAndRollOutput,
+        config_path=SWAP_CARRY_AND_ROLL_CONFIG_PATH,
+        output_field_units={
+            "time_series_total_carry_roll": "bps",
         },
     ),
     "calculate_breakeven_inflation_tool": PrimitiveSpec(

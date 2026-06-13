@@ -536,3 +536,55 @@ tools:
     validation_status: >-
       Not validated yet
 
+  # ---------------------------------------------------------------------------
+  # SWAP CARRY & ROLL (§7-C analytic: OIS curve carry + roll-down)
+  # ---------------------------------------------------------------------------
+
+  - name: calculate_swap_carry_and_roll
+    domain: rates
+    sub_agent: ois
+    bucket: 1B
+    category: carry_roll
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/ois/mcp_server.py
+      tool_function: calculate_swap_carry_and_roll_tool
+      schema: rates_agent/ois/tools/swap_carry_and_roll/schemas.py::SwapCarryAndRollInput
+      compute: rates_agent/ois/tools/swap_carry_and_roll/compute.py::calculate_swap_carry_and_roll
+      config: rates_agent/ois/tools/swap_carry_and_roll/config.yaml
+
+    one_liner: >-
+      Carry + roll-down of a par OIS swap held over a horizon, decomposed
+      from the OIS par curve: roll = s(T) − s(T−h) (the curve slide-down),
+      carry = s(T) − s(h) (coupon minus the horizon financing), total = roll
+      + carry, in bps for a receiver under the curve-unchanged assumption.
+      A §7-C data-ready analytic primitive (deterministic, no model) — NOT a
+      forecast and NOT the data-gated cash-bond carry/roll.
+
+    bucket_rationale: >-
+      Bucket-1B: deterministic curve interpolation (s(T), s(T−h), s(h)) — no
+      model state, no fit.  The analytic OIS carry/roll explicitly distinct
+      from the cash-bond carry/roll, which stays deferred (no per-bond
+      price/coupon/financing data).
+
+    pm_overridable:
+      - curve_family
+      - tenor
+      - horizon
+      - lookback_days
+
+    related_tools:
+      - calculate_ois_forward_rate_tool
+      - calculate_ois_curve_spread_tool
+
+    workflows:
+      - analysis
+
+    references:
+      - tmp/fable_plan_2.md  # §7-C — data-ready analytic primitives
+
+    built_date: 2026-06-13
+    validation_status: >-
+      Not validated yet
+

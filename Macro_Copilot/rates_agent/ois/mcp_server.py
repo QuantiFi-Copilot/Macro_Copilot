@@ -100,6 +100,11 @@ from rates_agent.ois.tools.ois_policy_path_regime import (  # noqa: E402
     OISPolicyPathRegimeInput,
     calculate_ois_policy_path_regime,
 )
+from rates_agent.ois.tools.swap_carry_and_roll import (  # noqa: E402
+    CONFIG_PATH as SWAP_CARRY_AND_ROLL_CONFIG_PATH,
+    SwapCarryAndRollInput,
+    calculate_swap_carry_and_roll,
+)
 from shared.config import load_tool_config  # noqa: E402
 
 logging.basicConfig(
@@ -1428,6 +1433,96 @@ def calculate_ois_policy_path_regime_tool(
         logger.info(
             "[ois_policy_path_regime] withheld %d regime rows from LLM.", ts_rows,
         )
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL: swap_carry_and_roll (§7-C analytic primitive)
+# ===========================================================================
+@mcp.tool()
+def calculate_swap_carry_and_roll_tool(
+    curve_family: str,
+    tenor: str = "10Y",
+    horizon: str = "",
+    lookback_days: int = 365,
+    field_name: str = "",
+) -> str:
+    """Carry + roll-down of a par OIS swap held over a horizon, decomposed
+    from the OIS par curve: roll = s(T) − s(T−h) (the curve slide-down),
+    carry = s(T) − s(h) (coupon minus the horizon financing), total = roll +
+    carry, in bps for a receiver under the curve-unchanged assumption.
+
+    This is a deterministic curve analytic — NOT a forecast.
+
+    Use this tool when the user asks about:
+    - Carry and roll / roll-down of an OIS swap, the carry of receiving N-year
+    - "What's the 3M carry+roll of the 10Y SOFR swap?"
+
+    Parameters
+    ----------
+    curve_family : str
+        OIS curve family, e.g. 'USD_SOFR_OIS'.
+    tenor : str, optional
+        The swap tenor T (default 10Y).
+    horizon : str, optional
+        Holding horizon h, e.g. '3M', '6M'.  Leave "" → config default (3M).
+        Must be shorter than the tenor.
+    lookback_days : int, optional
+        Calendar days of displayed history (default 365).
+    field_name : str, optional
+        OIS rate field.  Leave "" → config default (PX_LAST).
+    """
+    horizon_arg = horizon if horizon else None
+    field_name_arg = field_name if field_name else None
+    try:
+        params = SwapCarryAndRollInput(
+            curve_family=curve_family, tenor=tenor, horizon=horizon_arg,
+            lookback_days=lookback_days, field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning("[swap_carry_and_roll] input validation failed: %s", exc)
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"}, default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception("[swap_carry_and_roll] failed to connect to DB")
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"}, default=str,
+        )
+
+    try:
+        cfg = load_tool_config(SWAP_CARRY_AND_ROLL_CONFIG_PATH)
+        result = calculate_swap_carry_and_roll(
+            engine=engine, params=params, config=cfg,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[swap_carry_and_roll] unhandled error for %s %s",
+            params.curve_family, params.tenor,
+        )
+        return json.dumps(
+            {"error": f"Calculation failed for {params.curve_family} "
+             f"{params.tenor}: {exc}"}, default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[swap_carry_and_roll] tool call complete: %s %s → %s",
+        params.curve_family, params.tenor, status,
+    )
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    llm_response = {
+        k: v for k, v in result.items()
+        if k not in ("time_series", "time_series_total_carry_roll")
+    }
+    ts_rows = len(result.get("time_series") or [])
+    if ts_rows:
+        logger.info("[swap_carry_and_roll] withheld %d rows from LLM.", ts_rows)
     return json.dumps(llm_response, default=str)
 
 
