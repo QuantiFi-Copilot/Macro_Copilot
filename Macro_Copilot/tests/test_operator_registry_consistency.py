@@ -62,6 +62,7 @@ _V2_CONFORMANT = {
     "fit_garch",
     "fit_ou",
     "fit_regime_gmm",
+    "fit_regime_hmm",
     "align_series",
     "apply_mask",
     "conditional_aggregate",

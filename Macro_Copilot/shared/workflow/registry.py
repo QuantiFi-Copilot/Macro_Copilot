@@ -243,6 +243,10 @@ from shared.operators.fit_regime_gmm import (
     fit_regime_gmm, FitRegimeGmmParams,
     CONFIG_PATH as _FIT_REGIME_GMM_CONFIG_PATH,
 )
+from shared.operators.fit_regime_hmm import (
+    fit_regime_hmm, FitRegimeHmmParams,
+    CONFIG_PATH as _FIT_REGIME_HMM_CONFIG_PATH,
+)
 from shared.operators.pca_decompose import (
     pca_decompose, PcaDecomposeParams,
     CONFIG_PATH as _PCA_DECOMPOSE_CONFIG_PATH,
@@ -2028,6 +2032,62 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "features, n_components out of [1, n_features], too few "
                 "complete rows, a zero-variance column, or a "
                 "rank-deficient component."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — cross_sectional (A4 model-fit engines):
+    # Gaussian Hidden-Markov regime labelling (the TEMPORAL sibling of
+    # fit_regime_gmm).  One PANEL in, one Series out (the Viterbi-decoded
+    # per-date regime label, FACTOR_LEVEL units; transition matrix +
+    # initial dist + means in lineage).  n_states REQUIRED; two-tier NaN
+    # (interior refused); deterministic + full-sample; math in
+    # shared/quant.
+    "fit_regime_hmm": OperatorSpec(
+        operator_name="fit_regime_hmm",
+        callable=fit_regime_hmm,
+        params_class=FitRegimeHmmParams,
+        config_path=_FIT_REGIME_HMM_CONFIG_PATH,
+        input_slots={
+            "features": SlotDescriptor.of(
+                "Panel",
+                (
+                    "The feature Panel to label into PERSISTENT "
+                    "regimes (>= 2 feature columns; >= max(12, "
+                    "n_states*10) contiguous finite rows, non-constant; "
+                    "contiguous leading/trailing NaN rows tolerated as "
+                    "NaN labels, an INTERIOR NaN row REFUSED — the "
+                    "transition counts run over adjacent rows).  USE "
+                    "when the user asks WHICH REGIME each date is in "
+                    "WITH temporal persistence ('the regime path of the "
+                    "curve', 'label the persistent vol/level regimes') "
+                    "— the HMM transition matrix smooths the sequence "
+                    "(Viterbi decode).  n_states is REQUIRED.  "
+                    "FULL-SAMPLE: the params and the path use the whole "
+                    "sequence (look-ahead in lineage; never for "
+                    "point-in-time).  DO NOT use for DATE-INDEPENDENT "
+                    "clustering (fit_regime_gmm — no persistence), "
+                    "structural breaks in ONE series "
+                    "(changepoint_detection), or any ARITHMETIC on the "
+                    "categorical label."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            (
+                "The Viterbi-decoded per-date regime label (0..K-1) on "
+                "the full Panel index, in FACTOR_LEVEL units (a "
+                "CATEGORICAL NON-arithmetic index — feed "
+                "transition_events / apply_mask, never series_arithmetic;"
+                " series_key regime_hmm__k<K>__<n>feat; NaN on edge "
+                "rows).  Lineage carries the fitted transition matrix, "
+                "the initial distribution, the means, "
+                "decode_method='viterbi', label_semantics="
+                "'categorical_nonarithmetic' and fit_scope="
+                "'full_sample'.  Feed transition_events for the regime "
+                "changes.  Raises FitRegimeHmmError on missing n_states, "
+                "< 2 features, too few rows, a zero-variance column, an "
+                "interior NaN, or EM non-convergence."
             ),
         ),
     ),

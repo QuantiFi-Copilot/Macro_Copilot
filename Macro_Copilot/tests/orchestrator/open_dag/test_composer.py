@@ -293,6 +293,7 @@ class TestComposerPromptContent:
             "fit_garch",
             "fit_ou",
             "fit_regime_gmm",
+            "fit_regime_hmm",
             "granger_causality",
             "hp_filter",
             "hurst_exponent",

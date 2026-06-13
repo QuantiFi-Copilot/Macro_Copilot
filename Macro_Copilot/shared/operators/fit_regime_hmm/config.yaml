@@ -1,0 +1,93 @@
+operator:
+  name: fit_regime_hmm
+  method_family: cross_sectional
+  version: "1.0.0"
+  description: >-
+    Gaussian Hidden-Markov regime labelling of a feature Panel
+    (Baum-Welch EM in shared/quant/hmm.py), emitting the VITERBI-decoded
+    per-date REGIME LABEL (0..K-1) as a Series in FACTOR_LEVEL units.
+    The TEMPORAL sibling of fit_regime_gmm: it adds a transition matrix
+    so regimes PERSIST (the decoded sequence is temporally smoothed,
+    unlike the gmm's date-independent labels). Finance-blind. The fitted
+    model (transition matrix, initial distribution, means) rides in
+    lineage (NOT a new artifact type — naming regimes is the B2
+    primitive's job). The label is CATEGORICAL / NON-ARITHMETIC (feed
+    transition_events / apply_mask, never an arithmetic operator).
+    DETERMINISTIC: standardised features, a fixed-seed k-means++ init, a
+    sticky-diagonal transition init, and a canonical state relabel that
+    permutes the means, the initial distribution AND both axes of the
+    transition matrix consistently. FULL-SAMPLE fit (the params and the
+    Viterbi path use the whole sequence — never point-in-time).
+    Two-tier NaN: contiguous leading/trailing NaN rows tolerated;
+    interior NaN refused (the transition counts run over adjacent rows).
+    Refuses non-convergence and a collapsed state.
+
+# n_states is required-no-default (the fit_regime_gmm precedent).
+# Everything else is design-locked (zero further knobs).
+#
+# DESIGN LOCKS (OPR7, lineage-stamped): full covariances with a ridge;
+# the Baum-Welch estimator; the fixed-seed k-means++ init; the
+# sticky-diagonal (0.9) transition init; column z-score standardisation;
+# the canonical relabel (permuting means/pi/A consistently); the Viterbi
+# decode. A state-probabilities Panel output, a posterior (gamma-argmax)
+# decode and diagonal covariances are declared planned extensions.
+defaults: {}
+
+methodology:
+  what_it_does: >-
+    Tolerates contiguous LEADING/TRAILING NaN rows (a row is NaN iff any
+    feature is; the edges pass through as NaN labels) and REFUSES
+    interior NaN (the HMM is ORDER-SENSITIVE — the forward-backward and
+    the transition counts run over ADJACENT rows, so dropping an
+    interior gap would splice non-adjacent dates and corrupt the
+    transition matrix; the remedy align_series ffill is named). Fits a
+    K-state Gaussian HMM by Baum-Welch on the column-standardised
+    interior block: the E-step computes the forward/backward state
+    posteriors and the pairwise transition posteriors (log-space), the
+    M-step updates the initial distribution, the transition matrix and
+    the Gaussian emissions (with a ridge). The per-date regime label is
+    the VITERBI most-likely path (temporally consistent with the fitted
+    transitions; the marginal gamma-argmax is a planned extension). The
+    states are RELABELLED into a canonical order (ascending standardised
+    centroid grand-mean) — permuting the means, the initial distribution
+    and both axes of the transition matrix — so the labelling is
+    reproducible. FACTOR_LEVEL units — a latent-model categorical index,
+    NON-arithmetic (label_semantics='categorical_nonarithmetic').
+    fit_scope='full_sample' rides in lineage — the params and the
+    Viterbi path use the whole sequence, so this DESCRIBES the observed
+    history and is not point-in-time. Refusals: a non-Panel input, fewer
+    than 2 feature columns, fewer than max(12, n_states*10) contiguous
+    finite rows, a zero-variance feature column, an interior NaN row, EM
+    non-convergence or a collapsed state.
+  planned_extensions:
+    - "fit_regime_hmm_probs: the per-date state-PROBABILITIES as a Panel — a Panel output, hence a SEPARATE operator (OPR2)."
+    - "posterior (gamma-argmax) decode: the marginal-posterior label (vs the Viterbi path) — a declared variant, not a silent knob."
+    - "diagonal / spherical covariances: distinct emission structures — declared, not silent knobs."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Gaussian Hidden-Markov regime labelling (Viterbi) — ONE Series (the per-date regime index 0..K-1, FACTOR_LEVEL; a CATEGORICAL label; regimes PERSIST via a transition matrix in lineage).
+  when_to_use:
+    - "User asks WHICH REGIME each date is in WITH temporal persistence ('label the persistent vol/level regimes of X', 'the regime path of the curve') — the HMM smooths the sequence via a transition matrix."
+    - "A temporally-coherent regime-state Series to condition downstream analysis on (feed transition_events for the regime CHANGES, or apply_mask to slice by regime)."
+  when_not_to_use:
+    - "User wants DATE-INDEPENDENT clustering (no persistence) — fit_regime_gmm (an iid mixture; this adds the transition matrix)."
+    - "POINT-IN-TIME compositions: the params and the Viterbi path use the WHOLE sequence (full-sample look-ahead in lineage); never for as-of/walk-forward chains."
+    - "Any ARITHMETIC on the categorical label, structural breaks in ONE series (changepoint_detection), or a fixed per-date statistic (cross_sectional_statistic)."
+  upstream_requirements:
+    - "Input is ONE Panel (>= 2 feature columns; >= max(12, n_states*10) contiguous finite rows, non-constant).  Contiguous leading/trailing NaN rows are tolerated (NaN labels); an INTERIOR NaN row is refused (fill via align_series).  n_states is REQUIRED."
+  downstream_pattern:
+    - "Output is a Series (the regime label; series_key regime_hmm__k<K>__<n>feat) in FACTOR_LEVEL units on the full Panel index.  Lineage records the transition matrix, the initial distribution, the means, decode_method='viterbi' and fit_scope='full_sample'.  Feed transition_events / apply_mask."
+  knobs_quick_ref:
+    n_states: "REQUIRED — the number of regimes K (>= 2)."
+  example_shapes:
+    - description: "Label the persistent regimes of a [level, slope, vol] feature panel into 3 states."
+      shape: "[Panel of features] -> fit_regime_hmm(n_states=3) -> Series  -> transition_events"
+  sibling_operators:
+    - fit_regime_gmm: "Date-INDEPENDENT clustering (an iid mixture, no persistence); fit_regime_hmm adds a transition matrix so regimes persist (Viterbi-smoothed)."
+    - transition_events: "The state-CHANGES of an already-labelled series — the natural consumer of this operator's regime path."
+    - pca_decompose: "Continuous factor scores of a Panel; fit_regime_hmm emits a discrete persistent regime label."
+  intent_hints: [event_regime]
