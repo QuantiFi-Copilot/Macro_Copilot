@@ -303,6 +303,7 @@ class TestComposerPromptContent:
             "pairwise_spread_matrix",
             "pca_decompose",
             "percentile_rank",
+            "reconstruct_from_factors",
             "regression_residual",
             "resample",
             "rolling_correlation",

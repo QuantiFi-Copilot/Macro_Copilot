@@ -1,0 +1,86 @@
+operator:
+  name: reconstruct_from_factors
+  method_family: cross_sectional
+  version: "1.0.0"
+  description: >-
+    PCA fair-value RESIDUAL of one feature of a Panel (correlation PCA
+    via SVD in shared/quant/pca.py, the pca_decompose twin): re-fits PCA
+    on the feature Panel, reconstructs the target feature from the top-k
+    principal components, and emits the residual (observed minus the
+    PCA-implied level) as a Series in the target column's own units — a
+    DESCRIPTIVE in-sample fair-value gauge. Finance-blind. The loadings
+    are re-fit internally (the plan's SeriesSet->Series cannot be
+    honoured literally — the loadings do not fit the closed artifact
+    family). NOT A VERDICT: it emits the residual number and discloses
+    the sign (positive = observed above the PCA-implied level), but does
+    NOT adjudicate rich/cheap (that is the curve_fair_value B2
+    primitive's job). The residual is SIGN-INVARIANT (independent of the
+    PCA sign convention). FULL-SAMPLE fit (the loadings use the whole
+    Panel — never feed into point-in-time compositions). Order-
+    insensitive NaN policy: rows with a NaN feature are dropped (the
+    residual carries a NaN there).
+
+# n_components and target_column are required-no-default (the
+# pca_decompose precedent). Everything else is design-locked, reused
+# from the pca_decompose twin.
+#
+# DESIGN LOCKS (OPR7, lineage-stamped): correlation PCA (z-score each
+# column), the SVD estimator, the canonical sign convention (irrelevant
+# to the residual, which is sign-invariant, but recorded for the
+# audit). Covariance PCA, an all-columns-residual SeriesSet output and a
+# rolling re-fit are declared planned extensions, never silent knobs.
+defaults: {}
+
+methodology:
+  what_it_does: >-
+    Drops rows with any NaN feature (order-insensitive — the per-date
+    projection is not a sequential recursion, so complete-case dropping
+    is exact; the residual carries a NaN on those dates), sorts the
+    feature columns into a canonical order (so the SVD input is
+    reproducible), z-score-standardises each column, fits the principal
+    components via SVD, reconstructs the target column from the top-k
+    components (X-hat-z = factor_scores . loadings), un-standardises the
+    reconstruction back to the target column's original units (.std +
+    mean), and emits the residual = observed - reconstruction. The
+    residual is in the TARGET column's units (passthrough), NOT
+    FACTOR_LEVEL. It is SIGN-INVARIANT (a component sign flip flips both
+    the scores and the loadings, cancelling). A positive residual means
+    the observed value is ABOVE its PCA-implied level. With n_components
+    equal to the feature count the reconstruction is exact and the
+    residual is ~zero. fit_scope='full_sample' rides in lineage — the
+    loadings use the whole Panel, so this DESCRIBES the observed history
+    and is not point-in-time. Refusals: a non-Panel input, a missing
+    target_column, fewer than 2 feature columns, n_components out of
+    [1, n_features], fewer than max(12, n_features+1) complete-case
+    rows, a zero-variance feature column, a rank-deficient component.
+  planned_extensions:
+    - "all-columns residual: every feature's residual as a SeriesSet (a different output type, hence a SEPARATE operator — OPR2)."
+    - "covariance PCA (demean-only) and a rolling re-fit (point-in-time-safe): distinct methodology — declared, not silent knobs."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    PCA fair-value RESIDUAL of one feature — ONE Series (observed minus the top-k-PC reconstruction, in the target column's units; loadings in lineage).  DESCRIPTIVE, not a verdict.
+  when_to_use:
+    - "User asks how FAR a feature is from its PCA-implied / common-factor level ('how rich/cheap is X vs the factor model?', 'the fair-value residual of X given Y,Z') — emits the residual (the sign gives the direction; it does NOT name rich/cheap)."
+    - "A fair-value signal Series to feed a downstream z-score / threshold read."
+  when_not_to_use:
+    - "POINT-IN-TIME compositions: the loadings are fit over the WHOLE Panel (full-sample look-ahead in lineage); never for as-of/walk-forward chains."
+    - "User wants the FACTORS themselves — pca_decompose (this emits the RESIDUAL of one target); or the residual vs ANOTHER single series — regression_residual; or a buy/sell verdict (a downstream finance primitive)."
+  upstream_requirements:
+    - "Input is ONE Panel (>= 2 feature columns; >= max(12, n_features+1) complete-case rows, non-constant; NaN-feature rows dropped -> NaN residual).  n_components (1..n_features) and target_column (one of the Panel's columns) are REQUIRED."
+  downstream_pattern:
+    - "Output is a Series (the residual; series_key pca_residual__<target>) in the target column's units on the full Panel index.  Lineage records the loadings, explained-variance, the target, the locked correlation-PCA/SVD spec and fit_scope='full_sample'.  Feed rolling_zscore / threshold_events."
+  knobs_quick_ref:
+    n_components: "REQUIRED — the number of principal components defining the reconstruction (1 <= K <= n_features)."
+    target_column: "REQUIRED — the feature whose residual to emit (one of the Panel's columns)."
+  example_shapes:
+    - description: "The fair-value residual of feat_a given a 2-factor reconstruction of [feat_a, feat_b, feat_c]."
+      shape: "[Panel of features] -> reconstruct_from_factors(n_components=2, target_column='feat_a') -> Series  -> rolling_zscore"
+  sibling_operators:
+    - pca_decompose: "Emits the FACTOR scores (a SeriesSet); reconstruct_from_factors emits the RESIDUAL of one target."
+    - regression_residual: "Residual of one series vs ANOTHER single series; this is the residual vs a multi-feature PCA factor model."
+    - rolling_zscore: "Standardises the residual for a rich/cheap read — the natural consumer of this output."
+  intent_hints: [relationship]

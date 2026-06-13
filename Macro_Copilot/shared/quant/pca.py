@@ -189,4 +189,50 @@ def fit_pca(X: np.ndarray, n_components: int) -> PcaFitResult:
     )
 
 
-__all__ = ["fit_pca", "PcaFitResult"]
+def reconstruct_residual(
+    fit: PcaFitResult, X: np.ndarray, target_index: int,
+) -> np.ndarray:
+    """Residual of column ``target_index`` against its top-k PCA
+    reconstruction, in the column's ORIGINAL units.
+
+    The rank-k reconstruction in standardised space is
+    ``X̂z = factor_scores · loadings``; un-standardising column ``j``
+    (``·σ_j + μ_j``) gives the PCA-implied level, and the residual is
+    ``observed − implied``.
+
+    The residual is SIGN-INVARIANT: a principal-component sign flip
+    flips both the scores and the loadings, leaving ``X̂z`` (and hence
+    the residual) unchanged — so it does NOT depend on the PCA sign
+    convention.
+
+    Parameters
+    ----------
+    fit :
+        A :class:`PcaFitResult` from :func:`fit_pca` on ``X``.
+    X :
+        The ORIGINAL (un-standardised) feature matrix the fit was
+        computed on (``(n_rows, n_features)``).
+    target_index :
+        The column whose residual to compute.
+
+    Returns
+    -------
+    np.ndarray
+        The ``(n_rows,)`` residual of the target column in its original
+        units (``observed − top-k-PCA reconstruction``).
+    """
+    arr = np.asarray(X, dtype=float)
+    j = int(target_index)
+    if j < 0 or j >= arr.shape[1]:
+        raise ValueError(
+            f"reconstruct_residual: target_index {j} out of range "
+            f"[0, {arr.shape[1] - 1}]."
+        )
+    xhat_z = fit.factor_scores @ fit.loadings  # rank-k, standardised
+    reconstruction = (
+        xhat_z[:, j] * fit.column_stds[j] + fit.column_means[j]
+    )
+    return arr[:, j] - reconstruction
+
+
+__all__ = ["fit_pca", "reconstruct_residual", "PcaFitResult"]

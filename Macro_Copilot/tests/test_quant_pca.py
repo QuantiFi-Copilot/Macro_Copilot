@@ -16,7 +16,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from shared.quant.pca import PcaFitResult, fit_pca
+from shared.quant.pca import PcaFitResult, fit_pca, reconstruct_residual
 
 
 def _correlated(seed=0, n=500):
@@ -125,6 +125,25 @@ class TestRefusalsAndDisclosure:
         X = np.column_stack([a, 2.0 * a, rng.randn(200)])  # col1 = 2*col0
         with pytest.raises(ValueError, match="rank-deficient"):
             fit_pca(X, 3)
+
+    def test_reconstruct_residual_recovers_planted_eps(self):
+        # The target column is a linear combo of two factors + a known
+        # residual eps; a 2-component reconstruction recovers eps.
+        rng = np.random.RandomState(5)
+        n = 400
+        f1, f2 = rng.randn(n), rng.randn(n)
+        eps = 0.05 * rng.randn(n)
+        target = 1.5 * f1 - 0.8 * f2 + eps
+        X = np.column_stack([f1, f2, target])
+        fit = fit_pca(X, 2)
+        resid = reconstruct_residual(fit, X, 2)
+        assert np.corrcoef(resid, eps)[0, 1] > 0.99
+
+    def test_reconstruct_residual_zero_at_full_rank(self):
+        X = _correlated()
+        fit = fit_pca(X, 3)  # K = n_features -> exact reconstruction
+        for j in range(3):
+            assert np.abs(reconstruct_residual(fit, X, j)).max() < 1e-9
 
     def test_near_degenerate_flag(self):
         # Mutually-ORTHOGONAL +/-1 (Hadamard) columns: after z-scoring

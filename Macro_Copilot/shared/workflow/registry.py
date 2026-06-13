@@ -247,6 +247,10 @@ from shared.operators.pca_decompose import (
     pca_decompose, PcaDecomposeParams,
     CONFIG_PATH as _PCA_DECOMPOSE_CONFIG_PATH,
 )
+from shared.operators.reconstruct_from_factors import (
+    reconstruct_from_factors, ReconstructFromFactorsParams,
+    CONFIG_PATH as _RECONSTRUCT_FROM_FACTORS_CONFIG_PATH,
+)
 
 
 # ============================================================================
@@ -1914,6 +1918,62 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "Raises FitGarchError on < 12 finite rows, zero "
                 "variance, MLE non-convergence, a near-integrated/"
                 "degenerate fit, or an interior NaN."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — cross_sectional (A4 model-fit engines):
+    # PCA fair-value residual.  One PANEL in, one Series out (the target
+    # column's residual = observed - top-k-PC reconstruction, in the
+    # target's units; loadings in lineage).  n_components + target_column
+    # REQUIRED; descriptive (not a verdict); full-sample; math in
+    # shared/quant (the pca_decompose twin).
+    "reconstruct_from_factors": OperatorSpec(
+        operator_name="reconstruct_from_factors",
+        callable=reconstruct_from_factors,
+        params_class=ReconstructFromFactorsParams,
+        config_path=_RECONSTRUCT_FROM_FACTORS_CONFIG_PATH,
+        input_slots={
+            "features": SlotDescriptor.of(
+                "Panel",
+                (
+                    "The feature Panel to reconstruct against (>= 2 "
+                    "feature columns; >= max(12, n_features+1) "
+                    "complete-case rows, non-constant features; rows "
+                    "with a NaN feature are dropped and carry a NaN "
+                    "residual).  USE when the user asks how FAR a "
+                    "feature is from its PCA-implied / common-factor "
+                    "level ('how rich/cheap is X vs the factor "
+                    "model?', 'the fair-value residual of X given "
+                    "Y,Z') — n_components (1..n_features) and "
+                    "target_column (which feature's residual) are "
+                    "REQUIRED.  Emits the residual NUMBER and the sign; "
+                    "it does NOT name rich/cheap.  FULL-SAMPLE: the "
+                    "loadings use the whole Panel (look-ahead disclosed "
+                    "in lineage; never for point-in-time compositions). "
+                    " DO NOT use for the FACTORS themselves "
+                    "(pca_decompose), the residual vs ANOTHER single "
+                    "series (regression_residual), or a buy/sell "
+                    "verdict (a downstream finance primitive)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            (
+                "The target column's PCA fair-value residual (observed "
+                "minus the top-k-PC reconstruction) on the full Panel "
+                "index, in the TARGET column's units (passthrough, NOT "
+                "FACTOR_LEVEL; series_key pca_residual__<target>; NaN "
+                "on dropped dates).  A positive residual = observed "
+                "ABOVE the PCA-implied level (the sign is disclosed, "
+                "not adjudicated).  Lineage records the loadings, "
+                "explained-variance ratios, the target, the locked "
+                "correlation-PCA/SVD spec and fit_scope='full_sample'.  "
+                "Feed rolling_zscore / threshold_events on the "
+                "residual.  Raises ReconstructFromFactorsError on "
+                "missing params, a bad target_column, < 2 features, "
+                "n_components out of range, too few rows, a "
+                "zero-variance column, or a rank-deficient component."
             ),
         ),
     ),
