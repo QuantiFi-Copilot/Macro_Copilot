@@ -32,7 +32,7 @@ Design contract
 from __future__ import annotations
 
 from graphlib import TopologicalSorter
-from typing import Any, Dict, List, Type
+from typing import Any, Dict, List, Tuple, Type
 
 from pydantic import BaseModel
 from sqlalchemy.engine import Engine
@@ -486,10 +486,37 @@ def _format_workflow_lineage_summary(
     chains (right operands of binary operators) are intentionally
     NOT walked — they remain on the structured artifact, same
     discipline as the bridge's reverse path.
+
+    Nodes fed through MULTIPLE DISTINCT input slots (binary operators:
+    series_arithmetic's ``left``/``right``, beta's ``dependent``/
+    ``independent``, …) are annotated with their slot wiring —
+    ``vol_diff(left=select_vol_2y, right=select_vol_30y)`` — because
+    the bare topological order does NOT disclose operand orientation,
+    and the L6 answer layer needs it to narrate subtraction/ratio
+    DIRECTION truthfully (campaign s04: the prose inverted "which vol
+    is higher" off an orientation-blind summary).  Same-slot fan-ins
+    (align_series's repeated ``series_list``) stay unannotated — slot
+    repetition carries no orientation semantics.
     """
+    inbound: Dict[str, List[Tuple[str, str]]] = {}
+    for edge in workflow.edges:
+        inbound.setdefault(edge.target_node_id, []).append(
+            (edge.target_input_slot, edge.source_node_id)
+        )
+
+    def _render(node_id: str) -> str:
+        pairs = inbound.get(node_id, [])
+        distinct_slots = {slot for slot, _ in pairs}
+        if len(pairs) < 2 or len(distinct_slots) < 2:
+            return node_id
+        wired = ", ".join(
+            f"{slot}={src}" for slot, src in sorted(pairs)
+        )
+        return f"{node_id}({wired})"
+
     return (
         f"workflow {workflow.workflow_id}: "
-        + " → ".join(execution_order)
+        + " → ".join(_render(n) for n in execution_order)
     )
 
 

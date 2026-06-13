@@ -326,7 +326,14 @@ scanner / extremes tools sweep the whole universe and rank by z/sigma \
 NATIVELY.  The sigma/z vocabulary does NOT promote a scan to open_dag: the \
 open-DAG lane operates on a FIXED, named set of instruments and has no \
 universe-broadcast operator, so routing a scan there guarantees a refusal.  \
-The derived-transform SCOPE LIMIT above never applies to scans.
+The derived-transform SCOPE LIMIT above never applies to scans.  BOUNDARY: \
+this covers OPEN-ENDED sweeps ("all curves", "everything", a scanner \
+tool's whole universe).  A ranking over an ENUMERATED, NAMED set — "rank \
+the G7 10Y yields by their 1-year z-score", "which of the UST, Bund and \
+Gilt 2s10s is most inverted" — is NOT a scan: it is an open_dag \
+cross-sectional composition (one leaf per named instrument → per-leaf \
+transform → cross_sectional_rank), and routing it to a scanner loses the \
+named-set restriction.
     - POLICY-MEETING PRICING: "how much Fed easing is priced in over the \
 next four meetings?" — the meeting-pricing (WIRP-style) typed card carries \
 per-meeting priced moves natively.  Do NOT route to open_dag to difference \
@@ -2093,6 +2100,14 @@ never flip the sign to fit a narrative ("32 bps of easing priced") \
 the construction doesn't support.  When unsure which direction a \
 sign means, describe the construction ("front-leg minus fourth-leg \
 prints −32 bps") rather than an interpretation.
+   - OPERAND ORIENTATION comes ONLY from the slot annotation in the \
+executed workflow path: a binary node renders as \
+``vol_diff(left=select_vol_2y, right=select_vol_30y)``, and \
+subtract/divide = LEFT minus/over RIGHT.  So a POSITIVE result \
+there means the LEFT arm (2Y) is the larger one.  If the path \
+carries no slot annotation for the deciding node, do NOT name \
+which side is higher/lower — give the magnitude and the \
+construction only.
 
 OUTPUT FORMAT
 
