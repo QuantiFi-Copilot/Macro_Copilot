@@ -105,6 +105,11 @@ from rates_agent.ois.tools.swap_carry_and_roll import (  # noqa: E402
     SwapCarryAndRollInput,
     calculate_swap_carry_and_roll,
 )
+from rates_agent.ois.tools.implied_forward_curve import (  # noqa: E402
+    CONFIG_PATH as IMPLIED_FORWARD_CURVE_CONFIG_PATH,
+    ImpliedForwardCurveInput,
+    calculate_implied_forward_curve,
+)
 from shared.config import load_tool_config  # noqa: E402
 
 logging.basicConfig(
@@ -1115,7 +1120,7 @@ def scan_ois_extremes_tool(
 # ===========================================================================
 # TOOL: compute_financing_rate  (Phase 1 PR 19)
 # ===========================================================================
-from typing import Optional  # noqa: E402
+from typing import List, Optional  # noqa: E402
 
 
 @mcp.tool()
@@ -1523,6 +1528,92 @@ def calculate_swap_carry_and_roll_tool(
     ts_rows = len(result.get("time_series") or [])
     if ts_rows:
         logger.info("[swap_carry_and_roll] withheld %d rows from LLM.", ts_rows)
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL: implied_forward_curve (§7-C analytic primitive — Panel output)
+# ===========================================================================
+@mcp.tool()
+def calculate_implied_forward_curve_tool(
+    curve_family: str,
+    forward_horizon: str = "",
+    anchor_tenors: Optional[List[str]] = None,
+    lookback_days: int = 365,
+    field_name: str = "",
+) -> str:
+    """The implied forward STRIP of an OIS curve: for a fixed forward window
+    (default 1Y), the forward rate anchored at each tenor across the grid
+    (1y1y, 2y1y, 3y1y, …) — the forward curve.
+
+    Use this tool when the user asks about:
+    - The forward curve / forward strip (e.g. "the 1y-forward SOFR curve")
+    - Forwards across the grid (1y1y, 2y1y, 5y1y, …)
+
+    Parameters
+    ----------
+    curve_family : str
+        OIS curve family, e.g. 'USD_SOFR_OIS'.
+    forward_horizon : str, optional
+        The forward window length, e.g. '1Y'.  Leave "" → config default (1Y).
+    anchor_tenors : list[str], optional
+        The anchor tenors (default 1Y/2Y/3Y/5Y/7Y/10Y).
+    lookback_days : int, optional
+        Calendar days of forward-strip history (default 365).
+    field_name : str, optional
+        OIS rate field.  Leave "" → config default (PX_LAST).
+    """
+    horizon_arg = forward_horizon if forward_horizon else None
+    field_name_arg = field_name if field_name else None
+    optional_kwargs = {"anchor_tenors": anchor_tenors} if anchor_tenors else {}
+    try:
+        params = ImpliedForwardCurveInput(
+            curve_family=curve_family, forward_horizon=horizon_arg,
+            lookback_days=lookback_days, field_name=field_name_arg,
+            **optional_kwargs,
+        )
+    except ValidationError as exc:
+        logger.warning("[implied_forward_curve] input validation failed: %s", exc)
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"}, default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception("[implied_forward_curve] failed to connect to DB")
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"}, default=str,
+        )
+
+    try:
+        cfg = load_tool_config(IMPLIED_FORWARD_CURVE_CONFIG_PATH)
+        result = calculate_implied_forward_curve(
+            engine=engine, params=params, config=cfg,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[implied_forward_curve] unhandled error for %s", params.curve_family,
+        )
+        return json.dumps(
+            {"error": f"Calculation failed for {params.curve_family}: {exc}"},
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[implied_forward_curve] tool call complete: %s → %s",
+        params.curve_family, status,
+    )
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Drop the typed Panel artifact (frontend / open-DAG data) from the LLM
+    # response; surface the snapshot + disclosures only.
+    llm_response = {
+        "current_metrics": result.get("current_metrics", {}),
+        "methodology_disclosures": result.get("methodology_disclosures", []),
+    }
     return json.dumps(llm_response, default=str)
 
 

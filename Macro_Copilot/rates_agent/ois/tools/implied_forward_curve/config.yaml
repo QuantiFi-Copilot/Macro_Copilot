@@ -1,0 +1,77 @@
+# =============================================================================
+# calculate_implied_forward_curve_tool — tool configuration
+# =============================================================================
+# A §7-C data-ready analytic primitive (Bucket-1B; deterministic, no model).
+# The forward STRIP: the implied forward rate for a fixed forward window
+# (e.g. 1Y) anchored at each tenor across the curve grid — the 1y-forward
+# curve (1y1y, 2y1y, 3y1y, …), assembled as a Panel.  The generalization of
+# the single-point forward_rate tool to the whole term-structure-of-forwards
+# the desk reads as one object.
+#
+# Reuses shared/analytics/curve_bootstrap.forward_rate_between per anchor —
+# the same par-as-zero engine the forward_rate tool uses (and discloses).
+#
+# Cross-config consistency (shared.config.lint): default_swap_rate_field and
+# ffill_limit_days MUST agree with the other OIS tools.
+# =============================================================================
+
+tool:
+  name: calculate_implied_forward_curve_tool
+  domain: ois
+  category: quant_standard_analytic
+  description: |
+    The implied forward STRIP of an OIS curve: for a fixed forward window
+    (default 1Y), the forward rate anchored at each tenor across the grid
+    (1y1y, 2y1y, 3y1y, …) — the forward curve, assembled as a Panel (rows =
+    dates, columns = <anchor>_fwd).  Surfaces the latest forward-curve
+    cross-section + the full Panel.  A deterministic curve analytic.
+
+conventions:
+
+  default_swap_rate_field:
+    value: PX_LAST
+    source: bloomberg_field_convention
+    rationale: >-
+      OIS par swap rate field.  Same value as the other OIS tools — the
+      consistency lint enforces the match.
+
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Maximum consecutive missing days bridged by forward-fill on the
+      forward strip.  Matches every other rates tool.
+    valid_range: [0, 10]
+
+  default_forward_horizon:
+    value: 1Y
+    source: desk_convention_forward_curve
+    rationale: >-
+      The forward window length (e.g. 1Y → the 1y-forward curve: 1y1y,
+      2y1y, …).  The desk's most-read forward strip; per-query overridable.
+
+  forward_round_decimals:
+    value: 4
+    source: display_convention
+    rationale: >-
+      Decimal places for the surfaced forward rates (percent).  Display-only.
+      (Unique name to clear the cross-config consistency lint.)
+    valid_range: [2, 8]
+
+methodology:
+  what_it_does: |
+    For each trading day, assembles the OIS par curve (sorted tenors, rates
+    in decimal) and, for each requested anchor tenor a, computes the implied
+    forward rate over the window (a, a + horizon) via the par-as-zero forward
+    engine (forward_rate_between).  Assembles the per-anchor forward series
+    into a wide Panel (rows = dates, columns = <anchor>_fwd) and surfaces the
+    latest cross-section.  Pure deterministic curve arithmetic — no model.
+  assumptions:
+    - "Yields/rates stored as percent; forwards surfaced in percent."
+    - "PAR-AS-ZERO approximation for the forward (the forward_rate tool's convention); dual day-count DF convention (simple <=1Y, annual >1Y)."
+    - "Anchors whose forward window (a, a+horizon) falls entirely outside the quoted grid on a given day are skipped (flat extrapolation would be noise)."
+    - "Requires >= 2 curve tenors to interpolate; the forward strip is descriptive, NOT a forecast."
+  citations: []
+  planned_extensions:
+    - "Sovereign-curve forward strip (the same engine on the sovereign yield curve)."
+    - "Forward-curve slope / curvature analytics on the strip."

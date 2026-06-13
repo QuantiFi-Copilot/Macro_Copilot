@@ -588,3 +588,53 @@ tools:
     validation_status: >-
       Not validated yet
 
+  # ---------------------------------------------------------------------------
+  # IMPLIED FORWARD CURVE (§7-C analytic: the forward strip as a Panel)
+  # ---------------------------------------------------------------------------
+
+  - name: calculate_implied_forward_curve
+    domain: rates
+    sub_agent: ois
+    bucket: 1B
+    category: forward_curve
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/ois/mcp_server.py
+      tool_function: calculate_implied_forward_curve_tool
+      schema: rates_agent/ois/tools/implied_forward_curve/schemas.py::ImpliedForwardCurveInput
+      compute: rates_agent/ois/tools/implied_forward_curve/compute.py::calculate_implied_forward_curve
+      config: rates_agent/ois/tools/implied_forward_curve/config.yaml
+
+    one_liner: >-
+      The implied forward STRIP of an OIS curve: for a fixed forward window
+      (default 1Y), the forward rate anchored at each tenor across the grid
+      (1y1y, 2y1y, 3y1y, …) — the forward curve, assembled as a Panel (rows =
+      dates, columns = <anchor>_fwd).  The §7-C generalization of the
+      single-point forward_rate tool to the whole term-structure-of-forwards.
+
+    bucket_rationale: >-
+      Bucket-1B: deterministic par-as-zero forward arithmetic
+      (forward_rate_between per anchor) — no model state.  Emits a typed
+      Panel artifact (BRIDGEABLE_PANEL), the natural forward-curve object.
+
+    pm_overridable:
+      - curve_family
+      - forward_horizon
+      - anchor_tenors
+      - lookback_days
+
+    related_tools:
+      - calculate_ois_forward_rate_tool
+      - build_sovereign_yield_panel_tool
+
+    workflows:
+      - analysis
+
+    references:
+      - tmp/fable_plan_2.md  # §7-C — data-ready analytic primitives
+
+    built_date: 2026-06-13
+    validation_status: >-
+      Not validated yet
+

@@ -137,6 +137,11 @@ __all__ = [
     "SwapCarryAndRollCurrentMetrics",
     "SwapCarryAndRollTimeSeriesRow",
     "SwapCarryAndRollOutput",
+    # implied_forward_curve (§7-C analytic, Panel output)
+    "ImpliedForwardCurveInput",
+    "ForwardCurvePoint",
+    "ImpliedForwardCurveCurrentMetrics",
+    "ImpliedForwardCurveOutput",
 ]
 
 from rates_agent.ois.tools.wirp_meeting_pricing.schemas import (
@@ -157,4 +162,10 @@ from rates_agent.ois.tools.swap_carry_and_roll.schemas import (
     SwapCarryAndRollInput,
     SwapCarryAndRollOutput,
     SwapCarryAndRollTimeSeriesRow,
+)
+from rates_agent.ois.tools.implied_forward_curve.schemas import (
+    ForwardCurvePoint,
+    ImpliedForwardCurveCurrentMetrics,
+    ImpliedForwardCurveInput,
+    ImpliedForwardCurveOutput,
 )

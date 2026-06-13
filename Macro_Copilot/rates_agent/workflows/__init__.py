@@ -210,6 +210,12 @@ from rates_agent.ois.tools.swap_carry_and_roll import (
     SwapCarryAndRollOutput,
     calculate_swap_carry_and_roll,
 )
+from rates_agent.ois.tools.implied_forward_curve import (
+    CONFIG_PATH as IMPLIED_FORWARD_CURVE_CONFIG_PATH,
+    ImpliedForwardCurveInput,
+    ImpliedForwardCurveOutput,
+    calculate_implied_forward_curve,
+)
 from rates_agent.sovereign_bonds.tools.breakeven_inflation import (
     CONFIG_PATH as BREAKEVEN_INFLATION_CONFIG_PATH,
     BreakevenInflationInput,
@@ -787,6 +793,19 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         output_field_units={
             "time_series_total_carry_roll": "bps",
         },
+    ),
+    # §7-C analytic: OIS implied forward strip.  Emits a Panel (rows = dates,
+    # columns = <anchor>_fwd) → BRIDGEABLE_PANEL.
+    "calculate_implied_forward_curve_tool": PrimitiveSpec(
+        tool_name="calculate_implied_forward_curve_tool",
+        callable=calculate_implied_forward_curve,
+        input_class=ImpliedForwardCurveInput,
+        output_class=ImpliedForwardCurveOutput,
+        config_path=IMPLIED_FORWARD_CURVE_CONFIG_PATH,
+        output_field_units={
+            "forward_strip": "percent",
+        },
+        output_artifact_type="Panel",
     ),
     "calculate_breakeven_inflation_tool": PrimitiveSpec(
         tool_name="calculate_breakeven_inflation_tool",
