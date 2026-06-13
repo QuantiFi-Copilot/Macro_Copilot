@@ -216,6 +216,12 @@ from rates_agent.ois.tools.implied_forward_curve import (
     ImpliedForwardCurveOutput,
     calculate_implied_forward_curve,
 )
+from rates_agent.sovereign_bonds.tools.pca_neutral_butterfly_weights import (
+    CONFIG_PATH as PCA_NEUTRAL_BUTTERFLY_WEIGHTS_CONFIG_PATH,
+    PcaNeutralButterflyWeightsInput,
+    PcaNeutralButterflyWeightsOutput,
+    calculate_pca_neutral_butterfly_weights,
+)
 from rates_agent.sovereign_bonds.tools.breakeven_inflation import (
     CONFIG_PATH as BREAKEVEN_INFLATION_CONFIG_PATH,
     BreakevenInflationInput,
@@ -806,6 +812,18 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             "forward_strip": "percent",
         },
         output_artifact_type="Panel",
+    ),
+    # §7-C analytic: PCA-neutral butterfly weights.  Composable headline =
+    # the PCA-neutral fly history (bps).
+    "calculate_pca_neutral_butterfly_weights_tool": PrimitiveSpec(
+        tool_name="calculate_pca_neutral_butterfly_weights_tool",
+        callable=calculate_pca_neutral_butterfly_weights,
+        input_class=PcaNeutralButterflyWeightsInput,
+        output_class=PcaNeutralButterflyWeightsOutput,
+        config_path=PCA_NEUTRAL_BUTTERFLY_WEIGHTS_CONFIG_PATH,
+        output_field_units={
+            "time_series_neutral_fly": "bps",
+        },
     ),
     "calculate_breakeven_inflation_tool": PrimitiveSpec(
         tool_name="calculate_breakeven_inflation_tool",

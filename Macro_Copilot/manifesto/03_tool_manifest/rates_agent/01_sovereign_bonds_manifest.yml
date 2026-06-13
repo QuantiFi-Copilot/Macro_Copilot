@@ -1000,6 +1000,63 @@ tools:
       Not validated yet
 
   # ---------------------------------------------------------------------------
+  # PCA-NEUTRAL BUTTERFLY WEIGHTS (§7-C analytic: the PC-hedged fly weights)
+  # ---------------------------------------------------------------------------
+
+  - name: calculate_pca_neutral_butterfly_weights
+    domain: rates
+    sub_agent: sovereign_bonds
+    bucket: 1B
+    category: relative_value
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/sovereign_bonds/mcp_server.py
+      tool_function: calculate_pca_neutral_butterfly_weights_tool
+      schema: rates_agent/sovereign_bonds/tools/pca_neutral_butterfly_weights/schemas.py::PcaNeutralButterflyWeightsInput
+      compute: rates_agent/sovereign_bonds/tools/pca_neutral_butterfly_weights/compute.py::calculate_pca_neutral_butterfly_weights
+      config: rates_agent/sovereign_bonds/tools/pca_neutral_butterfly_weights/config.yaml
+
+    one_liner: >-
+      The PCA-neutral butterfly weights: the wing weights (w_short, w_long)
+      that make a fly neutral to the first one or two principal components of
+      the curve's yield changes (belly weight fixed). Surfaces the solved
+      weights, the residual per-PC exposures (≈0 on the neutralized PCs, the
+      retained curvature on PC3), and the PCA-neutral fly series in bps. The
+      §7-C PC-hedged-weights counterpart of the fixed-weight butterfly value
+      tool.
+
+    bucket_rationale: >-
+      Bucket-1B: deterministic linear algebra — fit correlation PCA on the
+      yield changes (shared/quant/pca.py), read the loadings at the three fly
+      tenors, and solve a 2×2 for the wing weights. No model state. Distinct
+      from the fixed-weight butterfly VALUE tool — a different output (the
+      PC-hedged weights, not the fly value).
+
+    pm_overridable:
+      - curve_family
+      - short_tenor
+      - belly_tenor
+      - long_tenor
+      - n_pcs_to_neutralize
+      - fit_tenors
+      - lookback_days
+
+    related_tools:
+      - calculate_butterfly_tool
+      - calculate_pca_yield_curve_tool
+
+    workflows:
+      - analysis
+
+    references:
+      - tmp/fable_plan_2.md  # §7-C — data-ready analytic primitives
+
+    built_date: 2026-06-13
+    validation_status: >-
+      Not validated yet
+
+  # ---------------------------------------------------------------------------
   # BOND-IMPLIED BREAKEVEN INFLATION (cross-domain composition: nominal − linker)
   # ---------------------------------------------------------------------------
 

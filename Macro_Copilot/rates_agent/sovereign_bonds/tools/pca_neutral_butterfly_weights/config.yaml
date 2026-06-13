@@ -1,0 +1,93 @@
+# =============================================================================
+# calculate_pca_neutral_butterfly_weights_tool — tool configuration
+# =============================================================================
+# A §7-C data-ready analytic primitive (Bucket-1B; deterministic, no model
+# state).  Solves for the butterfly WING WEIGHTS (w_short, w_long) that make
+# a fly neutral to the first one or two principal components of the curve's
+# yield CHANGES — the PCA-neutral fly the desk trades when it wants belly
+# richness STRIPPED of level/slope (PC1/PC2) exposure.
+#
+# Math: fit correlation PCA on the yield-change panel (shared/quant/pca.py),
+# take the loadings L(tenor, PC_k) at the three fly tenors, and solve the 2×2
+# linear system for the wing weights with the belly weight fixed:
+#   n_pcs=2:  L(short,1)·w_s + L(long,1)·w_l = −belly·L(belly,1)
+#             L(short,2)·w_s + L(long,2)·w_l = −belly·L(belly,2)
+#   n_pcs=1:  L(short,1)·w_s + L(long,1)·w_l = −belly·L(belly,1)   (PC1-neutral)
+#             w_s + w_l = −belly                                   (cash-neutral)
+# The PCA-neutral fly series is w_s·y_short + belly·y_belly + w_l·y_long.
+#
+# Distinct from the `butterfly` tool, which computes the FIXED-weight
+# (2·belly − short − long) fly VALUE; this tool SOLVES for the PC-hedged
+# wing weights instead (a different output, not a re-parameterization).
+#
+# Cross-config consistency (shared.config.lint): default_field_name and
+# ffill_limit_days MUST agree with the other sovereign tools.
+# =============================================================================
+
+tool:
+  name: calculate_pca_neutral_butterfly_weights_tool
+  domain: sovereign_bonds
+  category: quant_standard_analytic
+  description: |
+    The PCA-neutral butterfly weights: the wing weights (w_short, w_long)
+    that make a fly neutral to the first one or two principal components of
+    the curve's yield changes (belly weight fixed).  Surfaces the solved
+    weights, the residual per-PC exposures, and the PCA-neutral fly series
+    (w_short·y_short + belly·y_belly + w_long·y_long, in bps).  A
+    deterministic curve/PCA analytic — no model state.
+
+conventions:
+
+  default_field_name:
+    value: YLD_YTM_MID
+    source: bloomberg_field_convention
+    rationale: >-
+      Mid yield-to-maturity — the standard sovereign field.  Same value as
+      the sibling sovereign tools (lint-enforced).
+
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Maximum consecutive missing days bridged by forward-fill on the yield
+      panel before differencing.  Matches every other rates tool.
+    valid_range: [0, 10]
+
+  belly_weight:
+    value: 2.0
+    source: industry_standard_butterfly
+    rationale: >-
+      The fixed belly (body) weight of the fly — the standard 2× butterfly
+      (long 2 units of belly, short the wings).  The wing weights are solved
+      against this.
+
+  fly_round_decimals:
+    value: 4
+    source: display_convention
+    rationale: >-
+      Decimal places for the surfaced weights, residual PC exposures, and
+      fly (bps).  Display-only.  (Unique name to clear the cross-config
+      consistency lint.)
+    valid_range: [2, 8]
+
+methodology:
+  what_it_does: |
+    Assembles a broad sovereign yield panel (the fit tenors, which always
+    include the three fly tenors), differences it into yield changes, fits
+    correlation PCA on the changes (shared/quant/pca.py; the operator-blind
+    SVD engine), and reads the loadings L(tenor, PC_k) at the three fly
+    tenors.  Solves the 2×2 linear system for the wing weights (belly weight
+    fixed) to zero the fly's net exposure to PC1 (and PC2 when
+    n_pcs_to_neutralize=2; otherwise a cash-neutral normalization).  Reports
+    the solved weights, the residual per-PC exposures (≈0 for the neutralized
+    PCs), and the PCA-neutral fly time series.  Pure deterministic linear
+    algebra — no model state, no fit object.
+  assumptions:
+    - "PCA is fit on yield CHANGES (first differences), the standard basis for movement-neutral fly weights; correlation PCA via SVD (shared/quant/pca.py)."
+    - "Yields stored as percent; the fly series is reported in bps (×100)."
+    - "The belly weight is fixed (config); the two wing weights are solved.  n_pcs_to_neutralize=2 zeroes PC1+PC2 (unique 2×2); =1 zeroes PC1 with a cash-neutral (w_s+w_l=−belly) normalization."
+    - "The three fly tenors must be in the fit-tenor set (auto-unioned); the loadings are FULL-SAMPLE (look-ahead) — a descriptive hedge ratio, NOT a forecast."
+  citations: []
+  planned_extensions:
+    - "Duration/DV01-neutral weights (needs the analytic swap annuity — see the cross_market_dv01_spread DEFER)."
+    - "Rolling / point-in-time PCA-neutral weights once a rolling-PCA loadings operator ships."

@@ -140,6 +140,13 @@ from rates_agent.sovereign_bonds.tools.rates_vol_regime.schemas import (
     RatesVolRegimeTimeSeriesRow,
     RatesVolRegimeOutput,
 )
+from rates_agent.sovereign_bonds.tools.pca_neutral_butterfly_weights.schemas import (
+    PcaNeutralButterflyWeightsInput,
+    PcResidualExposure,
+    PcaNeutralButterflyWeightsCurrentMetrics,
+    PcaNeutralButterflyWeightsTimeSeriesRow,
+    PcaNeutralButterflyWeightsOutput,
+)
 
 __all__ = [
     "CurveSpreadInput", "CurveSpreadCurrentMetrics", "CurveSpreadTimeSeriesRow", "CurveSpreadOutput",
@@ -154,4 +161,5 @@ __all__ = [
     "SovereignCurveRegimeInput", "RegimeFeatureMeans", "SovereignCurveRegimeCurrentMetrics", "SovereignCurveRegimeTimeSeriesRow", "SovereignCurveRegimeOutput",
     "CurveFairValueInput", "TenorRichness", "CurveFairValueCurrentMetrics", "CurveFairValueTimeSeriesRow", "CurveFairValueOutput",
     "RatesVolRegimeInput", "RatesVolRegimeCurrentMetrics", "RatesVolRegimeTimeSeriesRow", "RatesVolRegimeOutput",
+    "PcaNeutralButterflyWeightsInput", "PcResidualExposure", "PcaNeutralButterflyWeightsCurrentMetrics", "PcaNeutralButterflyWeightsTimeSeriesRow", "PcaNeutralButterflyWeightsOutput",
 ]

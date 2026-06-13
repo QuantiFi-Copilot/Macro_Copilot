@@ -126,6 +126,11 @@ from rates_agent.sovereign_bonds.tools.rates_vol_regime import (  # noqa: E402
     RatesVolRegimeInput,
     calculate_rates_vol_regime,
 )
+from rates_agent.sovereign_bonds.tools.pca_neutral_butterfly_weights import (  # noqa: E402
+    CONFIG_PATH as PCA_NEUTRAL_BUTTERFLY_WEIGHTS_CONFIG_PATH,
+    PcaNeutralButterflyWeightsInput,
+    calculate_pca_neutral_butterfly_weights,
+)
 from shared.schemas import PastedPcaLoadings  # noqa: E402
 from rates_agent.sovereign_bonds.tools.scan_extremes import scan_extremes  # noqa: E402
 from shared.schemas import (  # noqa: E402
@@ -1006,6 +1011,103 @@ def calculate_rates_vol_regime_tool(
     if ts_rows:
         logger.info(
             "Withheld %d conditional-vol rows from LLM context.", ts_rows,
+        )
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 4e: pca_neutral_butterfly_weights (§7-C analytic primitive)
+# ===========================================================================
+@mcp.tool()
+def calculate_pca_neutral_butterfly_weights_tool(
+    curve_family: str,
+    short_tenor: str = "2Y",
+    belly_tenor: str = "5Y",
+    long_tenor: str = "10Y",
+    n_pcs_to_neutralize: int = 2,
+    fit_tenors: Optional[List[str]] = None,
+    lookback_days: int = 2520,
+    field_name: str = "",
+) -> str:
+    """The PCA-neutral butterfly weights: the wing weights (w_short, w_long)
+    that make a fly neutral to the first one or two principal components of
+    the curve's yield changes (belly weight fixed at 2).  Returns the solved
+    weights, the residual per-PC exposures (≈0 for the neutralized PCs, the
+    retained curvature on PC3), and the PCA-neutral fly series in bps.
+
+    This is a deterministic curve/PCA hedge-ratio analytic — NOT a forecast.
+
+    Use this tool when the user asks about:
+    - PCA-neutral / level-and-slope-neutral butterfly weights
+    - The hedge ratios for a fly stripped of PC1/PC2 (level/slope) exposure
+
+    Parameters
+    ----------
+    curve_family : str
+        Sovereign curve family, e.g. 'UST', 'DE_BUND'.
+    short_tenor, belly_tenor, long_tenor : str
+        The fly tenors (default 2Y/5Y/10Y).  All three must differ.
+    n_pcs_to_neutralize : int, optional
+        2 (default) zeroes PC1+PC2; 1 zeroes PC1 with a cash-neutral wing
+        normalization.
+    fit_tenors : list[str], optional
+        The broad tenor set the PCA is fit on (default 2Y/3Y/5Y/7Y/10Y/30Y;
+        the fly tenors are auto-unioned in).
+    lookback_days : int, optional
+        Calendar days of history to fit over (default ~10y).
+    field_name : str, optional
+        Bloomberg field.  Leave "" → config default (YLD_YTM_MID).
+    """
+    field_name_arg = field_name if field_name else None
+    optional_kwargs = {"fit_tenors": fit_tenors} if fit_tenors else {}
+    try:
+        params = PcaNeutralButterflyWeightsInput(
+            curve_family=curve_family, short_tenor=short_tenor,
+            belly_tenor=belly_tenor, long_tenor=long_tenor,
+            n_pcs_to_neutralize=n_pcs_to_neutralize,
+            lookback_days=lookback_days, field_name=field_name_arg,
+            **optional_kwargs,
+        )
+    except ValidationError as exc:
+        logger.warning("Input validation failed: %s", exc)
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"}, default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception("Failed to connect to TimescaleDB")
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"}, default=str,
+        )
+
+    try:
+        cfg = load_tool_config(PCA_NEUTRAL_BUTTERFLY_WEIGHTS_CONFIG_PATH)
+        result = calculate_pca_neutral_butterfly_weights(
+            engine=engine, params=params, config=cfg,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Unhandled error in pca_neutral_butterfly_weights for %s",
+            params.curve_family,
+        )
+        return json.dumps(
+            {"error": f"Calculation failed for {params.curve_family}: {exc}"},
+            default=str,
+        )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    llm_response = {
+        "current_metrics": result.get("current_metrics", {}),
+        "methodology_disclosures": result.get("methodology_disclosures", []),
+    }
+    ts_rows = len(result.get("time_series") or [])
+    if ts_rows:
+        logger.info(
+            "Withheld %d PCA-neutral fly rows from LLM context.", ts_rows,
         )
     return json.dumps(llm_response, default=str)
 
