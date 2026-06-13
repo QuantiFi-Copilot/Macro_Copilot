@@ -235,6 +235,10 @@ from shared.operators.changepoint_detection import (
     changepoint_detection, ChangepointDetectionParams,
     CONFIG_PATH as _CHANGEPOINT_DETECTION_CONFIG_PATH,
 )
+from shared.operators.fit_garch import (
+    fit_garch, FitGarchParams,
+    CONFIG_PATH as _FIT_GARCH_CONFIG_PATH,
+)
 
 
 # ============================================================================
@@ -1849,6 +1853,59 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "for an event study.  Raises "
                 "ChangepointDetectionError on missing n_changepoints, "
                 "too few rows, zero variance, or an interior NaN."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — single_series_transform (A4 model-fit
+    # engines): GARCH(1,1) conditional-volatility fit.  One Series in,
+    # one Series out (the IN-SAMPLE sigma_t path, units passthrough;
+    # omega/alpha/beta/persistence in lineage).  Zero-knob; math in
+    # shared/quant; DESCRIPTIVE (no forecast); REFUSES non-convergence.
+    "fit_garch": OperatorSpec(
+        operator_name="fit_garch",
+        callable=fit_garch,
+        params_class=FitGarchParams,
+        config_path=_FIT_GARCH_CONFIG_PATH,
+        input_slots={
+            "series": SlotDescriptor.of(
+                "Series",
+                (
+                    "The single typed Series whose conditional-"
+                    "volatility path is fitted (>= 12 finite "
+                    "observations — >= ~100 for a stable fit, a thin "
+                    "sample is flagged in lineage; non-constant, "
+                    "interior-gap-free — contiguous leading/trailing "
+                    "warmup NaN passes through, INTERIOR NaN refused).  "
+                    "USE when the user asks how VOLATILITY CLUSTERED "
+                    "over the history / the GARCH conditional-vol path "
+                    "('show the GARCH vol of X') — operates AS GIVEN "
+                    "and does NOT difference internally, so for a "
+                    "PRICE/LEVEL series difference first "
+                    "(series_arithmetic(op='diff')); GARCH is fit to "
+                    "returns.  DESCRIPTIVE, NOT A FORECAST: the output "
+                    "covers the input's OWN dates only (no "
+                    "sigma_{T+1}); FULL-SAMPLE-fitted (never for "
+                    "point-in-time compositions).  DO NOT use for a "
+                    "vol FORECAST (out of scope) or a flat rolling "
+                    "realized vol (rolling_statistic(std))."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            (
+                "The fitted IN-SAMPLE conditional-volatility path "
+                "sigma_t on the input index (in the input's units; "
+                "series_key garch_vol__<key>) — NO row beyond the last "
+                "observation (descriptive, not a forecast).  Lineage "
+                "records omega/alpha/beta, persistence (alpha+beta; a "
+                "near_integrated flag when near 1), mu, loglik, the "
+                "locked GARCH(1,1)-Gaussian-constant-mean spec and "
+                "fit_scope='full_sample'.  Feed summarize_series for "
+                "the vol level or threshold_events for vol spikes.  "
+                "Raises FitGarchError on < 12 finite rows, zero "
+                "variance, MLE non-convergence, a near-integrated/"
+                "degenerate fit, or an interior NaN."
             ),
         ),
     ),

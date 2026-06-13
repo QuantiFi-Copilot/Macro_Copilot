@@ -1,0 +1,89 @@
+operator:
+  name: fit_garch
+  method_family: single_series_transform
+  version: "1.0.0"
+  description: >-
+    GARCH(1,1) conditional-volatility fit of one Series (Gaussian MLE in
+    shared/quant/garch.py), emitting the fitted IN-SAMPLE volatility
+    PATH sigma_t as a Series in the input's units. DESCRIPTIVE, NOT A
+    FORECAST: the output covers the input's OWN dates only (how
+    volatility clustered over the observed history) — there is NO
+    sigma_{T+1}, no projection beyond the last observation. Finance-
+    blind (no annualization). Operates on the series AS GIVEN (does not
+    difference internally — GARCH is conventionally fit to RETURNS, so
+    difference a level first). GARCH(1,1), Gaussian innovations,
+    constant mean and the MLE estimator are design-locked. The
+    parameters are full-sample MLE so the path is full-sample-fitted
+    (fit_scope='full_sample'; never feed into point-in-time
+    compositions). Two-tier NaN: leading/trailing warmup tolerated;
+    interior refused. Refuses non-convergence and a near-integrated /
+    degenerate fit (Bollerslev 1986; Engle 1982).
+
+# fit_garch has ZERO knobs in v1 (the fit_ou precedent) — a GARCH fit
+# has no honest tuning parameter (omega/alpha/beta and the mean are all
+# ESTIMATED, not chosen).
+#
+# DESIGN LOCKS (OPR7, lineage-stamped): GARCH(1,1) order; Gaussian
+# innovations; a constant mean (mu = the sample mean); the Gaussian-MLE
+# estimator (SLSQP from a fixed deterministic start — rerun-identical).
+# Higher GARCH(p,q) orders, Student-t / skew-t innovations, zero-mean /
+# AR-mean models and EGARCH/GJR asymmetry are declared planned
+# extensions, never silent knobs.
+defaults: {}
+
+methodology:
+  what_it_does: >-
+    Tolerates contiguous LEADING/TRAILING warmup NaN (the fit runs on
+    the interior finite block; edges pass through as NaN) and REFUSES
+    interior NaN (the GARCH recursion is SEQUENTIAL over CONTIGUOUS
+    rows; dropping an interior gap would feed the wrong lagged residual
+    and corrupt every downstream sigma — the remedy align_series ffill
+    is named in the refusal). Fits GARCH(1,1) by maximizing the
+    Gaussian log-likelihood of x_t = mu + eps_t, eps_t = sigma_t * z_t,
+    sigma^2_t = omega + alpha*eps^2_{t-1} + beta*sigma^2_{t-1}, with mu
+    the sample mean and the stationarity constraint alpha+beta < 1 (via
+    SLSQP from a fixed deterministic start — rerun-identical). Emits the
+    fitted conditional-volatility path sigma_t on the input's OWN dates
+    (DESCRIPTIVE in-sample — there is NO sigma_{T+1}). Persistence =
+    alpha+beta (near 1 = vol shocks decay slowly; a near-integrated but
+    valid fit is emitted with a near_integrated flag in lineage; only
+    the alpha+beta-at-the-boundary / non-convergent case is refused).
+    Units passthrough — a vol of the input's increments is in the
+    input's units (NO annualization). fit_scope='full_sample' rides in
+    lineage — the params used the whole sample, so this DESCRIBES the
+    observed history and is not point-in-time. Refusals: a non-Series
+    input, fewer than 12 finite observations, zero variance, MLE
+    non-convergence, a near-integrated/degenerate fit, an interior NaN.
+  planned_extensions:
+    - "Higher GARCH(p,q) orders: a distinct model order — declared, not a silent knob."
+    - "Student-t / skew-t innovations and EGARCH/GJR asymmetry: distinct likelihoods — separate methods."
+    - "zero-mean / AR-mean models: a distinct mean specification — a declared variant."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    GARCH(1,1) conditional-volatility fit — ONE Series (the in-sample sigma_t path, input units; omega/alpha/beta/persistence in lineage).  DESCRIPTIVE, not a forecast.
+  when_to_use:
+    - "User asks how VOLATILITY CLUSTERED over the history / the conditional-vol path of a series ('show the GARCH vol of X', 'when was X most volatile, accounting for clustering') — emits the fitted sigma_t path."
+    - "A model-based volatility STATE (with persistence) before a downstream vol read — typically on a RETURNS / differenced series."
+  when_not_to_use:
+    - "User wants a vol FORECAST (sigma next period / ahead) — OUT OF SCOPE: this is a DESCRIPTIVE in-sample fit with NO sigma_{T+1}; we describe, we do not forecast."
+    - "Input is a PRICE/LEVEL series — difference it first (series_arithmetic(op='diff') -> fit_garch); GARCH is fit to returns."
+    - "POINT-IN-TIME / backtest compositions — the params used the WHOLE sample (full-sample-fitted; look-ahead disclosed in lineage)."
+    - "User wants a simple flat rolling realized vol — rolling_statistic(statistic='std') (an equal-weight window, no clustering model)."
+  upstream_requirements:
+    - "Input is ONE Series (any units; conventionally RETURNS), >= 12 finite observations (>= ~100 for a stable fit; a thin sample is flagged in lineage), non-constant, interior-gap-free (contiguous leading/trailing warmup NaN tolerated; INTERIOR NaN refused — fill via align_series)."
+  downstream_pattern:
+    - "Output is a Series (the conditional-vol path; series_key garch_vol__<key>) in the input's units, on the input index (in-sample).  Lineage records omega/alpha/beta/persistence/mu/loglik, the locked GARCH(1,1)-Gaussian spec and fit_scope='full_sample'.  Feed summarize_series for the vol level, or threshold_events for vol spikes."
+  knobs_quick_ref:
+    none: "Zero knobs in v1 — GARCH(1,1)-Gaussian-constant-mean is design-locked; higher orders / Student-t / asymmetry are planned extensions."
+  example_shapes:
+    - description: "Conditional-volatility path of a series' day-over-day returns."
+      shape: "[Series A] -> series_arithmetic(op='diff') -> fit_garch -> Series  [the sigma_t path]"
+  sibling_operators:
+    - rolling_statistic: "An equal-weight rolling realized vol (a flat window, no model); fit_garch fits a conditional-vol model with estimated persistence (clustering)."
+    - fit_ou: "Mean-reversion SPEED (a scalar half-life); fit_garch is the conditional-volatility PATH (a Series)."
+    - hp_filter: "Trend/cycle smoothing; fit_garch is the volatility-state path, not a level smoother."
+  intent_hints: [transform]

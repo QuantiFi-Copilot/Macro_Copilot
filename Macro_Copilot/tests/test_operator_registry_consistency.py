@@ -59,6 +59,7 @@ _V2_CONFORMANT = {
     "cross_sectional_statistic",
     "cross_sectional_zscore",
     "demean_cross_section",
+    "fit_garch",
     "fit_ou",
     "align_series",
     "apply_mask",

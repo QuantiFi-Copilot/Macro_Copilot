@@ -290,6 +290,7 @@ class TestComposerPromptContent:
             "detrend",
             "event_windows",
             "ewm_statistic",
+            "fit_garch",
             "fit_ou",
             "granger_causality",
             "hp_filter",
