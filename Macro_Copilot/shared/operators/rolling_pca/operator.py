@@ -281,7 +281,12 @@ def rolling_pca(
         series_by_key[key] = payload
         units_by_key[key] = TimeSeriesUnits.FACTOR_LEVEL
         missingness_by_key[key] = RawNoCleaning()
-        upstream_lineage_by_key[key] = member_lineage
+        # Per-key UPSTREAM = the input Panel's lineage WITHOUT this step;
+        # SeriesSet.get_series / the downstream SeriesSet transformers
+        # append ``self.lineage.steps[-1]`` (this step), so storing
+        # member_lineage (which already has it) would duplicate it and
+        # break ART9 LIN-2 connectivity.  See the pca_decompose note.
+        upstream_lineage_by_key[key] = features.lineage
 
     return SeriesSet(
         series_by_key=series_by_key,

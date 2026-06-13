@@ -261,7 +261,16 @@ def pca_decompose(
         series_by_key[key] = payload
         units_by_key[key] = TimeSeriesUnits.FACTOR_LEVEL
         missingness_by_key[key] = RawNoCleaning()
-        upstream_lineage_by_key[key] = member_lineage
+        # The per-key UPSTREAM lineage is the input Panel's lineage WITHOUT
+        # this operator's step — ``SeriesSet.get_series`` (and every
+        # downstream SeriesSet transformer: cross_sectional_*, top_n,
+        # demean_cross_section) appends ``self.lineage.steps[-1]`` (this
+        # pca_decompose step) to it.  Storing ``member_lineage`` (which
+        # already contains the step) would duplicate it and break ART9
+        # LIN-2 connectivity downstream.  The factor scores derive from the
+        # whole Panel, so every member shares the Panel's lineage.  Matches
+        # align_series / rolling_regression.
+        upstream_lineage_by_key[key] = features.lineage
 
     return SeriesSet(
         series_by_key=series_by_key,

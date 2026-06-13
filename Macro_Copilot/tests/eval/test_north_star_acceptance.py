@@ -106,35 +106,25 @@ def _workflow_a() -> Workflow:
 
 
 def _workflow_b() -> Workflow:
-    """The curve points' cross-sectional richness, ranked across the universe.
+    """The curve's PCA factor scores, cross-sectionally ranked.
 
-    (Routes around the pca_decompose→cross_sectional_rank chain, which hits a
-    SeriesSet-lineage ART9-connectivity gap — flagged for a separate fix; the
-    PCA-fair-value property is covered by workflow A's reconstruct_from_factors.)
-    """
-    yl = [
-        PrimitiveNode(node_id=f"y{t}", tool_name="get_yield_levels_tool",
-                      output_field="time_series",
-                      params={"curve_family": _CURVE, "tenor": t})
-        for t in ("2Y", "5Y", "10Y", "30Y")
-    ]
+    panel → pca_decompose → cross_sectional_rank — the SeriesSet a
+    pca_decompose emits is consumed by a downstream SeriesSet transformer
+    (the fix for the ART9 SeriesSet-lineage gap this demo originally caught;
+    see tests/test_seriesset_downstream_lineage.py)."""
     return Workflow(
-        workflow_id="north_star_cross_sectional_rank",
+        workflow_id="north_star_pca_cross_sectional_rank",
         nodes=[
-            *yl,
-            OperatorNode(node_id="align", operator_name="align_series"),
-            OperatorNode(node_id="zscore",
-                         operator_name="cross_sectional_zscore"),
+            _panel_node(),
+            OperatorNode(node_id="pca", operator_name="pca_decompose",
+                         params={"n_components": 2}),
             OperatorNode(node_id="rank", operator_name="cross_sectional_rank",
                          params={"rank_method": "ordinal"}),
         ],
         edges=[
-            *[WorkflowEdge(source_node_id=f"y{t}", target_node_id="align",
-                           target_input_slot="series_list")
-              for t in ("2Y", "5Y", "10Y", "30Y")],
-            WorkflowEdge(source_node_id="align", target_node_id="zscore",
-                         target_input_slot="series_set"),
-            WorkflowEdge(source_node_id="zscore", target_node_id="rank",
+            WorkflowEdge(source_node_id="panel", target_node_id="pca",
+                         target_input_slot="features"),
+            WorkflowEdge(source_node_id="pca", target_node_id="rank",
                          target_input_slot="series_set"),
         ],
         terminal_node_id="rank",
@@ -169,7 +159,7 @@ def main(argv=None) -> int:
     cases = [
         ("A: PCA fair-value residual + steepening-regime mask",
          _workflow_a(), Series),
-        ("B: curve-point cross-sectional richness, ranked across the universe",
+        ("B: PCA factor scores cross-sectionally ranked across the universe",
          _workflow_b(), SeriesSet),
     ]
     all_failures: List[str] = []

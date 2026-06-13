@@ -325,7 +325,13 @@ def fit_kalman(
             eff_target_unit if key == "alpha" else TimeSeriesUnits.RATIO
         )
         missingness_by_key[key] = RawNoCleaning()
-        upstream_lineage_by_key[key] = member_lineage
+        # Per-key UPSTREAM = the input SeriesSet's lineage WITHOUT this
+        # step; SeriesSet.get_series / the downstream SeriesSet transformers
+        # append ``self.lineage.steps[-1]`` (this fit_kalman step), so
+        # storing member_lineage (which already has it) would duplicate it
+        # and break ART9 LIN-2 connectivity.  The coefficient paths derive
+        # from the whole input set, so every member shares its lineage.
+        upstream_lineage_by_key[key] = series_set.lineage
 
     return SeriesSet(
         series_by_key=series_by_key,
