@@ -1,0 +1,89 @@
+operator:
+  name: rolling_pca
+  method_family: cross_sectional
+  version: "1.0.0"
+  description: >-
+    POINT-IN-TIME windowed PCA of a feature Panel (correlation PCA via
+    SVD per trailing window, reusing shared/quant/pca.py), emitting the
+    rolling principal-component FACTOR-SCORE time series as a SeriesSet
+    (keys pc1..pcK), every member in FACTOR_LEVEL units. The
+    POINT-IN-TIME complement of pca_decompose: at each date the loadings
+    are re-fit on the STRICTLY TRAILING window, so each score uses ONLY
+    data up to that date (NO look-ahead) — it is SAFE for as-of /
+    walk-forward / backtest chains (the opposite of pca_decompose, which
+    is full-sample and forbids point-in-time use). Finance-blind. Each
+    window's loadings are sign-aligned to the previous window's so the
+    factor series is continuous (the cross-window sign-flip count is a
+    factor-rotation diagnostic in lineage; full Procrustes rotation is a
+    planned extension). Two-tier NaN: contiguous leading/trailing
+    tolerated; interior refused. The warmup head (before the first full
+    window) carries NaN factors.
+
+# window and n_components are required-no-default (the pca_decompose
+# precedent; a factor-structure window is load-bearing methodology).
+# The window is strict full-window-only (no partial-window scores).
+#
+# DESIGN LOCKS (OPR7, lineage-stamped, reused from pca_decompose):
+# correlation PCA (z-score each column), the SVD estimator, the
+# canonical per-window sign + the cross-window dot-product sign
+# alignment. Covariance PCA, a Procrustes factor-rotation alignment and
+# a reconstruct-from-rolling-factors residual are declared planned
+# extensions, never silent knobs.
+defaults: {}
+
+methodology:
+  what_it_does: >-
+    Tolerates contiguous leading/trailing NaN rows (a row is NaN iff any
+    feature is; the edges pass through as NaN factors) and REFUSES
+    interior NaN (a rolling window runs over ADJACENT rows; dropping an
+    interior gap would splice non-adjacent dates into one window — the
+    remedy align_series ffill is named). Sorts the feature columns into
+    a canonical order, then for each date t from the first full window
+    onward fits correlation PCA (z-score the window, SVD) on the
+    STRICTLY TRAILING window [t-W+1, t] and sets the factor score at t to
+    the projection of row t's window-standardised features onto that
+    window's top-n_components components. Because the window is strictly
+    trailing, each score uses ONLY data up to t — POINT-IN-TIME-safe
+    (fit_scope='rolling_window' in lineage; SAFE for as-of/walk-forward
+    chains, unlike the full-sample pca_decompose). Each window's
+    loadings are SIGN-ALIGNED to the previous window's (flip component k
+    when its loading's dot with the previous is negative) so the factor
+    series is continuous; the cross-window sign-flip count rides in
+    lineage as a factor-rotation diagnostic. FACTOR_LEVEL units. The
+    warmup head (before the first full window) carries NaN. Refusals: a
+    non-Panel input, fewer than 2 feature columns, n_components out of
+    [1, n_features], window < n_features+1 (a rank-deficient window) or
+    window > the finite-block length, an interior NaN, a degenerate
+    window.
+  planned_extensions:
+    - "Procrustes factor-rotation alignment: aligns the full subspace across windows (genuine rotation, not just sign) — the plan's factor-rotation detection."
+    - "reconstruct-from-rolling-factors residual: a point-in-time fair-value residual — a separate operator."
+    - "covariance PCA (demean-only) and a partial-window min_periods: distinct methodology — declared, not silent knobs."
+
+# ============================================================================
+# CARD — the L3 Composer's view of this operator (PR-2 of open-DAG PoC).
+# ============================================================================
+card:
+  one_line: >-
+    Point-in-time windowed PCA — ONE SeriesSet of the ROLLING factor scores (pc1..pcK, FACTOR_LEVEL; each score uses only the trailing window — SAFE for walk-forward).
+  when_to_use:
+    - "User wants the principal-component factor scores computed POINT-IN-TIME / for a backtest ('the rolling PCA factors of X,Y,Z', 'factor scores with no look-ahead') — each score uses only its trailing window."
+    - "Detecting factor ROTATION / instability over time (the cross-window sign-flip count + the last window's loadings ride in lineage)."
+  when_not_to_use:
+    - "User wants the SINGLE full-sample factor decomposition (a descriptive read of the whole history) — pca_decompose (this is the windowed, point-in-time version)."
+    - "User wants DISCRETE regime labels (fit_regime_gmm / fit_regime_hmm), or the fair-value residual (the planned reconstruct-from-rolling-factors)."
+  upstream_requirements:
+    - "Input is ONE Panel (>= 2 feature columns; window >= n_features+1 and <= the finite-block length; interior-gap-free — contiguous leading/trailing NaN tolerated, INTERIOR NaN refused).  window and n_components are REQUIRED."
+  downstream_pattern:
+    - "Output is a SeriesSet (keys pc1..pcK) in FACTOR_LEVEL units on the full Panel index (NaN warmup head).  POINT-IN-TIME-safe — feed into as-of / walk-forward chains.  Lineage records the window, the last window's loadings/variance, the sign-flip count and fit_scope='rolling_window'."
+  knobs_quick_ref:
+    window: "REQUIRED — the trailing window length (>= n_features+1)."
+    n_components: "REQUIRED — the number of principal components per window (1 <= K <= n_features)."
+  example_shapes:
+    - description: "Rolling 60-day top-2 factor scores of a [feat_a, feat_b, feat_c] panel for a backtest."
+      shape: "[Panel of features] -> rolling_pca(window=60, n_components=2) -> SeriesSet  -> select_from_series_set(key='pc1')"
+  sibling_operators:
+    - pca_decompose: "The FULL-SAMPLE PCA (look-ahead; one decomposition of the whole history); rolling_pca is the WINDOWED, point-in-time version (safe for walk-forward)."
+    - fit_regime_gmm: "Discrete regime labels of a Panel; rolling_pca emits continuous rolling factor scores."
+    - select_from_series_set: "Pulls one rolling factor Series (pc1) out of the output SeriesSet."
+  intent_hints: [relationship]

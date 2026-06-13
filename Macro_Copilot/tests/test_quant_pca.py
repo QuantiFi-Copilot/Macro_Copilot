@@ -16,7 +16,12 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from shared.quant.pca import PcaFitResult, fit_pca, reconstruct_residual
+from shared.quant.pca import (
+    PcaFitResult,
+    fit_pca,
+    reconstruct_residual,
+    rolling_pca_scores,
+)
 
 
 def _correlated(seed=0, n=500):
@@ -144,6 +149,39 @@ class TestRefusalsAndDisclosure:
         fit = fit_pca(X, 3)  # K = n_features -> exact reconstruction
         for j in range(3):
             assert np.abs(reconstruct_residual(fit, X, j)).max() < 1e-9
+
+    def test_rolling_scores_are_point_in_time(self):
+        # The load-bearing property: the score at t uses ONLY the
+        # trailing window, so truncating the data after t leaves it
+        # byte-identical.
+        rng = np.random.RandomState(7)
+        n = 200
+        drv = np.cumsum(rng.randn(n))
+        X = np.column_stack([drv + 0.3 * rng.randn(n),
+                             drv + 0.3 * rng.randn(n),
+                             rng.randn(n)])
+        full = rolling_pca_scores(X, window=50, n_components=2)
+        trunc = rolling_pca_scores(X[:121], window=50, n_components=2)
+        np.testing.assert_array_equal(full.scores[120], trunc.scores[120])
+
+    def test_rolling_warmup_head_is_nan(self):
+        X = _correlated(n=200)
+        r = rolling_pca_scores(X, window=50, n_components=2)
+        assert np.isnan(r.scores[:49]).all()
+        assert np.isfinite(r.scores[49:]).all()
+        assert r.n_windows == 200 - 50 + 1
+
+    def test_rolling_deterministic(self):
+        X = _correlated(n=200)
+        a = rolling_pca_scores(X, window=50, n_components=2)
+        b = rolling_pca_scores(X, window=50, n_components=2)
+        np.testing.assert_array_equal(a.scores, b.scores, )
+        assert a.n_sign_flips == b.n_sign_flips
+
+    def test_rolling_window_too_large_raises(self):
+        X = _correlated(n=100)
+        with pytest.raises(ValueError, match="exceeds the row count"):
+            rolling_pca_scores(X, window=200, n_components=2)
 
     def test_near_degenerate_flag(self):
         # Mutually-ORTHOGONAL +/-1 (Hadamard) columns: after z-scoring

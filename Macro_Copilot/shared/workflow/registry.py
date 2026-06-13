@@ -255,6 +255,10 @@ from shared.operators.reconstruct_from_factors import (
     reconstruct_from_factors, ReconstructFromFactorsParams,
     CONFIG_PATH as _RECONSTRUCT_FROM_FACTORS_CONFIG_PATH,
 )
+from shared.operators.rolling_pca import (
+    rolling_pca, RollingPcaParams,
+    CONFIG_PATH as _ROLLING_PCA_CONFIG_PATH,
+)
 
 
 # ============================================================================
@@ -1922,6 +1926,60 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                 "Raises FitGarchError on < 12 finite rows, zero "
                 "variance, MLE non-convergence, a near-integrated/"
                 "degenerate fit, or an interior NaN."
+            ),
+        ),
+    ),
+    # Track-A (fable_build) — cross_sectional (A4 model-fit engines):
+    # POINT-IN-TIME windowed PCA (the rolling complement of
+    # pca_decompose).  One PANEL in, one SeriesSet out (the rolling
+    # factor scores pc1..pcK, FACTOR_LEVEL; each score uses only its
+    # trailing window — SAFE for walk-forward).  window + n_components
+    # REQUIRED; sign-aligned across windows; math in shared/quant.
+    "rolling_pca": OperatorSpec(
+        operator_name="rolling_pca",
+        callable=rolling_pca,
+        params_class=RollingPcaParams,
+        config_path=_ROLLING_PCA_CONFIG_PATH,
+        input_slots={
+            "features": SlotDescriptor.of(
+                "Panel",
+                (
+                    "The feature Panel to decompose POINT-IN-TIME (>= 2 "
+                    "feature columns; window >= n_features+1 and <= the "
+                    "finite-block length; interior-gap-free — contiguous "
+                    "leading/trailing NaN tolerated, INTERIOR NaN "
+                    "refused).  USE when the user wants the "
+                    "principal-component factor scores computed "
+                    "POINT-IN-TIME / for a BACKTEST ('the rolling PCA "
+                    "factors of X,Y,Z with no look-ahead') or to detect "
+                    "factor ROTATION over time — each score uses ONLY "
+                    "its trailing window, so it is SAFE for as-of / "
+                    "walk-forward chains (the opposite of "
+                    "pca_decompose).  window and n_components are "
+                    "REQUIRED.  DO NOT use for the SINGLE full-sample "
+                    "decomposition (pca_decompose), discrete regime "
+                    "labels (fit_regime_gmm / fit_regime_hmm), or the "
+                    "fair-value residual (reconstruct_from_factors)."
+                ),
+            ),
+        },
+        output=OutputDescriptor.of(
+            "SeriesSet",
+            (
+                "The rolling principal-component factor scores as a "
+                "SeriesSet (keys pc1..pcK) on the full Panel index, "
+                "every member in FACTOR_LEVEL units (NaN in the warmup "
+                "head + edge rows).  POINT-IN-TIME-safe — each score "
+                "uses only its trailing window, so this composes into "
+                "as-of / walk-forward chains.  Lineage carries the "
+                "window, the LAST window's loadings + explained "
+                "variance, the cross-window sign-flip count (a "
+                "factor-rotation diagnostic) and "
+                "fit_scope='rolling_window'.  Feed "
+                "select_from_series_set to pull one rolling factor.  "
+                "Raises RollingPcaError on missing params, < 2 "
+                "features, n_components out of range, an out-of-range "
+                "window, an interior NaN, or a degenerate window."
             ),
         ),
     ),

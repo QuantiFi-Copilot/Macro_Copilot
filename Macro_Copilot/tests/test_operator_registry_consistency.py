@@ -86,6 +86,7 @@ _V2_CONFORMANT = {
     "resample",
     "rolling_correlation",
     "rolling_covariance",
+    "rolling_pca",
     "rolling_regression",
     "rolling_statistic",
     "rolling_zscore",

@@ -309,6 +309,7 @@ class TestComposerPromptContent:
             "resample",
             "rolling_correlation",
             "rolling_covariance",
+            "rolling_pca",
             "rolling_regression",
             "rolling_statistic",
             "rolling_zscore",
@@ -358,16 +359,16 @@ class TestComposerPromptContent:
     # 16-operator PoC catalogue.  Track-A (fable_build) re-sized the
     # budget for the growing toolbox exactly like the catalogue's
     # _TOTAL_CATALOGUE_TOKEN_CAP: the A1–A7 build overshot the ≈25–35
-    # estimate to 44 operators (the A5 statistical-test family + the A1
-    # cycle filters etc.), so the catalogue portion (raised to 40k) +
-    # ~9k of instructions → 49k bounds the worst case, still leaving
-    # >150k for tool messages on a 200k window.  Tracks the catalogue
-    # cap in lock-step (40k→49k as the fleet grows; the A4 model engines
-    # will push it higher).  The prompt is byte-stable
-    # (Anthropic-cache-pinned), so the marginal cost of the larger
-    # prefix amortizes across calls.  orchestration.md §PR-7's
-    # acceptance line is updated in lock-step.
-    _COMPOSER_PROMPT_TOKEN_CAP = 53_000
+    # estimate to 52 operators (the A5 statistical-test family + the A1
+    # cycle filters + the A4 model engines etc.), so the catalogue
+    # portion (raised to 46k) + ~9k of instructions → 55k bounds the
+    # worst case, still leaving >140k for tool messages on a 200k
+    # window.  Tracks the catalogue cap in lock-step (40k→49k→55k as the
+    # fleet grows; the remaining A4 model engines may push it higher).
+    # The prompt is byte-stable (Anthropic-cache-pinned), so the
+    # marginal cost of the larger prefix amortizes across calls.
+    # orchestration.md §PR-7's acceptance line is updated in lock-step.
+    _COMPOSER_PROMPT_TOKEN_CAP = 55_000
 
     def test_prompt_token_budget(self, composer_system_text):
         token_count = approx_tokens(composer_system_text)

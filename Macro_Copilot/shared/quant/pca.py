@@ -47,6 +47,7 @@ component.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Optional
 
 import numpy as np
 
@@ -235,4 +236,117 @@ def reconstruct_residual(
     return arr[:, j] - reconstruction
 
 
-__all__ = ["fit_pca", "reconstruct_residual", "PcaFitResult"]
+@dataclass(frozen=True)
+class RollingPcaResult:
+    """The result of :func:`rolling_pca_scores`.
+
+    Attributes
+    ----------
+    scores :
+        ``(n_rows, K)`` the POINT-IN-TIME factor scores — row ``t`` is
+        the projection of the standardised features at ``t`` onto the
+        components fit on the trailing window ``[t-W+1, t]``; the warmup
+        head (rows before the first full window) is NaN.
+    n_sign_flips :
+        The number of cross-window sign flips applied (a factor-rotation
+        diagnostic — many flips ⇒ the factor structure is rotating).
+    n_windows :
+        The number of full windows scored.
+    near_degenerate_any :
+        Whether any window had near-tied singular values (a non-unique
+        subspace — disclosed, not refused).
+    last_loadings, last_explained_variance_ratio, last_singular_values :
+        The MOST RECENT window's fit (a representative — one-per-window
+        loadings do not fit in lineage).
+    """
+
+    scores: np.ndarray
+    n_sign_flips: int
+    n_windows: int
+    near_degenerate_any: bool
+    last_loadings: np.ndarray
+    last_explained_variance_ratio: np.ndarray
+    last_singular_values: np.ndarray
+
+
+def rolling_pca_scores(
+    X: np.ndarray, window: int, n_components: int,
+) -> RollingPcaResult:
+    """POINT-IN-TIME rolling correlation-PCA factor scores.
+
+    At each date ``t >= window-1`` the PCA is fit on the STRICTLY
+    TRAILING window ``X[t-window+1 : t+1]`` (so the score at ``t`` uses
+    ONLY data up to ``t`` — no look-ahead), and the score is the
+    projection of row ``t``'s window-standardised features onto that
+    window's top-``n_components`` components.  Each window's loadings
+    are SIGN-ALIGNED to the previous window's (flip component ``k`` when
+    ``dot(loadings_t[k], loadings_{t-1}[k]) < 0``) so the factor series
+    is continuous — the cross-window sign-flip count is a
+    factor-rotation diagnostic.
+
+    Parameters
+    ----------
+    X :
+        A 2-D ``(n_rows, n_features)`` array of FINITE floats (the
+        contiguous interior feature rows; the caller refuses interior
+        NaN).
+    window :
+        The trailing window length ``W`` (``>= n_features + 1`` so each
+        window's PCA is full-rank).
+    n_components :
+        The number of components K to retain.
+
+    Returns
+    -------
+    RollingPcaResult
+
+    Raises
+    ------
+    ValueError
+        ``window`` larger than the row count; or a degenerate window
+        (propagated from :func:`fit_pca`).
+    """
+    arr = np.asarray(X, dtype=float)
+    n, d = arr.shape
+    if window > n:
+        raise ValueError(
+            f"rolling_pca_scores: window {window} exceeds the row count "
+            f"{n}."
+        )
+    scores = np.full((n, n_components), np.nan, dtype=float)
+    prev_loadings: Optional[np.ndarray] = None
+    n_sign_flips = 0
+    near_degenerate_any = False
+    last_fit: Optional[PcaFitResult] = None
+    for t in range(window - 1, n):
+        win = arr[t - window + 1:t + 1]
+        fit = fit_pca(win, n_components)
+        loadings = fit.loadings.copy()
+        if prev_loadings is not None:
+            for kk in range(n_components):
+                if float(np.dot(loadings[kk], prev_loadings[kk])) < 0.0:
+                    loadings[kk] = -loadings[kk]
+                    n_sign_flips += 1
+        prev_loadings = loadings
+        # Project row t (window-standardised) onto the aligned loadings.
+        z_t = (arr[t] - fit.column_means) / fit.column_stds
+        scores[t] = z_t @ loadings.T
+        near_degenerate_any = near_degenerate_any or fit.near_degenerate
+        last_fit = fit
+
+    assert last_fit is not None  # window <= n guarantees >= 1 window
+    return RollingPcaResult(
+        scores=scores,
+        n_sign_flips=n_sign_flips,
+        n_windows=n - window + 1,
+        near_degenerate_any=near_degenerate_any,
+        last_loadings=last_fit.loadings,
+        last_explained_variance_ratio=last_fit.explained_variance_ratio,
+        last_singular_values=last_fit.singular_values,
+    )
+
+
+__all__ = [
+    "fit_pca", "reconstruct_residual", "rolling_pca_scores",
+    "PcaFitResult", "RollingPcaResult",
+]
