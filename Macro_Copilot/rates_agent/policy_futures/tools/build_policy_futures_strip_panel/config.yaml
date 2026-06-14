@@ -130,7 +130,7 @@ conventions:
   # carry the SAME value so the cross-config lint stays clean.
   ffill_limit_days:
     value: 5
-    source: industry_standard_5d_ffill
+    source: team_judgment_pending_review
     rationale: >-
       Bridge up to one trading week of missing data across holiday
       gaps so the panel has comparable observations across all

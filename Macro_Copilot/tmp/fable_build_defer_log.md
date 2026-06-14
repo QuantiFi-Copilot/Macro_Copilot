@@ -152,4 +152,151 @@ Defer reasoning below cites the LIVE state, not the plan's stale §9 claims, per
 - Disposition: deferred-as-covered (not built); use
   `summarize_series(statistic='quantile', q=...)`.
 
+### term_premium_decomposition  (framework: B2 / sovereign_bonds; uses shared/quant/dns.py [not built])
+- Gate that fired: SCOPE BOUNDARY §104 "we describe, we do NOT forecast / no
+  AR/ARIMA forecasting" (PRIMARY) + §104/P12 Bloomberg-accuracy boundary "don't
+  recompute what the terminal does better" (INDEPENDENT, reinforcing).  NOT a
+  complexity defer (the A4 engines were all new shared/quant math); NOT ART4
+  (lineage-as-model-state fits the closed family); NOT a data defer
+  (sovereign_benchmark 72 tenors 2005→ + overnight_rfr short-rate proxy 2005→
+  exist live).
+- Evidence: ACM splits y(t,n) = E_t[avg future short rate] + term_premium.  The
+  expected-rates leg is by construction a physical-measure PROJECTION of future
+  short rates, produced by an estimated VAR(1) on the yield factors — an
+  autoregressive forecasting model of the state.  The term-premium leg is
+  defined ONLY relative to that forecast; "is TP rich" (the plan's desk
+  workflow) cannot be emitted without emitting the forward expectation.  This is
+  the opposite of the allowed A4 reads (HMM=regime NOW, GARCH=current vol,
+  OU=current z-to-equilibrium, rolling_pca=current loadings — all current-state,
+  no future projection).  Separately, ACM term premia are a published canonical
+  series (NY Fed / Bloomberg); re-estimating a no-arbitrage term-structure model
+  on our generic GT* curve is the "full curve bootstrap" class of forbidden
+  recomputation (P12).  Dynamic-Nelson-Siegel does NOT rescue the full tool: a
+  DNS curve fit is descriptive, but the TP split still needs a separate forward
+  expectations model — the same boundary.
+- What would unblock it: (a) a thesis-level ADR widening the platform scope to
+  permit a physical-measure expectations / forward-projection model (lifts the
+  forecast gate), AND (b) an ADR / ingest decision to treat published ACM term
+  premia as an INGESTED series rather than an in-house recompute (resolves the
+  Bloomberg gate) — surface the NY Fed / terminal series, never re-derive it.
+  Absent both, defer.
+- Disposition: deferred (not built); no proxy shipped.
+
+### fit_dynamic_nelson_siegel  (framework: QLIB+OP) — SEQUENCING NOTE, not a defer
+- Status: the salvageable DESCRIPTIVE subset of the term_premium row.  The §0.3
+  gate does NOT fire on a pure per-date NS curve FIT: fit the 3 Nelson-Siegel
+  factor betas (level/slope/curvature) to the observed tenor cross-section via
+  OLS on the FIXED parametric Laguerre loadings [1, (1−e^{−λτ})/(λτ),
+  (1−e^{−λτ})/(λτ) − e^{−λτ}] for a fixed decay λ.  Emit the factor paths as a
+  SeriesSet{level,slope,curvature} (+ the fitted/residual curve).  This is a
+  descriptive current-state decomposition of the curve we already hold — no
+  expectations model, no VAR, no future projection (the §104-allowed class,
+  alongside PCA).
+- Genuine OPR4 distinctness from pca_decompose: REAL.  PCA loadings are EMPIRICAL
+  (sample-derived eigenvectors, sign/rotation-ambiguous, sample-varying); NS
+  imposes a FIXED parametric loading shape with a fixed λ, giving stable,
+  interpretable level/slope/curvature factors by construction, identical across
+  dates/universes.  Different inputs (PCA=panel covariance; NS=per-date
+  cross-section), different parameterization (λ), different invariant; the open
+  DAG cannot express the Laguerre-loading fit by composing existing operators.
+  Not "just PCA" — the parametric counterpart.
+- BOUNDARY it must respect: stop at the descriptive fit.  Bolting an expectations
+  model onto it to back out term premium re-enters the forecast gate above.
+- Disposition: BUILD candidate for the A-family descriptive-engine backlog (gate
+  via §0.3 on its own turn); if the run ends before it is built, this converts to
+  an honest defer-by-time with no principle violated.
+
+### cross_market_fair_value  (framework: B2 / sovereign_bonds; plan §7-B)
+- Gate that fired: PR4 (parsimony / composability — the output is produced by
+  composing two EXISTING desk-blessed sovereign_bonds primitives; no defensible
+  accuracy/efficiency/interpretability/provenance/LLM-clarity advantage) + PR4
+  §225 routing-overlap (a new tool whose scope overlaps beta_adjusted_spread +
+  half_life misroutes under load).  Same shape as the rolling_beta /
+  cross_sectional_percentile defer-as-covered precedents.
+- Evidence: the driver-model fair-value DEVIATION + its Z are already emitted by
+  beta_adjusted_spread (time_series_residual [bps] + time_series_residual_z_score
+  + current_residual_bps / current_residual_z_score / β / α / R²).  The OU
+  HALF-LIFE + the full OU model state (half_life + CI, long_run_mean μ,
+  current_deviation z-to-equilibrium, β→κ/θ, is_mean_reverting, R²) are already
+  emitted by half_life, whose pasted_series input is EXPLICITLY documented for
+  "chaining the output of a prior tool (e.g., a residual) into this tool."  So:
+    cross_market_fair_value ≡
+      beta_adjusted_spread(target, regressor) → time_series_residual
+        → half_life(pasted_series=residual)
+  with full parameter freedom flowing through unchanged.  fit_ou adds nothing
+  half_life does not already surface as NAMED fields (with CIs the bare operator
+  lacks); the only OU read fit_ou withholds — the z-to-equilibrium SERIES — is the
+  SEPARATE unbuilt ou_zscore operator, which a primitive could not surface either.
+- What would unblock it: (a) ou_zscore (the time-varying OU z-to-equilibrium
+  series) shipping AND a desk workflow that demands residual+z+half-life+z-series
+  as one atomic read the chain cannot express; or (b) a genuine added-finance
+  element absent from both tools (e.g. a multi-driver / panel fair-value model
+  with DV01-weighted driver legs, which beta_adjusted_spread's bivariate OLS
+  cannot express).  Absent these, defer.
+- Disposition: deferred-as-covered (not built); no proxy shipped.  Use the
+  two-primitive chain beta_adjusted_spread → half_life(pasted_series).
+
+### forward_spread  (framework: 1B / ois; plan §7-C)
+- Gate that fired: PR4 parsimony / composability — a forward−forward (or
+  forward−spot) spread is the idiomatic two-node open-DAG chain
+  `calculate_ois_forward_rate(window A)` + `calculate_ois_forward_rate(window B)`
+  → `series_arithmetic(op='subtract')`, with full parameter freedom.  Same
+  defer-as-covered shape as rolling_beta / cross_market_fair_value.
+- Evidence: the existing forward_rate tool emits a `time_series_forward`
+  Series per window; series_arithmetic consumes the two directly.  The
+  spread adds no finance the chain doesn't already express.  (The sibling
+  `implied_forward_curve` — the whole forward STRIP as one SeriesSet — IS
+  built; only the trivial two-forward spread defers.)
+- What would unblock it: a forward_spread needing a joint re-anchoring the
+  chain cannot express (e.g. a single shared as-of anchor across both legs).
+- Disposition: deferred-as-covered (not built); use
+  `forward_rate ×2 → series_arithmetic(subtract)`.
+
+### cross_market_dv01_spread  (framework: 1B / sovereign_bonds+ois; plan §7-C)
+- Gate that fired: PR6 / P12 — required data missing; no proxy.  The
+  DV01-weighting is the entire delta over the existing par-par cross-market
+  spreads, and analytic swap DV01 is NOT computable from the data we hold
+  without recomputing a full curve (the P12 "no full curve bootstrap"
+  boundary).
+- Evidence: the matched-tenor cross-market differential already ships
+  (swap_spread = sovereign yield − OIS rate par-par ASW; cross_market_spread;
+  beta_adjusted_spread).  NO DV01/PV01/annuity math exists anywhere
+  (curve_bootstrap.py has discount factors but no annuity/sensitivity
+  helper).  A true swap DV01 = the fixed-leg annuity Σ DF(t_i)·τ_i, needing a
+  bootstrapped DF curve + the swap's payment schedule; deriving it from the
+  par-as-zero approximation + a synthesized schedule is exactly the forbidden
+  "full curve bootstrap" proxy (swap_spread's own PR21 disclosure says the
+  DV01-aware ASW "requires bond-level metadata not yet ingested").  The
+  ingested cash-bond RISK_MID (14 bonds) is unconsumed and doesn't span the
+  swap/sovereign-index universe.
+- What would unblock it: (a) ingest a trusted analytic swap DV01 / annuity
+  series (or a vendor risk field for the swap universe), OR (b) an ADR
+  admitting an in-house annuity bootstrap as inside the Bloomberg boundary +
+  a shared/quant DV01 engine.  Reinforces the existing futures-CTD-DV01
+  C-DEFER.
+- Disposition: deferred (not built); no proxy shipped.  Use swap_spread /
+  beta_adjusted_spread for matched-tenor cross-market RV.
+
+### futures_roll_adjust  (framework: 1B / bond_futures+policy_futures; plan §7-C)
+- Gate that fired: PR6 / P12 — required data missing; the back-adjustment
+  roll GAP is not computable without a proxy.
+- Evidence: the SCD2 instrument_metadata_history IS a complete live roll
+  CALENDAR (each generic stem → ordered dated underlyings with
+  effective_from/to), so roll DATES exist.  BUT back-adjustment needs the
+  price of BOTH the outgoing and incoming dated contract on each roll date,
+  and (verified live) all 19 bond_future + 24 policy_future instruments are
+  is_rolling_contract=TRUE generic stems with ZERO dated contracts;
+  market_data_daily holds prices ONLY for the generic stems (TY1, BTS1, …),
+  never the dated underlyings (TYH6, BTSZ10), which exist only as SCD2 labels
+  with no price rows — the DB stores the already-spliced front series.
+  Inferring the gap from the generic series' own jump at the roll boundary
+  conflates the true roll gap with that day's market move — a proxy P12
+  forbids.
+- What would unblock it: ingest per-dated-contract price history (the
+  individual TYH6/TYM6/… contracts as priced instruments) so the
+  old-vs-new front prices exist on each roll date — then the splice/
+  back-adjust is a pure deterministic compute.  Data-gated, not scope-gated
+  (plan flags it "needed later by Track-B").
+- Disposition: deferred (not built); no proxy shipped.
+
 (entries appended per-tool as gates fire)

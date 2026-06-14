@@ -89,7 +89,7 @@ conventions:
   # ---------------------------------------------------------------------------
   default_n_components:
     value: 3
-    source: industry_standard_level_slope_curvature
+    source: litterman_scheinkman_1991
     rationale: >-
       Three components capture level + slope + curvature in normal
       yield-curve data and typically explain >99% of variance on

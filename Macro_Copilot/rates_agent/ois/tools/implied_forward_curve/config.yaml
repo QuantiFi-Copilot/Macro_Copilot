@@ -45,7 +45,7 @@ conventions:
 
   default_forward_horizon:
     value: 1Y
-    source: desk_convention_forward_curve
+    source: desk_convention_default_horizon
     rationale: >-
       The forward window length (e.g. 1Y → the 1y-forward curve: 1y1y,
       2y1y, …).  The desk's most-read forward strip; per-query overridable.

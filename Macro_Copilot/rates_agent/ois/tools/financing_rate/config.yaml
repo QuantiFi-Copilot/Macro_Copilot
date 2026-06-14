@@ -27,7 +27,7 @@ conventions:
   # ---------------------------------------------------------------------------
   default_method:
     value: overnight_index_proxy
-    source: most_defensible_proxy_for_GC_repo
+    source: operator_v1_default
     rationale: >-
       Allowed methods:
         - ``constant_rate`` — caller supplies ``constant_rate_pct``.
@@ -49,7 +49,7 @@ conventions:
   # ---------------------------------------------------------------------------
   default_day_count_basis:
     value: act_360
-    source: industry_standard_sovereign_repo_usd_money_market
+    source: iso_day_count_act_360
     rationale: >-
       Allowed values:
         - ``act_360`` (V1 default) — sovereign repo + USD money-

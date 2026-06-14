@@ -64,7 +64,7 @@ conventions:
   # ---------------------------------------------------------------------------
   n_components:
     value: 3
-    source: industry_standard_3factor
+    source: litterman_scheinkman_1991
     rationale: >-
       Level/slope/curvature — the Litterman-Scheinkman three-factor curve
       decomposition.  The reconstruction uses the top 3 PCs; the residual

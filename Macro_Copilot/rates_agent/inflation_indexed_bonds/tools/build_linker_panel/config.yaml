@@ -80,7 +80,7 @@ conventions:
   # (``yield_mid`` → ``YLD_YTM_MID``).
   default_field_name:
     value: YLD_YTM_MID
-    source: industry_standard_mid_yield
+    source: bloomberg_field_convention
     rationale: >-
       Mid yield-to-maturity is the canonical real-yield pricing
       field for inflation linkers — same field every other
@@ -101,7 +101,7 @@ conventions:
   # carry the SAME value so the cross-config lint stays clean.
   ffill_limit_days:
     value: 5
-    source: industry_standard_5d_ffill
+    source: team_judgment_pending_review
     rationale: >-
       Bridge up to one trading week of missing data across holiday
       gaps so the panel has comparable observations across all

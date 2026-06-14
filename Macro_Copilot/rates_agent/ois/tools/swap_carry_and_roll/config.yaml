@@ -52,7 +52,7 @@ conventions:
 
   default_horizon:
     value: 3M
-    source: desk_convention_carry_roll
+    source: desk_convention_default_horizon
     rationale: >-
       The standard 3-month carry/roll horizon (the desk's most-quoted
       holding period).  6M is the common alternative; both are valid

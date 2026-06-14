@@ -2612,7 +2612,7 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                     "disclosed in lineage; never for point-in-time "
                     "compositions).  DO NOT use for a smooth trend or "
                     "the penalty-tuned trend/cycle split (hp_filter), "
-                    "a polynomial detrend (detrend), or the band's "
+                    "a straight-line/mean detrend (detrend), or the band's "
                     "significance (variance_ratio / hurst_exponent)."
                 ),
             ),

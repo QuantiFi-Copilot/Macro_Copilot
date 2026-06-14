@@ -15,8 +15,14 @@ Boundary rules (P9 / OPR6):
   - Functions here are PURE and deterministic: no DB, no I/O, no clock,
     no unfixed randomness (model fits that need initialisation take an
     explicit ``random_state`` / use deterministic initialisation).
-  - The operator layer (``shared/operators/``) is the only production
-    consumer; operators wrap these numerics behind typed-artifact
-    signatures.  Per the plan's §4: build the model math ONCE here —
-    never a per-instrument copy inside a primitive.
+  - The operator layer (``shared/operators/``) is the primary
+    production consumer; operators wrap these numerics behind typed-
+    artifact signatures.  The finance-aware ``shared/analytics/`` layer
+    may also reuse a core here when a primitive and an operator would
+    otherwise duplicate the same numeric (e.g.
+    ``shared.analytics.stats.ou_half_life`` calls
+    ``shared.quant.ou.fit_ou_core``) — never importing the other way
+    (``shared/quant/`` must not import ``shared/analytics/``).  Per the
+    plan's §4: build the model math ONCE here — never a per-instrument
+    copy inside a primitive.
 """

@@ -156,7 +156,7 @@ conventions:
   # ---------------------------------------------------------------------------
   trailing_range_round_decimals:
     value: 4
-    source: shared_analytics_default
+    source: display_convention
     rationale: >-
       Round the trailing 252-day high / low / percentile to 4
       decimals (so percent-scale values are honest to 1 bp).  Matches

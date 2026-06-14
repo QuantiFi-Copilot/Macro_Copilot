@@ -108,20 +108,206 @@ and the linker `real_yield_level` tool.
 
 ---
 
+> Registry-drift remediation (PR12 / P5): the tags below were already
+> referenced by shipped `config.yaml` files but had no registry entry.
+> Each has been given a one-line "use when" here; a handful of ad-hoc
+> one-off tags were re-tagged onto these or onto the existing tags
+> above instead of being registered separately (noted inline).
+
+### `display_convention`
+
+**Use when**: a numeric default is a **display-only rounding precision**
+(`*_round_decimals`) applied to surfaced metrics and never fed back into
+the computation. The convention NAME is deliberately unique per tool so
+the cross-config consistency lint (which keys on name) does not force
+unrelated tools to share a rounding value. **Examples**:
+`fair_value_round_decimals = 2`, `forward_round_decimals = 4`,
+`vol_round_decimals = 4`. (Absorbs the former `shared_analytics_default`
+tag used for `trailing_range_round_decimals` in the scan tools.)
+
+### `operator_v1_default`
+
+**Use when**: a string default selects the **V1 default branch of a
+multi-valued operator/method enum** — the behaviour shipped first while
+alternative branches are listed in the rationale (often raising
+`NotImplementedError` until a later version). The provenance is "the
+chosen default among documented alternatives," not an external
+reference. **Examples**: `default_missing_data_policy =
+"forward_fill_only"`, `calendar_policy = "business_days"`,
+`default_convention = "nominal_breakeven"`, `default_method =
+"overnight_index_proxy"` (the most-defensible GC-repo proxy).
+
+### `numerical_stability_lock`
+
+**Use when**: a default exists purely to pin **numerical determinism /
+bit-stability** — a solver string, a condition-number or variance-share
+threshold, a sign-anchor rule, a near-zero guard, a unit-norm tolerance,
+or a trading-day-resolution direction — rather than to express a finance
+choice. The value is governed by float64 behaviour and reproducibility,
+not market convention. **Examples**: `regression_solver =
+"numpy_lstsq_default"`, `condition_number_warning_threshold = 1e10`,
+`degenerate_variance_share_threshold = 1e-12`, `sign_anchor =
+"lock_pc_long_tenor_positive"`, `min_abs_beta_for_half_life = 1e-6`.
+
+### `industry_standard_yield_changes`
+
+**Use when**: a default specifies that rates statistics are computed on
+**yield level changes (first differences)** — the standard rates
+convention — rather than percent returns, which are ill-defined near
+zero yields. **Examples**: `return_method = "diff"`,
+`realized_vol_return_method = "diff"`.
+
+### `industry_standard_daily_changes`
+
+**Use when**: a default sets the **daily** change cadence as the
+canonical input frequency for curve-PCA / change-attribution work
+(preserves sample size, matches desk RV workflows); coarser frequencies
+remain available as per-request inputs. **Examples**:
+`default_change_frequency = "daily"`.
+
+### `industry_standard_with_intercept`
+
+**Use when**: a boolean default fixes **with-intercept OLS** as the
+regression form (the standard choice); the no-intercept variant is a
+structurally different model (a sibling tool), not a config knob.
+**Examples**: `add_constant = true`.
+
+### `industry_standard_release_window`
+
+**Use when**: a default sets the trailing **economic-release count** for
+a surprise-index z-score (≈ 2 years of monthly releases), matching the
+Citi / Bloomberg Economic Surprise convention. Distinct from the
+252-trading-day `industry_standard_1y_window`: the unit is releases, not
+trading days. **Examples**: `release_z_window = 24`.
+
+### `industry_standard_5y_window`
+
+**Use when**: a default sets a **5-year (≈ 1825 calendar-day) estimation
+lookback for a PCA curve-decomposition fit** — the typical desk window
+for sovereign-curve PCA work, distinct from the 252-day z-score /
+percentile window (`industry_standard_1y_window`). **Examples**:
+`default_pca_lookback_days = 1825`.
+
+### `industry_standard_butterfly`
+
+**Use when**: a default encodes the **standard 2× (2:1:1) butterfly
+belly weight** — long 2 units of belly, short the wings — against which
+the wing weights are solved. **Examples**: `belly_weight = 2.0`.
+
+### `industry_standard_two_sided_95`
+
+**Use when**: a default sets the **two-sided 95% confidence level**, the
+standard quant reporting level, for an interval the tool surfaces.
+**Examples**: `confidence_level = 0.95`.
+
+### `litterman_scheinkman_1991`
+
+**Use when**: a default reflects the **Litterman & Scheinkman (1991)
+three-factor curve decomposition** — the level/slope/curvature factor
+count (or factor labels) for PCA-based curve tools. Three components
+typically explain >99% of sovereign-curve variance. **Examples**:
+`default_n_components = 3`, `n_components = 3`. (Promoted from the
+planned list; replaces the ad-hoc `industry_standard_level_slope_curvature`
+and `industry_standard_3factor` tags that several PCA tools were using.)
+
+### `iso_day_count_act_360`
+
+**Use when**: a string default selects the **ACT/360 day-count basis** —
+the USD money-market / sovereign-repo convention, and the basis of USD
+SOFR / EUR ESTR floating legs. **Examples**: `default_day_count_basis =
+"act_360"`. (Promoted from the planned list; replaces the one-off
+`industry_standard_sovereign_repo_usd_money_market` tag. The `act_365`
+sibling — Gilt repo / SONIA / JGB OIS — remains planned below until a
+config references it.)
+
+### `desk_convention_default_horizon`
+
+**Use when**: a string default names the **desk's most-quoted default
+horizon** for a per-query-overridable curve / carry tool — the canonical
+holding or forward period, freely overridable per request. **Examples**:
+`default_horizon = "3M"` (carry/roll holding period),
+`default_forward_horizon = "1Y"` (forward-curve window). (Consolidates
+the former one-off `desk_convention_carry_roll` and
+`desk_convention_forward_curve` tags.)
+
+### `desk_convention_vol_regimes`
+
+**Use when**: a default sets a **volatility-regime cut-point or label**
+for an unsupervised rates / curve vol-regime tool — the percentile
+boundaries that partition conditional / realised vol into
+calm/normal/elevated, and the descriptive names attached to the
+resulting states. The labels describe observed structure, never a
+signal. **Examples**: `vol_calm_percentile_max = 33.0`,
+`vol_elevated_percentile_min = 67.0`, `regime_label_elevated =
+"elevated"`, `regime_naming_feature = "realized_vol"`.
+
+### `desk_convention_policy_regimes`
+
+**Use when**: a default sets the **strip-slot positions or regime
+labels** for the OIS policy-path regime tool — which strip slots define
+the front/belly/back of the priced path, the feature regimes are named
+by, and the easing/neutral/tightening labels. Descriptive, never a
+signal. **Examples**: `strip_front_position = 1`, `strip_belly_position
+= 4`, `policy_naming_feature = "strip_slope"`, `policy_label_tightening
+= "tightening_priced"`.
+
+### `tool_design_intent`
+
+**Use when**: a string default is a **structural wiring constant fixed
+by the tool's design** — e.g. which substrate `instrument_type` universe
+a scanner queries — rather than a methodology choice. Changing it would
+make it a different tool, not re-parameterise this one. **Examples**:
+`ois_scan_instrument_type = "ois_swap"`, `sovereign_scan_instrument_type
+= "sovereign_benchmark"`.
+
+### `adr_0007_otr_canonicalisation`
+
+**Use when**: a default pins an **on-the-run / tenor canonicalisation
+shape mandated by ADR 0007** (uppercase ISO-country / integer-Y-tenor
+slots, per ADR 0007 §4 + 0005 §3); reading against any other casing
+returns no rows and the SCD2 history looks empty. **Examples**:
+`tenor_canonicalisation = "uppercase_country_integer_y_tenor"`.
+
+### `adr_0008_event_playbook_contract`
+
+**Use when**: a default pins a value to the **economic-event playbook
+contract defined in ADR 0008** (`rates_agent/playbooks/economic_releases.yml`)
+— the canonical surprise identity, the ingested `event_type` slugs, and
+country canonicalisation for the CPI / NFP surprise tools. **Examples**:
+`surprise_formula = "actual_minus_consensus_median"`,
+`cpi_event_type_for_eu = "hicp_yoy"`, `country = "US"`.
+
+### `adr_0009_wirp_time_series`
+
+**Use when**: a default pins a **WIRP field name or fetch horizon
+defined by ADR 0009** (`rates_agent/playbooks/wirp.yml`) — the
+metric→`field_name` mapping in `market_data_daily`, the forward / past
+calendar horizons, and the supported central-bank set, for the
+meeting-pricing tool. Supersedes the planned `bloomberg_wirp_pricing`
+tag. **Examples**: `implied_rate_field = "WIRP_IMPLIED_RATE"`,
+`forward_horizon_days = 365`, `supported_central_banks =
+"FOMC,ECB,BOE,BOJ"`.
+
+---
+
 ## Future tags (planned)
 
 These are anticipated but not yet used. Add to the list above with a
 proper "use when" rationale before the first config.yaml references
 them.
 
-- `bloomberg_wirp_pricing` — for meeting-pricing tools once the
-  WIRP-data-backed implementation lands.
-- `litterman_scheinkman_1991` — for PCA-based curve-decomposition
-  tools (number of components, factor labels).
-- `iso_day_count_act_360` / `iso_day_count_act_365` — for OIS
-  forward-rate day-count conventions, distinguishing curves whose
-  underlying floating index uses ACT/360 (USD SOFR, EUR ESTR) from
-  those that use ACT/365 (GBP SONIA, JPY OIS, AUD AONIA, CAD CORRA).
+- `bloomberg_wirp_pricing` — originally reserved for WIRP
+  meeting-pricing tools once the WIRP-data-backed implementation
+  landed. The shipped `wirp_meeting_pricing` tool instead tags its
+  WIRP fields/horizons under the ADR-citation tag
+  `adr_0009_wirp_time_series` (registered above). This tag is retained
+  only for a possible future non-ADR WIRP-probability use; it is not
+  referenced by any current config.
+- `iso_day_count_act_365` — for OIS / financing day-count on curves
+  whose underlying floating index uses ACT/365 (GBP SONIA, JPY OIS,
+  AUD AONIA, CAD CORRA). Its ACT/360 sibling is now registered above
+  (`iso_day_count_act_360`); promote this one the same way when the
+  first ACT/365 config lands.
 - `regulatory_pricing_convention` — for any future tool whose
   default reflects a regulator-prescribed methodology (e.g. CCP
   margining, regulatory CVA).

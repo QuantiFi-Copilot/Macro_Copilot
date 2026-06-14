@@ -2,8 +2,13 @@
 
 The THIRD numeric in ``shared/quant/`` (after ``variance_ratio.py`` and
 ``hurst.py``).  Pure, finance-blind, deterministic per the package
-boundary rules — the L3 ``fit_ou`` operator is the only production
-consumer.
+boundary rules.  Two entry points share ONE regression core
+(:func:`fit_ou_core`, the single source of truth for the mean-reversion
+math — P10): the L3 ``fit_ou`` operator via :func:`fit_ou_ar1` (strict
+``0 < φ < 1`` gate) and the rates ``half_life`` primitive via
+``shared.analytics.stats.ou_half_life`` (looser ``β < 0`` gate + the
+SE / delta-method-CI extras).  See :class:`OuCoreFit` for why the
+mean-reversion gate is the caller's to apply.
 
 THE FIT (the discrete-time OU / AR(1) MLE-equivalent, design-locked).
 Regress the one-period change on the lagged level::
@@ -107,6 +112,174 @@ class OuFitResult:
     n_increments: int
 
 
+@dataclass(frozen=True)
+class OuCoreFit:
+    """The gate-free OU / AR(1) Δx-regression fit — the SINGLE source
+    of truth for the mean-reversion math (P10).
+
+    Holds the raw regression (α, β, φ, residual algebra) plus the
+    half-life / μ / θ / σ_eq derivation, computed under the SHARED
+    half-life gate ``0 < φ < 1 AND |β| >= min_decay``.  What it
+    deliberately does NOT do is classify *mean reversion* — that gate
+    differs by caller and is layered on top of the raw (α, β, φ):
+
+      - :func:`fit_ou_ar1` (the finance-blind ``fit_ou`` operator) uses
+        the STRICT ``0 < φ < 1`` definition.  Since ``0 < φ < 1``
+        already implies ``β < 0``, that is identical to the half-life
+        gate, so its ``is_mean_reverting`` is exactly
+        :attr:`half_life_defined`.
+      - ``shared.analytics.stats.ou_half_life`` (the rates ``half_life``
+        primitive) uses the LOOSER ``β < 0`` definition, which also
+        admits oscillatory ``β <= -1`` (reported mean-reverting but
+        with ``half_life=None``, since the formula needs ``1 + β > 0``).
+
+    The half-life derivation itself is gate-identical across both
+    callers; only the reported ``is_mean_reverting`` flag differs.
+
+    Attributes
+    ----------
+    alpha, beta, phi :
+        The Δx-regression intercept, slope (β = φ − 1), and AR(1)
+        coefficient (φ = 1 + β).
+    sigma_eps :
+        Residual (innovation) std, unbiased by the 2 fitted params.
+    ss_res :
+        Residual sum of squares — feeds the caller's σ² for the β SE.
+    r_squared :
+        R² of the Δx regression (``None`` when SS_tot == 0).
+    n_increments :
+        The number of one-period increments used (n_obs − 1).
+    xx_inv_beta :
+        The ``(XᵀX)⁻¹`` bottom-right element (the β-coefficient
+        covariance factor); ``None`` when the design is rank-deficient
+        (e.g. a constant regressor).  Scaling it by σ² gives Var(β) —
+        the SE / CI machinery itself stays in the finance-aware caller.
+    theta, half_life, mu, sigma_eq :
+        The mean-reversion speed −ln(φ), the half-life ``−ln2/ln(φ)``,
+        the equilibrium ``−α/β``, and the stationary std
+        ``σ_ε/√(1−φ²)`` — all populated iff :attr:`half_life_defined`,
+        else ``None``.
+    half_life_defined :
+        Whether the shared half-life gate held AND produced a finite
+        half-life (the belt-and-suspenders).
+    """
+
+    alpha: float
+    beta: float
+    phi: float
+    sigma_eps: float
+    ss_res: float
+    r_squared: Optional[float]
+    n_increments: int
+    xx_inv_beta: Optional[float]
+    theta: Optional[float]
+    half_life: Optional[float]
+    mu: Optional[float]
+    sigma_eq: Optional[float]
+    half_life_defined: bool
+
+
+def fit_ou_core(
+    values: np.ndarray, *, min_decay: float = _MIN_DECAY,
+) -> OuCoreFit:
+    """The single-source Δx = α + β·x_{t-1} OLS + half-life derivation.
+
+    Pure regression algebra: does NO input validation and applies NO
+    *mean-reversion* classification — both are the caller's job (the
+    validation differs, and the mean-reversion gate differs; see
+    :class:`OuCoreFit`).  Assumes a 1-D finite array with at least one
+    increment (≥ 2 elements).  On a constant series the ``(XᵀX)``
+    inverse is singular and :attr:`OuCoreFit.xx_inv_beta` comes back
+    ``None`` (matching the legacy stats.py SE path, which returns a
+    ``None`` β standard error there rather than raising).
+
+    Parameters
+    ----------
+    values :
+        The 1-D level series (the caller has already dropped NaNs).
+    min_decay :
+        The φ→1 ill-conditioning floor on ``|β|`` for the half-life
+        gate.  ``_MIN_DECAY`` for the operator; the rates primitive
+        passes its configurable ``min_abs_beta_for_half_life``.
+
+    Returns
+    -------
+    OuCoreFit
+        The raw fit plus the half-life block (the latter populated iff
+        ``0 < φ < 1 AND |β| >= min_decay`` and the result is finite).
+    """
+    arr = np.asarray(values, dtype=float).ravel()
+
+    # Δx_t = α + β·x_{t-1} + ε  (SVD lstsq — design-locked ar1_ols).
+    x_lag = arr[:-1]
+    dx = np.diff(arr)
+    n_inc = int(dx.size)
+    design = np.column_stack([np.ones(n_inc, dtype=float), x_lag])
+    coefs, _res, _rank, _sv = np.linalg.lstsq(design, dx, rcond=None)
+    alpha = float(coefs[0])
+    beta = float(coefs[1])
+    phi = 1.0 + beta
+
+    resid = dx - design @ coefs
+    ss_res = float(np.sum(resid ** 2))
+    dx_mean = float(np.mean(dx))
+    ss_tot = float(np.sum((dx - dx_mean) ** 2))
+    r_squared: Optional[float] = (
+        1.0 - ss_res / ss_tot if ss_tot > 0.0 else None
+    )
+    # Residual std (innovation σ_ε), unbiased by the 2 fitted params.
+    sigma_eps = (
+        math.sqrt(ss_res / (n_inc - 2)) if n_inc > 2 else math.sqrt(
+            ss_res / n_inc
+        )
+    )
+
+    # (XᵀX)⁻¹ bottom-right element — the β-coefficient covariance
+    # factor.  The caller scales it by σ² to get the β SE (that
+    # machinery is the finance-aware extra).  None when the design is
+    # rank-deficient (constant regressor).
+    xx_inv_beta: Optional[float] = None
+    try:
+        xtx_inv = np.linalg.inv(design.T @ design)
+        xx_inv_beta = float(xtx_inv[1, 1])
+    except np.linalg.LinAlgError:
+        xx_inv_beta = None
+
+    # Shared half-life gate: 0 < φ < 1 AND a well-conditioned decay.
+    # (0 < φ < 1 already implies β < 0, so each caller's own
+    # mean-reversion flag is layered separately — see OuCoreFit.)
+    half_life_defined = (0.0 < phi < 1.0) and (abs(beta) >= min_decay)
+    theta: Optional[float] = None
+    half_life: Optional[float] = None
+    mu: Optional[float] = None
+    sigma_eq: Optional[float] = None
+    if half_life_defined:
+        ln_phi = math.log(phi)  # negative
+        theta = -ln_phi
+        half_life = -math.log(2.0) / ln_phi
+        mu = -alpha / beta
+        sigma_eq = sigma_eps / math.sqrt(1.0 - phi * phi)
+        if not math.isfinite(half_life):  # belt-and-suspenders
+            half_life_defined = False
+            theta = half_life = mu = sigma_eq = None
+
+    return OuCoreFit(
+        alpha=alpha,
+        beta=beta,
+        phi=phi,
+        sigma_eps=float(sigma_eps),
+        ss_res=ss_res,
+        r_squared=r_squared,
+        n_increments=n_inc,
+        xx_inv_beta=xx_inv_beta,
+        theta=theta,
+        half_life=half_life,
+        mu=mu,
+        sigma_eq=sigma_eq,
+        half_life_defined=half_life_defined,
+    )
+
+
 def fit_ou_ar1(values: np.ndarray) -> OuFitResult:
     """Fit a discrete OU / AR(1) mean-reversion model to a 1-D series.
 
@@ -143,64 +316,26 @@ def fit_ou_ar1(values: np.ndarray) -> OuFitResult:
             "regression is degenerate on a constant series."
         )
 
-    # Δx_t = α + β·x_{t-1} + ε  (SVD lstsq — design-locked ar1_ols).
-    x_lag = arr[:-1]
-    dx = np.diff(arr)
-    n_inc = int(dx.size)
-    design = np.column_stack([np.ones(n_inc, dtype=float), x_lag])
-    coefs, _res, _rank, _sv = np.linalg.lstsq(design, dx, rcond=None)
-    alpha = float(coefs[0])
-    beta = float(coefs[1])
-    phi = 1.0 + beta
-
-    resid = dx - design @ coefs
-    ss_res = float(np.sum(resid ** 2))
-    dx_mean = float(np.mean(dx))
-    ss_tot = float(np.sum((dx - dx_mean) ** 2))
-    r_squared: Optional[float] = (
-        1.0 - ss_res / ss_tot if ss_tot > 0.0 else None
-    )
-    # Residual std (innovation σ_ε), unbiased by the 2 fitted params.
-    sigma_eps = (
-        math.sqrt(ss_res / (n_inc - 2)) if n_inc > 2 else math.sqrt(
-            ss_res / n_inc
-        )
-    )
-
-    # Mean-reversion requires 0 < φ < 1 AND a well-conditioned decay.
-    is_mean_reverting = (
-        (beta < 0.0)
-        and (0.0 < phi < 1.0)
-        and (abs(beta) >= _MIN_DECAY)
-    )
-
-    theta: Optional[float] = None
-    half_life: Optional[float] = None
-    mu: Optional[float] = None
-    sigma_eq: Optional[float] = None
-    if is_mean_reverting:
-        ln_phi = math.log(phi)  # negative
-        theta = -ln_phi
-        half_life = -math.log(2.0) / ln_phi
-        mu = -alpha / beta
-        sigma_eq = sigma_eps / math.sqrt(1.0 - phi * phi)
-        if not math.isfinite(half_life):  # belt-and-suspenders
-            is_mean_reverting = False
-            theta = half_life = mu = sigma_eq = None
-
+    # The Δx = α + β·x_lag OLS + half-life derivation lives in
+    # fit_ou_core (the single source of truth, also called by the rates
+    # half_life primitive via shared.analytics.stats.ou_half_life).  The
+    # operator's strict mean-reversion definition (0 < φ < 1 AND a
+    # well-conditioned decay) is exactly the core's half-life gate, so
+    # is_mean_reverting == core.half_life_defined.
+    core = fit_ou_core(arr, min_decay=_MIN_DECAY)
     return OuFitResult(
-        alpha=alpha,
-        beta=beta,
-        phi=phi,
-        theta=theta,
-        half_life=half_life,
-        mu=mu,
-        sigma_eps=float(sigma_eps),
-        sigma_eq=sigma_eq,
-        r_squared=r_squared,
-        is_mean_reverting=is_mean_reverting,
-        n_increments=n_inc,
+        alpha=core.alpha,
+        beta=core.beta,
+        phi=core.phi,
+        theta=core.theta,
+        half_life=core.half_life,
+        mu=core.mu,
+        sigma_eps=core.sigma_eps,
+        sigma_eq=core.sigma_eq,
+        r_squared=core.r_squared,
+        is_mean_reverting=core.half_life_defined,
+        n_increments=core.n_increments,
     )
 
 
-__all__ = ["fit_ou_ar1", "OuFitResult"]
+__all__ = ["fit_ou_ar1", "fit_ou_core", "OuFitResult", "OuCoreFit"]

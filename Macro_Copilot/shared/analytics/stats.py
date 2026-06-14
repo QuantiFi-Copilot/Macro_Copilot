@@ -8,13 +8,23 @@ add their primitives here without re-fragmenting the substrate.
 
 Solver / methodology lock
 -------------------------
-``ou_half_life`` uses ``numpy.linalg.lstsq(X, y, rcond=None)`` for the
-OU AR(1) fit — same SVD-based, bit-stable solver as
-``shared.analytics.regression.rolling_ols``.  The OLS standard error
-is then computed via ``(X'X)^-1 · sigma^2``; this is the textbook
-form that matches every introductory econometrics reference.  The
-delta-method CI on half-life is a closed-form transformation of the
-β CI, NOT a separate numerical procedure.
+The Δx = α + β·x_{t-1} OLS fit and the half-life / μ / φ / θ / σ
+derivation are NOT implemented here: ``ou_half_life`` delegates them to
+``shared.quant.ou.fit_ou_core`` — the single source of truth for the
+OU / AR(1) mean-reversion math (the same finance-blind core the
+``fit_ou`` operator uses), resolving the P10 duplication flagged in the
+fit_ou operator review.  The core's solver is
+``numpy.linalg.lstsq(X, y, rcond=None)`` — the same SVD-based,
+bit-stable routine as ``shared.analytics.regression.rolling_ols``.
+
+What stays HERE is the finance-aware machinery layered on top: the OLS
+β standard error (``(X'X)^-1 · sigma^2`` — the textbook form, scaling
+the core's ``(X'X)^-1`` factor by σ²), the delta-method half-life CI (a
+closed-form transform of the β CI, NOT a separate numerical procedure),
+the confidence-level lookup, and the LOOSER
+``is_mean_reverting = β < 0`` definition the rates ``half_life``
+primitive relies on (the core's strict ``0 < φ < 1`` gate governs only
+whether a finite half-life is emitted, not this flag).
 
 Determinism contract
 --------------------
@@ -30,6 +40,8 @@ from typing import List, Literal, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+
+from shared.quant.ou import fit_ou_core
 
 
 __all__ = [
@@ -216,44 +228,40 @@ def ou_half_life(
         )
 
     # ------------------------------------------------------------------
-    # Build the regression: Δx_t = α + β · x_{t-1} + ε_t
+    # Δx_t = α + β · x_{t-1} + ε_t OLS + half-life / μ derivation.
+    #
+    # The regression and the half-life / μ / φ / θ / σ derivation are
+    # the single-source-of-truth core in shared.quant.ou (P10) — the
+    # SAME math the finance-blind fit_ou operator uses.  We pass the
+    # configurable |β| floor as the half-life ill-conditioning gate;
+    # the core's gate (0 < φ < 1 AND |β| >= min_decay) is identical to
+    # the legacy gate this primitive applied inline.  Only the
+    # finance-aware extras — the β standard error, the delta-method
+    # half-life CI, and the looser β<0 mean-reversion definition — stay
+    # below.
     # ------------------------------------------------------------------
-    x_lag = cleaned.iloc[:-1].to_numpy(dtype=float)
-    dx = np.diff(cleaned.to_numpy(dtype=float))
-    n_obs = len(dx)
-    # Design matrix: [1, x_lag]
-    design = np.column_stack([np.ones(n_obs, dtype=float), x_lag])
-
-    # ------------------------------------------------------------------
-    # OLS fit via SVD-based lstsq (locked: numpy_lstsq_default)
-    # ------------------------------------------------------------------
-    coefs, _r, _rank, _sv = np.linalg.lstsq(design, dx, rcond=None)
-    alpha = float(coefs[0])
-    beta = float(coefs[1])
-
-    fitted = design @ coefs
-    resid = dx - fitted
-    ss_res = float(np.sum(resid ** 2))
-    dx_mean = float(np.mean(dx))
-    ss_tot = float(np.sum((dx - dx_mean) ** 2))
-    r_squared: Optional[float] = (
-        1.0 - ss_res / ss_tot if ss_tot > 0 else None
+    core = fit_ou_core(
+        cleaned.to_numpy(dtype=float),
+        min_decay=min_abs_beta_for_half_life,
     )
+    alpha = core.alpha
+    beta = core.beta
+    n_obs = core.n_increments
+    r_squared = core.r_squared
 
     # ------------------------------------------------------------------
-    # Beta standard error: σ² · (X'X)^-1, bottom-right element
+    # Beta standard error: σ² · (X'X)^-1, bottom-right element.  The
+    # (X'X)^-1 factor comes from the shared core; σ² and the z-scaling
+    # are the finance-aware extra.  (X'X)^-1 is None on a singular
+    # design — same as the legacy LinAlgError path.
     # ------------------------------------------------------------------
     p = 2  # alpha + beta
     beta_std_err: Optional[float] = None
-    if n_obs > p:
-        sigma2 = ss_res / (n_obs - p)
-        try:
-            xtx_inv = np.linalg.inv(design.T @ design)
-            var_beta = float(sigma2 * xtx_inv[1, 1])
-            if var_beta >= 0 and math.isfinite(var_beta):
-                beta_std_err = math.sqrt(var_beta)
-        except np.linalg.LinAlgError:
-            beta_std_err = None
+    if n_obs > p and core.xx_inv_beta is not None:
+        sigma2 = core.ss_res / (n_obs - p)
+        var_beta = float(sigma2 * core.xx_inv_beta)
+        if var_beta >= 0 and math.isfinite(var_beta):
+            beta_std_err = math.sqrt(var_beta)
 
     if beta_std_err is not None:
         beta_ci_lower: Optional[float] = beta - z * beta_std_err
@@ -262,38 +270,34 @@ def ou_half_life(
         beta_ci_lower = beta_ci_upper = None
 
     # ------------------------------------------------------------------
-    # Mean-reversion test (strict structural definition: β < 0)
+    # Mean-reversion test — this primitive's LOOSER structural
+    # definition (β < 0).  Deliberately broader than the operator's
+    # strict 0 < φ < 1 gate: it admits oscillatory β <= -1 as
+    # mean-reverting, with half_life=None (the formula needs 1+β > 0).
+    # See shared.quant.ou.OuCoreFit for why the gate is the caller's.
     # ------------------------------------------------------------------
     is_mean_reverting = beta < 0.0
 
     # ------------------------------------------------------------------
-    # Half-life + long-run mean — only when -1 < β < 0 AND
-    # |β| >= min_abs_beta_for_half_life.
+    # Half-life + long-run mean come straight from the shared core (its
+    # gate 0<φ<1 ∧ |β|>=min_abs_beta is identical to the legacy one).
+    # Only the delta-method CI is layered on here:
+    #   half_life = -ln(2) / ln(1+β)
+    #   d(half_life)/dβ = ln(2) / [(1+β) · (ln(1+β))^2]
     # ------------------------------------------------------------------
-    one_plus_beta = 1.0 + beta
-    half_life: Optional[float] = None
-    long_run_mean: Optional[float] = None
+    half_life = core.half_life
+    long_run_mean = core.mu
     current_deviation: Optional[float] = None
     half_life_ci_lower: Optional[float] = None
     half_life_ci_upper: Optional[float] = None
 
-    if (
-        is_mean_reverting
-        and abs(beta) >= min_abs_beta_for_half_life
-        and 0.0 < one_plus_beta < 1.0
-    ):
+    if half_life is not None and beta_std_err is not None:
+        one_plus_beta = core.phi
         ln_decay = math.log(one_plus_beta)  # negative
-        half_life = -math.log(2.0) / ln_decay
-        long_run_mean = -alpha / beta
-
-        # Delta-method CI on half-life:
-        # half_life = -ln(2) / ln(1+β)
-        # d(half_life)/dβ = ln(2) / [(1+β) · (ln(1+β))^2]
-        if beta_std_err is not None:
-            d_half_d_beta = math.log(2.0) / (one_plus_beta * (ln_decay ** 2))
-            half_life_se = abs(d_half_d_beta) * beta_std_err
-            half_life_ci_lower = half_life - z * half_life_se
-            half_life_ci_upper = half_life + z * half_life_se
+        d_half_d_beta = math.log(2.0) / (one_plus_beta * (ln_decay ** 2))
+        half_life_se = abs(d_half_d_beta) * beta_std_err
+        half_life_ci_lower = half_life - z * half_life_se
+        half_life_ci_upper = half_life + z * half_life_se
 
     current_value = float(cleaned.iloc[-1])
     if long_run_mean is not None:

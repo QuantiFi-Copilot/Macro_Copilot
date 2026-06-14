@@ -92,6 +92,23 @@ class TestCausalityAndDeterminism:
             # the warmup head is NaN in both; equal_nan keeps them equal
         )
 
+    def test_corrupting_a_future_observation_leaves_the_prefix_identical(self):
+        # The same prefix-only property as the truncation test above, probed
+        # adversarially: with the noise scale R held fixed, CORRUPTING a
+        # future observation (rather than dropping everything after it) must
+        # leave the filtered prefix strictly before it byte-identical.  A
+        # recursion that peeked ahead would smear the +10 spike backwards.
+        y, X = _tvp_step()
+        R = dlm_filter(y, X, 0.05).observation_variance
+        t_corrupt, t_prefix = 500, 400
+        base = dlm_filter(y, X, 0.05, observation_variance=R)
+        y_corrupt = y.copy()
+        y_corrupt[t_corrupt] += 10.0
+        pert = dlm_filter(y_corrupt, X, 0.05, observation_variance=R)
+        np.testing.assert_array_equal(
+            base.filtered_states[:t_prefix], pert.filtered_states[:t_prefix],
+        )
+
     def test_warmup_head_is_nan(self):
         y, X = _tvp_step()
         r = dlm_filter(y, X, 0.05)

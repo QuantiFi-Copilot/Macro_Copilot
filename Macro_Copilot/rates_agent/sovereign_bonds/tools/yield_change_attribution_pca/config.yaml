@@ -91,7 +91,7 @@ conventions:
 
   default_n_components:
     value: 3
-    source: industry_standard_level_slope_curvature
+    source: litterman_scheinkman_1991
     rationale: >-
       Default 3 components.  Matches pca_yield_curve.  Sovereign-
       curve PCA conventionally uses 3 components (level + slope +

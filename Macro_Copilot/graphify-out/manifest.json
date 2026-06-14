@@ -1,4 +1,44 @@
 {
+  "/Volumes/Sreeram/Macro/Macro_Copilot/topn_rederive.py": {
+    "mtime": 1781387885.6897914,
+    "hash": "de6cc581b9e2877444caf8cc7491f658"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/verify_pca_fly.py": {
+    "mtime": 1781408756.059311,
+    "hash": "02be54ef88779a8faed501a24b19b675"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/repro_lineage.py": {
+    "mtime": 1781414268.9630425,
+    "hash": "5f6dffd55c7e75e6061e3527e3ccf6d7"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/_synth_check.py": {
+    "mtime": 1781409214.1747687,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/_live_check.py": {
+    "mtime": 1781409244.6852126,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/granger_rederive.py": {
+    "mtime": 1781384560.7811644,
+    "hash": "3f483049e71aa0b2b95b2d8a60b130a6"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/_probe.py": {
+    "mtime": 1781402396.1689553,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/_rw.py": {
+    "mtime": 1781402620.619828,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/_edge.py": {
+    "mtime": 1781402592.996953,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/_xp.py": {
+    "mtime": 1781402419.697345,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
   "/Volumes/Sreeram/Macro/Macro_Copilot/UI/macro-copilot-dashboard-polished/vite.config.d.ts": {
     "mtime": 1779758909.1306987,
     "hash": "9fcf75521f4c43fd8b75300e0f63b867"
@@ -3816,8 +3856,8 @@
     "hash": "a4b22b34327f991691b6caf3383519cf"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_quant_kalman.py": {
-    "mtime": 1781348682.8992481,
-    "hash": "80ea076a2b6378e0997f2e09ac8cc784"
+    "mtime": 1781414025.118754,
+    "hash": "044d0d3e13162e6fa209e4799d58d833"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_phase12_step6_frequency.py": {
     "mtime": 1781277768.2471015,
@@ -4692,12 +4732,12 @@
     "hash": "7b2bfe7c780dd9f3229efb507c4090f9"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/quant/__init__.py": {
-    "mtime": 1781158503.3603058,
-    "hash": "1251723a463b9fc651bebcd25e8301c4"
+    "mtime": 1781414187.5253217,
+    "hash": "034229a0abb53a33b03c5636a06e2bac"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/quant/ou.py": {
-    "mtime": 1781290081.252015,
-    "hash": "a0cff734c1356ec7e7b241cac232bea4"
+    "mtime": 1781414187.5258622,
+    "hash": "22afbd5c0d562ae84d1f692ff7637ff1"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/quant/pca.py": {
     "mtime": 1781347450.9056907,
@@ -5424,8 +5464,8 @@
     "hash": "769e587f1c04d4c2d27aa427fc9c76d5"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/workflow/registry.py": {
-    "mtime": 1781348273.103234,
-    "hash": "75b51affe723cfcccf242e04ce6dc542"
+    "mtime": 1781413648.1047394,
+    "hash": "fcbcb0d87e4627e27d495aec65a8267f"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/workflow/template_loader.py": {
     "mtime": 1777929662.3095336,
@@ -5504,8 +5544,8 @@
     "hash": "f2c659c2314575349662c5bdcf5aae14"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/analytics/stats.py": {
-    "mtime": 1777765390.42841,
-    "hash": "ecac8e69798f5ad394137b69bd4c3360"
+    "mtime": 1781414187.5248656,
+    "hash": "4410bc8d2e9721acbac3b7dd260c9dc9"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/analytics/events_fetch.py": {
     "mtime": 1779637607.667861,
@@ -5558,6 +5598,10 @@
   "/Volumes/Sreeram/Macro/Macro_Copilot/state/working_set.py": {
     "mtime": 1778982035.643159,
     "hash": "4cb19fcf85b026801b1992577bbdee57"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/neutrality_check.py/neutrality_check.py": {
+    "mtime": 1781408671.2233183,
+    "hash": "9cd38213de7baa8a3eb3c20082065d98"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/scripts/a4_canada_asw_probe.py": {
     "mtime": 1779376062.2380383,
@@ -5706,6 +5750,10 @@
   "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/score_composer_dag.py": {
     "mtime": 1780611033.3538043,
     "hash": "601c6d16da89827864db0e060d77fd1e"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/_kalman_lookahead_tmp.py": {
+    "mtime": 1781401520.2539182,
+    "hash": "abdb471b765b17cd990e9533f2bcb3e1"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/automation/frontend_automation/parse_reviewer_log.py": {
     "mtime": 1780019750.3265295,
@@ -6224,8 +6272,8 @@
     "hash": "83543e19aa5f80a92158b9ffcba6d7b7"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/inflation_indexed_bonds/tools/build_linker_panel/config.yaml": {
-    "mtime": 1779724485.953986,
-    "hash": "f2e717f8b29550e279f43d632c48b39c"
+    "mtime": 1781414129.941197,
+    "hash": "4bb4f82ed536b32cf5b0461b41380d30"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/inflation_indexed_bonds/tools/breakeven_inflation_simple/LIFECYCLE_CHECKLIST.md": {
     "mtime": 1779999209.9067667,
@@ -6336,8 +6384,8 @@
     "hash": "fe29523b1462ff41b8ebfc8c97b211da"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/policy_futures/tools/build_policy_futures_strip_panel/config.yaml": {
-    "mtime": 1779724485.9653354,
-    "hash": "c0da1ee39f4144a489950bcc0559a5b9"
+    "mtime": 1781414129.9420154,
+    "hash": "a88ded74da1f2dba23492da71476e926"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/workflows/event_study/template.yaml": {
     "mtime": 1781079172.0157645,
@@ -6400,16 +6448,16 @@
     "hash": "f1f5d7038b56f052745e8b2f494ab428"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/ois/tools/financing_rate/config.yaml": {
-    "mtime": 1778982035.6332011,
-    "hash": "a3a35b5dd5e99cb9e7fcfde91962fcda"
+    "mtime": 1781414129.9449825,
+    "hash": "ce1b492e09a0d8588551a1c2ce27219f"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/ois/tools/ois_policy_path_regime/config.yaml": {
     "mtime": 1781354836.7608628,
     "hash": "212d48b3e0947017a6eb2a65e7d129c7"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/ois/tools/swap_carry_and_roll/config.yaml": {
-    "mtime": 1781356340.6952028,
-    "hash": "f68543c9dd8e758431484824651d5d3c"
+    "mtime": 1781414129.949885,
+    "hash": "937efe2a87ba81fd1c6de2c971fe2b41"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/ois/tools/wirp_meeting_pricing/config.yaml": {
     "mtime": 1779653270.6903214,
@@ -6420,12 +6468,12 @@
     "hash": "750d4a3c32e7fdb310e0eda3940cdead"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/ois/tools/scan_ois_extremes/config.yaml": {
-    "mtime": 1781159315.191031,
-    "hash": "66f88e987b8f29b896a16d42e104f02c"
+    "mtime": 1781414129.9436278,
+    "hash": "da8085193cf9cc90eb727509df89f164"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/ois/tools/implied_forward_curve/config.yaml": {
-    "mtime": 1781356467.485383,
-    "hash": "fcb5009d4144de949ed35b41a1d37aec"
+    "mtime": 1781414129.9508438,
+    "hash": "43a157e86f60136d0e649bc304355966"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/ois/tools/cross_market_spread/config.yaml": {
     "mtime": 1777904026.6991923,
@@ -6464,28 +6512,28 @@
     "hash": "a1cf8374ff80d9db5df123bade9cc69a"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/scan_extremes/config.yaml": {
-    "mtime": 1781159309.5398803,
-    "hash": "6f8e9ed4289a8066a6063faddf692327"
+    "mtime": 1781414129.9444015,
+    "hash": "b7f646ee5d731c5f24189cab4c1ddf11"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/sovereign_yield_panel/config.yaml": {
-    "mtime": 1778982035.6356592,
-    "hash": "cca3b5800da262d8c88e3f5a8242c6f0"
+    "mtime": 1781414129.940334,
+    "hash": "f3860817b956d94ab52a21db514f5e6c"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/breakeven_inflation/config.yaml": {
     "mtime": 1778982035.6346252,
     "hash": "a18f32690e1fabc03cabf877b97c37eb"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/pca_yield_curve/config.yaml": {
-    "mtime": 1779675284.5271225,
-    "hash": "cd3761c2674bcd63d3c8261e034cb73a"
+    "mtime": 1781414129.9462507,
+    "hash": "7ad69f3d3d1f7d0eab2da0ccf5254e12"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/rates_vol_regime/config.yaml": {
     "mtime": 1781353094.7942615,
     "hash": "f7f92fbd4ede5ec1b792b55bae665737"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/yield_change_attribution_pca/config.yaml": {
-    "mtime": 1777775642.0954576,
-    "hash": "814cd84a997cb0d21a089a454a6a0b88"
+    "mtime": 1781414129.9488223,
+    "hash": "76bd86c957ce788f90acd071ce032914"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/otr_ofr_spread/config.yaml": {
     "mtime": 1779634220.3532872,
@@ -6524,8 +6572,8 @@
     "hash": "2483743dc4749afb8aeac282e2d2c36b"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/curve_fair_value/config.yaml": {
-    "mtime": 1781352387.2124193,
-    "hash": "1791864341f9f5a26b22fbd511d9b593"
+    "mtime": 1781414129.949453,
+    "hash": "799bf78d43ab90e45f5046c18a38ed64"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/half_life/config.yaml": {
     "mtime": 1777765390.4231722,
@@ -6888,7 +6936,7 @@
     "hash": "ee488849fdc9a758ff97eb9f8577b848"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/graphify-out/converted/rates_playbook_planning_manifest_784d2d10.md": {
-    "mtime": 1781359538.6846955,
+    "mtime": 1781414681.921399,
     "hash": "411f509e99c9fd44c55add78551d2ad0"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/docs/problems.md": {
@@ -6916,8 +6964,8 @@
     "hash": "0b0764a63d8ea44e40c6c84f0505ea4c"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/docs/architecture/methodology_sources.md": {
-    "mtime": 1779368975.2949865,
-    "hash": "566196024e5f2a5d6b79244653b665f4"
+    "mtime": 1781414110.270533,
+    "hash": "ef3719f1c448a2a4db93af7a8c93c12a"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/docs/architecture/replay.md": {
     "mtime": 1778982035.4126487,
@@ -7550,6 +7598,694 @@
   "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/wiring/build_linker_panel_tool.md": {
     "mtime": 1781209409.608731,
     "hash": "ef7ae886761405cad4c0ad7ae2098c4d"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/REVIEW_PROMPT.md": {
+    "mtime": 1781373255.972518,
+    "hash": "a7305a156d65303bb3e69e175c42987f"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/STANDARDS_PACK.md": {
+    "mtime": 1781374043.7890627,
+    "hash": "db5fdef311a15e1e7e5a7bca35d9ebab"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/00_INDEX.md": {
+    "mtime": 1781413697.5053487,
+    "hash": "4098be1485fe56362972e30071d6adc4"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/GOAL_MODE_MESSAGE.txt": {
+    "mtime": 1781373233.6883636,
+    "hash": "d2fc05e9cd7881abe8dcdd616414feda"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/R02_operators_A2_pairwise.md": {
+    "mtime": 1781385042.0594602,
+    "hash": "f2548a15ec85d7979023d6562ad62c7a"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/R04_operators_A5_tests_A6_events_A7_combo.md": {
+    "mtime": 1781395084.8789494,
+    "hash": "229d3e35fd223f1adb75623fe303ed71"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/R06_shared_quant_library.md": {
+    "mtime": 1781403172.993625,
+    "hash": "0622fbfbcbfa50b8894216d7f7987dab"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/R10_scaling_wiring_composition.md": {
+    "mtime": 1781412604.5237288,
+    "hash": "dd66e28105666e5538271ddcfe12a9ab"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/R01_operators_A1_transforms.md": {
+    "mtime": 1781381083.8215437,
+    "hash": "2a0b1e778fe5444b72551efc8651f93f"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/R09_north_star_acceptance.md": {
+    "mtime": 1781411673.4011664,
+    "hash": "dc617bc20c51559716464b07983c0fa5"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/R05_operators_A4_model_engines.md": {
+    "mtime": 1781402171.1033142,
+    "hash": "5f83d2b29cb54c51cfde61bd761f2111"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/R03_operators_A3_cross_sectional.md": {
+    "mtime": 1781389107.6905653,
+    "hash": "564199696b31210c053e6f49935f3a44"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/R07_primitives_bucket2.md": {
+    "mtime": 1781406696.947545,
+    "hash": "5861bc8a5ee1d22d5dcb14cba68df1cf"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/R11_defer_log_adjudication.md": {
+    "mtime": 1781413628.5411432,
+    "hash": "b128d711e8e6dbf9b74948836d660a9d"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/R08_primitives_analytic.md": {
+    "mtime": 1781410835.9938793,
+    "hash": "cf65a092303b30d45d4909f623826166"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/52_defer_log__criticB.md": {
+    "mtime": 1781413256.5379305,
+    "hash": "c47b1f8061464b9375b1d004fb73a4de"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/37_pca_decompose__criticB.md": {
+    "mtime": 1781399495.167129,
+    "hash": "12589830a01aaeb428ed721d91a2210b"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/20_demean_cross_section__criticA.md": {
+    "mtime": 1781387442.403721,
+    "hash": "4d71a94581cfddb37c6aca552de314cf"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/27_normality_test__criticA.md": {
+    "mtime": 1781392117.2736764,
+    "hash": "6232442fb8332d6fde1f1714dfe1f7f7"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/51_scaling_wiring__criticB.md": {
+    "mtime": 1781412336.3120358,
+    "hash": "478acf791edd144178b31d4645602390"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/02_lag__criticB.md": {
+    "mtime": 1781375076.0498297,
+    "hash": "64961e3c08bbbb7527ba19f542262eaf"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/28_streak__criticB.md": {
+    "mtime": 1781392864.8194675,
+    "hash": "75dbb43d370d7ff99c0e946e8a6ebc56"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/06_rolling_statistic__criticB.md": {
+    "mtime": 1781378044.540825,
+    "hash": "36bb9aa76d252ef8a9e3bb729e9fd812"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/38_reconstruct_from_factors__criticB.md": {
+    "mtime": 1781400299.6629558,
+    "hash": "a6725d066a88dd076bfca3d7c3935396"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/18_cross_sectional_zscore__criticA.md": {
+    "mtime": 1781386059.6344438,
+    "hash": "82a6a0f1b3fd5ad03d2cc5b72c41a878"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/30_weighted_combination__criticA.md": {
+    "mtime": 1781393998.0418537,
+    "hash": "2b13ce8f8055f308ea4c888f377bdb3e"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/45_ois_policy_path_regime__criticB.md": {
+    "mtime": 1781406341.1883228,
+    "hash": "6cd7b660102b4c55d0e8753e4507fa3a"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/33_fit_garch__criticB.md": {
+    "mtime": 1781396378.0911303,
+    "hash": "408478d3393b539aabb738d5adbcfd28"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/44_rates_vol_regime__criticB.md": {
+    "mtime": 1781405323.414185,
+    "hash": "aa2499502358c0a4856f18280d80f956"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/39_rolling_pca__criticB.md": {
+    "mtime": 1781400986.4987826,
+    "hash": "fc2138aa9e697ffe34fda55a48e0945b"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/41_shared_quant_library__criticA.md": {
+    "mtime": 1781402651.8498178,
+    "hash": "61c54862bd170896c593ccd3a7890cd8"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/04_winsorize__criticA.md": {
+    "mtime": 1781376310.0828466,
+    "hash": "6adfb465f988b59b7662f97902e61de4"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/46_swap_carry_and_roll__criticA.md": {
+    "mtime": 1781407175.3794138,
+    "hash": "f2791fb7d728b7bf3e31623b6159ed7c"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/21_top_n__criticA.md": {
+    "mtime": 1781388010.2426438,
+    "hash": "99641c16fff0217df2927fcab873cce9"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/50_north_star__criticB.md": {
+    "mtime": 1781411394.2890522,
+    "hash": "d710c9cd9a3fdc4bffe479468597b19c"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/16_granger_causality__criticA.md": {
+    "mtime": 1781384768.8216722,
+    "hash": "a15e299e663d4c0be6cb5ed1c595c14d"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/10_bandpass__criticB.md": {
+    "mtime": 1781380851.4457023,
+    "hash": "945a50b1616a31853092741407ea36bd"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/36_changepoint_detection__criticA.md": {
+    "mtime": 1781398798.0544217,
+    "hash": "f900f8e71e8bf0cc7382e364b499d9ab"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/23_stationarity_adf__criticB.md": {
+    "mtime": 1781389517.8849597,
+    "hash": "aeca9791da042e3f26684096f737a249"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/25_variance_ratio__criticA.md": {
+    "mtime": 1781390967.218497,
+    "hash": "41599baddf81856db75219a5a6323272"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/15_lead_lag__criticA.md": {
+    "mtime": 1781384136.422242,
+    "hash": "9d0e561b4773fc10889dba9b57edaa26"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/12_rolling_covariance__criticA.md": {
+    "mtime": 1781382065.215087,
+    "hash": "f1bb8ea171c00760f08b8c7e044c50b4"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/42_sovereign_curve_regime__criticB.md": {
+    "mtime": 1781403652.671322,
+    "hash": "36ac1364923fd5fc32356630a917bdf1"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/32_fit_ou__criticA.md": {
+    "mtime": 1781395578.1335707,
+    "hash": "77b2a91ae693b45f40eed15b07e060bb"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/05_resample__criticA.md": {
+    "mtime": 1781377242.7997322,
+    "hash": "0ea5e8afd4976a09d1647dc97ea06312"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/24_ljung_box__criticB.md": {
+    "mtime": 1781390252.7414377,
+    "hash": "0d5855a9fe603892f64fbc050849a01f"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/07_summarize_series__criticB.md": {
+    "mtime": 1781378829.8651822,
+    "hash": "83b78f4abc0de5bc7f00a8fc440cf552"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/17_cross_sectional_rank__criticB.md": {
+    "mtime": 1781385527.851641,
+    "hash": "c973c054aeae17da60acafae3a3d858a"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/40_fit_kalman__criticB.md": {
+    "mtime": 1781401807.6084056,
+    "hash": "e608281f12a7e334f16b691fad9e2a6c"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/53_lineage_artifact__criticB.md": {
+    "mtime": 1781414560.7589908,
+    "hash": "9327064cac3e681d79d934013c59f7ef"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/13_beta__criticA.md": {
+    "mtime": 1781382622.8465912,
+    "hash": "8088bbca78760e3d2e244fc2b2adcc2d"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/09_hp_filter__criticA.md": {
+    "mtime": 1781380168.9058888,
+    "hash": "4852e440cf0de586dace687361151608"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/49_futures_bridge__criticA.md": {
+    "mtime": 1781410228.2690027,
+    "hash": "f2f038a35bf86aa3ca8df25c5bbb4c9f"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/29_transition_events__criticB.md": {
+    "mtime": 1781393375.810135,
+    "hash": "192677650a2f8e1f8d0d68cf9abb8c55"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/43_curve_fair_value__criticA.md": {
+    "mtime": 1781404418.1782572,
+    "hash": "c42786780f09e9232ff7908bb0eac0e4"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/11_covariance__criticB.md": {
+    "mtime": 1781381503.502964,
+    "hash": "ffdb8fcb3ac62b9fece1f95009a278d4"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/31_apply_mask__criticA.md": {
+    "mtime": 1781394747.9656234,
+    "hash": "382a721fde2f7dd746bac3800c7d6bb5"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/26_hurst_exponent__criticB.md": {
+    "mtime": 1781391610.7835255,
+    "hash": "7be163f79190b84d4682b82b96e099cd"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/22_pairwise_spread_matrix__criticB.md": {
+    "mtime": 1781388809.937104,
+    "hash": "3f12c1bf6bb7ebe5615ad8d52ef4ca8b"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/34_fit_regime_gmm__criticB.md": {
+    "mtime": 1781397355.6338727,
+    "hash": "b5cee7ad7fb39140cc1ec3701885f56d"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/14_regression_residual__criticB.md": {
+    "mtime": 1781383444.2474766,
+    "hash": "9c9aba1949da87cf2f24789294f2b147"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/47_implied_forward_curve__criticB.md": {
+    "mtime": 1781408045.6208577,
+    "hash": "c54ae43b9a408a9d219cd09551868555"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/48_pca_neutral_butterfly_weights__criticB.md": {
+    "mtime": 1781409009.8049142,
+    "hash": "9042de6204dbfda72d7e338636034e76"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/01_ewm_statistic__criticA.md": {
+    "mtime": 1781374465.772015,
+    "hash": "bda2eca1cd78519ca9f5c4a5007d652c"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/03_cumulative__criticB.md": {
+    "mtime": 1781375647.5809784,
+    "hash": "92ce95baafc5f1fc198106674fb1ca12"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/35_fit_regime_hmm__criticA.md": {
+    "mtime": 1781398092.455547,
+    "hash": "220ff1aecf28b6a5005832ce786e730b"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/19_cross_sectional_statistic__criticB.md": {
+    "mtime": 1781386772.2357924,
+    "hash": "abd82e0a29de1be3e4d750406d9d4dbf"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/08_detrend__criticA.md": {
+    "mtime": 1781379369.0553634,
+    "hash": "78869ed694ebfcc2a58d4481c324bb34"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/22_pairwise_spread_matrix__criticA.md": {
+    "mtime": 1781388839.3675435,
+    "hash": "c2f5326e989ee535f09aa8c18a551468"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/34_fit_regime_gmm__criticA.md": {
+    "mtime": 1781397222.707526,
+    "hash": "b5b116f0608b4e150f9225cfa7a0a866"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/14_regression_residual__criticA.md": {
+    "mtime": 1781383287.4175968,
+    "hash": "8e05c5d4f189739f557c74e0dbdb00ce"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/48_pca_neutral_butterfly_weights__criticA.md": {
+    "mtime": 1781408942.2485373,
+    "hash": "e0492db65128b3581894ffa66af373f7"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/47_implied_forward_curve__criticA.md": {
+    "mtime": 1781408073.145633,
+    "hash": "3871f029c73cde6cce3771467d5f59f3"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/01_ewm_statistic__criticB.md": {
+    "mtime": 1781374498.6516492,
+    "hash": "ab01dd8ec48ae3ba397ba6ede9ad8e47"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/03_cumulative__criticA.md": {
+    "mtime": 1781375689.6421595,
+    "hash": "b94b055b397e130ad442f5afa78220f2"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/35_fit_regime_hmm__criticB.md": {
+    "mtime": 1781398149.36516,
+    "hash": "cacf8695ff35703fd09cc383eda0f1fd"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/08_detrend__criticB.md": {
+    "mtime": 1781379539.5237408,
+    "hash": "a4b1c1f5550f691decbfa1096b0e742b"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/19_cross_sectional_statistic__criticA.md": {
+    "mtime": 1781386891.2061877,
+    "hash": "4ba4ce7eabfae3d6bc2630ba27037fbf"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/23_stationarity_adf__criticA.md": {
+    "mtime": 1781389469.9177072,
+    "hash": "2303091266e16cd433a44130e720c051"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/36_changepoint_detection__criticB.md": {
+    "mtime": 1781398866.5453072,
+    "hash": "756558e2d8ab6f4769adf6d2de8ea10b"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/25_variance_ratio__criticB.md": {
+    "mtime": 1781390975.436359,
+    "hash": "5d054b183e45037dc312c3d8d1f1ab23"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/15_lead_lag__criticB.md": {
+    "mtime": 1781384080.3923833,
+    "hash": "82526b383efb958f493bb496adb4acf4"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/12_rolling_covariance__criticB.md": {
+    "mtime": 1781382055.280396,
+    "hash": "e07f9b9f8e72e5d0f0eb526af673317d"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/42_sovereign_curve_regime__criticA.md": {
+    "mtime": 1781403574.69994,
+    "hash": "4d45df37cd46a90cfdfefbd147a8c779"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/32_fit_ou__criticB.md": {
+    "mtime": 1781395674.0649755,
+    "hash": "e8589db0a93296f2fc3a57075905d688"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/05_resample__criticB.md": {
+    "mtime": 1781377308.992844,
+    "hash": "b0ce322cd12ebcf5f39092942323f537"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/24_ljung_box__criticA.md": {
+    "mtime": 1781390134.2319233,
+    "hash": "6cdee7d1fdb105a3f8c5e3df8583d7a6"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/40_fit_kalman__criticA.md": {
+    "mtime": 1781401782.4859817,
+    "hash": "3641c2b2fe037dc7c3dc7647f991b3eb"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/17_cross_sectional_rank__criticA.md": {
+    "mtime": 1781385449.775901,
+    "hash": "b581f7ea871422bffe3e6da090ca40a8"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/07_summarize_series__criticA.md": {
+    "mtime": 1781378760.2240548,
+    "hash": "ea99bad1ac00bae6601a098dc4529431"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/13_beta__criticB.md": {
+    "mtime": 1781382698.7415905,
+    "hash": "c90177011a343cae0c16e0f642468c8d"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/09_hp_filter__criticB.md": {
+    "mtime": 1781380228.7662857,
+    "hash": "deb9d46db5b14dd08bf6710c118a77e8"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/43_curve_fair_value__criticB.md": {
+    "mtime": 1781404530.0222142,
+    "hash": "bf622006b4412dee0a2edecf61ce8acb"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/11_covariance__criticA.md": {
+    "mtime": 1781381445.7126298,
+    "hash": "b0302fba6f7e23c7efa40eea43a1b450"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/49_futures_bridge__criticB.md": {
+    "mtime": 1781410257.6736085,
+    "hash": "2dbaae4a9a91f59e915ae34cbfb2977b"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/29_transition_events__criticA.md": {
+    "mtime": 1781393400.9871485,
+    "hash": "8840a7a4d83fe2ed25bda57e675aa40b"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/26_hurst_exponent__criticA.md": {
+    "mtime": 1781391624.1905777,
+    "hash": "1fcb0012cc40f02a6d7e6a22edc1d357"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/31_apply_mask__criticB.md": {
+    "mtime": 1781394721.4506698,
+    "hash": "325131cc6f4e789bdc75f6fb96643e0b"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/44_rates_vol_regime__criticA.md": {
+    "mtime": 1781405260.7358828,
+    "hash": "d37831923c6552b947e198e9c3130d69"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/39_rolling_pca__criticA.md": {
+    "mtime": 1781401008.7129035,
+    "hash": "10a2f1e942ff7b8ed1786ad27229a3c0"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/41_shared_quant_library__criticB.md": {
+    "mtime": 1781402785.952804,
+    "hash": "0d55c48c0704fd02779aa60a30984d45"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/04_winsorize__criticB.md": {
+    "mtime": 1781376407.134781,
+    "hash": "a4ada3d5f48db316ebc8bae6139424c5"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/46_swap_carry_and_roll__criticB.md": {
+    "mtime": 1781407208.98712,
+    "hash": "f7a1c384396fbaced33728e3dc29b89c"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/21_top_n__criticB.md": {
+    "mtime": 1781388167.7307448,
+    "hash": "b73bfabc95e1bb4fac0153826ad367ea"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/50_north_star__criticA.md": {
+    "mtime": 1781411262.105703,
+    "hash": "aac958324191377d7635ad2af3c6fe59"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/16_granger_causality__criticB.md": {
+    "mtime": 1781384822.0515919,
+    "hash": "dc38ab9ac9a43db2e8a60b3c0f9c3aa6"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/10_bandpass__criticA.md": {
+    "mtime": 1781380826.7776873,
+    "hash": "c002bfdffb8725220e13f3e262f5f681"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/52_defer_log__criticA.md": {
+    "mtime": 1781413096.4169462,
+    "hash": "92a7c73e7292c46a543c27893d758c37"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/37_pca_decompose__criticA.md": {
+    "mtime": 1781399489.0037513,
+    "hash": "834b649533d896d796fbced6c857b3cd"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/27_normality_test__criticB.md": {
+    "mtime": 1781392227.991072,
+    "hash": "3433f1f69e17a72a7122bd1d2abdc919"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/20_demean_cross_section__criticB.md": {
+    "mtime": 1781387456.1436694,
+    "hash": "a672696b06325f580e5cb823d9911d30"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/02_lag__criticA.md": {
+    "mtime": 1781374989.667951,
+    "hash": "cee0cc239de01c359ee127e47c63d6eb"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/28_streak__criticA.md": {
+    "mtime": 1781392837.784329,
+    "hash": "09ed06d5e75fc0debee12ea40bf75e86"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/51_scaling_wiring__criticA.md": {
+    "mtime": 1781412215.890079,
+    "hash": "4347947114d9a77b99ad309c6cef1137"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/06_rolling_statistic__criticA.md": {
+    "mtime": 1781378133.2794812,
+    "hash": "333bf7b9e610ee3ee2ae8e866bce5159"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/18_cross_sectional_zscore__criticB.md": {
+    "mtime": 1781386188.6438365,
+    "hash": "35689fce558e7b8032b8ab772dd47245"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/38_reconstruct_from_factors__criticA.md": {
+    "mtime": 1781400174.4382026,
+    "hash": "9ef473c3e4d8fbc1bcf922250dc78438"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/30_weighted_combination__criticB.md": {
+    "mtime": 1781394081.6042857,
+    "hash": "0aec28af5ff6cbeb533299953b430326"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/33_fit_garch__criticA.md": {
+    "mtime": 1781396351.6059206,
+    "hash": "2594965d21d03f4b916c5993dd18ab5c"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_raw/45_ois_policy_path_regime__criticA.md": {
+    "mtime": 1781406266.6298087,
+    "hash": "b8bbbbe38e96b77cc6dd6dad4049dfc4"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/04_winsorize.md": {
+    "mtime": 1781376781.0929341,
+    "hash": "4c9779979c731fc482b8302e36c247ff"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/16_granger_causality.md": {
+    "mtime": 1781385052.2414596,
+    "hash": "6eec593a39cb61cb6a2e62d90bc61bcd"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/35_fit_regime_hmm.md": {
+    "mtime": 1781398460.7925234,
+    "hash": "62394da604c174feb14bf98c7e60bd9e"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/15_lead_lag.md": {
+    "mtime": 1781384362.034989,
+    "hash": "21facb12bb5d307e2851d7d5438e179a"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/22_pairwise_spread_matrix.md": {
+    "mtime": 1781389118.4793487,
+    "hash": "020900450f66cf42eb6a4023eea1adec"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/07_summarize_series.md": {
+    "mtime": 1781379075.5770843,
+    "hash": "5ecaf93b23974b16a083c688bd50b77f"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/01_ewm_statistic.md": {
+    "mtime": 1781374693.2425003,
+    "hash": "8d07ea911f5d94b4c4db0460517aa6fc"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/12_rolling_covariance.md": {
+    "mtime": 1781382298.5880775,
+    "hash": "9b5bf809984bbe08a23fd96bb15afd03"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/44_rates_vol_regime.md": {
+    "mtime": 1781405848.6951985,
+    "hash": "b2d9756afd9f7798f8db74dd2c4763dc"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/25_variance_ratio.md": {
+    "mtime": 1781391258.6474435,
+    "hash": "ecc8c9a52393a4b84674c41a01a9422f"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/06_rolling_statistic.md": {
+    "mtime": 1781378419.3967686,
+    "hash": "256428462034e9c82c0ed23c04fddc01"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/18_cross_sectional_zscore.md": {
+    "mtime": 1781386435.7528667,
+    "hash": "ee5d56c7ba650e3cae8e1f3156fd7a78"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/45_ois_policy_path_regime.md": {
+    "mtime": 1781406706.477854,
+    "hash": "a5787045c3802e2e504129c570b6be64"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/02_lag.md": {
+    "mtime": 1781375340.3797152,
+    "hash": "f51f03b7409b9975abd6545c330dff53"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/46_swap_carry_and_roll.md": {
+    "mtime": 1781407617.5262933,
+    "hash": "3113cb8f1e06c02f30c25c1fa2b00f35"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/30_weighted_combination.md": {
+    "mtime": 1781394314.1487074,
+    "hash": "379b80ba6335dcec889b763c2dd96d46"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/09_hp_filter.md": {
+    "mtime": 1781380389.4197125,
+    "hash": "69dc9656caa53d41d7940c2dd90d2f44"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/51_scaling_wiring.md": {
+    "mtime": 1781412618.6817741,
+    "hash": "7fa7467cb9bb83b3bd997178317d9150"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/49_futures_bridge.md": {
+    "mtime": 1781410845.4888787,
+    "hash": "afbbe5e8eb926ed6987c9952fd714606"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/19_cross_sectional_statistic.md": {
+    "mtime": 1781387094.0879831,
+    "hash": "9a92f4b6ec9dfa4a9d72ef4c7a855b8f"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/23_stationarity_adf.md": {
+    "mtime": 1781389769.5939052,
+    "hash": "06c683f02c82fd0e8072ab4ec111fb72"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/20_demean_cross_section.md": {
+    "mtime": 1781387711.4562902,
+    "hash": "74da01d75d84e1d476f93b473d448386"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/52_defer_log.md": {
+    "mtime": 1781413645.84323,
+    "hash": "05f7bb54eb61e88ba6996967d5e02e2f"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/41_shared_quant_library.md": {
+    "mtime": 1781403191.915469,
+    "hash": "6238e08704ab5c0cd8c4cd2b2310a05d"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/38_reconstruct_from_factors.md": {
+    "mtime": 1781400600.1489136,
+    "hash": "8d1d16d0e0fb4a4435b8c783109c8aae"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/05_resample.md": {
+    "mtime": 1781377583.5347881,
+    "hash": "070a9dc466ddc601253fbfc5528cdf66"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/39_rolling_pca.md": {
+    "mtime": 1781401288.6068747,
+    "hash": "5cf94bba6874a610be9d7d524c8ae5bd"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/47_implied_forward_curve.md": {
+    "mtime": 1781408489.5617628,
+    "hash": "19f72fbf98451e6d847700ceba288eaf"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/37_pca_decompose.md": {
+    "mtime": 1781399734.726115,
+    "hash": "564f78e84684aaeeb7da32d702c9c654"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/26_hurst_exponent.md": {
+    "mtime": 1781391833.6123002,
+    "hash": "a4f0b7df2ec3c7c20a414c02ef39f035"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/27_normality_test.md": {
+    "mtime": 1781392519.5157506,
+    "hash": "e755c3443f0ba5dfc1e5a05a64bc2ea6"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/24_ljung_box.md": {
+    "mtime": 1781390500.6699638,
+    "hash": "88ca81da55f7c6b21bf245764b1e6669"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/42_sovereign_curve_regime.md": {
+    "mtime": 1781404056.3519688,
+    "hash": "99f7490ea1a00b5a13e1160d9882561e"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/28_streak.md": {
+    "mtime": 1781393062.6050322,
+    "hash": "26787d86674b21315df34d0389a154a2"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/36_changepoint_detection.md": {
+    "mtime": 1781399157.1306117,
+    "hash": "a8ec1176741e6b6c912f84415cf8b006"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/14_regression_residual.md": {
+    "mtime": 1781383748.0382266,
+    "hash": "0204d9595b41bce66810e71b26e0b204"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/40_fit_kalman.md": {
+    "mtime": 1781402188.323562,
+    "hash": "69265f0fde8ddb8596c339bb88731a46"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/32_fit_ou.md": {
+    "mtime": 1781395914.52194,
+    "hash": "8955524bf0802115b1abf8b67afb7be7"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/31_apply_mask.md": {
+    "mtime": 1781395112.7143283,
+    "hash": "d56d01d1a6457aed46665eba9d9758e5"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/21_top_n.md": {
+    "mtime": 1781388441.163988,
+    "hash": "60fee9a24bd5e8c92896ff673a4183fa"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/10_bandpass.md": {
+    "mtime": 1781381090.3980017,
+    "hash": "8fe467701bed5b86487dd55a0f3baeb1"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/11_covariance.md": {
+    "mtime": 1781381698.2478387,
+    "hash": "9c9ac9abf306fc297859a7603c3a85aa"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/03_cumulative.md": {
+    "mtime": 1781375960.53018,
+    "hash": "c137c3ece0f03ae6538394fffc576b2b"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/33_fit_garch.md": {
+    "mtime": 1781396804.110713,
+    "hash": "d73e692ab1729c8b3ae96961f5e675f5"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/48_pca_neutral_butterfly_weights.md": {
+    "mtime": 1781409446.2720647,
+    "hash": "3a2dd3208fe40425b7e10b15225a26ce"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/08_detrend.md": {
+    "mtime": 1781379814.8442981,
+    "hash": "9197829ad32111a15a705676d23fe06e"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/34_fit_regime_gmm.md": {
+    "mtime": 1781397709.3039906,
+    "hash": "90a1d834659b9fc3f653ffc7da86b5b4"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/43_curve_fair_value.md": {
+    "mtime": 1781404849.2252038,
+    "hash": "e5cad25003dd91edc94889952059b637"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/13_beta.md": {
+    "mtime": 1781382974.9633605,
+    "hash": "1aa48900b613a8cd650ab42db03ddb96"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/50_north_star.md": {
+    "mtime": 1781411691.3282402,
+    "hash": "956eaeff5ff6c03bbcb3cc5b68f52629"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/17_cross_sectional_rank.md": {
+    "mtime": 1781385738.797817,
+    "hash": "803bc3dbd530a4046d81fc02c74f6b25"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_review/reviews/_findings/29_transition_events.md": {
+    "mtime": 1781393651.6825814,
+    "hash": "ccf1f70c0a36e9e6e5af705cb0cee4e9"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/composer_queries/q09_rolling_beta.txt": {
     "mtime": 1780610965.2559984,
