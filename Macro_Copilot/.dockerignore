@@ -1,0 +1,48 @@
+# .dockerignore — build-context exclusions for the api-server / macro-project image
+#
+# WHY THIS FILE EXISTS (Fable Plan 2, cluster C0.1 / finding M15):
+# The image is built from environment.yml (Dockerfile step 4) and then bakes the
+# repo via `COPY . .` (step 6).  At runtime the compose services bind-mount the
+# live repo at /app (`.:/app`), so the *baked* copy is overridden anyway — only
+# the conda env layer needs to be correct.  A clean `docker compose build
+# api-server` was failing at `COPY . .` because the build context contained a
+# file the host filesystem could not read (`docs/other/'pop_up_representative'.png`,
+# single-quotes literally in the name, raising `input/output error` on copy).
+# Excluding it — plus the heavy, non-runtime, churn-prone paths below — makes the
+# image build reproducibly and keeps the context small/fast.  None of these paths
+# are needed inside the image (the live bind-mount provides everything at runtime).
+
+# --- the unreadable asset that broke `COPY . .` (host I/O error) ---
+docs/other/
+
+# --- VCS / tooling metadata ---
+.git
+.gitignore
+.dockerignore
+
+# --- nested git worktrees (created by the agent harness; not part of the image) ---
+.claude/worktrees/
+
+# --- Python / test caches and build artifacts ---
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+.pytest_cache/
+**/.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# --- local env / secrets (provided at runtime via env_file / bind-mount) ---
+.env
+.venv/
+venv/
+
+# --- knowledge-graph + scratch output (not runtime deps) ---
+graphify-out/
+tmp/
+
+# --- editor / OS cruft ---
+.DS_Store
+.idea/
+.vscode/

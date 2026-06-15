@@ -196,6 +196,17 @@ services:
       superset init &&
       /usr/bin/run-server.sh" 
   api-server:
+    # Built from the repo-root Dockerfile, which creates ``macro-env``
+    # from ``environment.yml`` (so ``statsmodels`` + ``pytest-asyncio`` —
+    # declared at environment.yml:16,24 — are BAKED IN; no inline
+    # ``pip install`` is ever needed at the prompt).  If a checkout's
+    # cached image predates those env lines, rebuild ONCE:
+    #     docker compose build api-server
+    # The build context excludes the unreadable ``docs/other/`` asset
+    # (single-quotes in the filename → host I/O error on ``COPY . .``)
+    # via ``.dockerignore`` at the repo root, so the rebuild is
+    # reproducible from committed files alone.  (Fable Plan 2 cluster
+    # C0.1 / finding M15.)
     build: .
     # PR 16: run ``alembic upgrade head`` BEFORE starting uvicorn so
     # the ``copilot_state`` schema (sessions / turns / message_events /
