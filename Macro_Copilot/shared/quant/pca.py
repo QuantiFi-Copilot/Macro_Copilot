@@ -61,6 +61,103 @@ _TIE_TOL = 1e-6
 
 
 @dataclass(frozen=True)
+class PcaSvdCore:
+    """The raw, convention-free SVD decomposition of a PREPARED matrix.
+
+    This is the single-source-of-truth finance-blind numerical core
+    (P10 / plan §8.1): the economy SVD + the ``S²/(n−1)`` eigenvalue
+    derivation + the FULL-spectrum variance shares + the K-truncation.
+    It carries NO standardisation choice and NO sign convention — those
+    are the CALLER's responsibility (correlation vs covariance PCA;
+    largest-|loading| vs curve-position sign anchor), exactly mirroring
+    how :func:`shared.quant.ou.fit_ou_core` returns the raw (α, β, φ)
+    regression algebra and each caller layers its own gate on top.
+
+    Attributes
+    ----------
+    u, s, vt :
+        The economy ``np.linalg.svd(M, full_matrices=False)`` of the
+        already-prepared matrix ``M`` (FULL, un-truncated).
+    loadings :
+        ``(K, n_features)`` — ``vt[:K]`` (a COPY; the caller may flip
+        signs in place).
+    factor_scores :
+        ``(n_rows, K)`` — ``(u[:, :K] · s[:K])`` (a COPY).
+    singular_values :
+        ``(K,)`` — ``s[:K]`` (a copy).
+    eigenvalues_full :
+        ``(min(n_rows, n_features),)`` — ``s² / denom`` over the FULL
+        spectrum (NOT truncated; the variance-share denominator).
+    variance_share_full :
+        ``(len(eigenvalues_full),)`` — ``eigenvalues_full / Σ`` over the
+        FULL spectrum (zeros when the total variance is non-positive).
+    n_components :
+        K.
+    """
+
+    u: np.ndarray
+    s: np.ndarray
+    vt: np.ndarray
+    loadings: np.ndarray
+    factor_scores: np.ndarray
+    singular_values: np.ndarray
+    eigenvalues_full: np.ndarray
+    variance_share_full: np.ndarray
+    n_components: int
+
+
+def pca_svd_core(
+    prepared: np.ndarray, n_components: int, *, denom: float,
+) -> PcaSvdCore:
+    """Economy SVD + eigenvalue/variance-share derivation + truncation.
+
+    The ONE place the principal-component SVD numerics live (P10): both
+    :func:`fit_pca` (correlation PCA — z-scored input) and
+    ``shared.analytics.stats.pca_yield_changes`` (covariance PCA —
+    demeaned input) prepare their own matrix and delegate the
+    decomposition here, so the SVD math is written exactly once.
+
+    Parameters
+    ----------
+    prepared :
+        The already-standardised ``(n_rows, n_features)`` matrix to
+        decompose (z-scored for correlation PCA, demeaned for
+        covariance PCA — the caller decides).  Must be finite.
+    n_components :
+        K, the number of retained components (``1 <= K <= n_features``;
+        the caller validates the bounds).
+    denom :
+        The eigenvalue denominator (``S² / denom``).  Callers pass
+        ``n_rows − 1`` for the unbiased sample convention.
+
+    Returns
+    -------
+    PcaSvdCore
+        The raw decomposition (no sign convention applied).
+    """
+    u, s, vt = np.linalg.svd(prepared, full_matrices=False)
+    eigenvalues_full = (s ** 2) / denom
+    total = float(eigenvalues_full.sum())
+    if total > 0.0:
+        variance_share_full = eigenvalues_full / total
+    else:
+        variance_share_full = np.zeros_like(eigenvalues_full)
+    loadings = vt[:n_components].copy()
+    factor_scores = (u[:, :n_components] * s[:n_components]).copy()
+    return PcaSvdCore(
+        u=u,
+        s=s,
+        vt=vt,
+        loadings=loadings,
+        factor_scores=factor_scores,
+        singular_values=s[:n_components].copy(),
+        eigenvalues_full=eigenvalues_full,
+        variance_share_full=variance_share_full,
+        n_components=int(n_components),
+    )
+
+
+@dataclass(frozen=True)
 class PcaFitResult:
     """The result of :func:`fit_pca` (canonical sign).
 
@@ -146,8 +243,14 @@ def fit_pca(X: np.ndarray, n_components: int) -> PcaFitResult:
             "correlation is undefined."
         )
 
+    # Correlation PCA: z-score each column, then delegate the SVD +
+    # eigenvalue / variance-share numerics to the shared core (P10 —
+    # the SAME decomposition the covariance-PCA primitive uses).  The
+    # standardisation above and the sign convention below are this
+    # estimator's own layer on top of the convention-free core.
     xz = (arr - col_mean) / col_std
-    u, s, vt = np.linalg.svd(xz, full_matrices=False)
+    core = pca_svd_core(xz, n_components, denom=n - 1)
+    s = core.s
 
     # Rank-deficiency in the retained subspace: a retained singular
     # value negligible relative to the largest -> undefined loading.
@@ -159,10 +262,9 @@ def fit_pca(X: np.ndarray, n_components: int) -> PcaFitResult:
             "feature."
         )
 
-    eigenvalues = s ** 2 / (n - 1)
-    evr = eigenvalues / eigenvalues.sum()
-    loadings = vt[:n_components].copy()
-    scores = (u[:, :n_components] * s[:n_components]).copy()
+    evr = core.variance_share_full
+    loadings = core.loadings
+    scores = core.factor_scores
 
     # Canonical sign: the largest-|loading| element is positive (ties
     # broken by the lowest column index — argmax returns the first).
@@ -182,7 +284,7 @@ def fit_pca(X: np.ndarray, n_components: int) -> PcaFitResult:
         factor_scores=scores,
         loadings=loadings,
         explained_variance_ratio=evr[:n_components].copy(),
-        singular_values=s[:n_components].copy(),
+        singular_values=core.singular_values,
         column_means=col_mean,
         column_stds=col_std,
         n_components=int(n_components),
@@ -348,5 +450,6 @@ def rolling_pca_scores(
 
 __all__ = [
     "fit_pca", "reconstruct_residual", "rolling_pca_scores",
-    "PcaFitResult", "RollingPcaResult",
+    "pca_svd_core",
+    "PcaFitResult", "RollingPcaResult", "PcaSvdCore",
 ]

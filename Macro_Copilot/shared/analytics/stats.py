@@ -26,6 +26,20 @@ the confidence-level lookup, and the LOOSER
 primitive relies on (the core's strict ``0 < φ < 1`` gate governs only
 whether a finite half-life is emitted, not this flag).
 
+Likewise the PCA / SVD decomposition is NOT re-implemented here:
+``pca_yield_changes`` delegates the economy SVD + the ``S²/(n−1)``
+eigenvalue / variance-share derivation to
+``shared.quant.pca.pca_svd_core`` — the single source of truth for the
+finance-blind PCA numerics (the SAME core the ``pca_decompose`` /
+``rolling_pca`` operators reach via ``shared.quant.pca.fit_pca``),
+resolving the P10 duplication flagged in the shared-quant-library
+review.  What stays HERE is the finance-aware methodology layer the
+consuming tool's config declares as DISTINCT from the operator's
+correlation PCA: the COVARIANCE-PCA standardisation (demean-only — NO
+z-score) and the ``lock_pc_long_tenor_positive`` curve-position sign
+anchor (the rates curve convention the finance-blind core deliberately
+does not carry).
+
 Determinism contract
 --------------------
 Given a fixed input series + kwargs, the output is bit-stable across
@@ -42,6 +56,7 @@ import numpy as np
 import pandas as pd
 
 from shared.quant.ou import fit_ou_core
+from shared.quant.pca import pca_svd_core
 
 
 __all__ = [
@@ -368,8 +383,10 @@ class PcaResult:
 
     All numeric outputs are bit-stable across runs given the input
     panel, the n_components / change_frequency / sign_anchor kwargs,
-    and the tenor list.  The PCA solve uses ``numpy.linalg.svd``
-    (LAPACK driver, deterministic across numpy ≥ 1.14).
+    and the tenor list.  The PCA solve delegates to the single-source
+    ``shared.quant.pca.pca_svd_core`` (economy ``numpy.linalg.svd``,
+    LAPACK driver, deterministic across numpy ≥ 1.14); only the
+    covariance-PCA demean + curve-position sign anchor are layered here.
 
     Attributes
     ----------
@@ -550,24 +567,28 @@ def pca_yield_changes(
     #   * Singular values S relate to eigenvalues via S² / (n_obs - 1).
     #   * Factor scores at each date = Xc @ V_truncated (which equals
     #     U_truncated @ diag(S_truncated)).
+    #
+    # The economy SVD + the S²/(n_obs-1) eigenvalue derivation + the
+    # full-spectrum variance shares + the K-truncation are the
+    # finance-blind numerical core in shared.quant.pca (P10 / plan
+    # §8.1) — the SAME decomposition the correlation-PCA operator uses
+    # (shared.quant.pca.fit_pca delegates to the same pca_svd_core).
+    # The DIFFERENCE that stays here is the methodology layer the
+    # consuming tool's config declares as distinct: this primitive does
+    # COVARIANCE PCA (demean-only Xc above — no z-score) and applies the
+    # curve-position sign anchor below, neither of which lives in the
+    # finance-blind core.  No second np.linalg.svd is run here.
     # ------------------------------------------------------------------
-    # full_matrices=False: economy SVD (deterministic LAPACK driver).
-    U, S, Vt = np.linalg.svd(Xc, full_matrices=False)
-    eigenvalues_full = (S ** 2) / max(n_obs - 1, 1)
-    total_variance = float(np.sum(eigenvalues_full))
-
-    # Truncate to n_components.
-    eigenvalues = eigenvalues_full[:n_components]
-    loadings = Vt[:n_components].T  # shape: [n_tenors, n_components]
-    scores = U[:, :n_components] * S[:n_components]  # [n_obs, n_components]
+    core = pca_svd_core(Xc, n_components, denom=float(max(n_obs - 1, 1)))
+    full_variance_share = core.variance_share_full
+    # Transpose into tenor-space [n_tenors, n_components]; a writable
+    # copy so the degenerate-NaN + sign-anchor steps below can mutate.
+    loadings = np.array(core.loadings.T, copy=True)  # [n_tenors, K]
+    scores = core.factor_scores  # [n_obs, K] (already a fresh copy)
 
     # ------------------------------------------------------------------
     # Detect degenerate components (variance share below threshold)
     # ------------------------------------------------------------------
-    if total_variance > 0:
-        full_variance_share = eigenvalues_full / total_variance
-    else:
-        full_variance_share = np.zeros_like(eigenvalues_full)
     component_names = [f"pc{k+1}" for k in range(n_components)]
     component_metadata: List[PcaComponentInfo] = []
     variance_share_truncated = np.zeros(n_components, dtype=float)
