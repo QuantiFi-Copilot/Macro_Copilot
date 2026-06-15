@@ -21,7 +21,7 @@
 # work via their native tools (``pytest``, ``npm run …``).
 # =============================================================================
 
-.PHONY: help check-module-parity check-module-parity-strict
+.PHONY: help check-module-parity check-module-parity-strict attest attest-local
 
 # -----------------------------------------------------------------------------
 # Default: print the available targets.
@@ -49,6 +49,47 @@ help:
 	@echo ""
 	@echo "Backend (pytest) — run from repo root:"
 	@echo "  pytest tests/               Full backend test suite"
+	@echo ""
+	@echo "  attest                      HONEST full-suite attestation"
+	@echo "                              (Fable Plan 2 §10/§12).  Runs the"
+	@echo "                              whole suite in the macro-env"
+	@echo "                              container with --continue-on-"
+	@echo "                              collection-errors and exits"
+	@echo "                              non-zero on ANY failure / error /"
+	@echo "                              collection-error — never masked by"
+	@echo "                              a '| tail' pipe.  This is the"
+	@echo "                              command the §12 Definition-of-Done"
+	@echo "                              attestation must use."
+	@echo "  attest-local                Same, but assumes you are already"
+	@echo "                              inside macro-env (no docker wrap)."
+
+# -----------------------------------------------------------------------------
+# Honest full-suite attestation (Fable Plan 2 §10/§12 — review finding B5).
+# -----------------------------------------------------------------------------
+#
+# The §12 "Definition of Done" requires attesting the backend suite is green.
+# The naive ``pytest ... | tail`` idiom reports ``tail``'s exit code, so a
+# collection error (e.g. a missing pytest-asyncio at the time) printed
+# "Interrupted: 2 errors during collection" yet the pipeline reported exit 0 —
+# a dishonest "tests green" attestation that actually ran nothing.
+#
+# ``scripts/attest_suite.sh`` is the honest, committed artifact: it runs the
+# full suite with ``--continue-on-collection-errors``, reads pytest's REAL
+# exit code (captured via a tmp rc-file, not through a pipe), defensively
+# parses the summary line, and exits non-zero on any failure / error /
+# collection-error or if zero tests were collected.
+#
+# ``attest`` wraps it in the project's standard macro-env container so the
+# whole suite (statsmodels + pytest-asyncio baked into the image, cluster
+# C0.1) runs honestly with NO inline pip.  ``attest-local`` runs the same
+# script when you are already inside macro-env.
+
+attest:
+	docker compose run --rm --no-deps api-server bash -lc \
+	  "cd /app && micromamba run -n macro-env bash scripts/attest_suite.sh"
+
+attest-local:
+	@bash scripts/attest_suite.sh
 
 # -----------------------------------------------------------------------------
 # Module-parity check (Stage 2).

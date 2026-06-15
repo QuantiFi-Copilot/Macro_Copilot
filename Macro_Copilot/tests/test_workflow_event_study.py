@@ -1121,8 +1121,11 @@ class TestResolverCompleteness:
         # get_ois_rate_level_tool -> calculate_ois_rate_level_tool)
         # AND previously-unregistered L2 catalogue tools registered
         # (butterflies, scanners, panel builders, surprise calcs,
-        # bond-futures + policy-futures families).  Canonical set is
-        # now the full 55-tool catalogue.
+        # bond-futures + policy-futures families).  Fable Plan 2
+        # (Track-A) then registered 7 finance-aware primitives
+        # (sovereign/OIS regimes, fair-value, vol-regime, carry-and-
+        # roll, implied-forward curve, PCA-neutral butterfly weights),
+        # so the canonical set is now the full 62-tool catalogue.
         canonical_set = {
             # OIS family
             "calculate_ois_curve_spread_tool",
@@ -1186,6 +1189,20 @@ class TestResolverCompleteness:
             "policy_futures_get_futures_strip_snapshot_tool",
             "policy_futures_get_scan_policy_futures_extremes_tool",
             "policy_futures_get_volume_open_interest_snapshot_tool",
+            # Track-A primitives (Fable Plan 2): the 7 finance-aware
+            # tools registered in ``_PRIMITIVE_SPECS`` (rates_agent/
+            # workflows/__init__.py) — sovereign-curve / OIS regime,
+            # fair-value, vol-regime, carry-and-roll, implied-forward
+            # curve, and PCA-neutral butterfly weights.  Added to the
+            # canonical set in the SAME change that registered them so
+            # the lock-step stays honest (registered == canonical).
+            "calculate_sovereign_curve_regime_tool",
+            "calculate_curve_fair_value_tool",
+            "calculate_rates_vol_regime_tool",
+            "calculate_ois_policy_path_regime_tool",
+            "calculate_swap_carry_and_roll_tool",
+            "calculate_implied_forward_curve_tool",
+            "calculate_pca_neutral_butterfly_weights_tool",
         }
         missing = canonical_set - registered
         assert not missing, (
