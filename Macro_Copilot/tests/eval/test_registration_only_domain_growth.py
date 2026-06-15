@@ -28,10 +28,10 @@ impossible.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
-from contextlib import ExitStack
 from pathlib import Path
 
 import pytest
@@ -43,6 +43,11 @@ _FIXTURE_FOLDER = _REPO_ROOT / "rates_agent" / _FIXTURE_DOMAIN_ID
 _INNER_TEST_PATH = (
     Path(__file__).parent / "_registration_only_domain_growth_inner.py"
 )
+
+# Env flag the inner subprocess sets so tests/conftest.py's pre-collection
+# sweep leaves the fixture-domain folder in place for the child session.
+# MUST match the name in tests/conftest.py (_KEEP_FIXTURE_DOMAIN_ENV).
+_KEEP_FIXTURE_DOMAIN_ENV = "_MACRO_GROWTH_PROOF_KEEP_FIXTURE_DOMAIN"
 
 
 def _write_fixture_domain() -> None:
@@ -86,20 +91,31 @@ def _write_fixture_domain() -> None:
 
 @pytest.fixture
 def fixture_domain():
-    """Drop a synthetic rates_agent/<fixture>/ folder + tear it down
-    via ExitStack.  No in-process module reloads — the test that
-    actually reads the registry runs in a subprocess."""
-    if _FIXTURE_FOLDER.exists():
-        shutil.rmtree(_FIXTURE_FOLDER, ignore_errors=True)
+    """Drop a synthetic rates_agent/<fixture>/ folder and GUARANTEE its
+    removal on teardown via try/finally.  No in-process module reloads —
+    the test that actually reads the registry runs in a subprocess, so
+    the outer process's domain registry is never mutated; restoring the
+    on-disk baseline (folder absent) is the complete teardown.
 
-    with ExitStack() as stack:
-        # Register cleanup BEFORE writing the folder so the unwind
-        # always removes it, even if subprocess.run raises.
-        stack.callback(
-            lambda: shutil.rmtree(_FIXTURE_FOLDER, ignore_errors=True),
-        )
+    Why the guarantee matters: the folder lives under the PRODUCTION
+    ``rates_agent/`` tree, which is bind-mounted into the macro-env
+    container.  A folder left behind here is discovered by
+    ``orchestrator.domain_registry`` at the NEXT session's import time,
+    inflating ``KNOWN_DOMAINS`` to 7 and tripping the P8/P10 closed-
+    family gate (``test_resolver_keys.py::test_known_domains_size``) in a
+    session that never touched this fixture.  The write lives inside the
+    ``try`` so a partial folder from a mid-write failure is still removed;
+    ``tests/conftest.py`` sweeps any survivor before collection as a
+    second line of defence."""
+    # Clear any folder a previously hard-killed run leaked, then write a
+    # fresh one.  The write is inside the try so the finally removes even
+    # a partially-created folder if _write_fixture_domain raises.
+    shutil.rmtree(_FIXTURE_FOLDER, ignore_errors=True)
+    try:
         _write_fixture_domain()
         yield
+    finally:
+        shutil.rmtree(_FIXTURE_FOLDER, ignore_errors=True)
 
 
 @pytest.mark.parametrize(
@@ -115,6 +131,11 @@ def test_via_subprocess(fixture_domain, inner_test_name: str):
     registry discovers the fixture domain on FIRST IMPORT (matching
     the production fresh-interpreter path) and the parent process's
     module state stays untouched."""
+    # The inner pytest session loads tests/conftest.py too, whose
+    # pre-collection sweep would otherwise delete the fixture-domain folder
+    # this test just wrote — before the inner assertions can read it.  Opt
+    # the child out of the sweep; the folder is the whole point of the run.
+    inner_env = {**os.environ, _KEEP_FIXTURE_DOMAIN_ENV: "1"}
     result = subprocess.run(
         [
             sys.executable, "-m", "pytest",
@@ -123,6 +144,7 @@ def test_via_subprocess(fixture_domain, inner_test_name: str):
         ],
         cwd=str(_REPO_ROOT),
         capture_output=True, text=True, timeout=60,
+        env=inner_env,
     )
     if result.returncode != 0:
         pytest.fail(
