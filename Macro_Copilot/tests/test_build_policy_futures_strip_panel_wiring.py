@@ -1014,7 +1014,7 @@ class TestPreExistingHelpersUnchanged:
         params = list(sig.parameters.keys())
         assert params == [
             "engine", "curve_family", "strip_positions", "field_name",
-            "start_date",
+            "start_date", "end_date",
         ]
 
     def test_rates_fetch_cross_market_strip_signature_unchanged(self):
@@ -1023,5 +1023,5 @@ class TestPreExistingHelpersUnchanged:
         params = list(sig.parameters.keys())
         assert params == [
             "engine", "curve_family_1", "curve_family_2",
-            "strip_position", "field_name", "start_date",
+            "strip_position", "field_name", "start_date", "end_date",
         ]

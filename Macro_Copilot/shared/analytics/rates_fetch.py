@@ -657,6 +657,7 @@ def fetch_cross_domain_pair(
     ois_field_name: str,
     tenor: str,
     start_date: date,
+    end_date: Optional[date] = None,
 ) -> pd.DataFrame:
     """Fetch the same tenor on one sovereign curve + one OIS curve.
 
@@ -668,6 +669,10 @@ def fetch_cross_domain_pair(
     The two legs use different ``field_name`` mnemonics by
     convention (sovereign ``YLD_YTM_MID`` vs OIS ``PX_LAST``), so
     each leg's filter is matched explicitly in the WHERE clause.
+
+    ``end_date`` (optional): upper-bound ``trade_date`` cap for the
+    historical as-of view.  ``None`` (default) imposes no upper bound —
+    identical to the pre-as-of query.
     """
     with engine.connect() as conn:
         result = conn.execute(
@@ -683,7 +688,7 @@ def fetch_cross_domain_pair(
         )
         rows = result.fetchall()
         columns = list(result.keys())
-    return pd.DataFrame(rows, columns=columns)
+    return _cap_to_end_date(pd.DataFrame(rows, columns=columns), end_date)
 
 
 # ============================================================================
@@ -816,6 +821,7 @@ _FETCH_SCAN_UNIVERSE_REFERENCE_ALL_SQL = text("""
     FROM macro_data.v_market_data_daily_enriched
     WHERE instrument_type = :instrument_type
       AND tenor          IS NOT NULL
+      AND (CAST(:end_date AS DATE) IS NULL OR trade_date <= CAST(:end_date AS DATE))
 """)
 
 _FETCH_SCAN_UNIVERSE_REFERENCE_FILTERED_SQL = text("""
@@ -831,6 +837,7 @@ _FETCH_SCAN_UNIVERSE_REFERENCE_FILTERED_SQL = text("""
     WHERE instrument_type = :instrument_type
       AND tenor          IS NOT NULL
       AND curve_family    = ANY(:curve_families)
+      AND (CAST(:end_date AS DATE) IS NULL OR trade_date <= CAST(:end_date AS DATE))
 """)
 
 
@@ -838,6 +845,7 @@ def fetch_scan_universe_reference(
     engine: Engine,
     instrument_type: str,
     curve_families: Optional[Iterable[str]] = None,
+    end_date: Optional[date] = None,
 ) -> pd.DataFrame:
     """Fetch per-instrument reference metadata for a universe scan.
 
@@ -862,6 +870,13 @@ def fetch_scan_universe_reference(
         If None, return reference rows for every curve_family of the
         given instrument_type. If provided, scope to the named
         curves only — mirrors ``fetch_scan_universe``'s scope kwarg.
+    end_date : date, optional
+        Inclusive upper bound on ``trade_date``. When supplied, only
+        rows observed on or before ``end_date`` contribute to the
+        DISTINCT reference projection, so the reference universe never
+        surfaces an instrument that first appears after the requested
+        as-of (matching ``fetch_scan_universe``'s upper-bound contract).
+        When ``None`` (default), behaviour is unchanged.
 
     Returns
     -------
@@ -895,7 +910,10 @@ def fetch_scan_universe_reference(
     ``vendor_ticker`` (a Bloomberg-grade identifier that IS
     populated for both linkers and ZCIS).
     """
-    bind_params: dict = {"instrument_type": instrument_type}
+    bind_params: dict = {
+        "instrument_type": instrument_type,
+        "end_date": end_date.isoformat() if end_date is not None else None,
+    }
     if curve_families:
         bind_params["curve_families"] = list(curve_families)
         sql = _FETCH_SCAN_UNIVERSE_REFERENCE_FILTERED_SQL
@@ -1095,6 +1113,7 @@ def fetch_strip_position_reference(
     curve_family: str,
     strip_position: int,
     as_of_date: date,
+    end_date: Optional[date] = None,
 ) -> Optional[Dict[str, object]]:
     """Fetch the reference metadata for one policy-futures strip
     position as of a specific trading day.
@@ -1132,14 +1151,27 @@ def fetch_strip_position_reference(
     contract_size, tick_size, tick_value) that P5 requires alongside
     the implied-rate level — without forcing a second tool call for
     metadata.
+
+    ``end_date`` (optional): upper-bound cap on the SCD2 reference
+    window. The current-front contract is the metadata-history row whose
+    effective window contains the resolved as-of date; when ``end_date``
+    is supplied the effective as-of used for that lookup is capped to
+    ``min(as_of_date, end_date)`` so the resolved current-front contract
+    can never be a window that only opens after the requested historical
+    as-of (mirrors how the SQL fetchers cap ``trade_date <= end_date``).
+    When ``None`` (default), behaviour is unchanged — the lookup is
+    bounded by ``as_of_date`` alone.
     """
+    effective_as_of = as_of_date
+    if end_date is not None and end_date < effective_as_of:
+        effective_as_of = end_date
     with engine.connect() as conn:
         row = conn.execute(
             _FETCH_STRIP_POSITION_REFERENCE_SQL,
             {
                 "curve_family": curve_family,
                 "strip_position": strip_position,
-                "as_of_date": as_of_date.isoformat(),
+                "as_of_date": effective_as_of.isoformat(),
             },
         ).mappings().first()
     if row is None:
@@ -1153,6 +1185,7 @@ _FETCH_STRIP_POSITION_MAX_DATE_SQL = text("""
     WHERE curve_family = :curve_family
       AND (attributes->>'strip_position')::int = :strip_position
       AND field_name   = :field_name
+      AND (CAST(:end_date AS DATE) IS NULL OR trade_date <= CAST(:end_date AS DATE))
 """)
 
 
@@ -1161,6 +1194,7 @@ def fetch_strip_position_max_date(
     curve_family: str,
     strip_position: int,
     field_name: str,
+    end_date: Optional[date] = None,
 ) -> Optional[date]:
     """Return the maximum ``trade_date`` available for one policy-
     futures strip position.
@@ -1177,6 +1211,13 @@ def fetch_strip_position_max_date(
 
     Returns ``None`` when the strip has no rows for the requested
     field (universe miss or ingestion gap).
+
+    ``end_date`` (optional): upper-bound cap on the probed
+    ``trade_date``. When supplied, the MAX is taken only over rows on or
+    before ``end_date`` so the resolved anchor never exceeds the
+    requested historical as-of (so a future-anchor guard built on this
+    probe stays consistent with the capped series fetch). When ``None``
+    (default), behaviour is unchanged — the MAX is unbounded above.
     """
     with engine.connect() as conn:
         row = conn.execute(
@@ -1185,6 +1226,7 @@ def fetch_strip_position_max_date(
                 "curve_family": curve_family,
                 "strip_position": strip_position,
                 "field_name": field_name,
+                "end_date": end_date.isoformat() if end_date is not None else None,
             },
         ).first()
     if row is None or row[0] is None:
@@ -1205,6 +1247,7 @@ _FETCH_STRIP_GROUP_SQL = text("""
       AND (attributes->>'strip_position')::int = ANY(:strip_positions)
       AND field_name   = :field_name
       AND trade_date  >= :start_date
+      AND (CAST(:end_date AS DATE) IS NULL OR trade_date <= CAST(:end_date AS DATE))
     ORDER BY trade_date, strip_position
 """)
 
@@ -1215,6 +1258,7 @@ def fetch_strip_group(
     strip_positions: Sequence[int],
     field_name: str,
     start_date: date,
+    end_date: Optional[date] = None,
 ) -> pd.DataFrame:
     """Fetch a set of strip positions on one futures curve.
 
@@ -1229,6 +1273,12 @@ def fetch_strip_group(
     ``['trade_date', 'strip_position', 'field_value']``. Callers pivot
     on ``strip_position`` (via ``pivot_and_align_tenors(key_col='strip_position')``)
     to align across positions.
+
+    ``end_date`` (optional): inclusive upper bound on ``trade_date``.
+    When supplied, the SQL predicate adds ``AND trade_date <= :end_date``
+    so the per-strip series cannot contain rows past the requested
+    anchor — mirrors :func:`fetch_strip_position`'s upper-bound
+    contract. When ``None`` (default), behaviour is unchanged.
     """
     if not strip_positions:
         raise ValueError(
@@ -1242,6 +1292,7 @@ def fetch_strip_group(
                 "strip_positions": list(strip_positions),
                 "field_name": field_name,
                 "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat() if end_date is not None else None,
             },
         )
         rows = result.fetchall()
@@ -1259,6 +1310,7 @@ _FETCH_CROSS_MARKET_STRIP_SQL = text("""
       AND (attributes->>'strip_position')::int = :strip_position
       AND field_name   = :field_name
       AND trade_date  >= :start_date
+      AND (CAST(:end_date AS DATE) IS NULL OR trade_date <= CAST(:end_date AS DATE))
     ORDER BY trade_date, curve_family
 """)
 
@@ -1270,6 +1322,7 @@ def fetch_cross_market_strip(
     strip_position: int,
     field_name: str,
     start_date: date,
+    end_date: Optional[date] = None,
 ) -> pd.DataFrame:
     """Fetch the same strip position on two different futures curves.
 
@@ -1286,6 +1339,12 @@ def fetch_cross_market_strip(
     structurally different rate objects. Cross-CB spreads computed off
     this fetcher ALWAYS ship with a methodology-card disclosure naming
     the two underlyings explicitly.
+
+    ``end_date`` (optional): inclusive upper bound on ``trade_date``.
+    When supplied, the SQL predicate adds ``AND trade_date <= :end_date``
+    so neither leg's series can contain rows past the requested anchor —
+    mirrors :func:`fetch_strip_position`'s upper-bound contract. When
+    ``None`` (default), behaviour is unchanged.
     """
     with engine.connect() as conn:
         result = conn.execute(
@@ -1296,6 +1355,7 @@ def fetch_cross_market_strip(
                 "strip_position": strip_position,
                 "field_name": field_name,
                 "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat() if end_date is not None else None,
             },
         )
         rows = result.fetchall()
@@ -1335,6 +1395,7 @@ _FETCH_ROLLING_GENERIC_SERIES_SQL = text("""
       AND i.is_rolling_contract = TRUE
       AND d.field_name     = :field_name
       AND d.trade_date    >= :start_date
+      AND (CAST(:end_date AS DATE) IS NULL OR d.trade_date <= CAST(:end_date AS DATE))
     ORDER BY d.trade_date
 """)
 
@@ -1345,6 +1406,7 @@ def fetch_rolling_generic_series(
     contract_code: str,
     field_name: str,
     start_date: date,
+    end_date: Optional[date] = None,
 ) -> pd.DataFrame:
     """Fetch a single rolling-generic futures series (e.g. TY1 PX_LAST).
 
@@ -1382,6 +1444,12 @@ def fetch_rolling_generic_series(
         for volume.
     start_date : date
         Inclusive lower bound on ``trade_date``.
+    end_date : date, optional
+        Inclusive upper bound on ``trade_date``. When supplied, the SQL
+        predicate adds ``AND d.trade_date <= :end_date`` so the series
+        cannot contain rows past the requested anchor — mirrors
+        :func:`fetch_rolling_generic_universe_series`'s upper-bound
+        contract. When ``None`` (default), behaviour is unchanged.
     """
     with engine.connect() as conn:
         result = conn.execute(
@@ -1391,6 +1459,7 @@ def fetch_rolling_generic_series(
                 "contract_code": contract_code,
                 "field_name": field_name,
                 "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat() if end_date is not None else None,
             },
         )
         rows = result.fetchall()
@@ -1420,6 +1489,7 @@ _FETCH_ROLLING_GENERIC_REFERENCE_SQL = text("""
         SELECT expiry_date, security_name
         FROM macro_data.instrument_metadata_history
         WHERE instrument_id = i.instrument_id
+          AND (CAST(:end_date AS DATE) IS NULL OR effective_from <= CAST(:end_date AS DATE))
         ORDER BY effective_from DESC
         LIMIT 1
     ) h ON TRUE
@@ -1434,6 +1504,7 @@ def fetch_rolling_generic_reference(
     engine: Engine,
     curve_family: str,
     contract_code: str,
+    end_date: Optional[date] = None,
 ) -> Optional[Dict[str, object]]:
     """Fetch the reference metadata for one rolling-generic stem.
 
@@ -1455,6 +1526,15 @@ def fetch_rolling_generic_reference(
     carries the per-contract disclosure (e.g. ``quote_units = "points"``
     for TY1, ``"% of par value"`` for RX1) that P5 requires alongside
     the rolling-generic price level.
+
+    ``end_date`` (optional): upper-bound cap on the SCD2 reference
+    window. The ``expiry_date`` / ``security_name`` are taken from the
+    latest metadata-history window; when ``end_date`` is supplied the
+    LATERAL lookup is bounded to windows with ``effective_from <=
+    end_date`` so the disclosed metadata is the value that was effective
+    on or before the requested historical as-of, never a future window.
+    When ``None`` (default), behaviour is unchanged — the lookup takes
+    the unbounded latest effective window.
     """
     with engine.connect() as conn:
         row = conn.execute(
@@ -1462,6 +1542,7 @@ def fetch_rolling_generic_reference(
             {
                 "curve_family": curve_family,
                 "contract_code": contract_code,
+                "end_date": end_date.isoformat() if end_date is not None else None,
             },
         ).mappings().first()
     if row is None:
@@ -1533,6 +1614,7 @@ _FETCH_ROLLING_GENERIC_UNIVERSE_MAX_DATE_SQL = text("""
     WHERE i.curve_family        = ANY(:curve_families)
       AND i.is_rolling_contract = TRUE
       AND i.tenor              IS NOT NULL
+      AND (CAST(:end_date AS DATE) IS NULL OR d.trade_date <= CAST(:end_date AS DATE))
 """)
 
 
@@ -1635,6 +1717,7 @@ def fetch_rolling_generic_universe_series(
 def fetch_rolling_generic_universe_max_date(
     engine: Engine,
     curve_families: Sequence[str],
+    end_date: Optional[date] = None,
 ) -> Optional[date]:
     """Return the maximum ``trade_date`` available across the rolling-
     generic bond-futures universe for the named curve families.
@@ -1661,6 +1744,14 @@ def fetch_rolling_generic_universe_max_date(
         Live SQLAlchemy engine.
     curve_families : Sequence[str]
         Bond-futures curve families to probe.
+    end_date : date, optional
+        Inclusive upper bound on the probed ``trade_date``. When
+        supplied, the MAX is taken only over rows on or before
+        ``end_date`` so the resolved anchor never exceeds the requested
+        historical as-of (keeping the future-anchor guard consistent
+        with the capped series fetch). Mirrors
+        :func:`fetch_rolling_generic_universe_series`'s upper-bound
+        contract. When ``None`` (default), behaviour is unchanged.
 
     Returns
     -------
@@ -1677,7 +1768,10 @@ def fetch_rolling_generic_universe_max_date(
     with engine.connect() as conn:
         row = conn.execute(
             _FETCH_ROLLING_GENERIC_UNIVERSE_MAX_DATE_SQL,
-            {"curve_families": list(curve_families)},
+            {
+                "curve_families": list(curve_families),
+                "end_date": end_date.isoformat() if end_date is not None else None,
+            },
         ).first()
     if row is None or row[0] is None:
         return None
@@ -1931,6 +2025,7 @@ def fetch_scan_universe_policy_future_reference(
     engine: Engine,
     as_of_date: date,
     curve_families: Optional[Iterable[str]] = None,
+    end_date: Optional[date] = None,
 ) -> pd.DataFrame:
     """Fetch per-(curve_family, strip_position) reference metadata for
     the policy-futures universe scan.
@@ -1985,6 +2080,15 @@ def fetch_scan_universe_policy_future_reference(
         rolling-contract on instrument_master. If provided, scope to
         the named curves only — mirrors
         :func:`fetch_scan_universe_strip_position`'s scope kwarg.
+    end_date : date, optional
+        Upper-bound cap on the SCD2 reference window. When supplied, the
+        effective as-of used for the per-stem current-front lookup is
+        capped to ``min(as_of_date, end_date)`` so a resolved
+        current-front contract can never be a window that only opens
+        after the requested historical as-of — same discipline
+        :func:`fetch_strip_position_reference` applies for the per-leg
+        monitors. When ``None`` (default), behaviour is unchanged — the
+        lookup is bounded by ``as_of_date`` alone.
 
     Returns
     -------
@@ -1994,7 +2098,10 @@ def fetch_scan_universe_policy_future_reference(
         ascending then strip_position ascending — deterministic for
         Layer-B SQL validation.
     """
-    bind_params: dict = {"as_of_date": as_of_date.isoformat()}
+    effective_as_of = as_of_date
+    if end_date is not None and end_date < effective_as_of:
+        effective_as_of = end_date
+    bind_params: dict = {"as_of_date": effective_as_of.isoformat()}
     if curve_families:
         bind_params["curve_families"] = list(curve_families)
         sql = _FETCH_SCAN_UNIVERSE_POLICY_FUTURE_REFERENCE_FILTERED_SQL
@@ -2013,6 +2120,7 @@ _FETCH_SCAN_UNIVERSE_STRIP_POSITION_MAX_DATE_ALL_SQL = text("""
     FROM macro_data.v_market_data_daily_enriched
     WHERE instrument_type = :instrument_type
       AND (attributes->>'strip_position')::int IS NOT NULL
+      AND (CAST(:end_date AS DATE) IS NULL OR trade_date <= CAST(:end_date AS DATE))
 """)
 
 _FETCH_SCAN_UNIVERSE_STRIP_POSITION_MAX_DATE_FILTERED_SQL = text("""
@@ -2021,6 +2129,7 @@ _FETCH_SCAN_UNIVERSE_STRIP_POSITION_MAX_DATE_FILTERED_SQL = text("""
     WHERE instrument_type = :instrument_type
       AND (attributes->>'strip_position')::int IS NOT NULL
       AND curve_family    = ANY(:curve_families)
+      AND (CAST(:end_date AS DATE) IS NULL OR trade_date <= CAST(:end_date AS DATE))
 """)
 
 
@@ -2028,6 +2137,7 @@ def fetch_scan_universe_strip_position_max_date(
     engine: Engine,
     instrument_type: str,
     curve_families: Optional[Iterable[str]] = None,
+    end_date: Optional[date] = None,
 ) -> Optional[date]:
     """Return the maximum ``trade_date`` available across the
     strip-position-keyed universe scan for the named instrument_type
@@ -2045,8 +2155,19 @@ def fetch_scan_universe_strip_position_max_date(
 
     Returns ``None`` when the universe has no rows (empty scope or
     ingestion gap).
+
+    ``end_date`` (optional): upper-bound cap on the probed
+    ``trade_date``. When supplied, the MAX is taken only over rows on or
+    before ``end_date`` so the resolved anchor never exceeds the
+    requested historical as-of (keeping the future-anchor guard
+    consistent with the capped universe-series fetch). Mirrors
+    :func:`fetch_scan_universe_strip_position`'s upper-bound contract.
+    When ``None`` (default), behaviour is unchanged.
     """
-    bind_params: dict = {"instrument_type": instrument_type}
+    bind_params: dict = {
+        "instrument_type": instrument_type,
+        "end_date": end_date.isoformat() if end_date is not None else None,
+    }
     if curve_families:
         bind_params["curve_families"] = list(curve_families)
         sql = _FETCH_SCAN_UNIVERSE_STRIP_POSITION_MAX_DATE_FILTERED_SQL
@@ -2113,6 +2234,7 @@ def fetch_otr_transitions(
     tenor: str,
     window_start: date,
     window_end: date,
+    end_date: Optional[date] = None,
 ) -> "list[dict]":
     """Fetch the SCD2 OTR transition log for one ``(country, tenor)`` slot.
 
@@ -2148,7 +2270,18 @@ def fetch_otr_transitions(
         effective range overlaps ``[window_start, window_end]``
         (inclusive on both ends, matching the table's EXCLUDE GIST
         boundary convention) are returned.
+    end_date : date, optional
+        Upper-bound cap on the intersection window. When supplied, the
+        effective upper boundary of the intersection check is capped to
+        ``min(window_end, end_date)`` so the transition log never
+        surfaces an OTR window that only becomes effective after the
+        requested historical as-of (mirrors how the series fetchers cap
+        ``trade_date <= end_date``). When ``None`` (default), behaviour
+        is unchanged — the intersection uses ``window_end`` as-is.
     """
+    effective_window_end = window_end
+    if end_date is not None and end_date < effective_window_end:
+        effective_window_end = end_date
     with engine.connect() as conn:
         rows = (
             conn.execute(
@@ -2157,7 +2290,7 @@ def fetch_otr_transitions(
                     "country": str(country),
                     "tenor": str(tenor),
                     "window_start": window_start.isoformat(),
-                    "window_end": window_end.isoformat(),
+                    "window_end": effective_window_end.isoformat(),
                 },
             )
             .mappings()
@@ -2266,6 +2399,7 @@ def fetch_otr_ofr_yield_pair(
     field_name: str,
     window_start: date,
     window_end: date,
+    end_date: Optional[date] = None,
 ) -> pd.DataFrame:
     """Fetch the time-varying OTR/OFR yield pair for one ``(country, tenor)``
     sovereign cash-bond slot.
@@ -2331,7 +2465,19 @@ def fetch_otr_ofr_yield_pair(
         Inclusive calendar boundaries of the lookback window the
         primitive displays.  Both the OTR window-intersection check
         and the per-date BETWEEN filter use this range.
+    end_date : date, optional
+        Upper-bound cap on ``trade_date``. When supplied, the effective
+        upper boundary of both the SCD2 window-intersection check and
+        the per-date ``BETWEEN`` filter is capped to
+        ``min(window_end, end_date)`` so the returned frame cannot
+        contain an observation past the requested historical as-of
+        (mirrors how the series fetchers cap ``trade_date <= end_date``).
+        When ``None`` (default), behaviour is unchanged — the query uses
+        ``window_end`` as-is.
     """
+    effective_window_end = window_end
+    if end_date is not None and end_date < effective_window_end:
+        effective_window_end = end_date
     with engine.connect() as conn:
         result = conn.execute(
             _FETCH_OTR_OFR_YIELD_PAIR_SQL,
@@ -2340,7 +2486,7 @@ def fetch_otr_ofr_yield_pair(
                 "tenor": str(tenor),
                 "field_name": str(field_name),
                 "window_start": window_start.isoformat(),
-                "window_end": window_end.isoformat(),
+                "window_end": effective_window_end.isoformat(),
             },
         )
         rows = result.fetchall()
@@ -2411,6 +2557,7 @@ _FETCH_WIRP_MEETING_SNAPSHOTS_SQL = text(
       )
       AND i.maturity_date >= CAST(:earliest_meeting_date AS DATE)
       AND i.maturity_date <= CAST(:latest_meeting_date AS DATE)
+      AND (CAST(:end_date AS DATE) IS NULL OR md.trade_date <= CAST(:end_date AS DATE))
     ORDER BY md.instrument_id, md.field_name, md.trade_date DESC
     """
 )
@@ -2422,6 +2569,7 @@ def fetch_wirp_meeting_snapshots(
     central_bank: str,
     earliest_meeting_date: date,
     latest_meeting_date: date,
+    end_date: Optional[date] = None,
 ) -> pd.DataFrame:
     """Fetch the LATEST snapshot of the four WIRP fields per meeting
     for one central bank, restricted to meetings whose
@@ -2457,6 +2605,18 @@ def fetch_wirp_meeting_snapshots(
         Inclusive calendar boundaries on the meeting date (the
         synthetic instrument's ``maturity_date`` column, per
         ADR 0009 §1's typed-column mapping).
+    end_date : date, optional
+        Inclusive upper bound on the observation ``trade_date``. When
+        supplied, the ``DISTINCT ON`` snapshot is resolved over rows on
+        or before ``end_date`` only, so the returned per-meeting snapshot
+        is the latest observation as of the requested historical
+        date rather than the latest available overall — deterministic
+        for replay / Layer-B validation (mirrors how the series fetchers
+        cap ``trade_date <= end_date``). Note this caps the OBSERVATION
+        date, distinct from ``earliest_meeting_date`` /
+        ``latest_meeting_date`` which scope the MEETING (maturity) date.
+        When ``None`` (default), behaviour is unchanged — the snapshot
+        is the latest observation overall.
 
     Notes
     -----
@@ -2474,6 +2634,7 @@ def fetch_wirp_meeting_snapshots(
                 "central_bank": str(central_bank),
                 "earliest_meeting_date": earliest_meeting_date.isoformat(),
                 "latest_meeting_date": latest_meeting_date.isoformat(),
+                "end_date": end_date.isoformat() if end_date is not None else None,
             },
         )
         rows = result.fetchall()

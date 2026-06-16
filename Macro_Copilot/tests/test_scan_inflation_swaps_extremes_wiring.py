@@ -539,6 +539,7 @@ class TestFetchScanUniverseReferenceUnit:
         assert bind_params == {
             "instrument_type": "inflation_swap",
             "curve_families": ["USD_ZCIS", "EUR_ZCIS"],
+            "end_date": None,
         }
 
     def test_helper_inflation_swap_unfiltered_uses_all_sql(self):
@@ -557,7 +558,10 @@ class TestFetchScanUniverseReferenceUnit:
             curve_families=None,
         )
         _sql_obj, bind_params = mock_conn.execute.call_args.args
-        assert bind_params == {"instrument_type": "inflation_swap"}
+        assert bind_params == {
+            "instrument_type": "inflation_swap",
+            "end_date": None,
+        }
 
     def test_helper_inflation_linker_existing_path_still_works(self):
         """Linker-side projection path (the existing call site): the
@@ -578,7 +582,10 @@ class TestFetchScanUniverseReferenceUnit:
         )
         assert df.empty
         _sql_obj, bind_params = mock_conn.execute.call_args.args
-        assert bind_params == {"instrument_type": "inflation_linker"}
+        assert bind_params == {
+            "instrument_type": "inflation_linker",
+            "end_date": None,
+        }
 
     def test_helper_sql_projects_underlying_index(self):
         """The helper's compiled SQL text must reference

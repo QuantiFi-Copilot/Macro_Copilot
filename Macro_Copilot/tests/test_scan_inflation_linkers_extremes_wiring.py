@@ -513,7 +513,10 @@ class TestFetchScanUniverseReferenceUnit:
         assert df.empty
         # The full-universe SQL must NOT bind curve_families.
         sql_obj, bind_params = mock_conn.execute.call_args.args
-        assert bind_params == {"instrument_type": "inflation_linker"}
+        assert bind_params == {
+            "instrument_type": "inflation_linker",
+            "end_date": None,
+        }
 
     def test_helper_filtered_universe_uses_filtered_sql(self):
         from shared.analytics import rates_fetch
@@ -537,4 +540,5 @@ class TestFetchScanUniverseReferenceUnit:
         assert bind_params == {
             "instrument_type": "inflation_linker",
             "curve_families": ["USD_TIPS", "GBP_LINKER"],
+            "end_date": None,
         }
