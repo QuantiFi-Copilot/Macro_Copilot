@@ -346,6 +346,24 @@ class TestLineagePropagation:
         assert "synthetic_primitive" in names
         assert "summarize_series" in names
 
+    @pytest.mark.parametrize("params", [
+        SummarizeSeriesParams(statistic="mean"),
+        SummarizeSeriesParams(statistic="quantile", q=0.05),
+    ])
+    def test_rerun_is_deterministic(self, params):
+        """OPR14(a) / OPR16.2: ``op(x) == op(x)`` produces an identical
+        head_hash — the mandatory-per-operator rerun-equality assert
+        (the two siblings rolling_statistic / correlation ship this; it
+        was the one gap m10 names).  Covers a unit-preserving statistic
+        (mean) and the q-bearing quantile (whose metric_key folds q)."""
+        s = _make_series(
+            series_key="x",
+            values=[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0],
+        )
+        out1 = summarize_series(s, params=params)
+        out2 = summarize_series(s, params=params)
+        assert out1.lineage.head_hash == out2.lineage.head_hash
+
 
 # ===========================================================================
 # 7. Config-discipline

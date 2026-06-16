@@ -20,7 +20,12 @@ import pandas as pd
 import pytest
 from pydantic import BaseModel
 
-from shared.artifacts.lineage import AdapterStep, FetchStep, Lineage
+from shared.artifacts.lineage import (
+    AdapterStep,
+    FetchStep,
+    Lineage,
+    OperatorStep,
+)
 from shared.artifacts.missingness import RawNoCleaning
 from shared.artifacts.types import Panel, Series
 from shared.artifacts.units import TimeSeriesUnits
@@ -109,6 +114,34 @@ class TestHappyPath:
         assert head.params["fit_scope"] == "full_sample"
         assert head.params["converged"] is True
         assert head.params["feature_columns"] == ["feat_a", "feat_b"]
+
+    def test_loglik_n_iter_ride_nonhashed_diagnostics(self):
+        """m21 / P4 / OPR14(a): loglik + n_iter are SOLVER TELEMETRY —
+        OUT of the hashed step.params, IN the non-hashed ``diagnostics``
+        channel, so cross-version solver drift cannot shift the
+        head_hash for a byte-identical decoded label Series.  Kept
+        lock-step with the fit_regime_hmm twin."""
+        p = _panel(_regime_frame())
+        out = fit_regime_gmm(p, params=FitRegimeGmmParams(n_states=3))
+        head = out.lineage.steps[-1]
+        assert "loglik" not in head.params
+        assert "n_iter" not in head.params
+        assert "loglik" in head.diagnostics
+        assert "n_iter" in head.diagnostics
+        assert np.isfinite(head.diagnostics["loglik"])
+        assert int(head.diagnostics["n_iter"]) >= 1
+        # head_hash is independent of the diagnostics values.
+        s_a = OperatorStep.build(
+            name=head.name, version=head.version, params=head.params,
+            input_hashes=head.input_hashes,
+            diagnostics={"loglik": 1.0, "n_iter": 1},
+        )
+        s_b = OperatorStep.build(
+            name=head.name, version=head.version, params=head.params,
+            input_hashes=head.input_hashes,
+            diagnostics={"loglik": -999.0, "n_iter": 4242},
+        )
+        assert s_a.hash == s_b.hash
 
 
 # ===========================================================================

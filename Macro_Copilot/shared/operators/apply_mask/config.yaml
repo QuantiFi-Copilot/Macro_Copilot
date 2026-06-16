@@ -1,7 +1,10 @@
 operator:
   name: apply_mask
   method_family: masking
-  version: "1.0.0"
+  # 1.1.0 (OPR14d): FM-6 zero-match raise -> typed-empty-Series
+  # behavioural change.  Mirrors operator._OPERATOR_VERSION; the OPR16
+  # gate asserts config.operator.version == module._OPERATOR_VERSION.
+  version: "1.1.0"
   description: >-
     Subsample a Series by a boolean EventSet mask.  Output is a new
     Series whose values are the input restricted to the dates where
@@ -38,9 +41,12 @@ defaults:
       "subsample by regime" semantic and lets downstream
       summarization compute statistics over the regime sample
       directly.  Pass ``true`` when a downstream operator needs the
-      full date axis preserved (e.g. for index-aligned arithmetic
-      with another series); cells where mask=False become NaN in
-      that mode.
+      full intersected date axis preserved (e.g. for index-aligned
+      arithmetic with another series); cells where mask=False become
+      NaN in that mode.  NOTE under index_policy=intersect this axis is
+      the series∩mask intersection, not the input Series's own index —
+      so "full" is the full INTERSECTED axis, which equals the input
+      index only when the two inputs already share one.
     valid_values: [true, false]
 
   require_matching_frequency:
@@ -101,7 +107,9 @@ methodology:
                 n_true=0 in lineage) — "no day matched" is a
                 legitimate outcome, not an error; downstream
                 summarize_series(count) yields 0 (FM-6).
-      - true  : output payload retains the (intersected) full index
+      - true  : output payload retains the full intersected date axis
+                (under index_policy=intersect this is the
+                series∩mask intersection, NOT the input's own index)
                 with mask=False cells set to NaN.
 
     Units / frequency / missingness propagate 1:1 from the input
@@ -133,6 +141,7 @@ card:
   when_not_to_use:
     - "If the user wants WINDOWS (per-event sequences) around each event, use event_windows."
     - "If the user wants to combine two Series elementwise on a mask, this is the wrong shape — wire apply_mask first then arithmetic."
+    - "If a coarser-cadence mask should select a FINER-cadence period (e.g. a monthly regime selecting the daily observations inside each month): the require_matching_frequency=False opt-out does NOT bridge cadences — it applies the mask on the EXACT-TIMESTAMP intersection of the two indexes, so only dates that coincide on both axes are selected.  Resample the mask upstream to the target cadence first, then apply_mask."
   upstream_requirements:
     - "TWO inputs: a Series on 'series' slot, and an EventSet on 'mask' slot."
     - "The Series and EventSet must declare the same frequency tag (strict by default)."

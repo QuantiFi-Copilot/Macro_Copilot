@@ -115,6 +115,13 @@ def cumulative(
             f"{type(series).__name__}."
         )
 
+    # A structurally-empty (0-row) Series is refused with a dedicated
+    # message BEFORE compute — mirroring rolling_statistic — rather than
+    # falling through to the n_finite==0 all-NaN branch (which would
+    # mis-describe an empty input as "no non-NaN values").
+    if len(series.payload) == 0:
+        raise CumulativeError("cumulative: input series is empty.")
+
     # ------------------------------------------------------------------
     # 4. The running reduction (pandas skipna semantics: NaN positions
     #    stay NaN; accumulation continues over non-NaN values).

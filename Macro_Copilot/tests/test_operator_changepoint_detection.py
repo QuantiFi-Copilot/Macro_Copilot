@@ -240,6 +240,29 @@ class TestRefusalsAndDiscipline:
             == changepoint_detection(s, params=p).lineage.head_hash
         )
 
+    def test_config_path_min_size_below_floor_raises_typed(self):
+        """m19 / OPR8: a config shipping min_size below the schema
+        floor (ge=2) must raise the TYPED ChangepointDetectionError on
+        the config path (params.min_size=None) — not leak a bare
+        pydantic ValidationError from the quant layer (OPR13: the
+        operator owns this failure surface).  The params path already
+        floors via the schema; this pins parity on the config path."""
+        cfg = load_operator_config(CONFIG_PATH)
+        bad_default = cfg.defaults["min_size"].model_copy(update={"value": 1})
+        bad_cfg = cfg.model_copy(
+            update={"defaults": {**cfg.defaults, "min_size": bad_default}},
+        )
+        assert bad_cfg.default_value("min_size") == 1  # below the ge=2 floor
+        s = _series("x", values=_planted())
+        with pytest.raises(
+            ChangepointDetectionError, match="min_size >= 2",
+        ):
+            changepoint_detection(
+                s,
+                params=ChangepointDetectionParams(n_changepoints=2),
+                config=bad_cfg,
+            )
+
 
 # ===========================================================================
 # 5. OPR6 — finance-blindness (non-rates synthetic data)

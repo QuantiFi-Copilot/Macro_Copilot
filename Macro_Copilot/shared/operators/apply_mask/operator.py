@@ -48,7 +48,12 @@ from shared.operators.apply_mask.schemas import ApplyMaskParams
 
 
 _OPERATOR_NAME = "apply_mask"
-_OPERATOR_VERSION = "1.0.0"
+# 1.1.0 (OPR14d): the FM-6 zero-match behavioural change — a mask that
+# fires on ZERO dates now returns a typed EMPTY Series instead of
+# RAISING.  The hash folds version (not code), so the behavioural shift
+# carries a version bump even though the changed path never persisted an
+# artifact before (it raised).  config.operator.version mirrors this.
+_OPERATOR_VERSION = "1.1.0"
 
 _CONFIG_PATH: Path = Path(__file__).resolve().parent / "config.yaml"
 
@@ -195,7 +200,9 @@ def apply_mask(
     mask_aligned = mask.mask.reindex(common_index).fillna(False).astype(bool)
 
     if params.preserve_full_index:
-        # Keep the full intersected index; mask=False cells become NaN.
+        # Keep the full intersected date axis (the series∩mask
+        # intersection under intersect; the shared index under
+        # strict_match); mask=False cells become NaN.
         new_payload = series_aligned.where(mask_aligned)
     else:
         # Sparse output: only mask=True dates survive.

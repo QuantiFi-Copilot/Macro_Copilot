@@ -80,5 +80,5 @@ card:
       shape: "[Series A] -> bandpass(low=6, high=32) -> summarize_series(std) -> ScalarMetric  [terminal]"
   sibling_operators:
     - hp_filter: "Penalised-smoothing trend/cycle split tuned by lambda; bandpass isolates a specific FREQUENCY BAND tuned by low/high — a different method."
-    - detrend: "Removes a polynomial trend; bandpass removes everything outside a frequency band."
+    - detrend: "Removes a deterministic mean / linear (row-position OLS) trend; bandpass removes everything outside a frequency band."
   intent_hints: [transform]

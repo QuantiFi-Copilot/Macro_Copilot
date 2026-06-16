@@ -189,12 +189,22 @@ def dlm_filter(
         resid = y - X @ beta_ols
         ssr = float(resid @ resid)
         observation_variance = ssr / (n_obs - n_params)
+        # m25 / P5 honesty: this guard fires ONLY on a numerically-zero
+        # residual variance (R == 0.0 exactly).  In float64 even a
+        # perfect algebraic fit (e.g. y = 2x) leaves a tiny non-zero
+        # residual (~1e-31), so a NEAR-degenerate fit is NOT refused
+        # here — it degrades gracefully (the common R/Q scale cancels
+        # out of the filtered path).  We deliberately do NOT impose a
+        # relative floor (R <= eps*Var(y)): refusing near-degenerate
+        # fits would be an OPR14d behavioural change, and graceful
+        # degradation is the honest choice.  The wording below reflects
+        # the exact-zero reachability, not a relative tolerance.
         if not observation_variance > 0.0:
             raise ValueError(
-                "dlm_filter: the static OLS residual variance is zero "
-                "(the regression fits exactly) — there is no noise scale "
-                "to calibrate the filter against.  Supply genuinely noisy "
-                "data."
+                "dlm_filter: the static OLS residual variance is "
+                "NUMERICALLY ZERO (R == 0.0 — the regression fits "
+                "exactly) so there is no noise scale to calibrate the "
+                "filter against.  Supply genuinely noisy data."
             )
     else:
         observation_variance = float(observation_variance)

@@ -307,19 +307,21 @@ First read: scan the **Quick index**, then every principle's **Rule** line. Cite
 
 **Rule.** Every operator appends **exactly one** `OperatorStep` via `OperatorStep.build(name, version, params, input_hashes, auxiliary_lineages)` and returns the output built on `primary_input.lineage.append(step)`. **All non-primary artifact inputs' chains go into `auxiliary_lineages`** — uniformly, including N-ary/list operators (no stashing provenance only on a payload field). `params` is the operator's resolved params `model_dump()`, passed through `sanitize_params_for_lineage` so that any non-finite computed float (NaN/Inf) becomes `None` (which is JSON-canonical) before hashing.
 
+**SeriesSet-producer carve-out (m42).** A list-shaped operator that ALIGNS N *independent* inputs into a `SeriesSet` has **no single primary input chain to append to** — there is no privileged left operand, only N peers. Such a producer (the live `align_series`) instead builds a **fresh single-step set-level chain** via `Lineage.from_steps([align_step])` whose `input_hashes` are the N inputs' head-hashes, and carries each member's upstream chain on the `SeriesSet.upstream_lineage_by_key` payload field (recoverable via `SeriesSet.get_series`, which re-appends the align step per member). This is the **one** documented divergence from the primary-`.append` + `auxiliary_lineages` mechanism: it still appends **exactly one** `align_step` (the set-level head), still folds every input by hash, and still passes the OPR14 rerun-determinism and OPR16 name/version gates — the clause (g) registry-consistency gate asserts this fresh-single-step shape explicitly for the SeriesSet-producer (`_FRESH_CHAIN_OPS`) rather than the N→N+1 append shape. It is a carve-out **with an explicit assertion**, not an unchecked exception.
+
 **v2.0 supersedes v1's divergent mechanics.** v1 let `align_series` (the only N-ary operator) carry per-key provenance on a payload field instead of `auxiliary_lineages`, hand-built `step_params` per operator, and had no NaN-sanitisation — so `summarize_series` *crashed* on its default path (NaN into params → the lineage layer's NaN-rejection raised a bare `ValueError`). The sanitiser + uniform mechanism fix this.
 
 **Why.** [P4](../../00_thesis/01_non_negotiables.md). A single provenance walker must recover every input chain uniformly; the hash must be deterministic and never crash on legal compute output.
 
 **Verify.**
 - Output lineage length == input length + 1; head step `name`/`version` match the operator (OPR16 + an executor post-call assertion).
-- Head step `auxiliary_lineages` count == (number of artifact input slots − 1).
+- Head step `auxiliary_lineages` count == (number of artifact input slots − 1) — EXCEPT a SeriesSet-producer aligning N independent inputs (the carve-out above), which builds a fresh single-step set-level chain instead and is asserted as such by clause (g)'s `_FRESH_CHAIN_OPS` path.
 - No raw computed float reaches `step_params` without passing the sanitiser.
 - Rerun on identical inputs yields an identical `head_hash` (OPR14).
 
-**Anti-patterns.** Not appending (length unchanged); replacing the chain (losing upstream); calling `OperatorStep(...)` directly instead of `.build`; an N-ary operator skipping `auxiliary_lineages`; a NaN/Inf in `step_params`.
+**Anti-patterns.** Not appending (length unchanged); replacing the chain (losing upstream); calling `OperatorStep(...)` directly instead of `.build`; an N-ary operator skipping `auxiliary_lineages` (the SeriesSet-producer carve-out above is the **only** sanctioned divergence, and it still appends exactly one step + folds every input by hash); a NaN/Inf in `step_params`.
 
-**Exceptions.** None.
+**Exceptions.** The SeriesSet-producer carve-out (m42, above): a list-shaped operator aligning N independent inputs into a `SeriesSet` has no single primary chain, so it builds a fresh single-step set-level chain + per-member `upstream_lineage_by_key` instead of `primary.append` + `auxiliary_lineages`. Asserted explicitly by the OPR16 clause (g) gate (`_FRESH_CHAIN_OPS`); not an unchecked exception.
 
 **Relates to.** [P4](../../00_thesis/01_non_negotiables.md); [ART9/ART10](../artifact/README.md) (the lineage-integrity guards live at the artifact layer and back this rule).
 

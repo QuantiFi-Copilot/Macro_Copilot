@@ -254,7 +254,12 @@ def calculate_ois_policy_path_regime(
         return {"error": f"ois_policy_path_regime: regime fit failed — {exc}"}
 
     labels = labels_series.payload
-    model = labels_series.lineage.steps[-1].params
+    # m21: loglik + n_iter now ride the operator step's non-hashed
+    # diagnostics channel (solver telemetry, excluded from the head_hash
+    # for cross-version stability).  Merge it onto the content params so
+    # the model-state read below sees both — display-only.
+    _op_step = labels_series.lineage.steps[-1]
+    model = {**_op_step.params, **_op_step.diagnostics}
     n_states = int(model["n_states"])
     transition_matrix = model["transition_matrix"]
 

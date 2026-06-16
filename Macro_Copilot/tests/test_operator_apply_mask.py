@@ -183,6 +183,41 @@ class TestPreserveFullIndex:
         for d in true_dates:
             assert out.payload.loc[d] == s.payload.loc[d]
 
+    def test_preserve_full_index_returns_intersection_length_not_input(self):
+        """m17: under index_policy=intersect, preserve_full_index=True
+        returns the INTERSECTION length, NOT the input length — the
+        "full index" headline is the full INTERSECTED date axis.  The
+        sibling test above uses identical indexes (mask derived from the
+        same series), so it cannot catch this; here the mask's index is
+        a strict SUBSET of the target's, pinning len(out) ==
+        len(series∩mask) < len(input)."""
+        s = _make_series(n=60, start="2025-01-01")  # 60-day target axis
+        # Mask source starts later → its index is a strict subset of s's
+        # (overlap is the trailing window common to both).
+        s_for_mask = _make_series(
+            series_key="mask_source", n=30, start="2025-02-12",
+        )
+        mask = _make_mask_via_threshold(s_for_mask, threshold=4.5)
+
+        intersection = s.payload.index.intersection(mask.mask.index)
+        # Guard the test's own premise: the mask axis really is a proper
+        # subset, so the intersection is strictly shorter than the input.
+        assert 0 < len(intersection) < len(s.payload)
+
+        out = apply_mask(
+            s, mask,
+            params=ApplyMaskParams(
+                index_policy="intersect",
+                preserve_full_index=True,
+            ),
+        )
+        # The output axis is the INTERSECTION, not the 60-day input axis.
+        assert len(out.payload) == len(intersection)
+        assert len(out.payload) != len(s.payload)
+        assert out.payload.index.equals(
+            pd.DatetimeIndex(intersection).sort_values()
+        )
+
 
 # ===========================================================================
 # 4. index_policy contracts

@@ -56,8 +56,21 @@ import numpy as np
 # the largest is rank-deficient (its loading is undefined) — refuse.
 _RANK_TOL = 1e-8
 # Two retained singular values within this relative gap are a near-tie
-# (the subspace is non-unique) — disclose, do not refuse.
-_TIE_TOL = 1e-6
+# (the eigen-subspace they span is non-unique — the two principal
+# directions can rotate freely within it) — DISCLOSE via
+# ``near_degenerate``, do not refuse.
+#
+# m27 rationale: the prior 1e-6 floor was a numerical-equality tolerance,
+# not a finance-meaningful one — it NEVER fired on real data (two i.i.d.
+# equal-variance features sit ~2.9% apart in singular value at n~250, and
+# even a genuine near-tie that makes the loading rotation analytically
+# unstable shows a single-digit-percent gap, far above 1e-6).  A relative
+# eigen-gap below ~3% is the point at which the perturbation bound
+# (Davis-Kahan: the subspace rotation an estimation-noise perturbation
+# induces scales like 1/gap) makes the individual loadings practically
+# non-reproducible run-to-run, so 3% is the disclosure-worthy threshold a
+# desk would care about (within the 1-5% band the review names).
+_TIE_TOL = 0.03
 
 
 @dataclass(frozen=True)
@@ -274,11 +287,26 @@ def fit_pca(X: np.ndarray, n_components: int) -> PcaFitResult:
             loadings[k] = -loadings[k]
             scores[:, k] = -scores[:, k]
 
+    # m27: a near-tie between ANY two retained singular values makes the
+    # spanned subspace non-unique, not only adjacent ones (np.diff would
+    # miss, e.g., a tie between the 1st and 3rd of a near-flat retained
+    # spectrum).  Compare ALL retained pairs, each gap normalised by the
+    # LARGER of the pair (since the spectrum is sorted descending,
+    # retained[i] >= retained[j] for i < j).
     near_degenerate = False
     if n_components >= 2:
         retained = s[:n_components]
-        gaps = np.abs(np.diff(retained)) / (retained[:-1] + 1e-300)
-        near_degenerate = bool(np.any(gaps < _TIE_TOL))
+        for i in range(n_components):
+            for j in range(i + 1, n_components):
+                larger = retained[i]  # sorted descending => retained[i] >= retained[j]
+                if larger <= 0.0:
+                    continue
+                rel_gap = abs(retained[i] - retained[j]) / larger
+                if rel_gap < _TIE_TOL:
+                    near_degenerate = True
+                    break
+            if near_degenerate:
+                break
 
     return PcaFitResult(
         factor_scores=scores,

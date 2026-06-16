@@ -144,7 +144,13 @@ def fit_kalman(
         Missing params; a non-SeriesSet input; ``target_key`` absent;
         fewer than 2 members (no regressor); too few finite rows after
         the basis transform; an INTERIOR NaN; a rank-deficient /
-        zero-variance design; or a degenerate (zero-residual) fit.
+        zero-variance design; or a fit whose static-OLS residual
+        variance is NUMERICALLY ZERO (R == 0.0 exactly).  NOTE the
+        zero-residual refusal fires only at R == 0.0; a merely
+        NEAR-degenerate fit (a tiny but non-zero residual, e.g. an
+        algebraically-perfect y = 2x leaving ~1e-31) is NOT refused —
+        it degrades gracefully (the common R/Q scale cancels out of the
+        filtered path).  No relative floor is imposed (m25 / P5).
     """
     # ------------------------------------------------------------------
     # 1. Config identity (OPR12).

@@ -200,6 +200,10 @@ def test_runs_on_non_rates_synthetic_data():
     expected = []
     run = 0
     for v in vals:
+        if np.isnan(v):
+            run = 0  # nan_policy='break': the gap kills the run
+            expected.append(np.nan)  # output stays NaN at the missing position
+            continue
         if v > 0:
             run = run + 1 if run > 0 else 1
         elif v < 0:
@@ -357,6 +361,9 @@ class TestComposition:
         cond = vals - 105.0
         run = 0
         for v in cond:
+            if np.isnan(v):
+                run = 0  # nan_policy='break': the gap kills the run
+                continue
             if v > 0:
                 run = run + 1 if run > 0 else 1
             elif v < 0:

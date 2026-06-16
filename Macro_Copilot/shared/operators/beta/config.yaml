@@ -69,7 +69,7 @@ card:
   one_line: >-
     Full-sample OLS slope of one Series on another — the single sensitivity number (how much lhs moves per unit of rhs).
   when_to_use:
-    - "User asks for the sensitivity of one series to another as ONE number ('how much does X move per unit of Y', a hedge ratio)."
+    - "User asks for the sensitivity of one series to another as ONE number ('how much does X move per unit of Y', the single sensitivity / slope number)."
     - "A downstream answer needs the slope itself, not the residuals (regression_residual) or the windowed slope paths (rolling_regression)."
   when_not_to_use:
     - "User wants the TIME-VARYING slope — use rolling_regression (emits {beta, alpha, r_squared} SeriesSet; extract 'beta' via select_from_series_set)."

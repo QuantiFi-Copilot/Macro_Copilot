@@ -156,10 +156,27 @@ class TestRefusals:
         # A constant target against a constant column ⇒ the OLS mean fits
         # EXACTLY (5.0 - 5.0 == 0.0 in float), so the residual variance is
         # exactly zero — there is no noise scale to calibrate against.
+        # m25: the guard fires ONLY at R == 0.0 (numerically zero); this
+        # constant-target case is the reachable degenerate input (a merely
+        # near-degenerate fit leaves a tiny non-zero residual and is NOT
+        # refused — see test_near_degenerate_fit_is_not_refused below).
         X = np.ones((50, 1))
         y = np.full(50, 5.0)
-        with pytest.raises(ValueError, match="residual variance is zero"):
+        with pytest.raises(ValueError, match="NUMERICALLY ZERO"):
             dlm_filter(y, X, 0.05)
+
+    def test_near_degenerate_fit_is_not_refused(self):
+        # m25 / P5 honesty: an algebraically-perfect-but-noiseless fit
+        # (y = 2x) leaves only a ~1e-31 float residual, so R > 0.0 and the
+        # zero-residual guard does NOT fire — the filter degrades
+        # gracefully rather than refusing.  This pins the documented
+        # "unreachable at R != 0.0" behaviour the m25 docstring now states.
+        x = np.linspace(1.0, 50.0, 200)
+        X = np.column_stack([x, np.ones(200)])
+        y = 2.0 * x  # exact linear relation, no added noise
+        r = dlm_filter(y, X, 0.05)  # must NOT raise
+        assert r.observation_variance > 0.0
+        assert np.isfinite(r.filtered_states[-1]).all()
 
     def test_bad_snr_raises(self):
         y, X = _tvp_step(n=100)

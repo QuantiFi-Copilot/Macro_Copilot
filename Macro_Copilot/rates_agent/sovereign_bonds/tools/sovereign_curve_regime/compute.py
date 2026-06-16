@@ -235,7 +235,12 @@ def calculate_sovereign_curve_regime(
 
     labels = labels_series.payload  # float labels, NaN on warmup/edge rows
     op_step = labels_series.lineage.steps[-1]
-    model = op_step.params
+    # m21: loglik + n_iter now ride the operator step's non-hashed
+    # diagnostics channel (solver telemetry, excluded from the head_hash
+    # for cross-version stability).  Merge it onto the content params so
+    # the model-state read below sees both — display-only, never affects
+    # the fit or the operator's content hash.
+    model = {**op_step.params, **op_step.diagnostics}
     n_states = int(model["n_states"])
     transition_matrix = model["transition_matrix"]
 

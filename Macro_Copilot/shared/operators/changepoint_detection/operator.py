@@ -12,9 +12,17 @@ change for FX or equity inputs.
 
 EMPTY IS HONEST (unlike fit_ou): an ``EventSet`` has an empty channel,
 so a series with FEWER real breaks than requested emits FEWER events
-(down to an empty EventSet) — never a refusal or a garbage break.  Each
-event's gain (the SSE reduction) rides in metadata so a weak break is
-auditable.
+(down to an empty EventSet).  Each event's gain (the SSE reduction)
+rides in metadata so a weak break is auditable.
+
+NOT A SIGNIFICANCE TEST (m20 / P5): with a FIXED ``n_changepoints`` and
+no penalty/BIC gate, the greedy search keeps splitting on any positive
+SSE reduction (``gain > 0``), so on noisy data it returns UP TO N splits
+even when none is statistically significant — the count is the caller's
+declared budget, not a "how many real breaks are there" verdict.  An
+empty result therefore means the remaining segments are exactly flat
+(real breaks EXHAUSTED), never "no significant break found".
+Significance gating is the declared BIC/penalty planned extension.
 
 DESIGN LOCKS (OPR7, lineage-stamped): the L2 mean-shift cost
 (``cost_model='l2_mean_shift'``) and the greedy binary-segmentation
@@ -66,6 +74,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
+from pydantic import ValidationError
 
 from shared.artifacts.lineage import OperatorStep, sanitize_params_for_lineage
 from shared.artifacts.types import EventSet, Series
@@ -155,7 +164,26 @@ def changepoint_detection(
     if params.min_size is not None:
         min_size = int(params.min_size)
     else:
-        min_size = int(config.default_value("min_size"))
+        # m19 / OPR8 resolve-and-revalidate: the config-resolved
+        # min_size must clear the SAME schema floor (ge=2) as the
+        # params-path value.  Resolving it THROUGH the schema makes a
+        # config shipping min_size: 1 / 0 raise the typed
+        # ChangepointDetectionError (OPR13 — the operator owns this
+        # failure surface), not a bare pydantic ValidationError leaking
+        # from the quant layer.
+        try:
+            min_size = int(
+                ChangepointDetectionParams(
+                    n_changepoints=1,
+                    min_size=int(config.default_value("min_size")),
+                ).min_size
+            )
+        except ValidationError as exc:
+            raise ChangepointDetectionError(
+                "changepoint_detection: the config-resolved min_size "
+                f"({config.default_value('min_size')!r}) violates the "
+                "schema floor (min_size >= 2)."
+            ) from exc
 
     # ------------------------------------------------------------------
     # 3. Structural-input validation (OPR9 typed I/O; two-tier NaN).

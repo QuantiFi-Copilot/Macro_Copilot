@@ -1,32 +1,23 @@
-"""shared.operators.summarize_series — Series → 1-row summary Series.
+"""shared.operators.summarize_series — Series → ScalarMetric.
 
-Phase 2A operator (workflow-templates milestone) that closes the
-"compare across regimes" gap of the
-``regime_conditioned_relationship`` archetype:
+Thin re-export header.  The authoritative module docstring lives in
+``operator.py`` (P10: one source of truth) — read it for the full
+contract, the statistic set, and the migration note.
 
-  classify regimes → split sample by mask → run a per-subsample
-  analysis → compare across regimes
-
-The "compare" step in V1 reuses ``series_arithmetic.subtract``.
-That operator requires its two inputs to share a DatetimeIndex.
-Per-regime masked Series have DISJOINT indexes by construction
-(steepening days vs flattening days), so we cannot subtract them
-directly.  ``summarize_series`` bridges the gap: each masked Series
-collapses to a 1-row Series at a fixed sentinel date, and the two
-sentinel-aligned summaries feed into the downstream subtract.
-
-Design lock: the sentinel date is ``pd.Timestamp("1900-01-01")``,
-hard-coded, not parameterizable.  Both per-regime summaries use the
-same sentinel so the downstream subtract has a non-empty
-intersection; the date itself is semantically meaningless (it
-identifies "this is a scalar summary," not "the summary applies on
-this date").  Documenting this here so a future template author
-does not mistake the sentinel for a meaningful timestamp.
+In brief: this ``aggregation`` operator collapses a Series to ONE
+scalar summary statistic (mean / median / std / sum / count / last /
+first / quantile), emitted as a dateless ``ScalarMetric`` (the closed-
+family scalar type) carrying the input's units.  The legacy
+``1900-01-01`` (``SUMMARY_SENTINEL_DATE``) single-row-Series design is
+RETIRED — it is retained only as the migration-note constant in
+``operator.py`` and is no longer the output shape.
 
 Public surface:
 
   - ``summarize_series``       the operator itself
   - ``SummarizeSeriesParams``  typed parameter object
+  - ``SummarizeSeriesError``   the typed error (OPR13)
+  - ``SUMMARY_SENTINEL_DATE``  legacy migration-note constant
   - ``CONFIG_PATH``            path to bundled config.yaml
 """
 

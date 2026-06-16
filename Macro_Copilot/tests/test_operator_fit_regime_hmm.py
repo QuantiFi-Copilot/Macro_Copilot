@@ -20,7 +20,12 @@ import pandas as pd
 import pytest
 from pydantic import BaseModel
 
-from shared.artifacts.lineage import AdapterStep, FetchStep, Lineage
+from shared.artifacts.lineage import (
+    AdapterStep,
+    FetchStep,
+    Lineage,
+    OperatorStep,
+)
 from shared.artifacts.missingness import RawNoCleaning
 from shared.artifacts.types import Panel, Series
 from shared.artifacts.units import TimeSeriesUnits
@@ -112,6 +117,38 @@ class TestHappyPath:
         assert head.params["label_semantics"] == "categorical_nonarithmetic"
         assert head.params["fit_scope"] == "full_sample"
         assert head.params["converged"] is True
+
+    def test_loglik_n_iter_ride_nonhashed_diagnostics(self):
+        """m21 / P4 / OPR14(a): loglik + n_iter are SOLVER TELEMETRY —
+        they are OUT of the hashed step.params and IN the non-hashed
+        ``diagnostics`` channel, so cross-version solver drift cannot
+        shift the head_hash for a byte-identical decoded label Series.
+        Kept lock-step with the fit_regime_gmm twin."""
+        p = _panel(_hmm_frame())
+        out = fit_regime_hmm(p, params=FitRegimeHmmParams(n_states=3))
+        head = out.lineage.steps[-1]
+        # No longer in the HASHED params.
+        assert "loglik" not in head.params
+        assert "n_iter" not in head.params
+        # Present + finite in the non-hashed diagnostics channel.
+        assert "loglik" in head.diagnostics
+        assert "n_iter" in head.diagnostics
+        assert np.isfinite(head.diagnostics["loglik"])
+        assert int(head.diagnostics["n_iter"]) >= 1
+        # The head_hash is INDEPENDENT of the diagnostics values: two
+        # OperatorSteps with identical params but DIFFERENT diagnostics
+        # hash identically (the property that makes solver drift safe).
+        s_a = OperatorStep.build(
+            name=head.name, version=head.version, params=head.params,
+            input_hashes=head.input_hashes,
+            diagnostics={"loglik": 1.0, "n_iter": 1},
+        )
+        s_b = OperatorStep.build(
+            name=head.name, version=head.version, params=head.params,
+            input_hashes=head.input_hashes,
+            diagnostics={"loglik": -999.0, "n_iter": 4242},
+        )
+        assert s_a.hash == s_b.hash
 
     def test_regimes_persist(self):
         # The HMM smooths: far fewer label switches than there are rows.

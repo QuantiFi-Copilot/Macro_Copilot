@@ -2,8 +2,8 @@
 
 Covers the contract surface every v2.0 operator must satisfy:
 
-  - happy path for each statistic (mean / std / min / max / sum) against
-    an independent NumPy / pandas reference
+  - happy path for each statistic (mean / std / min / max / sum / skew /
+    kurtosis (RATIO out)) against an independent NumPy / pandas reference
   - look-ahead-safe vs in-sample mechanics (one-period shift)
   - OPR2 constant output type (always Series; input unit preserved)
   - OPR8 config-default resolution (params=None matches explicit defaults)
@@ -441,6 +441,32 @@ class TestHigherMoments:
             head = out.lineage.steps[-1]
             assert head.params["output_units"] == "ratio"
             assert head.params["input_units"] == "percent"
+
+    @pytest.mark.parametrize(
+        "input_units",
+        [TimeSeriesUnits.PERCENT, TimeSeriesUnits.BPS, TimeSeriesUnits.Z_SCORE,
+         TimeSeriesUnits.RATIO, TimeSeriesUnits.COUNT],
+    )
+    @pytest.mark.parametrize("statistic", ["skew", "kurtosis"])
+    def test_higher_moments_emit_ratio_for_any_input_unit(
+        self, input_units, statistic,
+    ):
+        """m6 / OPR6: the dimensionless higher moments emit RATIO
+        regardless of input unit — a finance-blind, cross-unit happy
+        path parallel to test_unit_preservation (which covers the
+        unit-PRESERVING classic statistics)."""
+        dates = pd.bdate_range("2026-01-02", periods=40)
+        rng = np.random.RandomState(404)
+        values = list(rng.randn(40) ** 3)  # asymmetric, heavy-tailed
+        s = _series("hm", dates=dates, values=values, units=input_units)
+        out = rolling_statistic(
+            s,
+            params=RollingStatisticParams(statistic=statistic, window=10),
+        )
+        assert out.units == TimeSeriesUnits.RATIO
+        head = out.lineage.steps[-1]
+        assert head.params["output_units"] == "ratio"
+        assert head.params["input_units"] == input_units.value
 
     def test_classic_statistics_still_pass_units_through(self):
         s, _ = self._input()

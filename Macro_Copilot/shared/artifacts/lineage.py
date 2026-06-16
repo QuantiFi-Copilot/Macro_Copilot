@@ -562,6 +562,19 @@ class OperatorStep(BaseModel):
     name: str  # e.g., "align_series"
     version: str = "1.0.0"
     params: Dict[str, Any]
+    # Non-hashed solver/fit telemetry channel (P4 / OPR14a cross-version
+    # stability).  ``diagnostics`` carries values that are NOT content-
+    # defining — solver iteration counts, log-likelihoods, and other
+    # numbers that can drift across SciPy / NumPy / library versions
+    # while the produced artifact is byte-identical.  It is recorded on
+    # the step (so it stays reachable for P5 disclosure and the Bucket-2
+    # "fit-as-lineage-state" primitives) but is DELIBERATELY EXCLUDED
+    # from ``_compute_step_hash`` so that solver telemetry never shifts
+    # the head_hash.  Additive + back-compat: an absent/empty
+    # diagnostics dict hashes exactly as before (the hash recipe is
+    # unchanged), mirroring the PR-10D optional-field precedent on
+    # PrimitiveStep.
+    diagnostics: Dict[str, Any] = {}
     input_hashes: Tuple[LineageHash, ...] = ()
     auxiliary_lineages: Tuple["Lineage", ...] = ()
     hash: LineageHash
@@ -575,7 +588,10 @@ class OperatorStep(BaseModel):
         params: Dict[str, Any],
         input_hashes: Tuple[LineageHash, ...],
         auxiliary_lineages: Tuple["Lineage", ...] = (),
+        diagnostics: Optional[Dict[str, Any]] = None,
     ) -> "OperatorStep":
+        # diagnostics is NOT passed to _compute_step_hash — it is the
+        # non-content-defining telemetry channel (see the field doc).
         h = _compute_step_hash(
             kind="operator",
             name=name,
@@ -585,6 +601,7 @@ class OperatorStep(BaseModel):
         )
         return cls(
             name=name, version=version, params=params,
+            diagnostics=dict(diagnostics or {}),
             input_hashes=input_hashes,
             auxiliary_lineages=auxiliary_lineages,
             hash=h,

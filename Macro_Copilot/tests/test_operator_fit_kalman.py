@@ -213,6 +213,55 @@ class TestHappyPath:
         assert beta.iloc[:n_regressors - 1].isna().all()
         assert beta.iloc[n_regressors - 1:].notna().all()
 
+    def test_filter_is_causal_truncation_invariant_given_fixed_R(self):
+        """m23 / OPR16.2: the FILTER-not-smoother property at the OPERATOR
+        level (the byte-identical truncation proof previously lived only at
+        the quant layer).  The operator auto-calibrates the noise scale R
+        full-sample (the disclosed exception), so we PIN R via the engine
+        and prove the recursion is prefix-only: the operator's emitted
+        ``beta_x1[:t]`` is BYTE-IDENTICAL (np.array_equal on the non-NaN
+        tail) to an independent engine run on the input TRUNCATED after t
+        with that same R pinned.  A smoother (which peeks ahead) would
+        differ.  Not circular: the comparison is a SEPARATE dlm_filter
+        call on a TRUNCATED input, not a re-call of the operator."""
+        frame = _tvp_frame(n=600)
+        ss = _series_set(frame)
+        params = FitKalmanParams(
+            target_key="y", signal_to_noise_ratio=0.05,
+            basis="raw_value", add_constant=True,
+        )
+        out = fit_kalman(ss, params=params)
+        head = out.lineage.steps[-1].params
+        R = float(head["observation_variance"])  # the calibrated noise scale
+
+        # Reconstruct the operator's OWN (y, X) for raw_value basis with a
+        # trailing constant column (the operator's coefficient order is
+        # [regressors..., alpha]); no leading/trailing NaN in this fixture.
+        y = frame["y"].to_numpy(dtype=float)
+        X = np.column_stack([
+            frame["x1"].to_numpy(dtype=float),
+            frame["x2"].to_numpy(dtype=float),
+            np.ones(len(frame), dtype=float),
+        ])
+
+        t0 = 400
+        # Engine run on the TRUNCATED prefix, R PINNED so the only change is
+        # the sample length (Q = snr * R is therefore identical too).
+        trunc = dlm_filter(
+            y[: t0 + 1], X[: t0 + 1], 0.05, observation_variance=R,
+        )
+        # beta_x1 is the FIRST state (regressor order is [x1, x2, alpha]).
+        op_beta_x1 = out.series_by_key["beta_x1"].to_numpy(dtype=float)
+        trunc_beta_x1 = trunc.filtered_states[:, 0]
+
+        # Compare on the non-NaN tail of the prefix [:t0+1] — byte-identical.
+        op_prefix = op_beta_x1[: t0 + 1]
+        finite = ~np.isnan(op_prefix)
+        assert finite.sum() > 0  # there IS a finite tail to compare
+        np.testing.assert_array_equal(
+            op_prefix[finite], trunc_beta_x1[finite],
+        )
+
 
 # ===========================================================================
 # 2. Two-tier NaN

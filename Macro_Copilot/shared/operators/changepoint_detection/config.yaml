@@ -77,8 +77,9 @@ card:
     - "POINT-IN-TIME compositions: the detection is FULL-SAMPLE (every break uses the whole series — look-ahead disclosed in lineage); never feed it into as-of/walk-forward chains."
     - "User wants where the series CROSSES a fixed level — threshold_events (a level-membership rule, not a structural break)."
     - "User wants the state changes of an ALREADY-LABELLED discrete series — transition_events; or a stationarity/mean-reversion read — stationarity_adf / fit_ou."
+    - "User wants a SIGNIFICANCE test: with a fixed n_changepoints and no penalty gate, the operator emits UP TO N splits even on noise (the count is a budget, not a verdict); empty means breaks EXHAUSTED, not 'none significant'.  BIC gating is a planned extension."
   upstream_requirements:
-    - "Input is ONE Series (any units), >= max(12, (n_changepoints+1)*min_size) finite observations, non-constant, interior-gap-free (contiguous leading/trailing warmup NaN tolerated; INTERIOR NaN refused — fill via align_series).  n_changepoints is REQUIRED."
+    - "Input is ONE Series (any units), >= max(12, (n_changepoints+1)*min_size) finite obs, non-constant, interior-gap-free (edge NaN tolerated; INTERIOR NaN refused — fill via align_series).  n_changepoints REQUIRED."
   downstream_pattern:
     - "Output is an EventSet (the break dates; source_series_key echoes the input).  Feed event_windows for an event study, or apply_mask.  Lineage records the requested/found counts, min_size, the locked cost/algorithm and detection_scope='full_sample'.  FEWER events than requested (down to empty) is honest."
   knobs_quick_ref:
@@ -88,7 +89,7 @@ card:
     - description: "Structural breaks in the residual of one series regressed on another."
       shape: "[Series A, Series B] -> regression_residual -> changepoint_detection(n_changepoints=2) -> EventSet  [feed event_windows]"
   sibling_operators:
-    - threshold_events: "Where a series crosses a fixed user threshold (level membership); changepoint_detection discovers latent structural mean-shifts with no preset threshold."
-    - transition_events: "State changes of an already-labelled discrete series; changepoint_detection finds breaks in a continuous series."
-    - fit_ou: "Mean-reversion SPEED of a stationary series; changepoint_detection finds WHERE the level breaks."
+    - threshold_events: "Crossings of a fixed user threshold; changepoint_detection finds latent mean-shifts with no preset threshold."
+    - transition_events: "State changes of an already-labelled discrete series; changepoint_detection breaks a continuous one."
+    - fit_ou: "Mean-reversion SPEED; changepoint_detection finds WHERE the level breaks."
   intent_hints: [event_regime]

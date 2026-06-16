@@ -194,3 +194,53 @@ class TestRefusalsAndDisclosure:
         X = np.column_stack([a, b, c])
         r = fit_pca(X, 2)
         assert r.near_degenerate is True
+
+    def test_near_degenerate_fires_on_iid_equal_variance_features(self):
+        """m27: two i.i.d. equal-variance features sit only ~2-3% apart in
+        singular value — under the OLD 1e-6 tolerance the near-tie NEVER
+        fired (near_degenerate=False) even though the two loadings are
+        practically non-reproducible.  With _TIE_TOL raised to the
+        finance-meaningful 3% relative eigen-gap, the disclosure now
+        fires.  This is the exact case the review names as the bug."""
+        rng = np.random.RandomState(7)
+        a = rng.randn(5000)
+        b = rng.randn(5000)  # independent, same variance -> near-tied PCs
+        X = np.column_stack([a, b])
+        r = fit_pca(X, 2)
+        # The relative gap is real but small (well under 1% at this n), so
+        # the disclosure must fire under the 3% threshold — it did NOT
+        # under the old 1e-6 floor.
+        s = r.singular_values
+        rel_gap = abs(s[0] - s[1]) / s[0]
+        assert rel_gap < 0.03  # the near-tie the old 1e-6 floor ignored
+        assert r.near_degenerate is True
+
+    def test_near_degenerate_false_when_components_well_separated(self):
+        """m27 guard: a genuinely DOMINANT first component (gap well above
+        3%) must NOT trip the disclosure — the flag stays a real signal,
+        not always-on."""
+        rng = np.random.RandomState(3)
+        a = rng.randn(500)
+        b = 0.9 * a + 0.1 * rng.randn(500)  # strong shared axis -> big gap
+        X = np.column_stack([a, b])
+        r = fit_pca(X, 2)
+        s = r.singular_values
+        assert abs(s[0] - s[1]) / s[0] > 0.03
+        assert r.near_degenerate is False
+
+    def test_near_degenerate_compares_all_pairs_not_just_adjacent(self):
+        """m27: the disclosure compares ALL retained pairs, not only
+        consecutive np.diff.  A near-flat retained spectrum where the
+        1st and 3rd singular values are within the threshold (but each
+        adjacent step is just under it cumulatively) is caught."""
+        rng = np.random.RandomState(11)
+        # Three near-equal-variance independent features -> a near-flat
+        # retained spectrum; every pairwise relative gap is small.
+        X = np.column_stack([
+            rng.randn(20000), rng.randn(20000), rng.randn(20000),
+        ])
+        r = fit_pca(X, 3)
+        s = r.singular_values[:3]
+        # The non-adjacent (1st vs 3rd) relative gap is itself within tol.
+        assert abs(s[0] - s[2]) / s[0] < 0.03
+        assert r.near_degenerate is True

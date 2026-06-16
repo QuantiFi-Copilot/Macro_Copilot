@@ -1,7 +1,10 @@
 operator:
   name: fit_regime_gmm
   method_family: cross_sectional
-  version: "1.1.0"
+  # 1.2.0 (OPR14d / m21): loglik + n_iter moved to the non-hashed
+  # diagnostics channel; head_hash now stable across solver-library
+  # versions.  Lock-step with the fit_regime_hmm twin (also 1.2.0).
+  version: "1.2.0"
   description: >-
     Gaussian-mixture regime labelling of a feature Panel (EM in
     shared/quant/gmm.py), emitting the per-date most-likely REGIME

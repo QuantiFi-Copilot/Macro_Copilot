@@ -9,7 +9,7 @@ lineage): period anchors and labelling are FIXED — weekly buckets
 anchor to Friday (``W-FRI``), monthly/quarterly/yearly to period END
 (``ME``/``QE``/``YE``), and both ``label`` and ``closed`` are
 ``'right'`` (each bucket is labelled by its period-end date).  Allowing
-label/closed variants would silently re-date financial observations —
+label/closed variants would silently re-date observations —
 a P5 hazard with no analytical gain.  Upsampling is structurally
 impossible through this schema (the target set is W/M/Q/Y only) and a
 row-count guard refuses any residual fabrication case.

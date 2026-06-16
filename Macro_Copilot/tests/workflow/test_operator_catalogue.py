@@ -351,6 +351,10 @@ class TestP10NoContentDuplication:
         # Orchestration-upgrade plan D4: structural validator hook (a
         # Callable, NOT card content) — registration-clean, no P10 risk.
         "param_sanity_validator",
+        # m41: declared output-unit propagation rule (a Callable, NOT
+        # card content) — replaces the validator's by-name special-case
+        # (OPR15); structural, no P10 risk.
+        "output_unit_rule",
     }
 
     def test_operator_spec_carries_no_description_field(self) -> None:

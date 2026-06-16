@@ -636,26 +636,33 @@ def validate_workflow_result(
                     node.output_field
                 )
             elif isinstance(node, OperatorNode):
-                # Conservative propagation: only ``series_arithmetic``
-                # with unary preserves_left algebra has a known
-                # propagation rule we encode here.  Other operators
-                # emit artifacts whose unit depends on operator-internal
-                # logic we don't trace at validate time.
-                if node.operator_name == "series_arithmetic":
-                    op = node.params.get("op")
-                    if op in ("diff",):
-                        left_edges = edges_by_target.get(nid, {}).get(
-                            "left", []
+                # Conservative propagation, DECLARED-not-by-name (m41 /
+                # OPR15): the operator's output-unit rule lives on its
+                # ``OperatorSpec.output_unit_rule`` registry field, NOT in
+                # an ``if node.operator_name == ...`` branch here.  An
+                # operator without a declared rule emits an
+                # unknown-unit (None) — unchanged behaviour for everything
+                # but the operators that declare one (today:
+                # series_arithmetic's diff=preserves-left / pct_change=
+                # RATIO algebra).
+                spec = OPERATOR_REGISTRY.get(node.operator_name)
+                if spec is not None and spec.output_unit_rule is not None:
+                    op_source_units: Dict[str, Optional[str]] = {}
+                    for slot_name in spec.input_slots:
+                        slot_edges = edges_by_target.get(nid, {}).get(
+                            slot_name, []
                         )
-                        if left_edges:
-                            produced_units[nid] = produced_units.get(
-                                left_edges[0].source_node_id,
-                            )
+                        if not slot_edges:
+                            op_source_units[slot_name] = None
                             continue
-                    elif op == "pct_change":
-                        produced_units[nid] = "ratio"
-                        continue
-                produced_units[nid] = None
+                        op_source_units[slot_name] = produced_units.get(
+                            slot_edges[0].source_node_id,
+                        )
+                    produced_units[nid] = spec.output_unit_rule(
+                        node.params, op_source_units,
+                    )
+                else:
+                    produced_units[nid] = None
 
         # Invoke each operator's unit_validator with the source units
         # it can see.

@@ -29,7 +29,7 @@ defaults:
     valid_values: [mean, median, std, min, max, sum]
   ddof:
     value: 1
-    source: operator_v1_default
+    source: industry_standard_sample_std
     rationale: >-
       Sample standard deviation (``ddof=1``) is the desk-default —
       consistent with ``rolling_zscore``, ``cross_sectional_zscore``,

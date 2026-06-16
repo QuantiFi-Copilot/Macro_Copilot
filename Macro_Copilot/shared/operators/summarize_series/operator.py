@@ -120,11 +120,14 @@ def summarize_series(
     -------
     ScalarMetric
         A single finite scalar (the chosen ``statistic`` — mean /
-        median / std / sum / count / last / first) carrying the
-        input's units and a ``metric_key`` equal to the statistic
-        name.  Lineage extends the input chain with this operator
-        step; the dispersion value, n_observations, and n_dropped
-        are recorded in step.params for diagnostic recovery.
+        median / std / sum / count / last / first / quantile) carrying
+        the input's units and a ``metric_key`` equal to the statistic
+        name — EXCEPT ``statistic='quantile'``, whose ``metric_key`` is
+        ``quantile_<q>`` (e.g. ``quantile_0.05``) so the scalar is
+        self-describing about the level it reports.  Lineage extends
+        the input chain with this operator step; the dispersion value,
+        n_observations, and n_dropped are recorded in step.params for
+        diagnostic recovery.
 
         ``statistic='count'`` is special: it is well-defined on an
         empty / all-NaN input and returns a legitimate ScalarMetric

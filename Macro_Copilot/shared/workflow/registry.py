@@ -430,6 +430,22 @@ class OperatorSpec(BaseModel):
     param_sanity_validator: Optional[
         Callable[[Dict[str, Any]], Optional[str]]
     ] = None
+    # OPR11 / OPR15 (m41): the operator's output-unit PROPAGATION rule,
+    # DECLARED here rather than special-cased by operator name in the
+    # validator.  Called by ``validate_workflow`` CHECK 8 with
+    # ``(node_params, source_units_by_slot)`` and returns the unit string
+    # the operator EMITS (one of ``TimeSeriesUnits`` values) — or ``None``
+    # when the unit cannot be traced (untraceable upstream, or an
+    # operator-internal rule the substrate does not model at validate
+    # time).  This is what lets the validator track units across a whole
+    # chain WITHOUT an ``if node.operator_name == ...`` name branch
+    # (OPR15 forbids by-name special-casing in the validator).  Most
+    # operators leave this ``None`` (their output unit is not statically
+    # traceable from input units alone); ``series_arithmetic`` declares
+    # one for its diff (preserves-left) / pct_change (RATIO) algebra.
+    output_unit_rule: Optional[
+        Callable[[Dict[str, Any], Dict[str, Optional[str]]], Optional[str]]
+    ] = None
 
 
 # ============================================================================
@@ -522,6 +538,36 @@ def _series_arithmetic_unit_validator(
                 "an explicit unit conversion at the template "
                 "layer or pass operands of matching units."
             )
+    return None
+
+
+def _series_arithmetic_output_unit_rule(
+    node_params: Dict[str, Any],
+    source_units: Dict[str, Optional[str]],
+) -> Optional[str]:
+    """m41 / OPR11: series_arithmetic's DECLARED output-unit
+    propagation rule, routed through the registry's
+    ``OperatorSpec.output_unit_rule`` field so the validator does not
+    special-case the operator by name (OPR15).
+
+    Returns the unit the operator EMITS given its params + the units of
+    its bound sources, or ``None`` when the unit is not statically
+    traceable (the validator then treats this node's output as
+    unknown-unit, exactly as before):
+      - ``diff``        : preserves the LEFT operand's unit (a
+                          difference of bps is bps).
+      - ``pct_change``  : a dimensionless RATIO regardless of input.
+      - everything else : ``None`` (add/subtract/multiply/divide unit
+                          algebra is enforced by the unit_validator;
+                          their *output* unit is not propagated by the
+                          conservative substrate walk — unchanged
+                          behaviour).
+    """
+    op = node_params.get("op")
+    if op == "diff":
+        return source_units.get("left")
+    if op == "pct_change":
+        return "ratio"
     return None
 
 
@@ -776,6 +822,11 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         discriminator_args=("op",),
         arity_validator=_series_arithmetic_arity_validator,
         unit_validator=_series_arithmetic_unit_validator,
+        # m41 / OPR11: the output-unit propagation rule is DECLARED here,
+        # so the validator's CHECK 8 traces this operator's output unit
+        # without an ``if operator_name == "series_arithmetic"`` branch
+        # (OPR15 forbids by-name special-casing in the validator).
+        output_unit_rule=_series_arithmetic_output_unit_rule,
     ),
     # v2.0 reference operator (ADR 0016) — the canonical finance-blind
     # ``statistical_relationship`` operator: two Series → one
@@ -2835,7 +2886,7 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
                     "distribution shape (skew / kurtosis — "
                     "dimensionless RATIO out; kurtosis is EXCESS, "
                     "normal == 0) — every 'over the last N days' "
-                    "summary.  Window length is params.window_days.  "
+                    "summary.  Window length is params.window.  "
                     "DO NOT use for z-scores (use rolling_zscore — it "
                     "emits Z_SCORE units), for recency-weighted stats "
                     "(use ewm_statistic), and DO NOT use for "

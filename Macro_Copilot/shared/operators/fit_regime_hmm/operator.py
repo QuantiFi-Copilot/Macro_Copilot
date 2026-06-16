@@ -54,7 +54,10 @@ Contract highlights (cite by OPR-number):
     estimator/init/decode/ordering locks documented + stamped.
   - OPR9      : one ``Panel`` in, one ``Series`` out.
   - OPR10     : one ``OperatorStep``; the transition matrix + initial
-    dist + means + loglik + the locks ride in params.
+    dist + means + the locks ride in the HASHED params.  loglik +
+    n_iter are SOLVER TELEMETRY and ride the step's NON-HASHED
+    ``diagnostics`` channel (m21 / P4) so cross-version solver drift
+    never shifts the head_hash; still reachable for P5 disclosure.
   - OPR11     : FACTOR_LEVEL units; the non-arithmetic semantics
     disclosed in lineage.
   - OPR13     : typed ``FitRegimeHmmError`` refusals: non-Panel input;
@@ -86,7 +89,15 @@ from shared.quant.hmm import fit_hmm_em
 
 
 _OPERATOR_NAME = "fit_regime_hmm"
-_OPERATOR_VERSION = "1.0.0"
+# 1.2.0 (OPR14d / m21): loglik + n_iter moved OUT of the hashed
+# step.params into the non-hashed diagnostics channel — solver telemetry
+# is no longer content-defining, so the head_hash is stable across
+# SciPy/NumPy versions for a byte-identical decoded label Series.  The
+# hash for a given input shifts (the params dict shed two keys), per
+# OPR14d.  Kept LOCK-STEP with the fit_regime_gmm twin (also 1.2.0):
+# the GMM was bumped 1.0.0->1.1.0 by the C4.1 column-sort fix; this m21
+# change advances BOTH twins together to 1.2.0.
+_OPERATOR_VERSION = "1.2.0"
 
 _CONFIG_PATH: Path = Path(__file__).resolve().parent / "config.yaml"
 
@@ -254,8 +265,6 @@ def fit_regime_hmm(
         ],
         "initial_dist": [float(v) for v in result.initial_dist],
         "means": [[float(v) for v in row] for row in result.means],
-        "loglik": float(result.loglik),
-        "n_iter": int(result.n_iter),
         "converged": True,
         "decode_method": result.decode_method,    # "viterbi"
         "covariance_type": "full",                 # design-locked (OPR7)
@@ -273,10 +282,21 @@ def fit_regime_hmm(
         "n_leading_nan": first,
         "n_trailing_nan": n_total - last,
     }
+    # m21 / P4 / OPR14(a): loglik + n_iter are SOLVER TELEMETRY, not
+    # content-defining — they can drift across SciPy/NumPy versions while
+    # the decoded label Series is byte-identical.  They ride the non-
+    # hashed diagnostics channel (still reachable for P5 disclosure and
+    # the Bucket-2 fit-as-lineage-state primitives) so they no longer
+    # shift the head_hash.  Applied to BOTH twins (gmm) together.
+    step_diagnostics: Dict[str, Any] = {
+        "loglik": float(result.loglik),
+        "n_iter": int(result.n_iter),
+    }
     step = OperatorStep.build(
         name=_OPERATOR_NAME,
         version=_OPERATOR_VERSION,
         params=sanitize_params_for_lineage(step_params),
+        diagnostics=sanitize_params_for_lineage(step_diagnostics),
         input_hashes=(features.lineage.head_hash,),
     )
 
