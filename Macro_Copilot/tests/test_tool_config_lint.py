@@ -23,11 +23,22 @@ from textwrap import dedent
 import pytest
 
 from shared.config.lint import (
+    _METHODOLOGY_SOURCE_REGISTRY,
+    check_source_tags,
     check_yaml_consistency,
     discover_tool_configs,
     main as lint_main,
 )
 from shared.config.tool_config import clear_tool_config_cache
+
+# The real, committed methodology-source-tag registry.  The CLI tests
+# below build synthetic ``tmp_path`` roots that have no ``docs/`` tree,
+# so they point ``--registry`` at the real file; the conventions they
+# write use the registered ``team_judgment_pending_review`` tag so the
+# PR12 source-tag pass (now part of ``main``) stays clean.
+_REAL_REGISTRY = (
+    Path(__file__).resolve().parent.parent / _METHODOLOGY_SOURCE_REGISTRY
+)
 
 
 # ============================================================================
@@ -61,7 +72,9 @@ def _make_config(path: Path, *, tool_name: str, conventions: dict) -> Path:
             else:
                 lines.append(f"  {k}:")
                 lines.append(f"    value: {v}")
-                lines.append("    source: test_source")
+                # A registered tag so the PR12 source-tag pass stays
+                # clean — these fixtures exercise consistency, not tags.
+                lines.append("    source: team_judgment_pending_review")
                 lines.append("    rationale: test rationale")
 
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -249,6 +262,117 @@ class TestCheckFails:
 
 
 # ============================================================================
+# check_source_tags — PR12 / OPR12 methodology-source-tag registry
+# ============================================================================
+
+class TestSourceTags:
+    def test_registered_exact_tag_passes(self, tmp_path: Path):
+        cfg = _make_config(
+            tmp_path / "rates_agent/d/tools/t/config.yaml",
+            tool_name="t",
+            conventions={
+                "window": {
+                    "value": 252,
+                    "source": "industry_standard_1y_window",
+                    "rationale": "r",
+                },
+            },
+        )
+        assert check_source_tags([cfg], [], _REAL_REGISTRY) == []
+
+    def test_registered_pattern_family_tag_passes(self, tmp_path: Path):
+        # ``<primitive>_primitive_v1`` is a registered open family
+        # (methodology_disclosure.md §2) — not an exact header, so this
+        # exercises the pattern path that admits
+        # ``rolling_regression_primitive_v1`` in the live catalogue.
+        cfg = _make_config(
+            tmp_path / "rates_agent/d/tools/t/config.yaml",
+            tool_name="t",
+            conventions={
+                "k": {
+                    "value": 1,
+                    "source": "some_primitive_primitive_v1",
+                    "rationale": "r",
+                },
+            },
+        )
+        assert check_source_tags([cfg], [], _REAL_REGISTRY) == []
+
+    def test_vague_tag_rejected(self, tmp_path: Path):
+        cfg = _make_config(
+            tmp_path / "rates_agent/d/tools/t/config.yaml",
+            tool_name="t",
+            conventions={
+                "k": {"value": 1, "source": "tbd", "rationale": "r"},
+            },
+        )
+        issues = check_source_tags([cfg], [], _REAL_REGISTRY)
+        assert len(issues) == 1
+        assert issues[0].kind == "vague"
+        assert issues[0].tag == "tbd"
+
+    def test_bloomberg_vague_rejected_even_though_field_variant_registered(
+        self, tmp_path: Path,
+    ):
+        # The registered tag is ``bloomberg_field_convention``; a bare
+        # ``bloomberg`` is the vendor name and must be auto-rejected.
+        cfg = _make_config(
+            tmp_path / "rates_agent/d/tools/t/config.yaml",
+            tool_name="t",
+            conventions={
+                "k": {"value": 1, "source": "bloomberg", "rationale": "r"},
+            },
+        )
+        issues = check_source_tags([cfg], [], _REAL_REGISTRY)
+        assert len(issues) == 1
+        assert issues[0].kind == "vague"
+
+    def test_unregistered_bogus_tag_rejected(self, tmp_path: Path):
+        cfg = _make_config(
+            tmp_path / "rates_agent/d/tools/t/config.yaml",
+            tool_name="t",
+            conventions={
+                "k": {
+                    "value": 1,
+                    "source": "totally_made_up_tag",
+                    "rationale": "r",
+                },
+            },
+        )
+        issues = check_source_tags([cfg], [], _REAL_REGISTRY)
+        assert len(issues) == 1
+        assert issues[0].kind == "unregistered"
+        assert issues[0].tag == "totally_made_up_tag"
+
+    def test_missing_registry_raises(self, tmp_path: Path):
+        from shared.config.lint import SourceTagRegistryError
+
+        cfg = _make_config(
+            tmp_path / "rates_agent/d/tools/t/config.yaml",
+            tool_name="t",
+            conventions={"k": 1},
+        )
+        with pytest.raises(SourceTagRegistryError):
+            check_source_tags([cfg], [], tmp_path / "nope.md")
+
+    def test_cli_rejects_vague_tag_nonzero_exit(self, tmp_path: Path, capsys):
+        # End-to-end: a vague tag drives ``main`` to a non-zero exit.
+        _make_config(
+            tmp_path / "rates_agent/d/tools/t/config.yaml",
+            tool_name="t",
+            conventions={
+                "k": {"value": 1, "source": "tbd", "rationale": "r"},
+            },
+        )
+        rc = lint_main(
+            ["--root", str(tmp_path), "--registry", str(_REAL_REGISTRY)]
+        )
+        assert rc == 1
+        captured = capsys.readouterr()
+        assert "UNREGISTERED-SOURCE" in captured.err
+
+
+# ============================================================================
 # discover_tool_configs
 # ============================================================================
 
@@ -307,13 +431,17 @@ class TestCli:
             tool_name="t",
             conventions={"window": 252},
         )
-        rc = lint_main(["--root", str(tmp_path)])
+        rc = lint_main(
+            ["--root", str(tmp_path), "--registry", str(_REAL_REGISTRY)]
+        )
         assert rc == 0
         captured = capsys.readouterr()
         assert "no convention drift" in captured.out.lower()
 
     def test_no_configs_exits_zero(self, tmp_path: Path, capsys):
-        rc = lint_main(["--root", str(tmp_path)])
+        rc = lint_main(
+            ["--root", str(tmp_path), "--registry", str(_REAL_REGISTRY)]
+        )
         assert rc == 0
 
     def test_dirty_run_exits_one_and_prints_to_stderr(
@@ -329,7 +457,9 @@ class TestCli:
             tool_name="b",
             conventions={"window": 504},
         )
-        rc = lint_main(["--root", str(tmp_path)])
+        rc = lint_main(
+            ["--root", str(tmp_path), "--registry", str(_REAL_REGISTRY)]
+        )
         assert rc == 1
         captured = capsys.readouterr()
         # Issue list goes to stderr so CI logs are clean on success.
@@ -344,7 +474,9 @@ class TestCli:
             tool_name="t",
             conventions={"window": 252},
         )
-        rc = lint_main(["--root", str(tmp_path), "--quiet"])
+        rc = lint_main(
+            ["--root", str(tmp_path), "--quiet", "--registry", str(_REAL_REGISTRY)]
+        )
         assert rc == 0
         captured = capsys.readouterr()
         assert captured.out == ""
@@ -353,7 +485,9 @@ class TestCli:
         bad_path = tmp_path / "rates_agent/d/tools/t/config.yaml"
         bad_path.parent.mkdir(parents=True)
         bad_path.write_text("tool: : :\n")  # malformed
-        rc = lint_main(["--root", str(tmp_path)])
+        rc = lint_main(
+            ["--root", str(tmp_path), "--registry", str(_REAL_REGISTRY)]
+        )
         assert rc == 2
         captured = capsys.readouterr()
         assert "ERROR" in captured.err

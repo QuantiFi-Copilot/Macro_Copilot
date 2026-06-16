@@ -236,7 +236,16 @@ def test_build_linker_panel_default_full_universe():
     assert card["calendar_policy"] == "business_days"
     assert card["missing_data_policy"] == "forward_fill_only"
     assert card["ffill_limit_days"] == 5
-    assert card["ffill_source_tag"] == "industry_standard_5d_ffill"
+    # ffill_source_tag is read straight from the config's
+    # ``ffill_limit_days`` convention ``source`` (see compute.py).  That
+    # tag is ``team_judgment_pending_review`` — the registered debt tag
+    # carried IDENTICALLY across all rates tools for PR13 cross-config
+    # consistency (the 5-day ffill is a code-review judgment, not an
+    # industry standard; methodology_sources.md lists ffill_limit_days=5
+    # as a canonical example of this debt tag).  The prior assertion
+    # against the never-registered ``industry_standard_5d_ffill`` was a
+    # stale red (M14).
+    assert card["ffill_source_tag"] == "team_judgment_pending_review"
 
     # Per-curve_family index_family caveat coverage.
     cf_ref = card["curve_family_reference"]

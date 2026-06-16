@@ -28,11 +28,12 @@ Exit code is non-zero if any inconsistency is found, suitable for CI.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, Iterable, List, Set, Tuple
 
 from shared.config.operator_config import (
     OperatorConfig,
@@ -60,6 +61,50 @@ _DEFAULT_TOOL_CONFIG_GLOBS: Tuple[str, ...] = (
 _DEFAULT_OPERATOR_CONFIG_GLOBS: Tuple[str, ...] = (
     "shared/operators/*/config.yaml",
 )
+
+# The AUTHORITATIVE methodology-source-tag registry (PR12 / OPR12 / P8).
+# Every ``Convention.source`` (tool configs) and every
+# ``OperatorDefault.source`` (operator configs) MUST reference a tag
+# registered here as a ``### `tag` `` header, or match one of the
+# registered pattern families (``_REGISTERED_TAG_PATTERNS`` below) that
+# ``docs_revamped/03_standards/methodology_disclosure.md`` §2 documents
+# as open families.  This file is parsed by ``load_registered_tags`` so
+# the registry stays a single source of truth — the lint never carries a
+# hand-maintained copy of the tag set.
+_METHODOLOGY_SOURCE_REGISTRY: str = "docs/architecture/methodology_sources.md"
+
+# Open pattern families registered in
+# ``docs_revamped/03_standards/methodology_disclosure.md`` §2.  A
+# ``source`` tag is registered if it either appears verbatim as a
+# ``### `tag` `` header in ``methodology_sources.md`` OR matches one of
+# these anchored families.  Keeping these as patterns (rather than one
+# exact entry per instance) is the documented contract for the open
+# families: a new ADR-cited tag or a new ``<primitive>_primitive_v1``
+# tag is registered by the family, not by a per-tag registry edit.
+_REGISTERED_TAG_PATTERNS: Tuple[re.Pattern[str], ...] = (
+    # ``industry_standard_<concept>`` — widely-accepted convention.
+    re.compile(r"^industry_standard_[a-z0-9_]+$"),
+    # ``adr_<NNNN>_<concept>`` — convention fixed by a specific ADR.
+    re.compile(r"^adr_\d{4}_[a-z0-9_]+$"),
+    # ``<primitive_name>_primitive_v1`` — a primitive-specific default
+    # the substrate honours (e.g. ``rolling_regression_primitive_v1``).
+    re.compile(r"^[a-z0-9_]+_primitive_v1$"),
+    # ``most_defensible_proxy_for_<concept>`` — documented proxy when
+    # the ideal datum is unavailable (e.g. GC-repo proxy).
+    re.compile(r"^most_defensible_proxy_for_[a-z0-9_]+$"),
+)
+
+# The vague set (PR12 / methodology_sources.md "Anti-patterns").  These
+# are AUTO-REJECT even if a pattern would otherwise admit them — e.g.
+# ``standard`` would never match a pattern, but ``bloomberg`` is listed
+# here explicitly so a stray ``source: bloomberg`` (rather than the
+# registered ``bloomberg_field_convention``) is rejected loudly.
+_VAGUE_SOURCE_TAGS: frozenset[str] = frozenset(
+    {"default", "standard", "convention", "bloomberg", "tbd", "fixme", "change_me"}
+)
+
+# Matches a ``### `tag` `` header line in the registry markdown.
+_REGISTRY_HEADER_RE = re.compile(r"^###\s+`([a-z0-9_]+)`\s*$")
 
 
 def discover_tool_configs(
@@ -112,6 +157,156 @@ def validate_operator_configs(config_paths: Iterable[Path]) -> List[OperatorConf
         cfg = load_operator_config(path)  # raises OperatorConfigError on bad input
         configs.append(cfg)
     return configs
+
+
+# ============================================================================
+# METHODOLOGY-SOURCE-TAG REGISTRY (PR12 / OPR12 / P8)
+# ============================================================================
+
+
+class SourceTagRegistryError(ValueError):
+    """Raised when the methodology-source-tag registry cannot be read.
+
+    A missing or empty registry is a precondition failure, not a lint
+    finding: without the registry the lint cannot validate any tag, so
+    it fails loudly (CI exit 2) rather than silently passing everything.
+    """
+
+
+def load_registered_tags(registry_path: Path) -> Set[str]:
+    """Parse the exact registered tag set from the registry markdown.
+
+    Reads every ``### `tag` `` header from ``methodology_sources.md``.
+    These are the *exact-spelling* registered tags; the open pattern
+    families (``_REGISTERED_TAG_PATTERNS``) are honoured separately by
+    ``is_tag_registered``.
+
+    Raises ``SourceTagRegistryError`` if the file is missing or yields
+    no tags (a typo'd path or a gutted registry must fail CI, not pass).
+    """
+    if not registry_path.is_file():
+        raise SourceTagRegistryError(
+            f"methodology-source-tag registry not found: {registry_path}"
+        )
+    tags: Set[str] = set()
+    for line in registry_path.read_text().splitlines():
+        m = _REGISTRY_HEADER_RE.match(line)
+        if m:
+            tags.add(m.group(1))
+    if not tags:
+        raise SourceTagRegistryError(
+            f"methodology-source-tag registry {registry_path} contained no "
+            "``### `tag` `` headers — refusing to validate against an empty "
+            "registry."
+        )
+    return tags
+
+
+def is_tag_registered(tag: str, registered_exact: Set[str]) -> bool:
+    """True iff ``tag`` is a registered methodology-source tag.
+
+    Registration = (a) NOT in the vague auto-reject set, AND (b) either
+    an exact registry header OR a match of a registered open-family
+    pattern.  The vague check wins: a tag in ``_VAGUE_SOURCE_TAGS`` is
+    rejected even if a pattern would otherwise admit it.
+    """
+    if tag in _VAGUE_SOURCE_TAGS:
+        return False
+    if tag in registered_exact:
+        return True
+    return any(pat.match(tag) for pat in _REGISTERED_TAG_PATTERNS)
+
+
+@dataclass(frozen=True)
+class SourceTagIssue:
+    """One unregistered/vague methodology-source-tag finding."""
+
+    tag: str
+    kind: str  # "unregistered" | "vague"
+    config_path: Path
+    component: str  # tool/operator name
+    convention_name: str
+
+    def format_for_human(self) -> str:
+        if self.kind == "vague":
+            detail = (
+                f"vague auto-reject tag {self.tag!r} (PR12 anti-pattern; "
+                "name what makes the default standard, or use "
+                "team_judgment_pending_review)"
+            )
+        else:
+            detail = (
+                f"unregistered methodology-source tag {self.tag!r} — add a "
+                "one-line entry to docs/architecture/methodology_sources.md "
+                "(or match a registered pattern family) before using it"
+            )
+        return (
+            f"[UNREGISTERED-SOURCE] {detail}\n"
+            f"  - component={self.component!r}  "
+            f"convention={self.convention_name!r}  ({self.config_path})"
+        )
+
+
+def check_source_tags(
+    tool_config_paths: Iterable[Path],
+    operator_config_paths: Iterable[Path],
+    registry_path: Path,
+) -> List[SourceTagIssue]:
+    """Validate EVERY ``source`` tag against the closed registry (PR12).
+
+    Walks every tool ``Convention.source`` and every operator
+    ``OperatorDefault.source``; each must be a registered tag per
+    ``is_tag_registered`` (exact header OR registered open-family
+    pattern) and must NOT be in the vague auto-reject set.  Returns the
+    list of violations — empty means clean.  This is the PR12 / OPR12
+    CI authority: a non-empty result drives a non-zero exit in
+    ``main``.
+
+    Loads configs through the product loaders so the same validated
+    ``source`` strings the runtime sees are the ones checked here.
+    Config-load failures propagate (``ToolConfigError`` /
+    ``OperatorConfigError``) — a broken YAML is a precondition, not a
+    tag finding.
+    """
+    registered_exact = load_registered_tags(registry_path)
+    issues: List[SourceTagIssue] = []
+
+    for path in tool_config_paths:
+        cfg = load_tool_config(path)
+        for conv_name, conv in cfg.conventions.items():
+            tag = conv.source
+            if is_tag_registered(tag, registered_exact):
+                continue
+            kind = "vague" if tag in _VAGUE_SOURCE_TAGS else "unregistered"
+            issues.append(
+                SourceTagIssue(
+                    tag=tag,
+                    kind=kind,
+                    config_path=path,
+                    component=cfg.tool.name,
+                    convention_name=conv_name,
+                )
+            )
+
+    for path in operator_config_paths:
+        op_cfg = load_operator_config(path)
+        for default_name, default in op_cfg.defaults.items():
+            tag = default.source
+            if is_tag_registered(tag, registered_exact):
+                continue
+            kind = "vague" if tag in _VAGUE_SOURCE_TAGS else "unregistered"
+            issues.append(
+                SourceTagIssue(
+                    tag=tag,
+                    kind=kind,
+                    config_path=path,
+                    component=op_cfg.operator.name,
+                    convention_name=default_name,
+                )
+            )
+
+    issues.sort(key=lambda i: (str(i.config_path), i.convention_name))
+    return issues
 
 
 # ============================================================================
@@ -255,7 +450,22 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Only emit output on failure.",
     )
+    parser.add_argument(
+        "--registry",
+        type=Path,
+        default=None,
+        help=(
+            "Path to the methodology-source-tag registry markdown "
+            f"(default: <root>/{_METHODOLOGY_SOURCE_REGISTRY})."
+        ),
+    )
     args = parser.parse_args(argv)
+
+    registry_path = (
+        args.registry
+        if args.registry is not None
+        else args.root / _METHODOLOGY_SOURCE_REGISTRY
+    )
 
     paths = discover_tool_configs(args.root)
     if not args.quiet:
@@ -293,15 +503,42 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[ERROR] {exc}", file=sys.stderr)
         return 2
 
-    if not issues:
+    # Methodology-source-tag registry membership (PR12 / OPR12 / P8).
+    # Every Convention.source / OperatorDefault.source must reference a
+    # registered tag; the vague set is auto-rejected.  This is the named
+    # PR12 CI authority — a violation here fails the build.
+    try:
+        tag_issues = check_source_tags(paths, op_paths, registry_path)
+    except SourceTagRegistryError as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        return 2
+    except (ToolConfigError, OperatorConfigError) as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        return 2
+
+    if not issues and not tag_issues:
         if not args.quiet:
-            print("OK — no convention drift detected.")
+            print(
+                "OK — no convention drift detected; all methodology-source "
+                f"tags registered (registry: {registry_path})."
+            )
         return 0
 
-    print(f"\n{len(issues)} consistency issue(s) found:\n", file=sys.stderr)
-    for issue in issues:
-        print(issue.format_for_human(), file=sys.stderr)
-        print("", file=sys.stderr)
+    if tag_issues:
+        print(
+            f"\n{len(tag_issues)} unregistered/vague methodology-source "
+            f"tag(s) found (PR12):\n",
+            file=sys.stderr,
+        )
+        for tag_issue in tag_issues:
+            print(tag_issue.format_for_human(), file=sys.stderr)
+            print("", file=sys.stderr)
+
+    if issues:
+        print(f"\n{len(issues)} consistency issue(s) found:\n", file=sys.stderr)
+        for issue in issues:
+            print(issue.format_for_human(), file=sys.stderr)
+            print("", file=sys.stderr)
     return 1
 
 

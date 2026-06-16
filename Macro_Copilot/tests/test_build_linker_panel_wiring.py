@@ -96,7 +96,11 @@ def _well_formed_output() -> dict:
             "calendar_policy": "business_days",
             "missing_data_policy": "forward_fill_only",
             "ffill_limit_days": 5,
-            "ffill_source_tag": "industry_standard_5d_ffill",
+            # Read from the config's ffill_limit_days.source — the
+            # registered debt tag carried identically across all rates
+            # tools for PR13 (not the never-registered
+            # ``industry_standard_5d_ffill``; M14).
+            "ffill_source_tag": "team_judgment_pending_review",
             "curve_families": ["USD_TIPS"],
             "vendor_ticker_column_key": True,
             "security_name_caveat": (
