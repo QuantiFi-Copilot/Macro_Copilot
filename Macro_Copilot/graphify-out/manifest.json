@@ -2968,8 +2968,8 @@
     "hash": "46858393e485c7320d5426ffbb3aaf1b"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_operator_registry_consistency.py": {
-    "mtime": 1781582897.6493986,
-    "hash": "6eec667192615ff2fc282d84ff6d2872"
+    "mtime": 1781599929.696145,
+    "hash": "2ca9731de962b513e8368df433b5931d"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_real_yield_level_parity.py": {
     "mtime": 1779731367.2889328,
@@ -5735,6 +5735,10 @@
     "mtime": 1780611033.3538043,
     "hash": "601c6d16da89827864db0e060d77fd1e"
   },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/garch_repro.py": {
+    "mtime": 1781597904.4735873,
+    "hash": "6ae61f3ef1f1d0b7083ad39df6a042d8"
+  },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/_c42_repro_rw.py": {
     "mtime": 1781586048.7271087,
     "hash": "8c82a4a1ec3ec8a39c75f5baea644d57"
@@ -5802,6 +5806,14 @@
   "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/c21_verify/break_b_factorscores.py": {
     "mtime": 1781580360.614074,
     "hash": "a28362d2e9e81f17e11765916d7ebba5"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/scratch_c32b/repro_oldseed.py": {
+    "mtime": 1781600509.8833451,
+    "hash": "7304da6be611a7281878540b1b1daa56"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/scratch_c32b/verify_genuine.py": {
+    "mtime": 1781600774.6156163,
+    "hash": "e0307bffb6e6dd944072d92ac8a70246"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/c21_verifier2_scratch/independent_driver.py": {
     "mtime": 1781580785.8845131,
@@ -7024,7 +7036,7 @@
     "hash": "ee488849fdc9a758ff97eb9f8577b848"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/graphify-out/converted/rates_playbook_planning_manifest_784d2d10.md": {
-    "mtime": 1781596160.4414523,
+    "mtime": 1781600900.4059348,
     "hash": "411f509e99c9fd44c55add78551d2ad0"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/docs/problems.md": {
@@ -7576,8 +7588,12 @@
     "hash": "628fa161faf600af6fe9bdf2afc5ae31"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_fix/FIX_INDEX.md": {
-    "mtime": 1781596113.0248914,
-    "hash": "f9585c3bc314aacf9f659e504e413366"
+    "mtime": 1781597598.5858114,
+    "hash": "57d705b966d039a5f3aaf7fe6df3640c"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_fix/CLOSEOUT_REPORT.md": {
+    "mtime": 1781597506.0749483,
+    "hash": "5d4c7df8f9246170cd8504243f53c6cf"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_fix/GOAL_MODE_MESSAGE.txt": {
     "mtime": 1781560500.7202828,
@@ -7679,6 +7695,10 @@
     "mtime": 1781567887.567189,
     "hash": "37c6a6c17b0f767d37d3ad93d8f2e124"
   },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_fix/fixes/_raw/C3.2b__verifier1.md": {
+    "mtime": 1781600831.289356,
+    "hash": "5caa948863ad006a1669ba96a3c4fa67"
+  },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_fix/fixes/_raw/C5.1__verifier1.md": {
     "mtime": 1781591211.7137237,
     "hash": "5833966e0897048ef815bd4fa32f1002"
@@ -7722,6 +7742,10 @@
   "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_fix/fixes/_notes/C3.1.md": {
     "mtime": 1781581631.2912903,
     "hash": "7fdee7eb08bbbdf5f00c7e014c0c7fe5"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_fix/fixes/_notes/C3.2b.md": {
+    "mtime": 1781600216.7006772,
+    "hash": "baf1c7d989ecca5c1d9a0c6c35a31e90"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tmp/fable_plan_2_fix/fixes/_notes/C2.1.md": {
     "mtime": 1781579934.628598,
