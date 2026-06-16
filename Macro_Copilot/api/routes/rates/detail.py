@@ -909,6 +909,7 @@ def real_yield_detail(
             "use the YAML default (1 — sample std).  0 = population std."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Same payload + override semantics as the MCP wrapper; consumed by
     the frontend module's ``surfaces/BuildExtended.tsx`` AND
@@ -925,6 +926,7 @@ def real_yield_detail(
             z_score_window_days=z_score_window_days,
             z_score_min_periods=z_score_min_periods,
             z_score_ddof=z_score_ddof,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -1008,6 +1010,7 @@ def breakeven_detail(
             "the YAML default (1 — sample std).  0 = population std."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Same payload + override semantics as the MCP wrapper; consumed by
     the frontend module's ``surfaces/BuildExtended.tsx`` AND
@@ -1025,6 +1028,7 @@ def breakeven_detail(
             z_score_window_days=z_score_window_days,
             z_score_min_periods=z_score_min_periods,
             z_score_ddof=z_score_ddof,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -1110,6 +1114,7 @@ def real_yield_curve_spread_detail(
             "the YAML default (1 — sample std).  0 = population std."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Same payload + override semantics as the MCP wrapper; consumed by
     the frontend module's ``surfaces/BuildExtended.tsx`` AND
@@ -1127,6 +1132,7 @@ def real_yield_curve_spread_detail(
             z_score_window_days=z_score_window_days,
             z_score_min_periods=z_score_min_periods,
             z_score_ddof=z_score_ddof,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -1184,6 +1190,7 @@ def breakeven_butterfly_detail(
             "(currently 'YLD_YTM_MID')."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Same payload semantics as the MCP wrapper; consumed by the
     frontend module's ``surfaces/BuildExtended.tsx``,
@@ -1203,6 +1210,7 @@ def breakeven_butterfly_detail(
             long_tenor=long_tenor,
             lookback_days=lookback_days,
             field_name=field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -1261,6 +1269,7 @@ def breakeven_curve_spread_detail(
             "(currently 'YLD_YTM_MID')."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Same payload semantics as the MCP wrapper; consumed by the
     frontend module's ``surfaces/BuildExtended.tsx``,
@@ -1280,6 +1289,7 @@ def breakeven_curve_spread_detail(
             long_tenor=long_tenor,
             lookback_days=lookback_days,
             field_name=field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -1342,6 +1352,7 @@ def forward_breakeven_detail(
             "(currently 'YLD_YTM_MID')."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Same payload semantics as the MCP wrapper; consumed by the
     frontend module's ``surfaces/BuildExtended.tsx``,
@@ -1362,6 +1373,7 @@ def forward_breakeven_detail(
             end_tenor=end_tenor,
             lookback_days=lookback_days,
             field_name=field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -1419,6 +1431,7 @@ def real_yield_butterfly_detail(
             "``default_field_name`` convention (currently 'YLD_YTM_MID')."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Same payload semantics as the MCP wrapper; consumed by the
     frontend module's ``surfaces/BuildExtended.tsx``,
@@ -1438,6 +1451,7 @@ def real_yield_butterfly_detail(
             long_tenor=long_tenor,
             lookback_days=lookback_days,
             field_name=field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -1495,6 +1509,7 @@ def cross_market_zcis_detail(
             "``default_zcis_rate_field`` convention (currently 'PX_MID')."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Same payload semantics as the MCP wrapper; consumed by the frontend
     module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
@@ -1513,6 +1528,7 @@ def cross_market_zcis_detail(
             tenor=tenor,
             lookback_days=lookback_days,
             field_name=field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -1570,6 +1586,7 @@ def zcis_butterfly_detail(
             "``default_zcis_rate_field`` convention (currently 'PX_MID')."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Same payload semantics as the MCP wrapper; consumed by the frontend
     module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
@@ -1589,6 +1606,7 @@ def zcis_butterfly_detail(
             long_tenor=long_tenor,
             lookback_days=lookback_days,
             field_name=field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -1657,6 +1675,7 @@ def ois_butterfly_detail(
             "'YLD_YTM_MID' yield-to-maturity field)."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Same payload semantics as the MCP wrapper; consumed by the frontend
     module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
@@ -1676,6 +1695,7 @@ def ois_butterfly_detail(
             long_tenor=long_tenor,
             lookback_days=lookback_days,
             field_name=field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -1754,6 +1774,7 @@ def ois_curve_spread_detail(
             "'YLD_YTM_MID' yield-to-maturity field)."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Same payload semantics as the MCP wrapper; consumed by the frontend
     module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
@@ -1772,6 +1793,7 @@ def ois_curve_spread_detail(
             long_tenor=long_tenor,
             lookback_days=lookback_days,
             field_name=field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -1850,6 +1872,7 @@ def ois_cross_market_spread_detail(
             "``default_swap_rate_field`` convention (currently 'PX_LAST')."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Same payload semantics as the MCP wrapper; consumed by the frontend
     module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
@@ -1868,6 +1891,7 @@ def ois_cross_market_spread_detail(
             tenor=tenor,
             lookback_days=lookback_days,
             field_name=field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -1955,6 +1979,7 @@ def swap_spread_detail(
             "'PX_LAST' — OIS par swap rate)."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Same payload semantics as the MCP wrapper; consumed by the frontend
     module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
@@ -1979,6 +2004,7 @@ def swap_spread_detail(
             lookback_days=lookback_days,
             sovereign_field_name=sovereign_field_name,
             ois_field_name=ois_field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -2052,6 +2078,7 @@ def ois_rate_level_detail(
             "yield-to-maturity field)."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Same payload semantics as the MCP wrapper; consumed by the frontend
     module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
@@ -2069,6 +2096,7 @@ def ois_rate_level_detail(
             tenor=tenor,
             lookback_days=lookback_days,
             field_name=field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -2171,6 +2199,7 @@ def ois_forward_rate_detail(
             "yield-to-maturity field)."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Same payload semantics as the MCP wrapper; consumed by the frontend
     module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
@@ -2194,6 +2223,7 @@ def ois_forward_rate_detail(
             end_date=end_date,
             lookback_days=lookback_days,
             field_name=field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -2288,6 +2318,7 @@ def inflation_swap_forward_detail(
             "inflation_swap_forward/config.yaml (currently 'PX_MID')."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Same payload semantics as the MCP wrapper; consumed by the frontend
     module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
@@ -2306,6 +2337,7 @@ def inflation_swap_forward_detail(
             end_tenor=end_tenor,
             lookback_days=lookback_days,
             field_name=field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -2383,6 +2415,7 @@ def inflation_swap_rate_level_detail(
             "for inflation swaps)."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Same payload semantics as the MCP wrapper; consumed by the frontend
     module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
@@ -2399,6 +2432,7 @@ def inflation_swap_rate_level_detail(
             tenor=tenor,
             lookback_days=lookback_days,
             field_name=field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -2478,6 +2512,7 @@ def inflation_swap_curve_spread_detail(
             "inflation_swap_curve_spread/config.yaml (currently 'PX_MID')."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Same payload semantics as the MCP wrapper; consumed by the
     frontend module's ``surfaces/BuildExtended.tsx``,
@@ -2496,6 +2531,7 @@ def inflation_swap_curve_spread_detail(
             long_tenor=long_tenor,
             lookback_days=lookback_days,
             field_name=field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -2602,6 +2638,7 @@ def swap_breakeven_basis_detail(
             "threaded into both inner calls."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Same payload semantics as the MCP wrapper; consumed by the frontend
     module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
@@ -2621,6 +2658,7 @@ def swap_breakeven_basis_detail(
             tenor=tenor,
             lookback_days=lookback_days,
             field_name=field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -3246,12 +3284,14 @@ def spread_detail(
     long_tenor: str = Query(default="10Y"),
     lookback_days: int = Query(default=365, ge=30, le=7300),
     field_name: str = Query(default="YLD_YTM_MID"),
+    as_of_date: Optional[str] = None,
 ):
     try:
         params = CurveSpreadInput(
             curve_family=curve_family, short_tenor=short_tenor,
             long_tenor=long_tenor, lookback_days=lookback_days,
             field_name=field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -3290,6 +3330,7 @@ def cross_market_detail(
             "(commit b2605ee)."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """``field_name`` defaults to None at the query layer so the tool's
     compute() can resolve it against the YAML's ``default_field_name``
@@ -3300,6 +3341,7 @@ def cross_market_detail(
         params = CrossMarketSpreadInput(
             curve_family_1=curve_family_1, curve_family_2=curve_family_2,
             tenor=tenor, lookback_days=lookback_days, field_name=field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -3340,6 +3382,7 @@ def butterfly_detail(
             "b2605ee)."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """``field_name`` defaults to None at the query layer so the tool's
     compute() can resolve it against the YAML's ``default_field_name``
@@ -3351,6 +3394,7 @@ def butterfly_detail(
             curve_family=curve_family, short_tenor=short_tenor,
             belly_tenor=belly_tenor, long_tenor=long_tenor,
             lookback_days=lookback_days, field_name=field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -3388,6 +3432,7 @@ def regime_detail(
             "to override per request."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """User-facing endpoint name retains "regime" because that's how
     PMs and the frontend's existing typescript types reference this
@@ -3412,6 +3457,7 @@ def regime_detail(
             curve_family=curve_family, front_tenor=front_tenor,
             back_tenor=back_tenor, lookback_period=lookback_period,
             field_name=field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -3472,6 +3518,7 @@ def zscore_custom_detail(
             "endpoints (commit b2605ee)."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """``field_name`` defaults to None at the query layer so the tool's
     compute() can resolve it against the YAML's ``default_field_name``
@@ -3486,6 +3533,7 @@ def zscore_custom_detail(
             z_score_window_days=z_score_window_days,
             lookback_days=lookback_days,
             field_name=field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -3545,6 +3593,7 @@ def beta_adjusted_spread_detail(
             "and yield_levels endpoints (commit b2605ee)."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """``field_name`` defaults to None at the query layer so the tool's
     compute() can resolve it against the YAML's ``default_field_name``
@@ -3567,6 +3616,7 @@ def beta_adjusted_spread_detail(
             regression_window_days=regression_window_days,
             lookback_days=lookback_days,
             field_name=field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -3625,6 +3675,7 @@ def pca_yield_curve_detail(
             "rates roster (commit b2605ee)."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """``field_name`` defaults to None at the query layer so the tool's
     compute() can resolve it against the YAML's ``default_field_name``
@@ -3650,6 +3701,7 @@ def pca_yield_curve_detail(
             n_components=n_components,
             change_frequency=change_frequency,
             field_name=field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -4498,6 +4550,7 @@ def bond_futures_price_detail(
             "'PX_LAST').  Per config.yaml:default_price_field."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Same payload + sentinel semantics as the MCP wrapper.  Consumed by
     ``surfaces/BuildExtended.tsx`` AND ``surfaces/BuildCompact.tsx`` per
@@ -4512,6 +4565,7 @@ def bond_futures_price_detail(
             contract_code=contract_code,
             lookback_days=lookback_days,
             field_name=field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -4609,6 +4663,7 @@ def cross_country_breakeven_spread_detail(
             "(currently 'YLD_YTM_MID')."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Same payload semantics as the MCP wrapper; consumed by the frontend
     module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
@@ -4629,6 +4684,7 @@ def cross_country_breakeven_spread_detail(
             tenor=tenor,
             lookback_days=lookback_days,
             field_name=field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -4719,6 +4775,7 @@ def cross_country_real_yield_spread_detail(
             "convention (currently 'YLD_YTM_MID')."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Same payload semantics as the MCP wrapper; consumed by the frontend
     module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
@@ -4737,6 +4794,7 @@ def cross_country_real_yield_spread_detail(
             tenor=tenor,
             lookback_days=lookback_days,
             field_name=field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -4904,6 +4962,7 @@ def financing_rate_detail(
             "Defaults to 252 (one trading year)."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Synthesize a snapshot-shape response from the financing-rate Panel.
 
@@ -4944,6 +5003,7 @@ def financing_rate_detail(
             proxy_curve=proxy_curve,
             start_date=start_dt,
             end_date=end_dt,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -5117,6 +5177,7 @@ def otr_ofr_spread_detail(
             "convention (currently 'YLD_YTM_MID')."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Same payload semantics as the MCP wrapper; consumed by the frontend
     module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
@@ -5134,6 +5195,7 @@ def otr_ofr_spread_detail(
             tenor=tenor,
             lookback_days=lookback_days,
             field_name=field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -5215,6 +5277,7 @@ def rolling_regression_detail(
             "(currently 'YLD_YTM_MID')."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Flattening contract: ``regressor_curve_families[i]`` pairs with
     ``regressor_tenors[i]``; a length mismatch is a 422.  All other
@@ -5243,6 +5306,7 @@ def rolling_regression_detail(
             ],
             regression_window_days=regression_window_days,
             lookback_days=lookback_days,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -5316,6 +5380,7 @@ def half_life_detail(
             "half_life/config.yaml (currently 'YLD_YTM_MID')."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """All other methodology knobs (confidence level, CI method,
     rounding) are YAML-locked and not exposed at the route — see A13 in
@@ -5330,6 +5395,7 @@ def half_life_detail(
                     field_name=field_name,
                 ),
                 lookback_days=lookback_days,
+                as_of_date=(as_of_date or None),
             )
         else:
             params = HalfLifeInput(
@@ -5339,6 +5405,7 @@ def half_life_detail(
                     field_name=field_name,
                 ),
                 lookback_days=lookback_days,
+                as_of_date=(as_of_date or None),
             )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -5414,6 +5481,7 @@ def yield_change_attribution_detail(
             "'YLD_YTM_MID')."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Inline-fit bridge: the upstream PCA is fit inside the call with
     the supplied knobs; loadings provenance comes back on
@@ -5431,6 +5499,7 @@ def yield_change_attribution_detail(
             change_frequency=change_frequency,
             tenors=tenors,
             field_name=field_name,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -5576,6 +5645,7 @@ def wirp_meeting_pricing_detail(
             "(YYYY-MM-DD).  Required in that mode."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     try:
         params = WirpMeetingPricingInput(
@@ -5583,6 +5653,7 @@ def wirp_meeting_pricing_detail(
             selection_mode=selection_mode,
             n_meetings=n_meetings,
             meeting_date=meeting_date,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -5628,12 +5699,14 @@ def futures_volume_oi_detail(
         ..., description="Rolling-generic stem, e.g. 'TY1', 'RX1'.",
     ),
     lookback_days: int = Query(default=365, ge=30, le=7300),
+    as_of_date: Optional[str] = None,
 ):
     try:
         params = FuturesVolumeOIInput(
             curve_family=curve_family,
             contract_code=contract_code,
             lookback_days=lookback_days,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -5696,6 +5769,7 @@ def otr_history_detail(
         ),
     ),
     lookback_days: int = Query(default=365, ge=30, le=3650),
+    as_of_date: Optional[str] = None,
 ):
     """Same payload semantics as the MCP wrapper; consumed by the frontend
     module's ``surfaces/BuildExtended.tsx`` AND ``surfaces/BuildCompact.tsx``
@@ -5713,6 +5787,7 @@ def otr_history_detail(
             country=country,
             tenor=tenor,
             lookback_days=lookback_days,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -5789,6 +5864,7 @@ def ois_scanner_detail(
             "rate).  Other valid: 'PX_BID', 'PX_ASK'."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Same payload semantics as the MCP wrapper; consumed by the frontend
     module's ``surfaces/BuildExtended.tsx`` (universe scan + ranked detail)
@@ -5817,6 +5893,8 @@ def ois_scanner_detail(
             input_kwargs["min_abs_z_score"] = min_abs_z_score
         if field_name is not None:
             input_kwargs["field_name"] = field_name
+        if as_of_date:
+            input_kwargs["as_of_date"] = as_of_date
         params = OISScannerInput(**input_kwargs)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -5920,6 +5998,7 @@ def sovereign_yield_panel_detail(
             "['raise', 'forward_fill_only', 'drop_rows_any_missing']."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Flattening contract: ``leg_curve_families[i]`` pairs with
     ``leg_tenors[i]``; a length mismatch is a 422.  The typed Panel
@@ -5943,6 +6022,7 @@ def sovereign_yield_panel_detail(
             start_date=start_date,
             end_date=end_date,
             missing_data_policy=missing_data_policy,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -6047,6 +6127,7 @@ def linker_panel_detail(
             "['raise', 'forward_fill_only', 'drop_rows_any_missing']."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Closed-enum knobs (curve_families / calendar_policy /
     missing_data_policy) are validated by the backend Input's Literals —
@@ -6060,6 +6141,7 @@ def linker_panel_detail(
             field_name=field_name,
             calendar_policy=calendar_policy,
             missing_data_policy=missing_data_policy,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -6173,6 +6255,7 @@ def zcis_panel_detail(
             "['raise', 'forward_fill_only', 'drop_rows_any_missing']."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Closed-enum knobs are validated by the backend Input's Literals —
     invalid values are 422s.  The typed Panel artifact is dropped from the
@@ -6186,6 +6269,7 @@ def zcis_panel_detail(
             field_name=field_name,
             calendar_policy=calendar_policy,
             missing_data_policy=missing_data_policy,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
@@ -6301,6 +6385,7 @@ def policy_futures_strip_panel_detail(
             "['raise', 'forward_fill_only', 'drop_rows_any_missing']."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Closed-enum knobs (curve_families / strip_positions /
     calendar_policy / missing_data_policy) are validated by the backend
@@ -6315,6 +6400,7 @@ def policy_futures_strip_panel_detail(
             field_name=field_name,
             calendar_policy=calendar_policy,
             missing_data_policy=missing_data_policy,
+            as_of_date=(as_of_date or None),
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
