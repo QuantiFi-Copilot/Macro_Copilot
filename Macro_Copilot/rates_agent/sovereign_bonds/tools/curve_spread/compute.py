@@ -135,7 +135,8 @@ def calculate_curve_spread(
     # window resolves to real data when ingestion lags (weekend / holiday /
     # stale snapshot); falls back to today only when the curve has no rows.
     anchor = (
-        latest_trade_date(engine, curve_family=params.curve_family)
+        params.as_of_date
+        or latest_trade_date(engine, curve_family=params.curve_family)
         or date.today()
     )
     start_date = anchor - timedelta(
@@ -152,6 +153,7 @@ def calculate_curve_spread(
         long_tenor=params.long_tenor,
         field_name=params.field_name,
         start_date=start_date,
+        end_date=anchor,
     )
 
     if raw_df.empty:

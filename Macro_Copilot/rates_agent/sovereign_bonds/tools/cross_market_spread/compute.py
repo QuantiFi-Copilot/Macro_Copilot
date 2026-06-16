@@ -259,7 +259,9 @@ def calculate_cross_market_spread(
     _a2 = latest_trade_date(
         engine, curve_family=params.curve_family_2, field_name=field_name_resolved
     )
-    anchor = min([d for d in (_a1, _a2) if d is not None], default=date.today())
+    anchor = params.as_of_date or min(
+        [d for d in (_a1, _a2) if d is not None], default=date.today()
+    )
     start_date = anchor - timedelta(
         days=params.lookback_days + buffer_calendar_days
     )
@@ -274,6 +276,7 @@ def calculate_cross_market_spread(
         tenor=params.tenor,
         field_name=field_name_resolved,
         start_date=start_date,
+        end_date=anchor,
     )
 
     if raw_df.empty:

@@ -248,6 +248,22 @@ def latest_trade_date(
         return None
 
 
+def _cap_to_end_date(
+    df: pd.DataFrame, end_date: Optional[date], col: str = "trade_date"
+) -> pd.DataFrame:
+    """Filter a fetched frame to rows with ``col`` <= ``end_date`` — the
+    historical as-of UPPER bound.  ``end_date is None`` (the default for every
+    pre-as-of caller) returns the frame unchanged, byte-for-byte, so this is a
+    strict additive extension.  Used by the single-tenor / cross-market /
+    universe-scan fetchers, whose result sets are small enough that a pandas
+    cap is cheaper than threading the bound through their multiple static SQL
+    variants (fetch_tenor_group caps in SQL directly)."""
+    if end_date is None or df.empty or col not in df.columns:
+        return df
+    keep = pd.to_datetime(df[col]).dt.date <= end_date
+    return df[keep].reset_index(drop=True)
+
+
 # ============================================================================
 # ONE CURVE, N TENORS
 # ============================================================================
@@ -267,6 +283,7 @@ def fetch_tenor_group(
     field_name: str,
     start_date: date,
     contract_code: Optional[str] = None,
+    end_date: Optional[date] = None,
 ) -> pd.DataFrame:
     """Fetch an arbitrary set of tenors on one curve.
 
@@ -317,6 +334,7 @@ def fetch_tenor_group(
           AND tenor        = ANY(:tenors)
           AND field_name   = :field_name
           AND trade_date  >= :start_date
+          AND (CAST(:end_date AS date) IS NULL OR trade_date <= :end_date)
           {where_extra}
         ORDER BY trade_date
     """)
@@ -325,6 +343,7 @@ def fetch_tenor_group(
         "tenors": list(tenors),
         "field_name": field_name,
         "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat() if end_date is not None else None,
     }
     if contract_code is not None:
         params["contract_code"] = contract_code
@@ -347,6 +366,7 @@ def fetch_tenor_pair(
     field_name: str,
     start_date: date,
     contract_code: Optional[str] = None,
+    end_date: Optional[date] = None,
 ) -> pd.DataFrame:
     """Fetch exactly two tenors on one curve.  Thin wrapper around
     ``fetch_tenor_group`` preserved for the curve_spread tool's original
@@ -355,6 +375,10 @@ def fetch_tenor_pair(
     ``contract_code`` (optional): see :func:`fetch_tenor_group` —
     disambiguator for playbooks where ``(curve_family, tenor)`` is not
     unique. Default ``None`` preserves the pre-Step-0 query.
+
+    ``end_date`` (optional): upper-bound ``trade_date`` cap for the
+    historical as-of view.  ``None`` (default) imposes no upper bound —
+    identical to the pre-as-of query.
     """
     return fetch_tenor_group(
         engine=engine,
@@ -363,6 +387,7 @@ def fetch_tenor_pair(
         field_name=field_name,
         start_date=start_date,
         contract_code=contract_code,
+        end_date=end_date,
     )
 
 
@@ -445,6 +470,7 @@ def fetch_single_tenor(
     start_date: date,
     contract_code: Optional[str] = None,
     instrument_type: Optional[str] = None,
+    end_date: Optional[date] = None,
 ) -> pd.DataFrame:
     """Fetch a single-tenor series on one curve.
 
@@ -493,7 +519,7 @@ def fetch_single_tenor(
         result = conn.execute(sql, params)
         rows = result.fetchall()
         columns = list(result.keys())
-    return pd.DataFrame(rows, columns=columns)
+    return _cap_to_end_date(pd.DataFrame(rows, columns=columns), end_date)
 
 
 # ============================================================================
@@ -523,6 +549,7 @@ def fetch_cross_market_pair(
     start_date: date,
     contract_code_1: Optional[str] = None,
     contract_code_2: Optional[str] = None,
+    end_date: Optional[date] = None,
 ) -> pd.DataFrame:
     """Fetch the same tenor on two different curves.
 
@@ -585,7 +612,7 @@ def fetch_cross_market_pair(
         result = conn.execute(sql, params)
         rows = result.fetchall()
         columns = list(result.keys())
-    return pd.DataFrame(rows, columns=columns)
+    return _cap_to_end_date(pd.DataFrame(rows, columns=columns), end_date)
 
 
 # ============================================================================
@@ -701,6 +728,7 @@ def fetch_scan_universe(
     field_name: str,
     start_date: date,
     curve_families: Optional[Iterable[str]] = None,
+    end_date: Optional[date] = None,
 ) -> pd.DataFrame:
     """Fetch every (curve_family, tenor) series of the given instrument
     type for use by scanner-style tools.
@@ -747,7 +775,7 @@ def fetch_scan_universe(
         result = conn.execute(sql, bind_params)
         rows = result.fetchall()
         columns = list(result.keys())
-    return pd.DataFrame(rows, columns=columns)
+    return _cap_to_end_date(pd.DataFrame(rows, columns=columns), end_date)
 
 
 # ============================================================================

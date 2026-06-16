@@ -194,7 +194,8 @@ def get_yield_levels(
     # window resolves to real data when ingestion lags; reconciles the
     # date.today() inconsistency noted at the cutoff below with the OIS twin.
     anchor = (
-        latest_trade_date(
+        params.as_of_date
+        or latest_trade_date(
             engine,
             curve_family=params.curve_family,
             tenor=params.tenor,
@@ -215,6 +216,7 @@ def get_yield_levels(
         tenor=params.tenor,
         field_name=field_name_resolved,
         start_date=start_date,
+        end_date=anchor,
     )
 
     if raw_df.empty:

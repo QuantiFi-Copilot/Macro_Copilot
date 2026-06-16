@@ -149,7 +149,8 @@ def scan_extremes(
     # (not date.today()) so the scan still resolves to real data when ingestion
     # lags; falls back to today only when the universe has no rows.
     anchor = (
-        latest_trade_date(
+        params.as_of_date
+        or latest_trade_date(
             engine, instrument_type=instrument_type, field_name=params.field_name
         )
         or date.today()
@@ -165,6 +166,7 @@ def scan_extremes(
         field_name=params.field_name,
         start_date=start_date,
         curve_families=params.curve_families,
+        end_date=anchor,
     )
 
     if raw_df.empty:

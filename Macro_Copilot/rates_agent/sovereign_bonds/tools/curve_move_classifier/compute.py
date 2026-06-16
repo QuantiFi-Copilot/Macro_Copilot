@@ -287,7 +287,8 @@ def classify_curve_move_compute(
     # ingestion gap, so anchoring on "now" yields an empty window the moment the
     # data lags.  Falls back to date.today() only when the universe has no rows.
     anchor = (
-        latest_trade_date(
+        params.as_of_date
+        or latest_trade_date(
             engine,
             curve_family=params.curve_family,
             field_name=field_name_resolved,
@@ -302,6 +303,7 @@ def classify_curve_move_compute(
         tenors=[params.front_tenor, params.back_tenor],
         field_name=field_name_resolved,
         start_date=start_date,
+        end_date=anchor,
     )
 
     if raw_df.empty:

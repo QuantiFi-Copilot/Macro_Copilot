@@ -61,7 +61,7 @@ from __future__ import annotations
 
 import contextlib
 from datetime import date, timedelta
-from typing import Any, Iterator, List
+from typing import Any, Iterator, List, Optional
 from unittest.mock import patch as _patch
 
 import numpy as np
@@ -162,6 +162,7 @@ def _ssfx_fetch_single_tenor(
     tenor: str,
     field_name: str,
     start_date: date,
+    end_date: Optional[date] = None,  # accepted (as-of cap); ignored by synthetic
 ) -> pd.DataFrame:
     """Synthetic ``shared.analytics.rates_fetch.fetch_single_tenor``.
 
@@ -185,6 +186,7 @@ def _ssfx_fetch_tenor_pair(
     long_tenor: str,
     field_name: str,
     start_date: date,
+    end_date: Optional[date] = None,  # accepted (as-of cap); ignored by synthetic
 ) -> pd.DataFrame:
     """Synthetic ``shared.analytics.rates_fetch.fetch_tenor_pair``.
 
@@ -216,6 +218,7 @@ def _ssfx_fetch_cross_market_pair(
     tenor: str,
     field_name: str,
     start_date: date,
+    end_date: Optional[date] = None,  # accepted (as-of cap); ignored by synthetic
 ) -> pd.DataFrame:
     """Synthetic ``shared.analytics.rates_fetch.fetch_cross_market_pair``.
 

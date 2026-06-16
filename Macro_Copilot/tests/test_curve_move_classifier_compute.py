@@ -716,7 +716,7 @@ class TestCurveFamilyAgnosticScope:
         """Variant of TestComputeHappyPath._run that captures the
         field_name passed to fetch_tenor_group."""
         def fake_fetch(*, engine, curve_family, tenors, field_name,
-                       start_date):
+                       start_date, end_date=None):
             captured["field_name"] = field_name
             captured["curve_family"] = curve_family
             captured["tenors"] = list(tenors)

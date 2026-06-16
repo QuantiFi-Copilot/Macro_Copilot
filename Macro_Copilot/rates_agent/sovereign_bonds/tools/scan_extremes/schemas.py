@@ -14,6 +14,7 @@ shape — no breaking change for callers.
 """
 from __future__ import annotations
 
+from datetime import date
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
@@ -47,6 +48,12 @@ class ScannerInput(BaseModel):
             "The observation field to scan. Must match the exact value in "
             "the database."
         ),
+    )
+    as_of_date: Optional[date] = Field(
+        default=None,
+        description=("Optional as-of date (YYYY-MM-DD): compute as of this trade "
+                     "date instead of the latest available data.  None → latest "
+                     "(live snapshot).  Supply a date for a historical, replayable view."),
     )
 
 
