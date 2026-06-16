@@ -9,6 +9,19 @@ OI range / percentile + 22-day rolling volume mean / max for one
 mirrors the bond_futures ``futures_volume_oi`` shape for the OI + volume
 math but reads through the strip-position fetchers).
 
+Naming honesty (P5 / PR1)
+-------------------------
+Despite the ``snapshot`` name, this tool emits a 252-row DATED HISTORY
+(the ``time_series`` rows + the two canonical ``CONTRACTS`` TimeSeries
+companions), correctly bridged so the strip's volume/OI series are
+workflow-composable — not a single current-state row. The name
+under-describes the composable output. The honest, contract-conformant
+rename to ``volume_open_interest_history`` is an ACKNOWLEDGED FUTURE
+MIGRATION (NOT done here): it is a PR14 wire-format rename that touches
+the frontend tool registry + parity fixtures + the
+``..._snapshot_tool`` PrimitiveSpec, so it is out of scope for a
+disclosure-only fix. Recorded in tmp/fable_build_defer_log.md.
+
 Why not ``compute_level_metrics``
 ---------------------------------
 ``shared.analytics.levels.compute_level_metrics`` is the canonical
@@ -695,7 +708,15 @@ def _build_canonical_contract_count_series(
 
     Built from the SAME display slice with the SAME rounding as
     ``_build_volume_oi_time_series`` so the canonical values match the
-    bespoke rows 1-to-1 by construction.
+    bespoke rows 1-to-1 ON THE VOLUME/OI-BOTH-PRESENT ROWS.  The
+    intersection-align step (step 5) aligns the two facets' INDICES, but
+    a leading-edge row can still carry a value on one facet and a
+    residual NaN on the other (cleaning/ffill leaves it NaN within the
+    common index).  This single-facet series skips only its OWN facet's
+    NaNs, whereas the bespoke ``time_series`` skips a row if EITHER facet
+    is NaN — so on such a row this canonical series can carry one extra
+    leading row the bespoke view drops.  The OVERLAPPING values are
+    identical by construction; only the leading row-SET can differ.
     """
     series_name = (
         f"{curve_family.lower()}_{strip_position}_{facet}"
@@ -716,8 +737,10 @@ def _build_canonical_contract_count_series(
         description=(
             f"{facet_label.capitalize()} for {curve_family} strip "
             f"position {strip_position} in CONTRACTS over the "
-            f"displayed window (aligned on the volume/OI intersection "
-            f"of trading days)."
+            f"displayed window (this facet's present rows; the "
+            f"volume/OI indices are intersection-aligned, so this "
+            f"matches the other facet 1-to-1 except on a leading row "
+            f"where this facet is present and the other is still NaN)."
         ),
         rows=rows,
     )

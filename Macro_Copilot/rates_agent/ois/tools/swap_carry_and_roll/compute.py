@@ -48,6 +48,7 @@ _FETCH_SQL = text("""
     FROM macro_data.v_market_data_daily_enriched
     WHERE curve_family = :curve_family
       AND field_name   = :field_name
+      AND instrument_type = 'ois_swap'
       AND trade_date  >= :start_date
       AND tenor IS NOT NULL
     ORDER BY trade_date, tenor

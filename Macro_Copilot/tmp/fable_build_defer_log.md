@@ -342,4 +342,52 @@ truth).
   Track-B").
 - Disposition: deferred (not built); no proxy shipped.
 
+### CleanSingleSeriesV1(ffill_limit=5) missingness label — cross-tool convention (C5.3/m32)
+- Gate that fired: OPR11/P5 cross-tool convention — NOT a single-tool fix.
+  rates_vol_regime (and the sibling sovereign_curve_regime) stamp
+  ``RawNoCleaning()`` on a yield-CHANGE series derived from LEVELS that
+  panel_assembly forward-filled (ffill limit=5) before differencing. The
+  differencing step itself adds no imputation, so RawNoCleaning is locally
+  defensible — but the underlying levels WERE cleaned, and the strictly
+  honest platform label would be ``CleanSingleSeriesV1(ffill_limit=5)``
+  applied uniformly across every tool that ffills levels then differences.
+- Evidence: rates_vol_regime/compute.py:145 stamps RawNoCleaning on
+  ``returns = levels.diff()`` where ``levels = raw[col]`` and ``raw`` came
+  from ``fetch_instrument_panel(..., ffill_limit_days=5)``. Same pattern in
+  sovereign_curve_regime.  Changing the label is a CROSS-TOOL convention
+  decision (touches every ffill-then-difference primitive + the
+  MissingnessPolicy discriminated-union semantics + any consumer that
+  branches on the policy tag) — out of scope for C5.3.
+- What was done in C5.3 (the in-scope lighter option): a one-line P5
+  disclosure note added to rates_vol_regime/config.yaml's
+  ``ffill_limit_days`` rationale (and to compute.py's stamp site) stating
+  the upstream ffill(limit=5) on the levels and that RawNoCleaning refers
+  only to the differencing step.  The runtime output is unchanged.
+- What would unblock it: a platform-wide ADR/decision on the canonical
+  missingness label for ffill-then-difference change series, applied in
+  lock-step across all such primitives.
+- Disposition: platform label DEFERRED (not relabelled); disclosure note
+  shipped in C5.3.  No behaviour change; no proxy.
+
+### volume_open_interest_snapshot → volume_open_interest_history rename (C5.3/m36)
+- Gate that fired: PR14 wire-format honesty — the "snapshot" name
+  under-describes a tool that emits a 252-row DATED HISTORY (correctly
+  bridged). The honest rename to ``volume_open_interest_history`` is a
+  PR14 schema/wire-format migration.
+- Evidence: rates_agent/policy_futures/tools/volume_open_interest_snapshot/
+  (the dir + tool_name) + the ``policy_futures_get_volume_open_interest_
+  snapshot_tool`` PrimitiveSpec in rates_agent/workflows/__init__.py emit
+  ``time_series`` + two canonical CONTRACTS TimeSeries companions (dated
+  history), not a single current row.
+- What was done in C5.3 (the in-scope disclosure-only option): a one-line
+  "Naming honesty (P5 / PR1)" disclosure added to the tool's compute.py
+  module docstring + the PrimitiveSpec comment extended to call the rename
+  an acknowledged future migration.  The naming honesty was ALREADY
+  partially disclosed in the PrimitiveSpec comment + ADR 0017 §3/§4.
+- What would unblock it: a PR14 rename PR touching the frontend tool
+  registry, the parity fixtures, the PrimitiveSpec key/tool_name, and the
+  tool directory — landed as one schema-migration diff.
+- Disposition: rename DEFERRED (NOT done — frontend + fixtures touching,
+  out of scope); naming honesty DISCLOSED in C5.3.  No behaviour change.
+
 (entries appended per-tool as gates fire)

@@ -1,8 +1,9 @@
 """compute.py — sovereign curve-regime fit (the first Bucket-2 primitive).
 
 Assembles a four-feature panel for one sovereign curve
-([level, 2s10s slope, curvature, realized-vol]) and feeds the RAW
-(natural-unit) features to the finance-blind ``fit_regime_hmm`` operator,
+([level, slope (long − short), curvature, realized-vol]) and feeds the
+RAW (natural-unit) features to the finance-blind ``fit_regime_hmm``
+operator,
 which z-scores them internally and fits a Gaussian HMM.  This primitive
 carries THE FINANCE — which features, what the regimes mean (it names
 them by their realized-vol mean) — and ZERO statistical math (no EM, no

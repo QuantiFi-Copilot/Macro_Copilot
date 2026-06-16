@@ -60,6 +60,15 @@ conventions:
     rationale: >-
       Maximum consecutive missing days bridged by forward-fill before
       differencing.  Matches every other rates tool.
+      DISCLOSURE (P5): panel_assembly forward-fills the yield LEVELS
+      (limit 5 days) BEFORE the primitive differences them into the
+      GARCH-input change series.  The change series is therefore stamped
+      RawNoCleaning because the DIFFERENCING step adds no further
+      imputation — but the underlying levels were ffill-bridged by this
+      limit, which is the cleaning that occurred.  (The platform-level
+      CleanSingleSeriesV1(ffill_limit=5) missingness label on the change
+      series is a deferred cross-tool convention fix shared with
+      sovereign_curve_regime — see tmp/fable_build_defer_log.md.)
     valid_range: [0, 10]
 
   # ---------------------------------------------------------------------------

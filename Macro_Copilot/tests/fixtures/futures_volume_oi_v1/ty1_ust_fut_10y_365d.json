@@ -5164,7 +5164,7 @@
     "time_series_volume": {
       "series_name": "ust_fut_ty1_volume",
       "units": "contracts",
-      "description": "Rolling-generic TY1 daily traded volume on UST_FUT in CONTRACTS over the displayed window (aligned on the volume/OI intersection of trading days).",
+      "description": "Rolling-generic TY1 daily traded volume on UST_FUT in CONTRACTS over the displayed window (this facet's present rows; the volume/OI indices are intersection-aligned, so this matches the other facet 1-to-1 except on a leading row where this facet is present and the other is still NaN).",
       "rows": [
         {
           "date": "2025-04-07",
@@ -6179,7 +6179,7 @@
     "time_series_open_interest": {
       "series_name": "ust_fut_ty1_open_interest",
       "units": "contracts",
-      "description": "Rolling-generic TY1 end-of-day open interest on UST_FUT in CONTRACTS over the displayed window (aligned on the volume/OI intersection of trading days).",
+      "description": "Rolling-generic TY1 end-of-day open interest on UST_FUT in CONTRACTS over the displayed window (this facet's present rows; the volume/OI indices are intersection-aligned, so this matches the other facet 1-to-1 except on a leading row where this facet is present and the other is still NaN).",
       "rows": [
         {
           "date": "2025-04-07",

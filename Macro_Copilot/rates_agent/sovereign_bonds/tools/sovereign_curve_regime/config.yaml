@@ -2,7 +2,8 @@
 # calculate_sovereign_curve_regime_tool — tool configuration
 # =============================================================================
 # The FIRST Bucket-2 model-state primitive (plan §7-B).  Assembles four
-# curve features [level, 2s10s slope, curvature, realized-vol] from one
+# curve features [level, slope (long − short), curvature, realized-vol]
+# from one
 # sovereign curve and feeds them to the finance-blind `fit_regime_hmm`
 # operator (a Gaussian HMM regime labeller).  The primitive carries THE
 # FINANCE — which features, what the regimes MEAN (it names them by their
@@ -29,8 +30,11 @@ tool:
   domain: sovereign_bonds
   category: quant_standard_analytic
   description: |
-    Fit a Gaussian HMM to one sovereign curve's [level, 2s10s slope,
-    curvature, realized-vol] features and label each date's regime.
+    Fit a Gaussian HMM to one sovereign curve's [level, slope (long −
+    short), curvature, realized-vol] features and label each date's
+    regime.  (Slope/curvature use the caller's short/belly/long tenors;
+    the 2Y/5Y/10Y default makes the slope a 2s10s, but any tenor triple
+    is honoured — the runtime output is the generic slope_bps.)
     Surfaces the current regime, its name (by realized-vol: low /
     intermediate / high volatility), its persistence (the fitted
     transition-matrix diagonal), the per-regime feature means, and the
@@ -152,8 +156,9 @@ conventions:
 methodology:
   what_it_does: |
     Assembles a four-feature panel for one sovereign curve — level (the
-    long-tenor yield), 2s10s slope (long − short, bps), curvature
-    (2×belly − short − long, bps), and realized-vol (annualized rolling
+    long-tenor yield), slope (long − short, bps; a 2s10s under the
+    default 2Y/10Y tenors, but any caller tenor triple is honoured),
+    curvature (2×belly − short − long, bps), and realized-vol (annualized rolling
     std of daily level changes) — then passes the RAW (natural-unit)
     features to the finance-blind fit_regime_hmm operator, which
     z-scores them internally and fits a Gaussian HMM with n_states

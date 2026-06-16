@@ -1383,7 +1383,11 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         output_field_units={
             # Despite the tool's name the output carries dated
             # volume/OI HISTORY rows; the canonical companions are
-            # bridgeable (ADR 0017 CONTRACTS member).
+            # bridgeable (ADR 0017 CONTRACTS member).  The honest rename
+            # to ``volume_open_interest_history`` is an ACKNOWLEDGED
+            # future PR14 wire-format migration (frontend + fixtures +
+            # this PrimitiveSpec) — NOT done; see compute.py "Naming
+            # honesty" docstring + tmp/fable_build_defer_log.md.
             "time_series_volume": "contracts",
             "time_series_open_interest": "contracts",
         },

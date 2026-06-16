@@ -46,6 +46,7 @@ _FETCH_SQL = text("""
     FROM macro_data.v_market_data_daily_enriched
     WHERE curve_family = :curve_family
       AND field_name   = :field_name
+      AND instrument_type = 'ois_swap'
       AND trade_date  >= :start_date
       AND tenor IS NOT NULL
     ORDER BY trade_date, tenor
@@ -79,6 +80,7 @@ def calculate_implied_forward_curve(
 
     default_field = config.convention_value("default_swap_rate_field")
     ffill_limit = int(config.convention_value("ffill_limit_days"))
+    ffill_source_tag = config.conventions["ffill_limit_days"].source
     default_horizon = config.convention_value("default_forward_horizon")
     round_dec = int(config.convention_value("forward_round_decimals"))
 
@@ -173,6 +175,13 @@ def calculate_implied_forward_curve(
         "field_name": field,
         "n_observations": int(len(display)),
         "columns": columns,
+        # The forward strip is ffill-bridged (limit=ffill_limit days) before
+        # the Panel is stamped RawNoCleaning — record the imputation in the
+        # lineage step so it is reachable from config-in-lineage (PR10) and
+        # the methodology card is honest about the cleaning that occurred
+        # (P5).  Mirrors the sibling build_zcis_panel step_params.
+        "ffill_limit_days": ffill_limit,
+        "ffill_source_tag": ffill_source_tag,
     }
     panel = Panel(
         payload=display.astype(float),

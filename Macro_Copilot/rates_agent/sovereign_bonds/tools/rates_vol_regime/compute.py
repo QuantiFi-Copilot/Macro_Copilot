@@ -136,6 +136,13 @@ def calculate_rates_vol_regime(
     levels = raw[col].astype(float)
     returns = levels.diff() if return_method == "diff" else levels.pct_change()
     returns.name = f"{col}_dyield"
+    # DISCLOSURE (P5): ``raw`` came from fetch_instrument_panel with
+    # ffill_limit_days=5, so the LEVELS were forward-filled before this
+    # difference.  The change series below is stamped RawNoCleaning because
+    # the DIFFERENCING adds no further imputation — the level ffill is
+    # disclosed in config.yaml::ffill_limit_days.  (The strictly-honest
+    # platform label CleanSingleSeriesV1(ffill_limit=5) is a deferred
+    # cross-tool convention fix — see tmp/fable_build_defer_log.md.)
     as_of_iso = returns.index[-1].strftime("%Y-%m-%d")
     returns_series = Series(
         series_key=f"{col}_dyield",

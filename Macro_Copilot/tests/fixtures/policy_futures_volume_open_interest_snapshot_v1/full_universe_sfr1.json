@@ -5430,7 +5430,7 @@
     "time_series_volume": {
       "series_name": "sofr_fut_1_volume",
       "units": "contracts",
-      "description": "Daily traded volume for SOFR_FUT strip position 1 in CONTRACTS over the displayed window (aligned on the volume/OI intersection of trading days).",
+      "description": "Daily traded volume for SOFR_FUT strip position 1 in CONTRACTS over the displayed window (this facet's present rows; the volume/OI indices are intersection-aligned, so this matches the other facet 1-to-1 except on a leading row where this facet is present and the other is still NaN).",
       "rows": [
         {
           "date": "2025-04-07",
@@ -6445,7 +6445,7 @@
     "time_series_open_interest": {
       "series_name": "sofr_fut_1_open_interest",
       "units": "contracts",
-      "description": "End-of-day open interest for SOFR_FUT strip position 1 in CONTRACTS over the displayed window (aligned on the volume/OI intersection of trading days).",
+      "description": "End-of-day open interest for SOFR_FUT strip position 1 in CONTRACTS over the displayed window (this facet's present rows; the volume/OI indices are intersection-aligned, so this matches the other facet 1-to-1 except on a leading row where this facet is present and the other is still NaN).",
       "rows": [
         {
           "date": "2025-04-07",

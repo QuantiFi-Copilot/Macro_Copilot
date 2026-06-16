@@ -561,9 +561,15 @@ def _build_canonical_contract_count_series(
 
     Built from the SAME display slice with the SAME rounding as
     ``_build_volume_oi_time_series`` so the canonical values match the
-    bespoke rows 1-to-1 by construction (modulo rows the bespoke
-    builder skips because the OTHER facet is NaN — both views skip
-    nothing after the intersection-align step by construction).
+    bespoke rows 1-to-1 ON THE VOLUME/OI-BOTH-PRESENT ROWS.  The
+    intersection-align step aligns the two facets' INDICES, but a
+    leading-edge row can still carry a value on one facet and a residual
+    NaN on the other (cleaning/ffill leaves it NaN within the common
+    index).  This single-facet series skips only its OWN facet's NaNs,
+    whereas the bespoke ``time_series`` skips a row if EITHER facet is
+    NaN — so on such a row this canonical series can carry one extra
+    leading row the bespoke view drops.  The OVERLAPPING values are
+    identical by construction; only the leading row-SET can differ.
     """
     series_name = (
         f"{curve_family.lower()}_{contract_code.lower()}_{facet}"
@@ -584,7 +590,10 @@ def _build_canonical_contract_count_series(
         description=(
             f"Rolling-generic {contract_code} {facet_label} on "
             f"{curve_family} in CONTRACTS over the displayed window "
-            f"(aligned on the volume/OI intersection of trading days)."
+            f"(this facet's present rows; the volume/OI indices are "
+            f"intersection-aligned, so this matches the other facet "
+            f"1-to-1 except on a leading row where this facet is "
+            f"present and the other is still NaN)."
         ),
         rows=rows,
     )
