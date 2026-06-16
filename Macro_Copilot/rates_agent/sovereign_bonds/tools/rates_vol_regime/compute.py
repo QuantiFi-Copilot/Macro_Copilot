@@ -37,6 +37,7 @@ from rates_agent.sovereign_bonds.tools.rates_vol_regime.schemas import (
     RatesVolRegimeTimeSeriesRow,
 )
 from shared.analytics.panel_assembly import fetch_instrument_panel
+from shared.analytics.rates_fetch import latest_trade_date
 from shared.artifacts.lineage import Lineage, PrimitiveStep
 from shared.artifacts.missingness import RawNoCleaning
 from shared.artifacts.types import Series
@@ -113,7 +114,14 @@ def calculate_rates_vol_regime(
     # ------------------------------------------------------------------
     # 1. Fetch the tenor's yields.
     # ------------------------------------------------------------------
-    start_date = date.today() - timedelta(days=int(params.lookback_days))
+    # Anchor to the latest available trade_date (not date.today()) so the
+    # window resolves to real data when ingestion lags; falls back to today
+    # only when the curve has no rows (e.g. mocked engine=None in unit tests).
+    anchor = (
+        latest_trade_date(engine, curve_family=params.curve_family)
+        or date.today()
+    )
+    start_date = anchor - timedelta(days=int(params.lookback_days))
     raw = fetch_instrument_panel(
         engine=engine,
         leg_specs=[(params.curve_family, params.tenor, field)],

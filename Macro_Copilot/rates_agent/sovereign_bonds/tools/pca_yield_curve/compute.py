@@ -109,7 +109,7 @@ from shared.analytics.playbook_discovery import (
     playbook_tenors_for_curve_family,
     tenor_to_years,
 )
-from shared.analytics.rates_fetch import fetch_tenor_group
+from shared.analytics.rates_fetch import fetch_tenor_group, latest_trade_date
 from shared.analytics.spreads import pivot_and_align_tenors
 from shared.analytics.stats import pca_yield_changes
 from shared.config import ToolConfig, load_tool_config
@@ -319,7 +319,14 @@ def calculate_pca_yield_curve(
             )
         }
 
-    start_date = date.today() - timedelta(days=params.lookback_days)
+    # Anchor to the latest available trade_date (not date.today()) so the
+    # window resolves to real data when ingestion lags; falls back to today
+    # only when the curve has no rows (e.g. mocked engine=None in unit tests).
+    anchor = (
+        latest_trade_date(engine, curve_family=params.curve_family)
+        or date.today()
+    )
+    start_date = anchor - timedelta(days=params.lookback_days)
 
     raw_df = fetch_tenor_group(
         engine=engine,

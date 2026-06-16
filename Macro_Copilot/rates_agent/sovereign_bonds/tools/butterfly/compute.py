@@ -86,7 +86,7 @@ from shared.analytics.levels import (
     delta_bps,
     trailing_high_low_percentile,
 )
-from shared.analytics.rates_fetch import fetch_tenor_group
+from shared.analytics.rates_fetch import fetch_tenor_group, latest_trade_date
 from shared.analytics.spreads import (
     compute_spread_bps,
     pivot_and_align_tenors,
@@ -216,7 +216,14 @@ def calculate_butterfly(
     #    first displayed row, even if a future config decouples them)
     # ------------------------------------------------------------------
     buffer_calendar_days = int(max(z_window, trailing_window) * buffer_multiplier)
-    start_date = date.today() - timedelta(
+    # Anchor to the latest available trade_date (not date.today()) so the
+    # window resolves to real data when ingestion lags; falls back to today
+    # only when the curve has no rows (e.g. mocked engine=None in unit tests).
+    anchor = (
+        latest_trade_date(engine, curve_family=params.curve_family)
+        or date.today()
+    )
+    start_date = anchor - timedelta(
         days=params.lookback_days + buffer_calendar_days
     )
 
@@ -312,7 +319,7 @@ def calculate_butterfly(
     # ------------------------------------------------------------------
     # 6. Trim to requested display lookback
     # ------------------------------------------------------------------
-    cutoff = pd.Timestamp(date.today() - timedelta(days=params.lookback_days))
+    cutoff = pd.Timestamp(anchor - timedelta(days=params.lookback_days))
     display_df = wide.loc[wide.index >= cutoff].copy()
 
     if display_df.empty:

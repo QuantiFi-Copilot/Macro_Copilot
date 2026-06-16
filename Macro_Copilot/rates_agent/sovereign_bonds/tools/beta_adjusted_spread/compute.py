@@ -89,7 +89,7 @@ from rates_agent.sovereign_bonds.tools.beta_adjusted_spread.schemas import (
     BetaAdjustedSpreadOutput,
 )
 from shared.analytics.levels import clean_single_series
-from shared.analytics.rates_fetch import fetch_single_tenor
+from shared.analytics.rates_fetch import fetch_single_tenor, latest_trade_date
 from shared.analytics.regression import rolling_ols
 from shared.analytics.spreads import rolling_zscore, safe_float
 from shared.config import ToolConfig, load_tool_config
@@ -316,7 +316,26 @@ def calculate_beta_adjusted_spread(
     regression_buffer = int(regression_window_days * regression_buffer_multiplier)
     z_score_buffer = int(z_window * z_buffer_multiplier)
     buffer_calendar_days = max(regression_buffer, z_score_buffer)
-    start_date = date.today() - timedelta(
+    # Anchor to the latest trade_date BOTH curves have (data-anchored, not
+    # wall-clock) so the window resolves to real data when ingestion lags;
+    # the EARLIER of the two latest dates guarantees both legs are populated.
+    # Falls back to today only when neither curve has rows (e.g. mocked
+    # engine=None in unit tests).
+    _a_target = latest_trade_date(
+        engine,
+        curve_family=params.target_curve_family,
+        field_name=field_name_resolved,
+    )
+    _a_regressor = latest_trade_date(
+        engine,
+        curve_family=params.regressor_curve_family,
+        field_name=field_name_resolved,
+    )
+    anchor = min(
+        [d for d in (_a_target, _a_regressor) if d is not None],
+        default=date.today(),
+    )
+    start_date = anchor - timedelta(
         days=params.lookback_days + buffer_calendar_days
     )
 
@@ -408,7 +427,7 @@ def calculate_beta_adjusted_spread(
     # ------------------------------------------------------------------
     # 7. Trim to the requested display lookback (wall-clock anchored)
     # ------------------------------------------------------------------
-    cutoff = pd.Timestamp(date.today() - timedelta(days=params.lookback_days))
+    cutoff = pd.Timestamp(anchor - timedelta(days=params.lookback_days))
     display_idx = panel.index[panel.index >= cutoff]
     if len(display_idx) == 0:
         return {

@@ -57,7 +57,7 @@ from rates_agent.sovereign_bonds.tools.zscore_custom.schemas import (
     ZscoreCustomOutput,
 )
 from shared.analytics.levels import clean_single_series
-from shared.analytics.rates_fetch import fetch_single_tenor
+from shared.analytics.rates_fetch import fetch_single_tenor, latest_trade_date
 from shared.analytics.spreads import rolling_zscore, safe_float
 from shared.config import ToolConfig, load_tool_config
 from shared.schemas import TimeSeries, TimeSeriesRow, TimeSeriesUnits
@@ -166,7 +166,14 @@ def calculate_zscore_custom(
     # 1. Date window (buffer scaled off the user-supplied z-window)
     # ------------------------------------------------------------------
     buffer_calendar_days = int(z_window * buffer_multiplier)
-    start_date = date.today() - timedelta(
+    # Anchor to the latest available trade_date (not date.today()) so the
+    # window resolves to real data when ingestion lags; falls back to today
+    # only when the curve has no rows (e.g. mocked engine=None in unit tests).
+    anchor = (
+        latest_trade_date(engine, curve_family=params.curve_family)
+        or date.today()
+    )
+    start_date = anchor - timedelta(
         days=params.lookback_days + buffer_calendar_days
     )
 
@@ -221,7 +228,7 @@ def calculate_zscore_custom(
     #    is documented under planned_extensions in other sovereign
     #    tools' configs and deferred to a separate cross-tool PR)
     # ------------------------------------------------------------------
-    cutoff = pd.Timestamp(date.today() - timedelta(days=params.lookback_days))
+    cutoff = pd.Timestamp(anchor - timedelta(days=params.lookback_days))
     display_yields = yields.loc[yields.index >= cutoff]
     display_z = z_series.loc[z_series.index >= cutoff]
 

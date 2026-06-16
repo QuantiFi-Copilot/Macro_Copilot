@@ -38,6 +38,7 @@ import pandas as pd
 from sqlalchemy import text
 
 from database.database import get_db_engine
+from shared.analytics.rates_fetch import latest_trade_date
 from rates_agent.sovereign_bonds.tools.curve_fair_value import (
     CurveFairValueInput,
     calculate_curve_fair_value,
@@ -99,7 +100,11 @@ def _independent_residual_bps(wide_sorted: pd.DataFrame, n_components: int):
 
 def validate_curve(engine, curve_family) -> List[str]:
     failures: List[str] = []
-    start_date = date.today() - timedelta(days=_LOOKBACK)
+    # Anchor the independent window to the latest available trade_date — the
+    # same way the primitive now does — so the parity check compares identical
+    # windows even when the DB lags "today".
+    anchor = latest_trade_date(engine, curve_family=curve_family) or date.today()
+    start_date = anchor - timedelta(days=_LOOKBACK)
     cols = [f"{curve_family}_{t}" for t in _TENORS]
 
     wide = _sql_levels(engine, curve_family, _TENORS, start_date)

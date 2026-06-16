@@ -38,6 +38,7 @@ from rates_agent.sovereign_bonds.tools.curve_fair_value.schemas import (
     TenorRichness,
 )
 from shared.analytics.panel_assembly import fetch_instrument_panel
+from shared.analytics.rates_fetch import latest_trade_date
 from shared.artifacts.lineage import Lineage, PrimitiveStep
 from shared.artifacts.missingness import RawNoCleaning
 from shared.artifacts.types import Panel
@@ -117,7 +118,14 @@ def calculate_curve_fair_value(
     # ------------------------------------------------------------------
     # 1. Fetch the curve's tenor yields → wide level Panel.
     # ------------------------------------------------------------------
-    start_date = date.today() - timedelta(days=int(params.lookback_days))
+    # Anchor to the latest available trade_date (not date.today()) so the
+    # window resolves to real data when ingestion lags; falls back to today
+    # only when the curve has no rows (e.g. mocked engine=None in unit tests).
+    anchor = (
+        latest_trade_date(engine, curve_family=params.curve_family)
+        or date.today()
+    )
+    start_date = anchor - timedelta(days=int(params.lookback_days))
     raw = fetch_instrument_panel(
         engine=engine,
         leg_specs=[(params.curve_family, t, field) for t in tenors],

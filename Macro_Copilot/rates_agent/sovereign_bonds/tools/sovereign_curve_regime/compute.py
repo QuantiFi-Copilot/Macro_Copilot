@@ -43,6 +43,7 @@ from rates_agent.sovereign_bonds.tools.sovereign_curve_regime.schemas import (
     SovereignCurveRegimeTimeSeriesRow,
 )
 from shared.analytics.panel_assembly import fetch_instrument_panel
+from shared.analytics.rates_fetch import latest_trade_date
 from shared.artifacts.lineage import Lineage, PrimitiveStep
 from shared.artifacts.missingness import RawNoCleaning
 from shared.artifacts.types import Panel
@@ -121,7 +122,14 @@ def calculate_sovereign_curve_regime(
     # ------------------------------------------------------------------
     # 1. Fetch the three tenor yields for this curve.
     # ------------------------------------------------------------------
-    start_date = date.today() - timedelta(days=int(params.lookback_days))
+    # Anchor to the latest available trade_date (not date.today()) so the
+    # window resolves to real data when ingestion lags; falls back to today
+    # only when the curve has no rows (e.g. mocked engine=None in unit tests).
+    anchor = (
+        latest_trade_date(engine, curve_family=params.curve_family)
+        or date.today()
+    )
+    start_date = anchor - timedelta(days=int(params.lookback_days))
     leg_specs = [
         (params.curve_family, params.short_tenor, field),
         (params.curve_family, params.belly_tenor, field),
