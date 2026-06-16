@@ -1029,9 +1029,11 @@ tools:
     bucket_rationale: >-
       Bucket-1B: deterministic linear algebra — fit correlation PCA on the
       yield changes (shared/quant/pca.py), read the loadings at the three fly
-      tenors, and solve a 2×2 for the wing weights. No model state. Distinct
-      from the fixed-weight butterfly VALUE tool — a different output (the
-      PC-hedged weights, not the fly value).
+      tenors, σ-weight them by the per-tenor change-vol (so the fly formed on
+      RAW changes is truly uncorrelated with the factor scores —
+      Σ_j w_j σ_j loading[k,j] = 0), and solve a 2×2 for the wing weights. No
+      model state. Distinct from the fixed-weight butterfly VALUE tool — a
+      different output (the PC-hedged weights, not the fly value).
 
     pm_overridable:
       - curve_family
@@ -1054,7 +1056,11 @@ tools:
 
     built_date: 2026-06-13
     validation_status: >-
-      Not validated yet
+      Validated live (read-only) on UST + DE_BUND via
+      tests/test_pca_neutral_butterfly_weights_sql_validation.py: an
+      independent numpy PCA re-fit + by-hand σ-weighted 2×2 solve matches the
+      tool weights, and the realized corr(raw_fly, factor_score_k) is ~0
+      (machine-eps) for the neutralized PCs (PC1/PC2) and retained on PC3.
 
   # ---------------------------------------------------------------------------
   # BOND-IMPLIED BREAKEVEN INFLATION (cross-domain composition: nominal − linker)

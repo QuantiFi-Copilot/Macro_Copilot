@@ -74,8 +74,12 @@ class PcaNeutralButterflyWeightsCurrentMetrics(BaseModel):
     belly_tenor: str
     long_tenor: str
     belly_weight: float
-    short_weight: float
-    long_weight: float
+    # short_weight / long_weight are assigned via _round (Optional[float]) —
+    # the det-guard (abs(det(A)) < 1e-12 -> error envelope) makes the solve
+    # finite in practice, but the annotation matches the _round provenance
+    # and current_fly_bps for type honesty (m40 / PR14).
+    short_weight: Optional[float]
+    long_weight: Optional[float]
     n_pcs_neutralized: int
     residual_pc_exposures: List[PcResidualExposure]
     current_fly_bps: Optional[float]

@@ -8,12 +8,18 @@
 # richness STRIPPED of level/slope (PC1/PC2) exposure.
 #
 # Math: fit correlation PCA on the yield-change panel (shared/quant/pca.py),
-# take the loadings L(tenor, PC_k) at the three fly tenors, and solve the 2×2
-# linear system for the wing weights with the belly weight fixed:
-#   n_pcs=2:  L(short,1)·w_s + L(long,1)·w_l = −belly·L(belly,1)
-#             L(short,2)·w_s + L(long,2)·w_l = −belly·L(belly,2)
-#   n_pcs=1:  L(short,1)·w_s + L(long,1)·w_l = −belly·L(belly,1)   (PC1-neutral)
+# take the loadings L(tenor, PC_k) at the three fly tenors and the per-tenor
+# σ_j = column_stds[j], and solve the 2×2 linear system for the wing weights
+# (belly fixed) on the σ-WEIGHTED loadings Λ(tenor,k) = σ_tenor·L(tenor,k):
+#   n_pcs=2:  Λ(short,1)·w_s + Λ(long,1)·w_l = −belly·Λ(belly,1)
+#             Λ(short,2)·w_s + Λ(long,2)·w_l = −belly·Λ(belly,2)
+#   n_pcs=1:  Λ(short,1)·w_s + Λ(long,1)·w_l = −belly·Λ(belly,1)   (PC1-neutral)
 #             w_s + w_l = −belly                                   (cash-neutral)
+# σ-weighting is REQUIRED, not cosmetic: PCA is fit on z-scored (correlation)
+# changes but the fly is formed on RAW changes, so Cov(Δfly, score_k) =
+# λ_k·Σ_j w_j·σ_j·L(j,k); zeroing the bare loadings would leave the RAW fly
+# correlated with PC1/PC2 (~+0.22 on live UST/Bund), whereas zeroing the
+# σ-weighted loadings drives realized corr(fly, PC1/PC2) to ~0.
 # The PCA-neutral fly series is w_s·y_short + belly·y_belly + w_l·y_long.
 #
 # Distinct from the `butterfly` tool, which computes the FIXED-weight
@@ -76,14 +82,16 @@ methodology:
     include the three fly tenors), differences it into yield changes, fits
     correlation PCA on the changes (shared/quant/pca.py; the operator-blind
     SVD engine), and reads the loadings L(tenor, PC_k) at the three fly
-    tenors.  Solves the 2×2 linear system for the wing weights (belly weight
-    fixed) to zero the fly's net exposure to PC1 (and PC2 when
+    tenors scaled by the per-tenor σ (column_stds).  Solves the 2×2 linear
+    system on those σ-WEIGHTED loadings for the wing weights (belly weight
+    fixed) to zero the RAW fly's net exposure to PC1 (and PC2 when
     n_pcs_to_neutralize=2; otherwise a cash-neutral normalization).  Reports
     the solved weights, the residual per-PC exposures (≈0 for the neutralized
     PCs), and the PCA-neutral fly time series.  Pure deterministic linear
     algebra — no model state, no fit object.
   assumptions:
     - "PCA is fit on yield CHANGES (first differences), the standard basis for movement-neutral fly weights; correlation PCA via SVD (shared/quant/pca.py)."
+    - "Neutrality is solved on σ-WEIGHTED loadings (σ_tenor·L(tenor,k), σ=column_stds): the fly is on RAW changes while PCA is on z-scored changes, so zeroing the bare loadings would leave the RAW fly correlated with PC1/PC2; the σ-weighting makes realized corr(fly, neutralized PC)≈0."
     - "Yields stored as percent; the fly series is reported in bps (×100)."
     - "The belly weight is fixed (config); the two wing weights are solved.  n_pcs_to_neutralize=2 zeroes PC1+PC2 (unique 2×2); =1 zeroes PC1 with a cash-neutral (w_s+w_l=−belly) normalization."
     - "The three fly tenors must be in the fit-tenor set (auto-unioned); the loadings are FULL-SAMPLE (look-ahead) — a descriptive hedge ratio, NOT a forecast."

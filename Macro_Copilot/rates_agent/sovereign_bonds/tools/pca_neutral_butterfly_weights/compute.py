@@ -4,8 +4,18 @@ Solves for the fly WING WEIGHTS (w_short, w_long) that make a butterfly
 neutral to the first one or two principal components of the curve's yield
 CHANGES, with the belly weight fixed.  Fits correlation PCA on the
 yield-change panel (shared/quant/pca.py), reads the loadings at the three
-fly tenors, and solves a 2×2 linear system.  Pure deterministic linear
-algebra — no model state.
+fly tenors, σ-WEIGHTS them by the per-tenor change-vol, and solves a 2×2
+linear system.  Pure deterministic linear algebra — no model state.
+
+σ-WEIGHTING (the neutrality condition).  fit_pca is correlation PCA: it
+z-scores each tenor's change column, so a factor score is
+score_k = z @ loadings[k]ᵀ with z_j = Δy_j / σ_j.  The fly is formed on
+RAW changes (w · Δy); its covariance with factor k is
+Cov(Δfly, score_k) = λ_k · Σ_j w_j σ_j loadings[k,j].  The fly is therefore
+uncorrelated with factor k iff Σ_j w_j (σ_j loadings[k,j]) = 0 — the
+SOLVE and the residual diagnostic are built on σ-weighted loadings, not on
+the bare loadings (which would leave a non-zero corr(raw_fly, score_k) on
+any curve with a non-flat term-structure of change-vol).
 
 Test seam: ``fetch_instrument_panel`` is imported at module level for
 monkeypatching.
@@ -124,23 +134,37 @@ def calculate_pca_neutral_butterfly_weights(
     i_b = fit_tenors.index(params.belly_tenor)
     i_l = fit_tenors.index(params.long_tenor)
 
+    # σ-WEIGHTED loadings — the basis the fly's factor exposure actually
+    # lives in.  fit_pca is CORRELATION PCA: the loadings are eigenvectors
+    # of the *standardized* change panel, and a factor score is
+    # score_k = z @ loadings[k]ᵀ where z_j = Δy_j / σ_j.  The fly is formed
+    # on RAW changes (w · Δy), so its covariance with factor k is
+    #   Cov(Δfly, score_k) = λ_k · Σ_j w_j σ_j loadings[k,j].
+    # Neutrality therefore requires zeroing Σ_j w_j (σ_j loadings[k,j]) —
+    # the σ-weighted loadings, NOT the bare loadings.  Building the solve on
+    # the bare loadings leaves a real corr(raw_fly, score_k) on any curve
+    # whose per-tenor change-vol is not flat (measured up to +0.28 on live
+    # UST/Bund); the σ-weighting drives it to ~0.  (See PcaFitResult.column_stds.)
+    sloadings = loadings * fit.column_stds[np.newaxis, :]
+
     # ------------------------------------------------------------------
-    # 3. Solve the 2×2 for the wing weights (belly weight fixed).  A PC
-    #    sign flip multiplies a whole equation by ±1, leaving the solution
-    #    unchanged — deterministic regardless of the sign convention.
+    # 3. Solve the 2×2 for the wing weights (belly weight fixed) on the
+    #    σ-weighted loadings.  A PC sign flip multiplies a whole equation
+    #    by ±1 (the σ factor is sign-free), leaving the solution unchanged
+    #    — deterministic regardless of the sign convention.
     # ------------------------------------------------------------------
     if n_pcs == 2 and n_components >= 2:
         A = np.array([
-            [loadings[0, i_s], loadings[0, i_l]],
-            [loadings[1, i_s], loadings[1, i_l]],
+            [sloadings[0, i_s], sloadings[0, i_l]],
+            [sloadings[1, i_s], sloadings[1, i_l]],
         ])
-        b = -belly_weight * np.array([loadings[0, i_b], loadings[1, i_b]])
+        b = -belly_weight * np.array([sloadings[0, i_b], sloadings[1, i_b]])
     else:  # n_pcs == 1: PC1-neutral + cash-neutral normalization
         A = np.array([
-            [loadings[0, i_s], loadings[0, i_l]],
+            [sloadings[0, i_s], sloadings[0, i_l]],
             [1.0, 1.0],
         ])
-        b = np.array([-belly_weight * loadings[0, i_b], -belly_weight])
+        b = np.array([-belly_weight * sloadings[0, i_b], -belly_weight])
     if abs(float(np.linalg.det(A))) < 1e-12:
         return {
             "error": (
@@ -152,14 +176,19 @@ def calculate_pca_neutral_butterfly_weights(
     w_short, w_long = (float(v) for v in np.linalg.solve(A, b))
 
     # ------------------------------------------------------------------
-    # 4. Residual per-PC exposures (≈0 for the neutralized PCs).
+    # 4. Residual per-PC exposures (≈0 for the neutralized PCs).  Reported
+    #    on the SAME σ-weighted basis as the solve, so fly_loading is
+    #    Σ_j w_j σ_j loadings[k,j] — proportional (by λ_k) to the realized
+    #    Cov(Δfly, score_k).  It is therefore the genuine factor exposure,
+    #    not the bare-loading quantity (which is zero by construction for a
+    #    bare-loading solve but does NOT imply factor-neutrality of the fly).
     # ------------------------------------------------------------------
     residual: List[PcResidualExposure] = []
     for k in range(n_components):
         fly_loading = (
-            w_short * loadings[k, i_s]
-            + belly_weight * loadings[k, i_b]
-            + w_long * loadings[k, i_l]
+            w_short * sloadings[k, i_s]
+            + belly_weight * sloadings[k, i_b]
+            + w_long * sloadings[k, i_l]
         )
         residual.append(PcResidualExposure(
             pc=k + 1,
@@ -228,6 +257,11 @@ def calculate_pca_neutral_butterfly_weights(
         f"belly weight fixed at {belly_weight}.",
         "PCA fit on yield CHANGES (correlation PCA via SVD); FULL-SAMPLE "
         "loadings (look-ahead) — a descriptive hedge ratio, NOT a forecast.",
+        "Neutrality is solved on σ-WEIGHTED loadings (loading × per-tenor "
+        "change-vol): correlation PCA standardizes each tenor, so the fly "
+        "(formed on raw changes) is uncorrelated with factor score k iff "
+        "Σ_j w_j σ_j loading[k,j] = 0.  residual_pc_exposures is reported on "
+        "this same σ-weighted basis (the true factor exposure).",
     ]
 
     output = PcaNeutralButterflyWeightsOutput(
