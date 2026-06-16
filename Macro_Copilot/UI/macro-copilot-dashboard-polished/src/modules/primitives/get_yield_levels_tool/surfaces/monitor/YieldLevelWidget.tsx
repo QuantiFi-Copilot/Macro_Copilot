@@ -49,7 +49,9 @@ export function YieldLevelWidget({ params }: Props) {
         : typeof lookbackRaw === 'number'
           ? lookbackRaw
           : 252;
-    return { curve_family: cf, tenor: t, lookback_days: lookback };
+    const asOf =
+      typeof params.as_of_date === 'string' ? params.as_of_date : undefined;
+    return { curve_family: cf, tenor: t, lookback_days: lookback, as_of_date: asOf };
   }, [params]);
 
   const { data, error, isLoading } = useFetchDetailYield(fetchParams);

@@ -810,6 +810,7 @@ def yield_detail(
             "Pass explicitly to override per request."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """``field_name`` defaults to None at the query layer so the tool's
     compute() can resolve it against the YAML's ``default_field_name``
@@ -821,6 +822,7 @@ def yield_detail(
         params = YieldLevelInput(
             curve_family=curve_family, tenor=tenor,
             lookback_days=lookback_days, field_name=field_name,
+            as_of_date=as_of_date,
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")

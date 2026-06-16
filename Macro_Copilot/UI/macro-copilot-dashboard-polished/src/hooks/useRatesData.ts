@@ -15,7 +15,7 @@ type UseRatesDataResult = {
   refetch: () => void;
 };
 
-export function useRatesData(): UseRatesDataResult {
+export function useRatesData(asOf?: string): UseRatesDataResult {
   const [data, setData] = useState<RatesPageData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -32,11 +32,11 @@ export function useRatesData(): UseRatesDataResult {
         // Fire all 5 requests in parallel — no waterfall
         const [yieldSnapshot, curveShapes, scanner, crossMarket, regimes] =
           await Promise.all([
-            fetchYieldSnapshot({ tenors: '2Y,5Y,10Y,30Y' }),
-            fetchCurveShapes(),
-            fetchScanner({ top_n: 8, min_abs_z_score: 1.5 }),
-            fetchCrossMarket(),
-            fetchRegimes(),
+            fetchYieldSnapshot({ tenors: '2Y,5Y,10Y,30Y' }, asOf),
+            fetchCurveShapes(asOf),
+            fetchScanner({ top_n: 8, min_abs_z_score: 1.5 }, asOf),
+            fetchCrossMarket(asOf),
+            fetchRegimes(asOf),
           ]);
 
         if (!cancelled) {
@@ -57,7 +57,7 @@ export function useRatesData(): UseRatesDataResult {
 
     void load();
     return () => { cancelled = true; };
-  }, [tick]);
+  }, [tick, asOf]);
 
   const refetch = () => setTick((t) => t + 1);
 

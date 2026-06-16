@@ -76,34 +76,47 @@ async function fetchJSON<T>(url: string): Promise<T> {
 
 export function fetchYieldSnapshot(
   params?: { tenors?: string; curves?: string },
+  asOfDate?: string,
 ): Promise<YieldSnapshotResponse> {
   const qs = new URLSearchParams();
   if (params?.tenors) qs.set('tenors', params.tenors);
   if (params?.curves) qs.set('curves', params.curves);
+  if (asOfDate) qs.set('as_of_date', asOfDate);
   const query = qs.toString();
   return fetchJSON(`${RATES_PREFIX}/yield-snapshot${query ? `?${query}` : ''}`);
 }
 
-export function fetchCurveShapes(): Promise<CurveShapesResponse> {
-  return fetchJSON(`${RATES_PREFIX}/curve-shapes`);
+export function fetchCurveShapes(asOfDate?: string): Promise<CurveShapesResponse> {
+  const qs = new URLSearchParams();
+  if (asOfDate) qs.set('as_of_date', asOfDate);
+  const query = qs.toString();
+  return fetchJSON(`${RATES_PREFIX}/curve-shapes${query ? `?${query}` : ''}`);
 }
 
 export function fetchScanner(
   params?: { top_n?: number; min_abs_z_score?: number },
+  asOfDate?: string,
 ): Promise<ScannerResponse> {
   const qs = new URLSearchParams();
   if (params?.top_n) qs.set('top_n', String(params.top_n));
   if (params?.min_abs_z_score) qs.set('min_abs_z_score', String(params.min_abs_z_score));
+  if (asOfDate) qs.set('as_of_date', asOfDate);
   const query = qs.toString();
   return fetchJSON(`${RATES_PREFIX}/scanner${query ? `?${query}` : ''}`);
 }
 
-export function fetchCrossMarket(): Promise<CrossMarketResponse> {
-  return fetchJSON(`${RATES_PREFIX}/cross-market`);
+export function fetchCrossMarket(asOfDate?: string): Promise<CrossMarketResponse> {
+  const qs = new URLSearchParams();
+  if (asOfDate) qs.set('as_of_date', asOfDate);
+  const query = qs.toString();
+  return fetchJSON(`${RATES_PREFIX}/cross-market${query ? `?${query}` : ''}`);
 }
 
-export function fetchRegimes(): Promise<RegimeResponse> {
-  return fetchJSON(`${RATES_PREFIX}/regimes`);
+export function fetchRegimes(asOfDate?: string): Promise<RegimeResponse> {
+  const qs = new URLSearchParams();
+  if (asOfDate) qs.set('as_of_date', asOfDate);
+  const query = qs.toString();
+  return fetchJSON(`${RATES_PREFIX}/regimes${query ? `?${query}` : ''}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -137,6 +150,7 @@ export type YieldDetailParams = {
   tenor: string;
   lookback_days?: number;
   field_name?: string;
+  as_of_date?: string;
 };
 
 export function fetchDetailYield(

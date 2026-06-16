@@ -21,6 +21,7 @@
 import {
   createContext,
   useContext,
+  useState,
   type ReactNode,
 } from 'react';
 import { useRatesData } from '@/hooks/useRatesData';
@@ -31,14 +32,21 @@ type RatesDataContextValue = {
   isLoading: boolean;
   error: Error | null;
   refetch: () => void;
+  /** Global as-of date (YYYY-MM-DD) for the page; null = latest live data. */
+  asOf: string | null;
+  setAsOf: (d: string | null) => void;
 };
 
 const RatesDataCtx = createContext<RatesDataContextValue | null>(null);
 
 export function RatesDataProvider({ children }: { children: ReactNode }) {
   // Single fetch, single state.  All pre-aggregated rate widgets read
-  // from this — sharing one network request across the surface.
-  const value = useRatesData();
+  // from this — sharing one network request across the surface.  A global
+  // as-of date (null = latest live data) threads into every card request so
+  // the whole page can be viewed as of a historical trade date.
+  const [asOf, setAsOf] = useState<string | null>(null);
+  const base = useRatesData(asOf ?? undefined);
+  const value = { ...base, asOf, setAsOf };
   return <RatesDataCtx.Provider value={value}>{children}</RatesDataCtx.Provider>;
 }
 

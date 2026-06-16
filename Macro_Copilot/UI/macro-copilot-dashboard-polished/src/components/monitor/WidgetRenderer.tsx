@@ -30,6 +30,7 @@ import { type ComponentType } from 'react';
 import { WidgetCard } from './WidgetCard';
 import { WidgetError } from './widgets/shared';
 import { widgetMeta, type WidgetInstance } from './registry';
+import { useOptionalRatesDataContext } from './RatesDataProvider';
 import { ALL_PRIMITIVE_MODULES } from '@/modules';
 
 // Hand-authored renderers (kept here; not module-derived).
@@ -112,6 +113,7 @@ export function WidgetRenderer({
 
 function Body({ instance }: { instance: WidgetInstance }) {
   const Component = COMPONENTS[instance.type];
+  const asOf = useOptionalRatesDataContext()?.asOf ?? null;
   if (!Component) {
     return (
       <WidgetError
@@ -119,8 +121,14 @@ function Body({ instance }: { instance: WidgetInstance }) {
       />
     );
   }
-  // Pre-aggregated widgets ignore the ``params`` prop; parameterised
-  // widgets read from it.  Passing it unconditionally is harmless —
-  // pre-aggregated components destructure no props.
-  return <Component params={instance.params} />;
+  // Inject the page-level as-of date into every widget's params so the
+  // independently-fetching parameterised widgets recompute as of the same
+  // historical date as the pre-aggregated cards.  null = latest live data
+  // (params unchanged).  Adding it to params also changes each widget's
+  // paramsKey, so a widget refetches when the as-of date changes.
+  // Pre-aggregated widgets ignore the ``params`` prop; this is harmless.
+  const params = asOf
+    ? { ...instance.params, as_of_date: asOf }
+    : instance.params;
+  return <Component params={params} />;
 }

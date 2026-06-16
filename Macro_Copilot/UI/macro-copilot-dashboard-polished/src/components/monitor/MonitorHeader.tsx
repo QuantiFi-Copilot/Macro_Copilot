@@ -15,6 +15,7 @@
 
 import { Pencil, RotateCcw, Check } from 'lucide-react';
 import { cn } from '@/utils/cn';
+import { AsOfControl } from './AsOfControl';
 
 type Props = {
   kicker: string;
@@ -68,6 +69,7 @@ export function MonitorHeader({
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5">
+        <AsOfControl />
         {isEditing && onResetDefault && (
           <button
             type="button"
