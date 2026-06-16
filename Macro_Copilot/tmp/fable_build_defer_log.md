@@ -6,21 +6,38 @@ build; the §7 C-DEFER items are entered with **live-DB evidence** (the data sub
 has grown since the plan was written — see `tmp/fable_build/BASELINE.md` and the
 data-reality section below).
 
-## Live data reality (verified 2026-06-11, container `macro-tsdb`)
+## Live data reality (verified 2026-06-16, container `macro-tsdb`, DB `macrodata`)
 
-`macro_data.instrument_master`: 335 instruments / 10 types — the plan's §9 six core
-types (sovereign_benchmark 72, ois_swap 78, inflation_linker 24, inflation_swap 21,
-bond_future 19, policy_future 24; 2005→2026-05-22) PLUS, beyond §9:
-`wirp_meeting` (73; WIRP_IMPLIED_RATE/MOVE_PROB/NUM_MOVES/RATE_CHANGE; 2024-02→),
-`sovereign_cash_bond` (14; PX_CLEAN_MID/PX_DIRTY_MID/RISK_MID/YLD_YTM_MID/
-ASSET_SWAP_SPD_MID; 2024-11→), `overnight_rfr` (4; PX_LAST; 2005→),
-`inflation_reference` (6; PX_LAST monthly; 2005→). Auxiliary tables now loaded:
-`event_calendar` (521 rows), `futures_deliverables` (9,339 rows), `otr_history`
-(14 rows), `instrument_metadata_history` (6,501 rows). `cusip`/`isin` populated for
-the 14 cash bonds. sovereign_benchmark now also carries YLD_YTM_BID/ASK.
+`macro_data.instrument_master`: **238 instruments / 6 instrument types** — exactly the
+plan's §9 six core types and no others: sovereign_benchmark 72, ois_swap 78,
+inflation_linker 24, inflation_swap 21, bond_future 19, policy_future 24.  All 19
+bond_future + 24 policy_future are `is_rolling_contract = TRUE` generic stems (TY1,
+BTS1, …); there are zero dated-contract instruments.
 
-Defer reasoning below cites the LIVE state, not the plan's stale §9 claims, per plan
-§0.7 (live code/data is the truth).
+`macro_data` holds **3 base tables** — `instrument_master`, `market_data_daily`,
+`load_audit` — plus 3 read views (`v_market_data_daily_enriched`,
+`v_rates_instruments`, `v_sovereign_curves`).  `market_data_daily` carries **7 field
+names**: OPEN_INT, PX_ASK, PX_BID, PX_LAST, PX_MID, PX_VOLUME, YLD_YTM_MID
+(2,221,455 rows; span **2005-01-03 → 2026-04-09**).  `instrument_master` has 18
+columns and contains **no `cusip`/`isin`** (it does carry `is_rolling_contract`).
+The ingestion ledger `macro_data.load_audit` records **7 dataset_names only**
+(bond_futures, inflation_indexed_bonds, inflation_swaps, ois_curves, policy_futures,
+rates, sovereign_bonds; latest `ingested_at` 2026-04-20).
+
+NOT present — verified absent, never loaded (no `load_audit` record of any such load,
+ever): the instrument types `wirp_meeting` / `sovereign_cash_bond` / `overnight_rfr` /
+`inflation_reference` (0 rows each); the fields RISK_MID / ASSET_SWAP_SPD_MID /
+PX_CLEAN_MID / PX_DIRTY_MID / YLD_YTM_BID / YLD_YTM_ASK / WIRP_IMPLIED_RATE (0 rows
+DB-wide); the auxiliary tables `event_calendar` / `futures_deliverables` /
+`otr_history` / `instrument_metadata_history` (each `to_regclass → NULL`, i.e. the
+table does not exist); and the `cusip`/`isin` columns.  An earlier draft of this
+header asserted a 335-instrument / 10-type substrate with those four extra types, the
+four aux tables, RISK_MID and cusip/isin — that substrate does not exist and the
+`load_audit` ledger proves it was never loaded; the cited `tmp/fable_build/BASELINE.md`
+makes no such claim.  The census above is the corrected, verified truth.
+
+Defer reasoning below cites this LIVE state, per plan §0.7 (live code/data is the
+truth).
 
 ---
 
@@ -42,14 +59,25 @@ Defer reasoning below cites the LIVE state, not the plan's stale §9 claims, per
 
 ### tracking_error  (framework: OP)
 - Gate that fired: OPR4 (toolbox admission — no distinct method: the unannualized
-  tracking error is the trivial existing chain) + OPR6/P9 (the only delta a
-  dedicated operator would add is √252 annualization — a trading-calendar
-  convention, i.e. finance math, which may not live in a finance-blind operator).
+  tracking error is the trivial existing chain) + OPR6/P9 + P5 (the only delta a
+  dedicated operator would add is √252 annualization, which is mechanically
+  expressible but smuggles an undisclosed trading-calendar convention through
+  dimensionally-dishonest units — finance math that belongs in a finance-aware
+  primitive, not a finance-blind operator).
 - Evidence: `series_arithmetic(op='subtract')` → `summarize_series(statistic='std')`
   produces exactly the unannualized tracking error as a ScalarMetric, with full
-  parameter freedom.  The √252 annualization factor presumes a 252-trading-day
-  year — an asset-class/calendar convention (OPR6: "day-count … = finance-aware =
-  primitive territory").
+  parameter freedom.  The √252 annualization is NOT inexpressible — it is one more
+  node, `series_arithmetic(op='multiply', right=√252)` — but expressing it that way
+  is dishonest on two counts: (1) it hard-codes a 252-trading-day-year convention at
+  the call site with no disclosure surface (no YAML `trading_days_per_year`, no
+  methodology tag), violating P5; and (2) `series_arithmetic` scalar-multiply
+  PRESERVES the input's units (verified live: output units = left.units for scalar
+  multiply), so the annualized value carries the un-annualized series' unit label —
+  dimensionally dishonest.  The convention is exactly the kind of asset-class/calendar
+  finance math OPR6 reserves for primitives ("day-count … = finance-aware = primitive
+  territory"); the codebase already routes √252 out of operators consistently
+  (`ewm_statistic`/`fit_garch` configs: annualization "is calendar finance math … let
+  a finance-aware primitive own the annualization").
 - What would unblock it: a finance-aware Bucket-1B primitive (e.g.
   `rates_agent/<domain>/tools/tracking_error/`) that wraps the two-node
   composition and applies the annualization convention with an honest,
@@ -88,10 +116,17 @@ Defer reasoning below cites the LIVE state, not the plan's stale §9 claims, per
   trading-calendar finance math — the tracking_error doctrine) + OPR4 (the
   unannualized core is the trivial existing chain
   `series_arithmetic(op='diff'|'pct_change')` → `rolling_statistic(statistic='std')`).
-- Evidence: the plan row reads "annualized rolling σ of returns"; annualization
-  presumes a 252-trading-day year (OPR6: "day-count … = finance-aware = primitive
-  territory"); with annualization stripped, nothing distinct remains that the
-  live two-node chain does not compose cleanly.
+- Evidence: the plan row reads "annualized rolling σ of returns".  With annualization
+  stripped, nothing distinct remains that the live two-node chain does not compose
+  cleanly.  The √252 annualization itself is NOT inexpressible — it is one more node,
+  `series_arithmetic(op='multiply', right=√252)` — but, exactly as in tracking_error,
+  expressing it in the operator layer is dishonest: it hard-codes a 252-trading-day-year
+  convention with no disclosure surface (P5) and, because scalar-multiply preserves the
+  input's units, mislabels the annualized value with the un-annualized series' unit
+  (dimensionally dishonest).  That convention is asset-class/calendar finance math OPR6
+  reserves for primitives ("day-count … = finance-aware = primitive territory"), which
+  is why the honest home is a finance-aware Bucket-1B primitive that discloses the
+  convention, not a finance-blind operator.
 - What would unblock it: a finance-aware Bucket-1B primitive
   (`rates_agent/<domain>/tools/realized_volatility/`) wrapping the chain with a
   YAML-disclosed `trading_days_per_year` convention + registered source tag.
@@ -266,9 +301,11 @@ Defer reasoning below cites the LIVE state, not the plan's stale §9 claims, per
   bootstrapped DF curve + the swap's payment schedule; deriving it from the
   par-as-zero approximation + a synthesized schedule is exactly the forbidden
   "full curve bootstrap" proxy (swap_spread's own PR21 disclosure says the
-  DV01-aware ASW "requires bond-level metadata not yet ingested").  The
-  ingested cash-bond RISK_MID (14 bonds) is unconsumed and doesn't span the
-  swap/sovereign-index universe.
+  DV01-aware ASW "requires bond-level metadata not yet ingested").  And there
+  is no vendor risk field to consume instead: a DB-wide probe returns 0 rows
+  for RISK_MID / ASSET_SWAP_SPD_MID and there are no `sovereign_cash_bond`
+  instruments (and no cusip/isin columns) — so no ingested DV01/annuity series
+  exists anywhere to short-circuit the recompute.
 - What would unblock it: (a) ingest a trusted analytic swap DV01 / annuity
   series (or a vendor risk field for the swap universe), OR (b) an ADR
   admitting an in-house annuity bootstrap as inside the Bloomberg boundary +
@@ -280,23 +317,29 @@ Defer reasoning below cites the LIVE state, not the plan's stale §9 claims, per
 ### futures_roll_adjust  (framework: 1B / bond_futures+policy_futures; plan §7-C)
 - Gate that fired: PR6 / P12 — required data missing; the back-adjustment
   roll GAP is not computable without a proxy.
-- Evidence: the SCD2 instrument_metadata_history IS a complete live roll
-  CALENDAR (each generic stem → ordered dated underlyings with
-  effective_from/to), so roll DATES exist.  BUT back-adjustment needs the
-  price of BOTH the outgoing and incoming dated contract on each roll date,
-  and (verified live) all 19 bond_future + 24 policy_future instruments are
-  is_rolling_contract=TRUE generic stems with ZERO dated contracts;
-  market_data_daily holds prices ONLY for the generic stems (TY1, BTS1, …),
-  never the dated underlyings (TYH6, BTSZ10), which exist only as SCD2 labels
-  with no price rows — the DB stores the already-spliced front series.
-  Inferring the gap from the generic series' own jump at the roll boundary
-  conflates the true roll gap with that day's market move — a proxy P12
-  forbids.
-- What would unblock it: ingest per-dated-contract price history (the
+- Evidence: back-adjustment is DOUBLY blocked — there is no roll CALENDAR and
+  there are no dated-contract prices.  (1) No roll calendar: there is no SCD2
+  `instrument_metadata_history` table at all (verified live,
+  `to_regclass('macro_data.instrument_metadata_history') → NULL`; it is not
+  among the 3 base tables instrument_master / market_data_daily / load_audit),
+  so no per-stem → dated-underlying effective_from/to mapping exists and the
+  roll DATES are not knowable from the substrate.  (2) No dated prices: all 19
+  bond_future + 24 policy_future instruments are `is_rolling_contract = TRUE`
+  generic stems (TY1, BTS1, …) with ZERO dated contracts in
+  instrument_master; market_data_daily holds prices ONLY for the generic
+  stems, never the dated underlyings (TYH6, BTSZ10) — the DB stores the
+  already-spliced front series.  Even if roll dates existed, the old-vs-new
+  front prices needed on each roll date do not.  Inferring the gap from the
+  generic series' own jump at the roll boundary conflates the true roll gap
+  with that day's market move — a proxy P12 forbids.
+- What would unblock it: ingest BOTH (a) per-dated-contract price history (the
   individual TYH6/TYM6/… contracts as priced instruments) so the
-  old-vs-new front prices exist on each roll date — then the splice/
-  back-adjust is a pure deterministic compute.  Data-gated, not scope-gated
-  (plan flags it "needed later by Track-B").
+  old-vs-new front prices exist on each roll date, AND (b) the roll
+  schedule — either an explicit roll-calendar table (the absent
+  `instrument_metadata_history`) or roll dates derivable from the dated-contract
+  series themselves — then the splice/back-adjust is a pure deterministic
+  compute.  Data-gated, not scope-gated (plan flags it "needed later by
+  Track-B").
 - Disposition: deferred (not built); no proxy shipped.
 
 (entries appended per-tool as gates fire)
