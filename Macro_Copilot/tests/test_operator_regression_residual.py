@@ -353,12 +353,29 @@ class TestLineageAndDeterminism:
         assert len(out.lineage.steps) == len(lhs.lineage.steps) + 1
         head = out.lineage.steps[-1]
         assert head.name == "regression_residual"
+        assert head.version == "1.1.0"  # OPR14d — fit_scope bump
         assert head.auxiliary_lineages == (rhs.lineage,)
         _, alpha, beta = _lstsq_residuals(yv, xv)
         assert head.params["alpha"] == pytest.approx(alpha)
         assert head.params["beta"] == pytest.approx(beta)
         assert 0.0 < head.params["r_squared"] <= 1.0
         assert head.params["n_obs"] == _N
+
+    def test_lineage_discloses_full_sample_look_ahead(self):
+        """P5 look-ahead disclosure (mirrors detrend's trend_scope /
+        winsorize's quantile_scope): the executed lineage carries
+        fit_scope='full_sample' and the bumped 1.1.0 version (OPR14d).
+        The math is unchanged — disclosure-only."""
+        lhs, rhs, yv, xv = _pair()
+        out = regression_residual(lhs, rhs)
+        head = out.lineage.steps[-1]
+        assert head.params["fit_scope"] == "full_sample"
+        assert head.version == "1.1.0"
+        # disclosure-only: residuals still equal the lstsq reference
+        expected, _, _ = _lstsq_residuals(yv, xv)
+        np.testing.assert_allclose(
+            out.payload.to_numpy(), expected, rtol=0, atol=1e-10,
+        )
 
     def test_zero_variance_lhs_records_r_squared_none(self):
         """cov with constant lhs: fit is defined (β=0, α=ȳ) but R² is

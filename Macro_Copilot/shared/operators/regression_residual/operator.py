@@ -8,6 +8,16 @@ line.  The full-sample counterpart of ``rolling_regression`` for the
 single number-pair case, returning the residual (the quantity research
 DAGs consume) rather than the coefficient paths.
 
+LOOK-AHEAD DISCLOSURE (P5, load-bearing — the detrend/winsorize pattern):
+the OLS line is fitted over the WHOLE overlapping sample, so the residual
+at every date uses α/β estimated from the entire series (the fit "knows"
+the end of the sample).  That is the standard descriptive in-sample
+relative-value semantics; disclosed here, in the YAML, and in lineage
+(``fit_scope='full_sample'``).  Do NOT feed the output into point-in-time
+compositions; chaining another full-sample fit downstream compounds the
+look-ahead.  A point-in-time (expanding/rolling-fit) residual is declared
+in ``config.yaml`` ``planned_extensions``.
+
 Contract highlights (cite by OPR-number):
 
   - OPR1/OPR6 : one finance-blind statistical method; zero finance
@@ -69,7 +79,10 @@ from shared.operators.regression_residual.schemas import (
 
 
 _OPERATOR_NAME = "regression_residual"
-_OPERATOR_VERSION = "1.0.0"
+# 1.1.0 (OPR14d): added the ``fit_scope='full_sample'`` look-ahead
+# disclosure key to lineage step_params — a content-head_hash change for a
+# given input, so the version bumps even though the math is unchanged.
+_OPERATOR_VERSION = "1.1.0"
 
 _CONFIG_PATH: Path = Path(__file__).resolve().parent / "config.yaml"
 
@@ -113,7 +126,10 @@ def regression_residual(
         input is NaN), in ``lhs.units``; frequency inherited when both
         inputs agree (else ``None``); missingness propagated (or
         ``CombinedMissingnessV1`` under a lenient opt-out); lineage
-        extended by one ``OperatorStep`` recording α, β, R², n_obs.
+        extended by one ``OperatorStep`` recording α, β, R², n_obs and
+        ``fit_scope='full_sample'`` (the look-ahead disclosure — the line
+        is fitted on the WHOLE sample; never feed into point-in-time
+        compositions).
 
     Raises
     ------
@@ -280,6 +296,7 @@ def regression_residual(
     #    fitted-line diagnostics recorded; params sanitised (OPR10).
     # ------------------------------------------------------------------
     step_params: Dict[str, Any] = {
+        "fit_scope": "full_sample",  # LOOK-AHEAD disclosure (P5, OPR14d)
         "add_constant": params.add_constant,
         "min_periods": params.min_periods,
         "condition_number_threshold": params.condition_number_threshold,
