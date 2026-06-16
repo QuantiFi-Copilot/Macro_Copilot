@@ -48,6 +48,7 @@ from rates_agent.sovereign_bonds.tools.cross_market_spread import (
 )
 from rates_agent.sovereign_bonds.tools.scan_extremes import scan_extremes
 from shared.analytics.levels import compute_level_metrics
+from shared.analytics.rates_fetch import latest_trade_date
 from shared.config import load_tool_config
 
 logger = logging.getLogger("api.routes.rates.cards")
@@ -222,7 +223,16 @@ def _compute_yield_snapshot(engine: Engine) -> list[YieldSnapshotRow]:
     ffill_limit = cs_config.convention_value("ffill_limit_days")
 
     buffer_days = int(z_window * buffer_mult)
-    start_date = date.today() - timedelta(days=365 + buffer_days)
+    # Anchor the 1y window to the latest available trade_date in the sovereign
+    # universe (not date.today()) so the grid resolves to real data when
+    # ingestion lags; falls back to today only on an empty universe.
+    anchor = (
+        latest_trade_date(
+            engine, instrument_type="sovereign_benchmark", field_name=field_name
+        )
+        or date.today()
+    )
+    start_date = anchor - timedelta(days=365 + buffer_days)
 
     with engine.connect() as conn:
         result = conn.execute(
@@ -392,7 +402,7 @@ def curve_shapes(
     if not results and failures > 0:
         raise HTTPException(
             status_code=503,
-            detail=f"All {failures} curve shape queries failed.  Database may be unavailable.",
+            detail=f"All {failures} curve shape queries returned no usable data — the latest data may be older than the requested lookback, or the curve(s) unavailable.  (The database is reachable.)",
         )
 
     return CurveShapesResponse(curves=results)
@@ -501,7 +511,7 @@ def cross_market(engine: Engine = Depends(get_engine)):
     if not results and failures > 0:
         raise HTTPException(
             status_code=503,
-            detail=f"All {failures} cross-market queries failed.  Database may be unavailable.",
+            detail=f"All {failures} cross-market queries returned no usable data — the latest data may be older than the requested lookback, or the curve(s) unavailable.  (The database is reachable.)",
         )
 
     return CrossMarketResponse(pairs=results)
@@ -584,7 +594,11 @@ def regimes(
     if not results and failures > 0:
         raise HTTPException(
             status_code=503,
-            detail=f"All {failures} regime queries failed.  Database may be unavailable.",
+            detail=(
+                f"All {failures} regime queries returned no usable data — the "
+                "latest available data may be older than the requested lookback, "
+                "or the curve(s) may be unavailable.  (The database is reachable.)"
+            ),
         )
 
     return RegimeResponse(regimes=results)

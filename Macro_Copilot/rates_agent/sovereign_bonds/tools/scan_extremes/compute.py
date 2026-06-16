@@ -39,7 +39,7 @@ from shared.analytics.levels import (
     bps_change,
     trailing_high_low_percentile,
 )
-from shared.analytics.rates_fetch import fetch_scan_universe
+from shared.analytics.rates_fetch import fetch_scan_universe, latest_trade_date
 from shared.analytics.spreads import (
     rolling_zscore,
     safe_float,
@@ -145,7 +145,16 @@ def scan_extremes(
     # 1. Date window — enough for z-score warm-up plus ~1 year display
     # ------------------------------------------------------------------
     buffer_calendar_days = int(z_window * z_buffer_multiplier)
-    start_date = date.today() - timedelta(days=365 + buffer_calendar_days)
+    # Anchor the 1y window to the latest available trade_date in this universe
+    # (not date.today()) so the scan still resolves to real data when ingestion
+    # lags; falls back to today only when the universe has no rows.
+    anchor = (
+        latest_trade_date(
+            engine, instrument_type=instrument_type, field_name=params.field_name
+        )
+        or date.today()
+    )
+    start_date = anchor - timedelta(days=365 + buffer_calendar_days)
 
     # ------------------------------------------------------------------
     # 2. Fetch (every sovereign benchmark series in the universe)

@@ -72,7 +72,7 @@ from shared.analytics.levels import (
     clean_single_series,
     compute_level_metrics,
 )
-from shared.analytics.rates_fetch import fetch_single_tenor
+from shared.analytics.rates_fetch import fetch_single_tenor, latest_trade_date
 from shared.config import ToolConfig, load_tool_config
 from shared.schemas import TimeSeries, TimeSeriesRow, TimeSeriesUnits
 
@@ -190,7 +190,19 @@ def get_yield_levels(
     # 1. Date window
     # ------------------------------------------------------------------
     buffer_calendar_days = int(z_window * buffer_mult)
-    start_date = date.today() - timedelta(
+    # Anchor to the latest available trade_date (not date.today()) so the
+    # window resolves to real data when ingestion lags; reconciles the
+    # date.today() inconsistency noted at the cutoff below with the OIS twin.
+    anchor = (
+        latest_trade_date(
+            engine,
+            curve_family=params.curve_family,
+            tenor=params.tenor,
+            field_name=field_name_resolved,
+        )
+        or date.today()
+    )
+    start_date = anchor - timedelta(
         days=params.lookback_days + buffer_calendar_days
     )
 
@@ -238,11 +250,11 @@ def get_yield_levels(
     #    full series length.  This matches the legacy tool's behaviour
     #    exactly so the parity-test of the migration is meaningful.
     #    The OIS rate_level tool anchors the cutoff to the latest
-    #    observation; sovereign here anchors to date.today().  That
-    #    inconsistency is documented in config.yaml's
-    #    planned_extensions and will be reconciled in a follow-up PR.
+    #    observation; sovereign now does too (reconciled — ``anchor``
+    #    above is the latest available trade_date), so the obs count is
+    #    the true lookback-window count even when ingestion lags.
     # ------------------------------------------------------------------
-    cutoff = pd.Timestamp(date.today() - timedelta(days=params.lookback_days))
+    cutoff = pd.Timestamp(anchor - timedelta(days=params.lookback_days))
     display_yields = yields.loc[yields.index >= cutoff]
     obs_count = len(display_yields)
 

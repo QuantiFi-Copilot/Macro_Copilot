@@ -115,7 +115,7 @@ from shared.analytics.levels import (
     period_changes,
     trailing_high_low_percentile,
 )
-from shared.analytics.rates_fetch import fetch_cross_market_pair
+from shared.analytics.rates_fetch import fetch_cross_market_pair, latest_trade_date
 from shared.analytics.spreads import (
     compute_spread_bps,
     pivot_and_align_tenors,
@@ -249,7 +249,18 @@ def calculate_cross_market_spread(
     #    first displayed row, even if a future config decouples them)
     # ------------------------------------------------------------------
     buffer_calendar_days = int(max(z_window, trailing_window) * buffer_multiplier)
-    start_date = date.today() - timedelta(
+    # Anchor to the latest trade_date BOTH curves have (data-anchored, not
+    # wall-clock) so the spread resolves to real data when ingestion lags.
+    # This also closes the planned_extension noted at the cutoff below
+    # (align with the data-anchored OIS twin).
+    _a1 = latest_trade_date(
+        engine, curve_family=params.curve_family_1, field_name=field_name_resolved
+    )
+    _a2 = latest_trade_date(
+        engine, curve_family=params.curve_family_2, field_name=field_name_resolved
+    )
+    anchor = min([d for d in (_a1, _a2) if d is not None], default=date.today())
+    start_date = anchor - timedelta(
         days=params.lookback_days + buffer_calendar_days
     )
 
@@ -328,10 +339,9 @@ def calculate_cross_market_spread(
     # ------------------------------------------------------------------
     # 6. Trim to requested display lookback
     # ------------------------------------------------------------------
-    # Wall-clock anchored, NOT data-anchored.  The OIS twin uses the
-    # latter; aligning them is deferred to a separate PR — see
-    # planned_extensions in config.yaml.
-    cutoff = pd.Timestamp(date.today() - timedelta(days=params.lookback_days))
+    # Data-anchored (aligned with the OIS twin): trim relative to the latest
+    # available trade_date, not the wall clock.
+    cutoff = pd.Timestamp(anchor - timedelta(days=params.lookback_days))
     display_df = wide.loc[wide.index >= cutoff].copy()
 
     if display_df.empty:

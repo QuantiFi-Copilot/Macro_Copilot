@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.engine import Engine
 
 from api.dependencies import get_engine
+from shared.analytics.rates_fetch import latest_trade_date
 from rates_agent.sovereign_bonds.tools.schemas import (
     CurveSpreadInput,
     CurveSpreadOutput,
@@ -4929,7 +4930,10 @@ def financing_rate_detail(
     # Calendar-day buffer for rolling-stats warmup before the 252d display
     # window (per catalog template snippet).  1.4× lookback + 60 days gives
     # enough non-trading-day padding.
-    end_dt = date.today()
+    # Anchor to the latest available trade_date for this OIS family (not
+    # date.today()) so the window resolves to real data when ingestion lags;
+    # falls back to today only when the family has no rows.
+    end_dt = latest_trade_date(engine, curve_family=proxy_curve) or date.today()
     start_dt = end_dt - timedelta(days=int(lookback_days * 1.4 + 60))
 
     try:
@@ -4956,7 +4960,15 @@ def financing_rate_detail(
     _tool_result_or_raise(result, f"Financing rate for {proxy_curve}")
 
     panel = result.get("panel")
-    if panel is None or getattr(panel, "payload", None) is None:
+    # The financing tool returns ``panel`` as a dict ({"payload": df, ...}),
+    # NOT a Panel object — so extract the payload by key OR attribute.  The
+    # old code used getattr(panel, "payload"), which is always None for a dict,
+    # so this endpoint 404'd on every request regardless of the data.
+    payload_df = (
+        panel.get("payload") if isinstance(panel, dict)
+        else getattr(panel, "payload", None)
+    )
+    if panel is None or payload_df is None:
         raise HTTPException(
             status_code=404,
             detail=(
@@ -4964,8 +4976,6 @@ def financing_rate_detail(
                 "Panel artifact (compute succeeded but produced no rate series)."
             ),
         )
-
-    payload_df: pd.DataFrame = panel.payload
     if payload_df.empty or payload_df.shape[1] == 0:
         raise HTTPException(
             status_code=404,

@@ -96,7 +96,7 @@ from shared.analytics.curve_move import classify_curve_move
 from shared.analytics.playbook_discovery import (
     playbook_default_field_for_curve_family,
 )
-from shared.analytics.rates_fetch import fetch_tenor_group
+from shared.analytics.rates_fetch import fetch_tenor_group, latest_trade_date
 from shared.analytics.spreads import pivot_and_align_tenors, safe_float
 from shared.config import ToolConfig, load_tool_config
 
@@ -282,7 +282,19 @@ def classify_curve_move_compute(
     # buffer is just enough to absorb holidays and weekends around the
     # offset.
     buffer_days = max(offset * 3, 60)
-    start_date = date.today() - timedelta(days=buffer_days)
+    # Anchor the window to the latest available trade_date for this curve/field,
+    # NOT date.today(): a 1d/5d lookback is shorter than a weekend/holiday/
+    # ingestion gap, so anchoring on "now" yields an empty window the moment the
+    # data lags.  Falls back to date.today() only when the universe has no rows.
+    anchor = (
+        latest_trade_date(
+            engine,
+            curve_family=params.curve_family,
+            field_name=field_name_resolved,
+        )
+        or date.today()
+    )
+    start_date = anchor - timedelta(days=buffer_days)
 
     raw_df = fetch_tenor_group(
         engine=engine,

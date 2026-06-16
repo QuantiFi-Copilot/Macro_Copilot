@@ -51,7 +51,7 @@ from rates_agent.sovereign_bonds.tools.curve_spread.schemas import (
     CurveSpreadOutput,
     CurveSpreadTimeSeriesRow,
 )
-from shared.analytics.rates_fetch import fetch_tenor_pair
+from shared.analytics.rates_fetch import fetch_tenor_pair, latest_trade_date
 from shared.analytics.spreads import (
     compute_spread_bps,
     pivot_and_align_tenors,
@@ -131,7 +131,14 @@ def calculate_curve_spread(
     # ``buffer_mult`` × the z-score window in calendar days, which
     # accounts for weekends and holidays.
     buffer_calendar_days = int(z_window * buffer_mult)
-    start_date = date.today() - timedelta(
+    # Anchor to the latest available trade_date (not date.today()) so the
+    # window resolves to real data when ingestion lags (weekend / holiday /
+    # stale snapshot); falls back to today only when the curve has no rows.
+    anchor = (
+        latest_trade_date(engine, curve_family=params.curve_family)
+        or date.today()
+    )
+    start_date = anchor - timedelta(
         days=params.lookback_days + buffer_calendar_days
     )
 
@@ -211,7 +218,7 @@ def calculate_curve_spread(
     # ------------------------------------------------------------------
     # 6. Trim to the requested lookback (discard warm-up rows)
     # ------------------------------------------------------------------
-    cutoff = pd.Timestamp(date.today() - timedelta(days=params.lookback_days))
+    cutoff = pd.Timestamp(anchor - timedelta(days=params.lookback_days))
     display_df = wide.loc[wide.index >= cutoff].copy()
 
     if display_df.empty:

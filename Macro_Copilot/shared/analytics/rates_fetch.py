@@ -124,12 +124,128 @@ interpolation of user-supplied identifiers.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Dict, Iterable, Optional, Sequence
 
 import pandas as pd
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
+
+
+# ============================================================================
+# DATA-RELATIVE AS-OF ANCHOR
+# ============================================================================
+#
+# A tool that wants "the most recent N days" must anchor its fetch window to
+# the LATEST trade_date actually present for the series, NOT ``date.today()``.
+# ``date.today()`` silently produces an EMPTY window whenever the data lags
+# "now" — a weekend, a holiday, an ingestion gap, or a stale snapshot — and,
+# because the answer then changes with the wall clock, it also breaks replay
+# determinism (P4: "reopen a six-month-old workspace, see the same numbers").
+# ``latest_trade_date`` is the data-relative anchor: a cheap MAX(trade_date)
+# over the SAME enriched view the ``fetch_*`` helpers read, with the SAME
+# optional filters, so the resolved anchor is exactly the latest date the
+# subsequent fetch would return.  Callers anchor with:
+#
+#     anchor = latest_trade_date(engine, curve_family=cf, field_name=fld) \
+#              or date.today()
+#     start_date = anchor - timedelta(days=N)
+#
+# The ``or date.today()`` fallback preserves the historical behaviour on a
+# genuinely empty universe (no rows at all), so the change is a strict
+# robustness improvement: identical output when data is current (anchor ==
+# today's data), graceful degradation when it is not.
+#
+# CHUNK-PRUNING FLOOR (critical):  ``market_data_daily`` is a TimescaleDB
+# hypertable (~1100 chunks).  An UNBOUNDED ``MAX(trade_date)`` takes an
+# AccessShareLock on EVERY chunk; under the Monitor's concurrent widget load
+# that exhausts the shared lock table ("out of shared memory /
+# max_locks_per_transaction").  So the probe ALWAYS bounds ``trade_date`` to a
+# recent window, letting the planner prune to a handful of chunks — the same
+# order the actual fetch queries (<= ~2y windows) already touch safely.  The
+# window must stay CHEAPER than a normal fetch (a 365d fetch touches ~46
+# chunks; the lock budget is max_connections(25) x max_locks_per_transaction
+# (128) ~= 3200 shared slots).  200d touches ~22 chunks — under a fetch — so the
+# probe never dominates the lock budget even at full concurrency, while still
+# covering ~6.5 months of staleness (far beyond any operational ingestion lag,
+# and well past the current dev-snapshot gap).  If data is older than this the
+# probe returns None and the caller falls back to date.today(); the long-window
+# tools still find the data via their own fetch window, and only the very
+# short-window tools degrade — the correct, bounded trade-off.
+_LATEST_PROBE_WINDOW_DAYS = 200
+
+
+def latest_trade_date(
+    engine: Engine,
+    *,
+    curve_family: Optional[str] = None,
+    tenor: Optional[str] = None,
+    field_name: Optional[str] = None,
+    instrument_type: Optional[str] = None,
+) -> Optional[date]:
+    """Most recent ``trade_date`` available for the given filter, or ``None``
+    if no rows match.
+
+    Cheap single-aggregate probe over
+    ``macro_data.v_market_data_daily_enriched`` mirroring the
+    ``fetch_single_tenor`` / ``fetch_tenor_group`` / ``fetch_scan_universe``
+    filter shape, so the resolved anchor is exactly the latest date those
+    fetchers would surface for the same filter.  All filters are optional and
+    AND-combined; pass the same ``curve_family`` / ``field_name`` / ``tenor`` /
+    ``instrument_type`` the subsequent fetch will use.  Returns ``None`` (not an
+    error) when the filtered universe is empty, so callers fall back to
+    ``date.today()``.
+
+    Returns ``None`` immediately when ``engine`` is falsy (e.g. ``None``).
+    Compute-layer unit tests exercise the tools with ``engine=None`` and a
+    monkeypatched ``fetch_*`` returning fixture data; this probe must stay
+    transparent to that pattern (no usable engine → no probe → caller falls
+    back to ``date.today()``, the historical behaviour).  Production always
+    passes a live engine.
+    """
+    if engine is None:
+        return None
+    clauses = []
+    params: Dict[str, object] = {}
+    if curve_family is not None:
+        clauses.append("curve_family = :curve_family")
+        params["curve_family"] = curve_family
+    if tenor is not None:
+        clauses.append("tenor = :tenor")
+        params["tenor"] = tenor
+    if field_name is not None:
+        clauses.append("field_name = :field_name")
+        params["field_name"] = field_name
+    if instrument_type is not None:
+        clauses.append("instrument_type = :instrument_type")
+        params["instrument_type"] = instrument_type
+    # ALWAYS bound trade_date so the hypertable prunes chunks (see the
+    # CHUNK-PRUNING FLOOR note above).  Without this the unbounded MAX locks
+    # every chunk and exhausts the shared lock table under concurrent load.
+    clauses.append("trade_date >= :_probe_floor")
+    params["_probe_floor"] = (
+        date.today() - timedelta(days=_LATEST_PROBE_WINDOW_DAYS)
+    ).isoformat()
+    sql = text(
+        "SELECT MAX(trade_date) AS max_trade_date "
+        "FROM macro_data.v_market_data_daily_enriched WHERE "
+        + " AND ".join(clauses)
+    )
+    with engine.connect() as conn:
+        value = conn.execute(sql, params).scalar()
+    if value is None:
+        return None
+    # psycopg returns a ``date`` already (DATE column); datetime/Timestamp are
+    # ``date`` subclasses, so this also catches them.
+    if isinstance(value, date):
+        return value
+    # A non-date scalar only arises under a mocked engine in unit tests
+    # (production always yields a python ``date`` or ``None``); treat it as
+    # "no probe" so the caller falls back to ``date.today()``.
+    try:
+        return pd.Timestamp(value).date()
+    except (TypeError, ValueError):
+        return None
 
 
 # ============================================================================
