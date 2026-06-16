@@ -3,6 +3,14 @@
 Correctness by construction: a synthetic yield series with a KNOWN vol
 ramp-up in the tail must read as 'elevated', with the GARCH model state
 (persistence) surfaced.  DB mocked.
+
+The level series is the cumulative sum of a STATIONARY GARCH(1,1)
+return process (so the primitive diffs it back to a genuine stationary
+GARCH series with an INTERIOR persistence MLE, not the integrated
+boundary).  A plain regime-switch random walk maximises the GARCH
+likelihood AT the stationarity boundary (persistence → 1), which the
+fit_garch operator correctly refuses — that fixture only ever "passed"
+because the pre-C1.1 optimiser was stuck at its 0.95 start.
 """
 
 from __future__ import annotations
@@ -33,12 +41,31 @@ def _clear_cache():
     clear_tool_config_cache()
 
 
-def _levels(*, n=1200, calm_vol=0.03, hot_vol=0.10, split=800, curve="UST",
-            tenor="10Y", seed=0):
+def _garch_returns(n, *, omega, alpha, beta, seed):
+    """A STATIONARY GARCH(1,1) return series (the textbook DGP)."""
     rng = np.random.RandomState(seed)
+    z = rng.randn(n)
+    eps = np.zeros(n)
+    s2 = np.zeros(n)
+    s2[0] = omega / (1.0 - alpha - beta)
+    eps[0] = np.sqrt(s2[0]) * z[0]
+    for t in range(1, n):
+        s2[t] = omega + alpha * eps[t - 1] ** 2 + beta * s2[t - 1]
+        eps[t] = np.sqrt(s2[t]) * z[t]
+    return eps
+
+
+def _levels(*, n=1200, omega=2e-4, alpha=0.10, beta=0.80, split=800,
+            hot_scale=2.5, curve="UST", tenor="10Y", seed=0):
+    """Levels = cumsum of a stationary GARCH(1,1) return series, with the
+    TAIL volatility scaled up (so the latest conditional vol reads
+    'elevated') while the underlying GARCH stays STATIONARY (persistence
+    α+β < 1 — an interior MLE, not the integrated boundary)."""
+    eps = _garch_returns(n, omega=omega, alpha=alpha, beta=beta, seed=seed)
+    eps = eps.copy()
+    eps[split:] *= hot_scale  # a genuinely louder tail → 'elevated'
     idx = pd.bdate_range("2021-01-04", periods=n)
-    vol = np.where(np.arange(n) < split, calm_vol, hot_vol)
-    levels = 3.0 + np.cumsum(rng.randn(n) * vol)
+    levels = 3.0 + np.cumsum(eps)
     return pd.DataFrame({f"{curve}_{tenor}": levels}, index=idx)
 
 

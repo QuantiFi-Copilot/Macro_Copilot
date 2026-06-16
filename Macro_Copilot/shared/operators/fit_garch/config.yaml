@@ -1,7 +1,7 @@
 operator:
   name: fit_garch
   method_family: single_series_transform
-  version: "1.0.0"
+  version: "1.1.0"
   description: >-
     GARCH(1,1) conditional-volatility fit of one Series (Gaussian MLE in
     shared/quant/garch.py), emitting the fitted IN-SAMPLE volatility

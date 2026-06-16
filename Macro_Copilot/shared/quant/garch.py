@@ -19,15 +19,28 @@ with μ the sample mean (the locked constant-mean model — ESTIMATED,
 not chosen), ω > 0, α ≥ 0, β ≥ 0 and the STATIONARITY constraint
 α + β < 1.  Persistence = α + β (near 1 ⇒ vol shocks decay slowly).
 The parameters are estimated by maximising the Gaussian log-likelihood
-via ``scipy.optimize.minimize`` (SLSQP with the explicit constraints)
-from a FIXED deterministic start (no random restarts → rerun-identical).
+via ``scipy.optimize.minimize`` (SLSQP with the explicit constraints).
 
-The function RETURNS the fit (including ``converged`` and the
-boundary-degeneracy is visible via ``persistence``); the operator
-REFUSES on non-convergence or α + β ≥ 1 (a ScalarMetric/Series path
-from a failed optimiser would be garbage).  It raises ``ValueError``
-only on degenerate input the math cannot start on (fewer than the
-floor, non-finite, zero variance).
+SCALE-INVARIANT, NUMERICALLY ROBUST OPTIMISATION (the C1.1 fix):
+the residuals are STANDARDISED to unit variance before the optimiser
+runs.  α and β are scale-invariant under this transform; ω scales by
+the residual variance and is mapped back afterwards.  This is what
+makes the optimisation well-conditioned regardless of the input scale.
+Without it, on small-variance data (e.g. real daily yield CHANGES,
+σ ≈ 0.03–0.10 in percent) the Gaussian NLL gradient is tiny and SLSQP
+terminates AT ITERATION 1 — leaving x pinned at the start and yet
+reporting ``success=True`` (a silently-wrong MLE at the 0.95-prior
+persistence).  We additionally run a FIXED deterministic grid of
+interior starts (no randomness → rerun-identical) and TREAT A FIT THAT
+ENDS UNMOVED FROM ITS START AS NON-CONVERGED — a start-pinned solution
+is never reported as a good optimum.
+
+The function RETURNS the fit (including ``converged``, ``boundary_stuck``
+— every start ended pinned at its start — and the boundary-degeneracy
+visible via ``persistence``); the operator REFUSES on non-convergence
+or α + β ≥ 1 (a ScalarMetric/Series path from a failed optimiser would
+be garbage).  It raises ``ValueError`` only on degenerate input the
+math cannot start on (fewer than the floor, non-finite, zero variance).
 """
 
 from __future__ import annotations
@@ -41,11 +54,27 @@ from scipy.optimize import minimize
 
 _MIN_OBS = 12
 
-# Fixed deterministic optimiser start (textbook-typical interior point)
-# and the stationarity tolerance — no randomness anywhere (OPR14).
+# Fixed deterministic optimiser start grid (textbook-typical interior
+# points) and the stationarity tolerance — no randomness anywhere
+# (OPR14): every start (α, β) is hard-coded, so reruns are byte-
+# identical.  The first entry is the historical default; the rest are
+# spread across the (α, β) simplex so a basin the default misses is
+# still found.  Each start must satisfy α + β < 1 − _STATIONARITY_TOL.
 _ALPHA0 = 0.05
 _BETA0 = 0.90
+_START_GRID: tuple[tuple[float, float], ...] = (
+    (0.05, 0.90),   # the historical default (kept first for continuity)
+    (0.10, 0.80),
+    (0.03, 0.95),
+    (0.20, 0.70),
+    (0.15, 0.60),
+    (0.01, 0.50),
+)
 _STATIONARITY_TOL = 1e-6
+# A start counts as "unmoved" (hence non-converged for that start) when
+# the optimiser leaves x within this absolute distance of x0.  Compared
+# in the STANDARDISED space, so it is scale-free.
+_UNMOVED_ATOL = 1e-8
 _LOG_2PI = math.log(2.0 * math.pi)
 
 
@@ -64,7 +93,14 @@ class GarchFitResult:
     loglik :
         The maximised Gaussian log-likelihood.
     converged :
-        Whether the optimiser reported success.
+        Whether the optimiser reported a genuine optimum — ``True`` only
+        when at least one start both reported SUCCESS *and* MOVED off its
+        start point (a start-pinned solution is never "converged").
+    boundary_stuck :
+        ``True`` when EVERY start ended pinned at its start point (x
+        unmoved) — the diagnostic that distinguishes a degenerate /
+        flat-likelihood input from a real non-convergence.  Always
+        ``False`` when ``converged`` is ``True``.
     conditional_vol :
         The fitted in-sample σ_t path (same length as the input).
     n_obs :
@@ -78,6 +114,7 @@ class GarchFitResult:
     mu: float
     loglik: float
     converged: bool
+    boundary_stuck: bool
     conditional_vol: np.ndarray
     n_obs: int
 
@@ -136,37 +173,90 @@ def fit_garch_11(values: np.ndarray) -> GarchFitResult:
 
     mu = float(arr.mean())
     eps = arr - mu
-    eps2 = eps * eps
+
+    # ------------------------------------------------------------------
+    # STANDARDISE to unit variance.  α, β are scale-invariant under this
+    # transform; ω scales by ``scale²`` and is mapped back below.  This
+    # is the load-bearing fix: on small-variance inputs the un-scaled
+    # Gaussian NLL gradient is so small that SLSQP stops at iteration 1
+    # (x pinned at the start, yet success=True) — a silently-wrong MLE.
+    # On the standardised residuals the NLL is O(1)-scaled so ``ftol`` is
+    # meaningful regardless of the input scale.
+    # ------------------------------------------------------------------
+    scale = math.sqrt(var0)            # var0 > 0 guaranteed above
+    eps_s = eps / scale
+    eps2_s = eps_s * eps_s
+    var0_s = 1.0                       # variance of the standardised eps
 
     def _nll(params: np.ndarray) -> float:
         omega, alpha, beta = float(params[0]), float(params[1]), float(params[2])
-        sigma2 = _conditional_var(omega, alpha, beta, eps2, var0)
+        sigma2 = _conditional_var(omega, alpha, beta, eps2_s, var0_s)
         if not np.all(np.isfinite(sigma2)) or np.any(sigma2 <= 0.0):
             return 1e12
         return 0.5 * float(
-            np.sum(_LOG_2PI + np.log(sigma2) + eps2 / sigma2)
+            np.sum(_LOG_2PI + np.log(sigma2) + eps2_s / sigma2)
         )
 
-    # Fixed deterministic start: ω₀ from the unconditional-variance
-    # identity ω = (1 − α − β)·var, with the start α/β.
-    x0 = np.array(
-        [(1.0 - _ALPHA0 - _BETA0) * var0, _ALPHA0, _BETA0], dtype=float,
-    )
     bounds = [(1e-12, None), (0.0, 1.0), (0.0, 1.0)]
     # Stationarity: α + β ≤ 1 − tol (SLSQP inequality, fun >= 0).
     constraints = [{
         "type": "ineq",
         "fun": lambda p: (1.0 - _STATIONARITY_TOL) - p[1] - p[2],
     }]
-    res = minimize(
-        _nll, x0, method="SLSQP", bounds=bounds, constraints=constraints,
-        options={"maxiter": 1000, "ftol": 1e-9},
-    )
-    omega, alpha, beta = float(res.x[0]), float(res.x[1]), float(res.x[2])
-    converged = bool(res.success)
 
-    sigma2 = _conditional_var(omega, alpha, beta, eps2, var0)
-    conditional_vol = np.sqrt(np.maximum(sigma2, 0.0))
+    # ------------------------------------------------------------------
+    # DETERMINISTIC MULTI-START.  Run the fixed start grid; a start whose
+    # solution ends UNMOVED from its start point is treated as NON-
+    # converged for that start (reject x0-unmoved-as-success — the SLSQP
+    # iteration-1 stall).  Keep only genuinely-moved successful optima;
+    # pick the lowest NLL (deterministic tie-break by grid order).
+    # ------------------------------------------------------------------
+    best_x: np.ndarray | None = None
+    best_fun = np.inf
+    any_started = False
+    for alpha0, beta0 in _START_GRID:
+        # ω₀ in the STANDARDISED space, from the unconditional-variance
+        # identity ω = (1 − α − β)·var_s (floored strictly positive).
+        x0 = np.array(
+            [max((1.0 - alpha0 - beta0) * var0_s, 1e-6), alpha0, beta0],
+            dtype=float,
+        )
+        res = minimize(
+            _nll, x0, method="SLSQP", bounds=bounds, constraints=constraints,
+            options={"maxiter": 1000, "ftol": 1e-12},
+        )
+        any_started = True
+        moved = not np.allclose(res.x, x0, rtol=0.0, atol=_UNMOVED_ATOL)
+        if bool(res.success) and moved and float(res.fun) < best_fun:
+            best_fun = float(res.fun)
+            best_x = np.asarray(res.x, dtype=float).copy()
+
+    converged = best_x is not None
+    boundary_stuck = any_started and best_x is None
+
+    if best_x is None:
+        # No start produced a genuine optimum — report the (start-pinned)
+        # default fit but flag it NON-converged so the caller refuses.
+        omega_s, alpha, beta = (
+            (1.0 - _ALPHA0 - _BETA0) * var0_s, _ALPHA0, _BETA0,
+        )
+        nll_s = _nll(np.array([omega_s, alpha, beta], dtype=float))
+    else:
+        omega_s, alpha, beta = (
+            float(best_x[0]), float(best_x[1]), float(best_x[2]),
+        )
+        nll_s = best_fun
+
+    # ------------------------------------------------------------------
+    # DE-STANDARDISE: ω maps back by ``scale²``; α, β unchanged.  Compute
+    # the σ_t path on the ORIGINAL scale (σ_s · scale) and the original-
+    # scale log-likelihood (the standardised NLL differs from the
+    # original-scale NLL by exactly ``n · log(scale)``).
+    # ------------------------------------------------------------------
+    omega = omega_s * var0  # var0 == scale²
+    sigma2_s = _conditional_var(omega_s, alpha, beta, eps2_s, var0_s)
+    conditional_vol = np.sqrt(np.maximum(sigma2_s, 0.0)) * scale
+    loglik = float(-nll_s - n * math.log(scale))
 
     return GarchFitResult(
         omega=omega,
@@ -174,8 +264,9 @@ def fit_garch_11(values: np.ndarray) -> GarchFitResult:
         beta=beta,
         persistence=alpha + beta,
         mu=mu,
-        loglik=float(-res.fun),
+        loglik=loglik,
         converged=converged,
+        boundary_stuck=boundary_stuck,
         conditional_vol=conditional_vol,
         n_obs=n,
     )

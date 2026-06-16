@@ -225,6 +225,43 @@ def test_runs_on_non_rates_synthetic_data():
 # ===========================================================================
 
 
+class TestConvergenceRobustness:
+    """C1.1 regression AT THE OPERATOR BOUNDARY.
+
+    The pre-C1.1 operator parity test compared operator-vs-fit_garch on
+    the SAME input, so both agreed even when the fit was stuck at the
+    0.95 prior.  These assert the operator surfaces a GENUINE,
+    moved-off-start MLE on the large small-variance series that triggered
+    the stuck fit — and stamps boundary_stuck=False in lineage.
+    """
+
+    @pytest.mark.parametrize("seed", [1, 3])
+    @pytest.mark.parametrize("n", [5000, 10000])
+    def test_operator_surfaces_moved_mle(self, n, seed):
+        # small-variance GARCH (σ ≈ 0.10 percent) — the stuck regime.
+        vals = _sim_garch(n=n, omega=2e-4, alpha=0.08, beta=0.90, seed=seed)
+        s = _series("x", values=vals)
+        out = fit_garch(s)
+        head = out.lineage.steps[-1].params
+        assert head["converged"] is True
+        assert head["boundary_stuck"] is False
+        # The fitted (alpha, beta) MOVED off the 0.05/0.90 start.
+        pinned = (
+            abs(head["alpha"] - 0.05) < 1e-6
+            and abs(head["beta"] - 0.90) < 1e-6
+        )
+        assert not pinned, "operator surfaced a start-pinned (stuck) fit"
+        # The fitted vol path is finite and positive on the interior.
+        assert np.isfinite(out.payload.to_numpy()).all()
+        assert (out.payload.to_numpy() > 0).all()
+
+    def test_lineage_stamps_boundary_stuck_flag(self):
+        s = _series("x", values=_sim_garch(n=2000))
+        head = fit_garch(s).lineage.steps[-1].params
+        assert "boundary_stuck" in head
+        assert head["boundary_stuck"] is False
+
+
 class TestComposition:
     @staticmethod
     def _dag_and_resolver(tmp_path):

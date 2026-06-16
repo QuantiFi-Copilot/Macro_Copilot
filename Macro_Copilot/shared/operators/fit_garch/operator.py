@@ -81,7 +81,13 @@ from shared.quant.garch import fit_garch_11
 
 
 _OPERATOR_NAME = "fit_garch"
-_OPERATOR_VERSION = "1.0.0"
+# 1.1.0 (C1.1): the shared GARCH fit now standardises residuals + runs a
+# fixed deterministic multi-start and rejects an x0-unmoved "success", so
+# fits that previously stalled at the 0.95-prior start (or spuriously
+# refused on small-variance input) now reach the true MLE — a behavioural
+# change ⇒ both versions bump (OPR14d).  Lineage gains a boundary_stuck
+# flag.
+_OPERATOR_VERSION = "1.1.0"
 
 _CONFIG_PATH: Path = Path(__file__).resolve().parent / "config.yaml"
 
@@ -207,11 +213,19 @@ def fit_garch(
     # ------------------------------------------------------------------
     result = fit_garch_11(core)
     if not result.converged:
+        if result.boundary_stuck:
+            raise FitGarchError(
+                "fit_garch: the GARCH(1,1) maximum-likelihood fit did "
+                "not converge — every optimiser start ended pinned at "
+                "its start point (a flat / degenerate log-likelihood), "
+                "so no reliable MLE exists.  The conditional-volatility "
+                "path would be unreliable; refusing rather than emitting "
+                "the start-point parameters as if they were a fit."
+            )
         raise FitGarchError(
-            "fit_garch: the GARCH(1,1) maximum-likelihood fit did not "
-            "converge — the conditional-volatility path would be "
-            "unreliable.  (The series may be too short or not exhibit "
-            "GARCH-type volatility clustering.)"
+            "fit_garch: the GARCH(1,1) maximum-likelihood optimiser did "
+            "not converge to a stationary interior optimum — the "
+            "conditional-volatility path would be unreliable."
         )
     persistence = float(result.persistence)
     if (
@@ -259,6 +273,7 @@ def fit_garch(
         "mu": float(result.mu),
         "loglik": float(result.loglik),
         "converged": True,
+        "boundary_stuck": False,  # the fit moved off the start (OPR14 honesty)
         "near_integrated": near_integrated,
         "low_sample_warning": low_sample,
         "order": "(1,1)",                    # design-locked (OPR7)

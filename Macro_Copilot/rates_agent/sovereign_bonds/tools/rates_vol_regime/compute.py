@@ -66,6 +66,23 @@ def _round(value: Optional[float], decimals: int) -> Optional[float]:
     return round(float(value), decimals)
 
 
+def _round_sig(value: Optional[float], sig: int) -> Optional[float]:
+    """Round to ``sig`` SIGNIFICANT figures (not decimal places).
+
+    GARCH ω is a variance-scale parameter — on daily-percent yield
+    changes it is ~1e-5..1e-6, so a fixed-decimal round (4 dp) collapses
+    a genuinely-positive ω to a dishonest 0.0 (P5).  Significant-figure
+    rounding keeps it scale-honest while staying deterministic.
+    """
+    if value is None or (isinstance(value, float) and not math.isfinite(value)):
+        return None
+    v = float(value)
+    if v == 0.0:
+        return 0.0
+    digits = sig - 1 - int(math.floor(math.log10(abs(v))))
+    return round(v, digits)
+
+
 def calculate_rates_vol_regime(
     engine: Engine,
     params: RatesVolRegimeInput,
@@ -156,6 +173,11 @@ def calculate_rates_vol_regime(
     cond_vol_pct = vol_series.payload           # daily vol in percent (NaN edges)
     model = vol_series.lineage.steps[-1].params
     persistence = float(model["persistence"])
+    # The fit reached a genuine interior MLE (the operator refuses a
+    # start-pinned / non-convergent fit before we get here, so this is
+    # always False on the success path) — surfaced for P5 completeness so
+    # the model state read from lineage is honest about fit quality.
+    boundary_stuck = bool(model.get("boundary_stuck", False))
 
     # ------------------------------------------------------------------
     # 4. The FINANCE: current vol (bps), historical percentile, regime
@@ -206,7 +228,9 @@ def calculate_rates_vol_regime(
         vol_percentile=_round(vol_percentile, round_dec),
         regime_label=regime_label,
         persistence=_round(persistence, round_dec),
-        omega=_round(float(model["omega"]), round_dec),
+        # ω is variance-scale (≪ α, β): round to significant figures so a
+        # genuinely-positive ~1e-5..1e-6 value is never shown as 0.0 (P5).
+        omega=_round_sig(float(model["omega"]), max(round_dec, 4)),
         alpha=_round(float(model["alpha"]), round_dec),
         beta=_round(float(model["beta"]), round_dec),
         mu=_round(float(model["mu"]), round_dec),
@@ -227,7 +251,16 @@ def calculate_rates_vol_regime(
         f"persistence α+β = {_round(persistence, 4)} "
         f"({'near-integrated / sticky' if model['near_integrated'] else 'mean-reverting'} "
         "vol); GARCH math is the fit_garch operator.",
+        "GARCH MLE = interior optimum (the fit_garch operator standardises "
+        "the residuals + runs a fixed deterministic multi-start and refuses "
+        "a start-pinned / non-convergent fit, so the persistence above is "
+        "the maximum-likelihood estimate, not the optimiser start).",
     ]
+    if boundary_stuck:  # defensive — the operator refuses before here
+        disclosures.append(
+            "WARNING: the GARCH optimiser ended pinned at its start point "
+            "(degenerate likelihood); the model state is NOT a reliable MLE."
+        )
 
     output = RatesVolRegimeOutput(
         current_metrics=current_metrics,
