@@ -111,6 +111,7 @@ DataFrame so they cannot drift.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -224,6 +225,17 @@ class SwapBreakevenBasisSimpleInput(BaseModel):
             "sentinel through unchanged.  See the "
             "curve_move_classifier wrapper-shadowing fix (commit "
             "b2605ee) for the canonical pattern."
+        ),
+    )
+    as_of_date: Optional[date] = Field(
+        default=None,
+        description=(
+            "Optional as-of date (YYYY-MM-DD): compute as of this trade "
+            "date instead of the latest available data.  None → latest "
+            "(live snapshot).  Supply a date for a historical, replayable "
+            "view.  Threaded into BOTH inner calls (the ZCIS level leg AND "
+            "the breakeven leg) so both legs are read as of the same trade "
+            "date by construction."
         ),
     )
 

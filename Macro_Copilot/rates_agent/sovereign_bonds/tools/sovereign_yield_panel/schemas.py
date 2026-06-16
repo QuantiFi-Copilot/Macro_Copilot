@@ -100,6 +100,17 @@ class SovereignYieldPanelInput(BaseModel):
             "include every observation up to the latest in the DB."
         ),
     )
+    as_of_date: Optional[date] = Field(
+        default=None,
+        description=(
+            "Optional as-of date (YYYY-MM-DD): compute as of this trade "
+            "date instead of the latest available data.  None → latest "
+            "(live snapshot).  Supply a date for a historical, replayable "
+            "view.  Acts as an upper-bound cap on the panel's trade_date "
+            "window (combined with ``end_date`` — the tighter of the two "
+            "wins); the data fetch never surfaces rows after this date."
+        ),
+    )
     missing_data_policy: Optional[str] = Field(
         default=None,
         description=(

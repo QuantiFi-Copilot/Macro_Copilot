@@ -139,6 +139,19 @@ class WirpMeetingPricingInput(BaseModel):
             "— see ADR 0009 §1's typed-column mapping."
         ),
     )
+    as_of_date: Optional[_date] = Field(
+        default=None,
+        description=(
+            "Optional as-of date (YYYY-MM-DD): compute as of this trade "
+            "date instead of the latest available data.  None → latest "
+            "(live snapshot).  Supply a date for a historical, replayable "
+            "view.  Caps the WIRP OBSERVATION ``trade_date`` (the snapshot "
+            "date) at this value AND becomes the reference 'today' for the "
+            "``next_n_meetings`` forward window, so the returned snapshot is "
+            "the WIRP read as observed on or before this date.  Distinct "
+            "from ``meeting_date`` (the meeting/maturity date being priced)."
+        ),
+    )
 
     # =====================================================================
     # Canonicalisation — code-owned per PR7

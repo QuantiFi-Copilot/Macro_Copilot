@@ -56,7 +56,10 @@ from rates_agent.sovereign_bonds.tools.otr_ofr_spread.schemas import (
     OtrOfrSpreadOutput,
     OtrOfrSpreadTimeSeriesRow,
 )
-from shared.analytics.rates_fetch import fetch_otr_ofr_yield_pair
+from shared.analytics.rates_fetch import (
+    fetch_otr_ofr_yield_pair,
+    latest_trade_date,
+)
 from shared.analytics.spreads import rolling_zscore, safe_float
 from shared.config import ToolConfig, load_tool_config
 from shared.schemas import TimeSeries, TimeSeriesRow, TimeSeriesUnits
@@ -219,10 +222,26 @@ def calculate_otr_ofr_spread(
     #
     # Fetch extra history (warm-up buffer) so the z-score is fully
     # populated from the first displayed row.
-    today = date.today()
+    #
+    # Anchor to the requested as-of date (replayable historical view)
+    # when supplied, else the latest available trade_date (so the window
+    # resolves to real data when ingestion lags), else date.today().
+    # ``end_date=anchor`` caps the fetch at the anchor; with
+    # as_of_date=None the anchor IS the latest trade_date so the cap
+    # drops zero rows — byte-identical to the prior date.today() behaviour.
+    # Same anchor pattern as yield_levels.
+    anchor = (
+        params.as_of_date
+        or latest_trade_date(
+            engine,
+            tenor=params.tenor,
+            field_name=field_name,
+        )
+        or date.today()
+    )
     buffer_calendar_days = int(z_window * buffer_mult)
-    window_start = today - timedelta(days=params.lookback_days + buffer_calendar_days)
-    window_end = today
+    window_start = anchor - timedelta(days=params.lookback_days + buffer_calendar_days)
+    window_end = anchor
 
     # ------------------------------------------------------------------
     # 2. Fetch via the shared analytics helper.  The helper resolves
@@ -238,6 +257,7 @@ def calculate_otr_ofr_spread(
         field_name=field_name,
         window_start=window_start,
         window_end=window_end,
+        end_date=anchor,
     )
 
     if raw_df.empty:
@@ -352,7 +372,7 @@ def calculate_otr_ofr_spread(
     # ------------------------------------------------------------------
     # 5. Trim to the requested display window (discard warm-up rows)
     # ------------------------------------------------------------------
-    cutoff = pd.Timestamp(today - timedelta(days=params.lookback_days))
+    cutoff = pd.Timestamp(anchor - timedelta(days=params.lookback_days))
     display_df = df.loc[df.index >= cutoff].copy()
 
     if display_df.empty:

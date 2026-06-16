@@ -162,6 +162,7 @@ def _patched_fetch_factory(legs: dict):
         field_name,
         start_date,
         instrument_type=None,
+        end_date=None,
     ):
         key = (curve_family, tenor, instrument_type)
         if key in legs:

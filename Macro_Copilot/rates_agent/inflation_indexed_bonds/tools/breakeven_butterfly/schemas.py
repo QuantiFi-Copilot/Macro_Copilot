@@ -94,6 +94,7 @@ so they cannot drift.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -221,6 +222,12 @@ class BreakevenButterflyInput(BaseModel):
             "curve_move_classifier wrapper-shadowing fix (commit "
             "b2605ee) for the canonical pattern."
         ),
+    )
+    as_of_date: Optional[date] = Field(
+        default=None,
+        description=("Optional as-of date (YYYY-MM-DD): compute as of this trade "
+                     "date instead of the latest available data.  None → latest "
+                     "(live snapshot).  Supply a date for a historical, replayable view."),
     )
 
     @model_validator(mode="after")

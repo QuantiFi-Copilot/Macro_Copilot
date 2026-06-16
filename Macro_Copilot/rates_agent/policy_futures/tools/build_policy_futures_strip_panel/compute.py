@@ -204,6 +204,22 @@ def build_policy_futures_strip_panel(
     )
 
     # ------------------------------------------------------------------
+    # Resolve the trade-date upper-bound cap.  ``as_of_date`` is the
+    # optional historical-replay selector: when supplied it caps the
+    # panel window at that trade_date (a replayable as-of view); when
+    # None the pre-existing ``end_date`` cap stands (which itself may
+    # be None → fetch up to the latest observation in the DB, the live
+    # snapshot).  The shared fetcher's SQL treats ``end_date=None`` as
+    # "no upper bound" via an additive predicate, so with
+    # ``as_of_date=None`` this resolves to ``params.end_date`` and the
+    # fetch is byte-identical to before — the zero-regression
+    # invariant.  ``as_of_date`` takes precedence over ``end_date``
+    # because a historical as-of replay must not surface rows past the
+    # as-of trade date.
+    # ------------------------------------------------------------------
+    end_date_anchor = params.as_of_date or params.end_date
+
+    # ------------------------------------------------------------------
     # Fetch the wide panel + universe metadata via the shared
     # backend.  The backend owns the structural
     # ``instrument_type='policy_future' AND is_rolling_contract=
@@ -215,7 +231,7 @@ def build_policy_futures_strip_panel(
         strip_positions=resolved_strip_positions,
         field_name=field_name_resolved,
         start_date=params.start_date,
-        end_date=params.end_date,
+        end_date=end_date_anchor,
         ffill_limit_days=ffill_limit,
     )
     if universe_meta.empty:
@@ -241,7 +257,7 @@ def build_policy_futures_strip_panel(
                 f"strip_positions={resolved_strip_positions!r}, "
                 f"field_name={field_name_resolved!r} between "
                 f"{params.start_date.isoformat()} and "
-                f"{params.end_date.isoformat() if params.end_date else 'latest'}.  "
+                f"{end_date_anchor.isoformat() if end_date_anchor else 'latest'}.  "
                 "Verify the policy_futures playbook ingestion "
                 "(see rates_agent/playbooks/policy_futures.yml — "
                 "V1 ingested universe: SOFR_FUT / SONIA_FUT / "
@@ -582,6 +598,9 @@ def build_policy_futures_strip_panel(
         "start_date": params.start_date.isoformat(),
         "end_date": (
             params.end_date.isoformat() if params.end_date else None
+        ),
+        "as_of_date": (
+            params.as_of_date.isoformat() if params.as_of_date else None
         ),
         "curve_families": resolved_curve_families_in_panel,
         "strip_positions": panel_strip_positions,

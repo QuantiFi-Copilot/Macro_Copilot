@@ -45,6 +45,7 @@ NOT level/slope/curvature.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -191,6 +192,19 @@ class YieldChangeAttributionPcaInput(BaseModel):
             "the inline PCA fit.  When None (default), falls "
             "through to YAML's default_field_name.  Same sentinel "
             "pattern as the rest of the rates roster."
+        ),
+    )
+    as_of_date: Optional[date] = Field(
+        default=None,
+        description=(
+            "Optional as-of date (YYYY-MM-DD): compute as of this trade "
+            "date instead of the latest available data.  None → latest "
+            "(live snapshot).  Supply a date for a historical, replayable "
+            "view.  Caps both the inline PCA fit (passed through to "
+            "pca_yield_curve) and the change-window panel fetch at this "
+            "trade date.  On the pasted-loadings path the change-window "
+            "panel is still capped here, but the loadings themselves carry "
+            "their own (paste-supplied) fit-window provenance."
         ),
     )
 

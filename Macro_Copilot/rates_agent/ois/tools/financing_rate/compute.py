@@ -114,12 +114,21 @@ def compute_financing_rate(
         )
     elif method == "overnight_index_proxy":
         # Pydantic validator already enforced proxy_curve is set + valid.
+        # as_of_date anchors the upper bound of the trade-date window:
+        # a historical replay caps the proxy series at the as-of trade
+        # date.  None → keep the caller's requested ``end_date`` (live
+        # snapshot, byte-identical to pre-as_of behaviour).  Never
+        # extend past the requested window, so cap to min(end_date,
+        # as_of_date) when an as-of date is supplied.
+        proxy_end = params.end_date
+        if params.as_of_date is not None:
+            proxy_end = min(params.end_date, params.as_of_date)
         try:
             rate_series = fetch_overnight_index_series(
                 engine=engine,
                 proxy_curve=params.proxy_curve,
                 start_date=params.start_date,
-                end_date=params.end_date,
+                end_date=proxy_end,
             )
         except ValueError as exc:
             return {"error": str(exc)}

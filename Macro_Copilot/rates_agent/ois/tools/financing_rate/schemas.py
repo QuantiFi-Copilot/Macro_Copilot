@@ -74,6 +74,17 @@ class FinancingRateInput(BaseModel):
         ...,
         description="Latest date to include (inclusive).",
     )
+    as_of_date: Optional[date] = Field(
+        default=None,
+        description=(
+            "Optional as-of date (YYYY-MM-DD): compute as of this trade "
+            "date instead of the latest available data.  None → latest "
+            "(live snapshot).  Supply a date for a historical, replayable "
+            "view.  When set, caps the financing-rate window's upper bound "
+            "to this trade date (never extends past the requested "
+            "``end_date``)."
+        ),
+    )
 
     # --- Per-method params ------------------------------------------------
     constant_rate_pct: Optional[float] = Field(

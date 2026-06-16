@@ -65,7 +65,7 @@ from rates_agent.ois.tools.curve_spread.schemas import (
     OISCurveSpreadOutput,
     OISCurveSpreadTimeSeriesRow,
 )
-from shared.analytics.rates_fetch import fetch_tenor_pair
+from shared.analytics.rates_fetch import fetch_tenor_pair, latest_trade_date
 from shared.analytics.spreads import (
     compute_spread_bps,
     pivot_and_align_tenors,
@@ -137,9 +137,30 @@ def calculate_ois_curve_spread(
     # ------------------------------------------------------------------
     # 1. Date window — fetch enough warm-up history so the rolling
     #    z-score is fully populated from the first displayed row.
+    #
+    #    Anchor to the requested ``as_of_date`` (historical, replayable
+    #    view) or, when None, the latest available trade_date on this
+    #    curve family / field (the live snapshot), falling back to
+    #    ``date.today()`` only when no rows match (engine probe returns
+    #    None — e.g. offline unit tests with ``engine=None``).  The pair
+    #    spans TWO tenors, so the anchor is scoped by ``curve_family`` +
+    #    ``field_name`` only (passing a single ``tenor`` would bias the
+    #    cap toward one leg's last observation).  With ``as_of_date=None``
+    #    the anchor resolves to the curve's latest trade_date, so the
+    #    ``end_date`` cap drops zero rows → byte-identical to the
+    #    pre-as-of query.
     # ------------------------------------------------------------------
     buffer_calendar_days = int(z_window * buffer_mult)
-    start_date = date.today() - timedelta(
+    anchor = (
+        params.as_of_date
+        or latest_trade_date(
+            engine,
+            curve_family=params.curve_family,
+            field_name=field_name_resolved,
+        )
+        or date.today()
+    )
+    start_date = anchor - timedelta(
         days=params.lookback_days + buffer_calendar_days
     )
 
@@ -153,6 +174,7 @@ def calculate_ois_curve_spread(
         long_tenor=params.long_tenor,
         field_name=field_name_resolved,
         start_date=start_date,
+        end_date=anchor,
     )
 
     if raw_df.empty:

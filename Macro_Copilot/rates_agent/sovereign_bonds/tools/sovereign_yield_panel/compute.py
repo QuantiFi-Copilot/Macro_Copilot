@@ -33,6 +33,7 @@ from shared.analytics.panel_assembly import (
     fetch_instrument_panel,
     infer_units_for_field,
 )
+from shared.analytics.rates_fetch import latest_trade_date
 from shared.artifacts.lineage import Lineage, PrimitiveStep
 from shared.artifacts.missingness import RawNoCleaning
 from shared.artifacts.types import Panel
@@ -88,11 +89,39 @@ def build_sovereign_yield_panel(
         for leg in params.legs
     ]
 
+    # ------------------------------------------------------------------
+    # Resolve the as-of anchor.  ``as_of_date`` (the optional per-query
+    # historical-replay knob) caps the panel's trade_date window to the
+    # supplied trade date.  None → the latest available trade_date in the
+    # DB (live snapshot) → fall back to ``date.today()`` only when the
+    # probe finds no rows (e.g. the offline unit-test path with
+    # ``engine=None`` and a monkeypatched fetcher).  This panel spans an
+    # arbitrary list of ``(curve_family, tenor)`` legs, so there is no
+    # single curve_family/tenor to anchor on — we probe the latest
+    # in-DB trade_date across the whole universe.  When ``as_of_date`` is
+    # None the anchor equals (or post-dates) every observed date, so the
+    # cap drops zero rows beyond what the caller's ``end_date`` already
+    # does and behaviour is byte-identical to before.
+    # ------------------------------------------------------------------
+    anchor = (
+        params.as_of_date
+        or latest_trade_date(engine)
+        or date.today()
+    )
+    # Combine the caller's explicit ``end_date`` window with the as-of
+    # anchor — the tighter (earlier) of the two wins.  ``params.end_date``
+    # None → anchor alone caps; both present → ``min``.
+    effective_end_date: date = (
+        anchor
+        if params.end_date is None
+        else min(params.end_date, anchor)
+    )
+
     raw_panel = fetch_instrument_panel(
         engine=engine,
         leg_specs=leg_triples,
         start_date=params.start_date,
-        end_date=params.end_date,
+        end_date=effective_end_date,
         ffill_limit_days=ffill_limit,
     )
     if raw_panel.empty:

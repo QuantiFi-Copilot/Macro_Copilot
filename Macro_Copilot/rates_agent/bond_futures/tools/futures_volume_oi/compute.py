@@ -227,10 +227,26 @@ def calculate_futures_volume_oi(
     oi_trailing_window, volume_avg_window = _check_wire_frozen_windows(config)
 
     # ------------------------------------------------------------------
-    # 1. Date window
+    # 1. Date window + as-of anchor
+    #
+    # ``as_of_date`` upper-bounds the read so the snapshot is a
+    # historical, replayable view.  For rolling-generic stems the anchor
+    # is resolved directly from the LLM input (or wall-clock when None),
+    # NOT via ``latest_trade_date`` — that probe filters the enriched
+    # view by (curve_family, tenor) and cannot scope a single rolling
+    # stem (the view's ``contract_code`` COALESCEs the per-window
+    # underlying onto the master stem; see the module docstring + the
+    # sibling ``scan_bond_futures_extremes`` anchor pattern).  When
+    # ``as_of_date`` is None the anchor is ``date.today()`` and
+    # ``end_date=anchor`` drops zero rows (futures data is never in the
+    # future), so behaviour is byte-identical to the pre-as-of build.
+    # The output's ``as_of_date`` is still resolved post-fetch from the
+    # data's latest aligned observation (``volume.index[-1]``), so a
+    # stale feed is reported honestly regardless of the anchor.
     # ------------------------------------------------------------------
+    anchor = params.as_of_date or date.today()
     buffer_calendar_days = int(z_window * buffer_mult)
-    start_date = date.today() - timedelta(
+    start_date = anchor - timedelta(
         days=params.lookback_days + buffer_calendar_days
     )
 
@@ -241,6 +257,7 @@ def calculate_futures_volume_oi(
         engine=engine,
         curve_family=params.curve_family,
         contract_code=params.contract_code,
+        end_date=anchor,
     )
     if reference is None:
         return {
@@ -279,6 +296,7 @@ def calculate_futures_volume_oi(
         contract_code=params.contract_code,
         field_name=volume_field,
         start_date=start_date,
+        end_date=anchor,
     )
     raw_oi_df = fetch_rolling_generic_series(
         engine=engine,
@@ -286,6 +304,7 @@ def calculate_futures_volume_oi(
         contract_code=params.contract_code,
         field_name=oi_field,
         start_date=start_date,
+        end_date=anchor,
     )
 
     if raw_volume_df.empty:

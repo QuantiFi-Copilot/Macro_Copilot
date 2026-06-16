@@ -249,6 +249,7 @@ def _ssfx_fetch_cross_domain_pair(
     ois_field_name: str,
     tenor: str,
     start_date: date,
+    end_date: Optional[date] = None,  # accepted (as-of cap); ignored by synthetic
 ) -> pd.DataFrame:
     """Synthetic ``shared.analytics.rates_fetch.fetch_cross_domain_pair``.
 
@@ -279,6 +280,7 @@ def _ssfx_fetch_full_curve(
     curve_family: str,
     field_name: str,
     start_date: date,
+    end_date: Optional[date] = None,  # accepted (as-of cap); ignored by synthetic
 ) -> pd.DataFrame:
     """Synthetic ``rates_agent.ois.tools.forward_rate.compute._fetch_full_curve``.
 

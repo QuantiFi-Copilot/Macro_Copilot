@@ -279,7 +279,7 @@ def test_futures_volume_oi_parity(fixture_path: Path) -> None:
     # 6. Patch and run. Patches target the COMPUTE module specifically.
     target = "rates_agent.bond_futures.tools.futures_volume_oi.compute"
 
-    def _series_side_effect(*, engine, curve_family, contract_code, field_name, start_date):
+    def _series_side_effect(*, engine, curve_family, contract_code, field_name, start_date, end_date=None):
         # The tool reads default_volume_field / default_open_interest_field
         # from config.yaml — currently "PX_VOLUME" / "OPEN_INT". Route
         # by field_name so a future YAML rename still gets the right

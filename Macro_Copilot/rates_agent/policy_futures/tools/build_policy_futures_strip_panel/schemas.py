@@ -167,6 +167,14 @@ class BuildPolicyFuturesStripPanelInput(BaseModel):
             "include every observation up to the latest in the DB."
         ),
     )
+    as_of_date: Optional[date] = Field(
+        default=None,
+        description=(
+            "Optional as-of date (YYYY-MM-DD): compute as of this trade "
+            "date instead of the latest available data.  None → latest "
+            "(live snapshot).  Supply a date for a historical, replayable view."
+        ),
+    )
     curve_families: Optional[List[PolicyFuturesStripCurveFamily]] = Field(
         default=None,
         description=(
@@ -242,6 +250,12 @@ class BuildPolicyFuturesStripPanelInput(BaseModel):
         if self.end_date is not None and self.end_date < self.start_date:
             raise ValueError(
                 f"end_date {self.end_date} cannot be before "
+                f"start_date {self.start_date}."
+            )
+
+        if self.as_of_date is not None and self.as_of_date < self.start_date:
+            raise ValueError(
+                f"as_of_date {self.as_of_date} cannot be before "
                 f"start_date {self.start_date}."
             )
 

@@ -231,7 +231,8 @@ def _run_inline(params, panel_by_tenor_lookup, config=None):
     """Mock fetch_tenor_group + the inline PCA call so the inline-fit
     path runs without DB / without re-doing the PCA primitive (which
     would re-fetch its own panel)."""
-    def fake_fetch(*, engine, curve_family, tenors, field_name, start_date):
+    def fake_fetch(*, engine, curve_family, tenors, field_name, start_date,
+                   end_date=None):
         # Filter the synthetic panel down to the requested tenors.
         return panel_by_tenor_lookup(tenors)
 
@@ -259,7 +260,8 @@ def _run_inline(params, panel_by_tenor_lookup, config=None):
 def _run_pasted(params, panel_by_tenor_lookup, config=None):
     """Mock fetch_tenor_group only — pasted-loadings path doesn't
     invoke pca_yield_curve."""
-    def fake_fetch(*, engine, curve_family, tenors, field_name, start_date):
+    def fake_fetch(*, engine, curve_family, tenors, field_name, start_date,
+                   end_date=None):
         return panel_by_tenor_lookup(tenors)
 
     with patch(

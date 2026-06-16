@@ -79,6 +79,7 @@ DataFrame so they cannot drift.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -205,6 +206,17 @@ class CrossCountryBreakevenSpreadSimpleInput(BaseModel):
             "(empty string for MCP, missing param for FastAPI) to "
             "None before constructing this input — otherwise the "
             "YAML default is silently shadowed."
+        ),
+    )
+    as_of_date: Optional[date] = Field(
+        default=None,
+        description=(
+            "Optional as-of date (YYYY-MM-DD): compute as of this trade "
+            "date instead of the latest available data.  None → latest "
+            "(live snapshot).  Supply a date for a historical, replayable "
+            "view.  Threaded into BOTH inner breakeven_inflation_simple "
+            "legs so each country leg is anchored to the same as-of trade "
+            "date; the inner primitive caps every fetch at this upper bound."
         ),
     )
 

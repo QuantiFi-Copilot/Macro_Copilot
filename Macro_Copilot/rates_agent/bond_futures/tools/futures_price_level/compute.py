@@ -82,6 +82,7 @@ from shared.analytics.levels import (
 from shared.analytics.rates_fetch import (
     fetch_rolling_generic_reference,
     fetch_rolling_generic_series,
+    latest_trade_date,
 )
 from shared.analytics.spreads import rolling_zscore, safe_float
 from shared.config import ToolConfig, load_tool_config
@@ -203,8 +204,30 @@ def calculate_futures_price_level(
     # ------------------------------------------------------------------
     # 1. Date window
     # ------------------------------------------------------------------
+    # Anchor to the latest available trade_date (not date.today()) so the
+    # window resolves to real data when ingestion lags; an explicit
+    # ``params.as_of_date`` overrides it for a historical, replayable view.
+    # The probe is scoped to the same (curve_family, field_name) universe
+    # the tool fetches over — ``latest_trade_date`` cannot take
+    # ``contract_code`` (the rolling-generic disambiguator lives only on
+    # instrument_master, not the enriched view the probe reads), so the
+    # family/field scope is the closest available match; with
+    # ``as_of_date=None`` and a live engine this resolves to the latest
+    # trade_date so ``end_date=anchor`` drops zero rows. Under the
+    # compute-layer unit tests (engine=None) the probe returns None and the
+    # fallback to ``date.today()`` preserves the historical behaviour
+    # exactly.
+    anchor = (
+        params.as_of_date
+        or latest_trade_date(
+            engine,
+            curve_family=params.curve_family,
+            field_name=field_name_resolved,
+        )
+        or date.today()
+    )
     buffer_calendar_days = int(z_window * buffer_mult)
-    start_date = date.today() - timedelta(
+    start_date = anchor - timedelta(
         days=params.lookback_days + buffer_calendar_days
     )
 
@@ -215,6 +238,7 @@ def calculate_futures_price_level(
         engine=engine,
         curve_family=params.curve_family,
         contract_code=params.contract_code,
+        end_date=anchor,
     )
     if reference is None:
         return {
@@ -254,6 +278,7 @@ def calculate_futures_price_level(
         contract_code=params.contract_code,
         field_name=field_name_resolved,
         start_date=start_date,
+        end_date=anchor,
     )
 
     if raw_df.empty:

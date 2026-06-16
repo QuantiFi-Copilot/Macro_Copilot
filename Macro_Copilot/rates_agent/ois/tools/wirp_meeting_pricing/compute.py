@@ -92,7 +92,10 @@ from rates_agent.ois.tools.wirp_meeting_pricing.schemas import (
     WirpMeetingPricingOutput,
     WirpMeetingSnapshot,
 )
-from shared.analytics.rates_fetch import fetch_wirp_meeting_snapshots
+from shared.analytics.rates_fetch import (
+    fetch_wirp_meeting_snapshots,
+    latest_trade_date,
+)
 from shared.config import ToolConfig, load_tool_config
 
 
@@ -257,9 +260,37 @@ def calculate_wirp_meeting_pricing(
     past_horizon_days = int(config.convention_value("past_horizon_days"))
 
     # ------------------------------------------------------------------
+    # Resolve the as-of observation anchor (optional historical replay).
+    #
+    #   anchor = as_of_date  →  latest_trade_date(wirp_meeting)  →  today
+    #
+    # The anchor serves two roles:
+    #   1. ``end_date=anchor`` caps the WIRP OBSERVATION trade_date in the
+    #      fetcher's DISTINCT ON, so the per-meeting snapshot is the latest
+    #      read on or before the anchor (deterministic replay).
+    #   2. For ``next_n_meetings`` it becomes the reference "today" for the
+    #      forward meeting-date window, so a historical as_of view returns
+    #      the meetings that were forward AS OF that date.
+    #
+    # ZERO-REGRESSION: when as_of_date is None, anchor resolves to the
+    # latest available trade_date (the global wirp_meeting max), so
+    # ``end_date=anchor`` drops zero rows (no observation is newer than the
+    # latest) and the forward window's reference stays at the current
+    # trade-date head — behaviour is byte-identical to the prior
+    # ``date.today()`` window for the live snapshot.  Under the offline
+    # unit tests (mocked fetcher, MagicMock/None engine) the probe returns
+    # None and the anchor falls back to the patched ``date.today()``.
+    # ------------------------------------------------------------------
+    anchor = (
+        params.as_of_date
+        or latest_trade_date(engine, instrument_type="wirp_meeting")
+        or date.today()
+    )
+
+    # ------------------------------------------------------------------
     # Determine the meeting-date filter window from selection_mode
     # ------------------------------------------------------------------
-    today = date.today()
+    today = params.as_of_date or date.today()
     if params.selection_mode == "next_n_meetings":
         # Forward window — from today to ``forward_horizon_days`` per
         # config (sourced from wirp.yml's Stage-B-verified band per
@@ -292,6 +323,7 @@ def calculate_wirp_meeting_pricing(
         central_bank=params.central_bank,
         earliest_meeting_date=earliest_meeting_date,
         latest_meeting_date=latest_meeting_date,
+        end_date=anchor,
     )
 
     if raw_df.empty:

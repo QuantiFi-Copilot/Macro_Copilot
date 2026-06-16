@@ -354,6 +354,7 @@ def calculate_cross_market_inflation_swap_spread(
             tenor=params.tenor,
             lookback_days=extended_lookback_days,
             field_name=field_name_resolved,
+            as_of_date=params.as_of_date,
         ),
         config=config,
     )
@@ -376,6 +377,7 @@ def calculate_cross_market_inflation_swap_spread(
             tenor=params.tenor,
             lookback_days=extended_lookback_days,
             field_name=field_name_resolved,
+            as_of_date=params.as_of_date,
         ),
         config=config,
     )

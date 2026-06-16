@@ -76,6 +76,7 @@ NOT percent).  series_name pattern:
 
 from __future__ import annotations
 
+from datetime import date
 from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -166,6 +167,18 @@ class InflationSwapCurveSpreadInput(BaseModel):
             "shadowed.  See the curve_move_classifier "
             "wrapper-shadowing fix (commit b2605ee) for the "
             "canonical pattern."
+        ),
+    )
+    as_of_date: Optional[date] = Field(
+        default=None,
+        description=(
+            "Optional as-of date (YYYY-MM-DD): compute as of this trade "
+            "date instead of the latest available data.  None → latest "
+            "(live snapshot).  Supply a date for a historical, replayable "
+            "view.  Threaded into BOTH endpoint "
+            "``inflation_swap_rate_level`` calls so the short- and "
+            "long-tenor ZCIS legs are anchored to the same historical "
+            "trade date."
         ),
     )
 

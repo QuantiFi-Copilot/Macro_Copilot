@@ -174,14 +174,29 @@ def get_otr_history(
     # ------------------------------------------------------------------
     # 1. Window
     # ------------------------------------------------------------------
-    today = date.today()
-    window_start = today - timedelta(days=params.lookback_days)
-    window_end = today
+    # Anchor the window's upper bound to the requested as-of trade date
+    # when supplied (historical, replayable view); otherwise to the
+    # caller's wall clock (live snapshot).  With ``as_of_date=None`` the
+    # anchor is ``date.today()`` so ``window_end`` and the ``end_date``
+    # cap below are both ``today`` — zero rows are dropped and the
+    # behaviour is byte-identical to the pre-as-of path.  This tool reads
+    # ``macro_data.otr_history`` (SCD2 identifier rows), not the
+    # ``v_market_data_daily_enriched`` view ``latest_trade_date`` probes,
+    # and ``latest_trade_date`` has no ``country`` filter to scope the OTR
+    # slot — so the anchor falls straight through to ``date.today()``
+    # rather than a market-data probe that would not match this table.
+    anchor = params.as_of_date or date.today()
+    window_start = anchor - timedelta(days=params.lookback_days)
+    window_end = anchor
 
     # ------------------------------------------------------------------
     # 2. Fetch — through the shared analytics helper so a future
     # cash-bond primitive (e.g. otr_ofr_spread) resolves OTR slots
     # through the same SQL definition (P10 — single source of truth).
+    # ``end_date=anchor`` caps the intersection upper boundary so the
+    # transition log never surfaces an OTR window that only becomes
+    # effective after the requested as-of (no-op when anchor == window_end,
+    # i.e. the live path).
     # ------------------------------------------------------------------
     rows = fetch_otr_transitions(
         engine=engine,
@@ -189,6 +204,7 @@ def get_otr_history(
         tenor=params.tenor,
         window_start=window_start,
         window_end=window_end,
+        end_date=anchor,
     )
 
     # ------------------------------------------------------------------
@@ -222,7 +238,7 @@ def get_otr_history(
     current_metrics = OtrHistoryCurrentMetrics(
         country=params.country,
         tenor=params.tenor,
-        as_of_date=today.isoformat(),
+        as_of_date=anchor.isoformat(),
         otr_instrument_id=open_row.otr_instrument_id if open_row else None,
         cusip=open_row.cusip if open_row else None,
         isin=open_row.isin if open_row else None,

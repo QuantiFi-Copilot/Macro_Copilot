@@ -311,6 +311,7 @@ def calculate_forward_breakeven_simple(
             tenor=params.start_tenor,
             lookback_days=extended_lookback_days,
             field_name=params.field_name,
+            as_of_date=params.as_of_date,
         ),
         config=config,
     )
@@ -334,6 +335,7 @@ def calculate_forward_breakeven_simple(
             tenor=params.end_tenor,
             lookback_days=extended_lookback_days,
             field_name=params.field_name,
+            as_of_date=params.as_of_date,
         ),
         config=config,
     )

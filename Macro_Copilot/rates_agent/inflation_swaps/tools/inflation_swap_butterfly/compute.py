@@ -364,6 +364,7 @@ def calculate_inflation_swap_butterfly(
                 tenor=tenor,
                 lookback_days=extended_lookback_days,
                 field_name=params.field_name,
+                as_of_date=params.as_of_date,
             ),
             config=config,
         )

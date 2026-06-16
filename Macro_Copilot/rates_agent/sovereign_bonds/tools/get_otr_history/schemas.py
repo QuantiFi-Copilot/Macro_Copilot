@@ -42,6 +42,7 @@ on ``lookback_days``.
 from __future__ import annotations
 
 import re
+from datetime import date
 from typing import List, Optional
 
 from pydantic import BaseModel, Field, field_validator
@@ -116,6 +117,17 @@ class OtrHistoryInput(BaseModel):
             "this shared key — PR13 cross-config consistency).  Per "
             "PR8, this is the single LLM-controlled central "
             "methodology knob for this primitive."
+        ),
+    )
+    as_of_date: Optional[date] = Field(
+        default=None,
+        description=(
+            "Optional as-of date (YYYY-MM-DD): compute as of this trade "
+            "date instead of the latest available data.  None → latest "
+            "(live snapshot).  Supply a date for a historical, replayable "
+            "view.  Anchors the lookback window's upper bound and caps the "
+            "OTR transition log so windows that only become effective after "
+            "the as-of date are never surfaced."
         ),
     )
 

@@ -49,6 +49,7 @@ unit tests can monkeypatch them via
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -65,6 +66,7 @@ from shared.analytics.panel_assembly import (
     fetch_linker_universe,
     infer_units_for_field,
 )
+from shared.analytics.rates_fetch import latest_trade_date
 from shared.artifacts.lineage import Lineage, PrimitiveStep
 from shared.artifacts.missingness import RawNoCleaning
 from shared.artifacts.types import Panel
@@ -185,6 +187,40 @@ def build_linker_panel(
         }
 
     # ------------------------------------------------------------------
+    # Resolve the as-of anchor.  ``as_of_date`` (the optional per-query
+    # historical-replay knob) caps the panel's trade_date window to the
+    # supplied trade date.  None → the latest available trade_date for
+    # the inflation-linker universe (live snapshot) → fall back to
+    # ``date.today()`` only when the probe finds no rows (e.g. the
+    # offline unit-test path with ``engine=None`` and a monkeypatched
+    # fetcher).  ``latest_trade_date`` takes a single scalar
+    # ``curve_family``, so the multi-family linker universe is anchored
+    # on the structural ``instrument_type='inflation_linker'`` +
+    # ``field_name`` filter only (the same filter the data fetch
+    # applies across all four families); when ``as_of_date`` is None
+    # the anchor equals the latest in-DB trade_date, so the cap drops
+    # zero rows beyond what the caller's ``end_date`` already does and
+    # behaviour is byte-identical to before.
+    # ------------------------------------------------------------------
+    anchor = (
+        params.as_of_date
+        or latest_trade_date(
+            engine,
+            instrument_type="inflation_linker",
+            field_name=field_name_resolved,
+        )
+        or date.today()
+    )
+    # Combine the caller's explicit ``end_date`` window with the as-of
+    # anchor — the tighter (earlier) of the two wins.  ``params.end_date``
+    # None → anchor alone caps; both present → ``min``.
+    effective_end_date: date = (
+        anchor
+        if params.end_date is None
+        else min(params.end_date, anchor)
+    )
+
+    # ------------------------------------------------------------------
     # Fetch the wide panel via the shared backend.  The backend
     # owns the structural ``instrument_type='inflation_linker'``
     # guard so a future second caller cannot bypass it.
@@ -194,7 +230,7 @@ def build_linker_panel(
         curve_families=resolved_curve_families,
         field_name=field_name_resolved,
         start_date=params.start_date,
-        end_date=params.end_date,
+        end_date=effective_end_date,
         ffill_limit_days=ffill_limit,
     )
     if raw_panel.empty:

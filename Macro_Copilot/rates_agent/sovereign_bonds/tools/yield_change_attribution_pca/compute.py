@@ -87,7 +87,7 @@ from rates_agent.sovereign_bonds.tools.yield_change_attribution_pca.schemas impo
     YieldChangeAttributionPcaMetrics,
     YieldChangeAttributionPcaOutput,
 )
-from shared.analytics.rates_fetch import fetch_tenor_group
+from shared.analytics.rates_fetch import fetch_tenor_group, latest_trade_date
 from shared.analytics.spreads import pivot_and_align_tenors
 from shared.config import ToolConfig, load_tool_config
 from shared.schemas import PastedPcaLoadings
@@ -438,6 +438,7 @@ def _acquire_fit_inline(
     n_components: int,
     change_frequency: str,
     field_name: Optional[str],
+    as_of_date: Optional[date] = None,
 ) -> Tuple[Optional[_LoadingsBundle], Optional[Dict[str, Any]]]:
     """Call pca_yield_curve's compute() and convert the result into
     the internal bundle.  Returns (bundle, None) on success or
@@ -461,6 +462,7 @@ def _acquire_fit_inline(
             n_components=n_components,
             change_frequency=change_frequency,  # type: ignore[arg-type]
             field_name=field_name,
+            as_of_date=as_of_date,
         )
     except Exception as exc:
         return None, {
@@ -608,6 +610,7 @@ def calculate_yield_change_attribution_pca(
             n_components=params.n_components,
             change_frequency=params.change_frequency,
             field_name=field_name_resolved,
+            as_of_date=params.as_of_date,
         )
         if err is not None:
             # Forward the inline pca_yield_curve error envelope
@@ -628,12 +631,31 @@ def calculate_yield_change_attribution_pca(
     requested_end = pd.Timestamp(params.end_date)
     fetch_start = (requested_start - timedelta(days=BUFFER_CALENDAR_DAYS)).date()
 
+    # Anchor the change-window panel to the as-of trade date (or the
+    # latest available trade_date, or today) so end_date caps the fetch
+    # exactly as the sibling rates roster does.  With as_of_date=None the
+    # anchor resolves to the latest available trade_date and end_date
+    # drops zero rows → byte-identical to the pre-wiring behaviour.  The
+    # latest_trade_date probe mirrors the fetch_tenor_group filter shape
+    # (curve_family + field_name; tenor omitted because the panel spans
+    # bundle.tenors_used).
+    anchor = (
+        params.as_of_date
+        or latest_trade_date(
+            engine,
+            curve_family=params.curve_family,
+            field_name=field_name_resolved,
+        )
+        or date.today()
+    )
+
     raw_df = fetch_tenor_group(
         engine=engine,
         curve_family=params.curve_family,
         tenors=bundle.tenors_used,
         field_name=field_name_resolved,
         start_date=fetch_start,
+        end_date=anchor,
     )
     if raw_df.empty:
         return {

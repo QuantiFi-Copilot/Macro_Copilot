@@ -94,6 +94,7 @@ Validation layering
 
 from __future__ import annotations
 
+from datetime import date
 from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -150,6 +151,15 @@ class FuturesVolumeOIInput(BaseModel):
             "trailing range window (oi_trailing_range_window_days, locked "
             "at 252 in V1), or the volume short-context window "
             "(volume_avg_window_days, locked at 22 in V1)."
+        ),
+    )
+    as_of_date: Optional[date] = Field(
+        default=None,
+        description=(
+            "Optional as-of date (YYYY-MM-DD): compute as of this trade "
+            "date instead of the latest available data.  None → latest "
+            "(live snapshot).  Supply a date for a historical, replayable "
+            "view."
         ),
     )
 

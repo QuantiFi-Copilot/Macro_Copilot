@@ -287,6 +287,7 @@ def calculate_breakeven_curve_spread(
             tenor=params.short_tenor,
             lookback_days=extended_lookback_days,
             field_name=params.field_name,
+            as_of_date=params.as_of_date,
         ),
         config=config,
     )
@@ -310,6 +311,7 @@ def calculate_breakeven_curve_spread(
             tenor=params.long_tenor,
             lookback_days=extended_lookback_days,
             field_name=params.field_name,
+            as_of_date=params.as_of_date,
         ),
         config=config,
     )

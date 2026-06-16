@@ -150,7 +150,7 @@ def _run(
     # right frame for each call via a closure-captured iterator.
     fetch_calls: list[str] = []
 
-    def _series_side_effect(*, engine, curve_family, contract_code, field_name, start_date):
+    def _series_side_effect(*, engine, curve_family, contract_code, field_name, start_date, end_date=None):
         fetch_calls.append(field_name)
         # Default-config field names: PX_VOLUME / OPEN_INT.
         if field_name in ("PX_VOLUME", "VOLUME"):
@@ -453,7 +453,7 @@ class TestConventionOverrides:
 
         captured_fields: list[str] = []
 
-        def _spy_side_effect(*, engine, curve_family, contract_code, field_name, start_date):
+        def _spy_side_effect(*, engine, curve_family, contract_code, field_name, start_date, end_date=None):
             captured_fields.append(field_name)
             if field_name == "FUT_VOLUME_X":
                 return _synthetic_volume_df()
