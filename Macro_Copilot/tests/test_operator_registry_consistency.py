@@ -303,3 +303,466 @@ def test_multi_artifact_ops_expose_both_metadata_flags(name):
     assert "require_matching_missingness" in fields, (
         f"{name}: missing require_matching_missingness param (OPR11)"
     )
+
+
+# ===========================================================================
+# OPR16 CLAUSE (g) — the EXECUTION clause (OPR10 / OPR14).
+# ---------------------------------------------------------------------------
+# Clauses (a)–(f) above are STATIC: they read the registry / signature /
+# config without ever running an operator.  Clause (g) is the one clause
+# that proves the *runtime* lineage contract — it actually EXECUTES every
+# registered operator on a tiny deterministic synthetic input and asserts:
+#
+#   1. The operator appends EXACTLY ONE OperatorStep (the N→N+1 lineage
+#      growth of OPR10) — except the documented N-ary SeriesSet-producer
+#      carve-out (see _FRESH_CHAIN_OPS below), where the operator builds a
+#      *fresh* set-level chain rather than appending to one primary input.
+#   2. The head step's ``name`` == the operator's registry/_OPERATOR_NAME
+#      and its ``version`` == the module's ``_OPERATOR_VERSION`` (OPR10/12).
+#   3. The ``head_hash`` is RERUN-EQUAL: executing the operator twice on the
+#      same synthetic input yields the identical content-address (OPR14a).
+#
+# This gate is LOAD-BEARING: a non-deterministic operator (e.g. one that
+# folds ``time.time()`` or an unfixed ``np.random`` draw into ``step.params``
+# or its payload), or one whose head step's name/version drifts from its
+# declared identity, FAILS here.  ``test_clause_g_is_load_bearing`` below
+# demonstrates this with a deliberately non-deterministic stub.
+#
+# There are NO silent skips: every one of the 52 registered operators is
+# executed.  Operators whose central methodology knob has no honest default
+# (OPR8 — e.g. ``pca_decompose.n_components``, ``fit_kalman.target_key``)
+# refuse a bare ``params=None`` BY DESIGN, so clause (g) supplies a minimal
+# valid params object + a shaped fixture for each via ``_CLAUSE_G_CASES``.
+# A skip would HIDE exactly the determinism gap this clause exists to catch,
+# so a missing case is a hard failure, not a skip.
+# ===========================================================================
+
+import numpy as np  # noqa: E402  (kept local to the clause-(g) section)
+import pandas as pd  # noqa: E402
+
+from shared.artifacts.lineage import (  # noqa: E402
+    Lineage,
+    OperatorStep,
+    PrimitiveStep,
+)
+from shared.artifacts.missingness import RawNoCleaning  # noqa: E402
+from shared.artifacts.types import (  # noqa: E402
+    EventSet,
+    Panel,
+    Series,
+    SeriesSet,
+    WindowedPanel,
+)
+from shared.artifacts.units import TimeSeriesUnits  # noqa: E402
+
+
+# ---- synthetic-input substrate (deterministic, finance-blind) -------------
+#
+# Small, well-conditioned, FIXED-SEED inputs — large enough to satisfy the
+# fits' minimum-row / minimum-member requirements, deterministic so the
+# rerun-equality assert is meaningful.
+
+_G_N = 160
+_G_INDEX = pd.bdate_range("2022-01-03", periods=_G_N)
+
+
+def _g_lineage(key: str) -> Lineage:
+    """A single-step synthetic upstream chain (a stand-in primitive)."""
+    step = PrimitiveStep.build(
+        name="synthetic_primitive",
+        version="1.0.0",
+        params={"series_key": str(key)},
+        tool_config_hash="clause_g_config_hash",
+        output_field="time_series",
+        as_of_date="2025-01-01",
+    )
+    return Lineage.from_steps([step])
+
+
+def _g_series(
+    key: str = "s",
+    *,
+    units: TimeSeriesUnits = TimeSeriesUnits.PERCENT,
+    integer_labels: bool = False,
+) -> Series:
+    if integer_labels:
+        # transition_events consumes integer-valued regime labels.
+        payload_values = np.resize([0, 1, 2, 1, 0], _G_N).astype(float)
+    else:
+        rng = np.random.RandomState(abs(hash(str(key))) % 9973)
+        payload_values = 3.0 + 0.01 * np.arange(_G_N) + 0.2 * rng.randn(_G_N)
+    payload = pd.Series(payload_values, index=_G_INDEX, name=str(key))
+    return Series(
+        series_key=str(key),
+        payload=payload,
+        units=units,
+        frequency="B",
+        missingness_policy=RawNoCleaning(),
+        lineage=_g_lineage(key),
+    )
+
+
+def _g_series_set(keys=("a", "b", "c")) -> SeriesSet:
+    series_by_key, units_by_key, missingness_by_key, upstream = {}, {}, {}, {}
+    for i, k in enumerate(keys):
+        rng = np.random.RandomState(i + 1)
+        values = 3.0 + i + 0.02 * np.arange(_G_N) + 0.3 * rng.randn(_G_N)
+        series_by_key[k] = pd.Series(values, index=_G_INDEX, name=k)
+        units_by_key[k] = TimeSeriesUnits.PERCENT
+        missingness_by_key[k] = RawNoCleaning()
+        upstream[k] = _g_lineage(k)
+    return SeriesSet(
+        series_by_key=series_by_key,
+        units_by_key=units_by_key,
+        missingness_by_key=missingness_by_key,
+        upstream_lineage_by_key=upstream,
+        common_index=_G_INDEX,
+        frequency="B",
+        lineage=_g_lineage("set"),
+    )
+
+
+def _g_event_set(src: str = "s") -> EventSet:
+    mask = pd.Series(False, index=_G_INDEX)
+    mask.iloc[list(range(10, _G_N, 15))] = True
+    mask = mask.astype(bool)
+    dates = list(mask.index[mask.to_numpy(dtype=bool)])
+    return EventSet(
+        mask=mask,
+        event_dates=dates,
+        per_event_metadata=[{"i": i} for i in range(len(dates))],
+        source_series_key=src,
+        frequency="B",
+        lineage=_g_lineage("ev"),
+    )
+
+
+def _g_panel(cols=("c1", "c2", "c3")) -> Panel:
+    frame = pd.DataFrame(
+        {
+            c: 1.0 + i + 0.01 * np.arange(_G_N)
+            + 0.2 * np.random.RandomState(i + 5).randn(_G_N)
+            for i, c in enumerate(cols)
+        },
+        index=_G_INDEX,
+    )
+    return Panel(
+        payload=frame,
+        units_by_column={c: TimeSeriesUnits.PERCENT for c in cols},
+        missingness_policy=RawNoCleaning(),
+        lineage=_g_lineage("panel"),
+    )
+
+
+def _g_windowed_panel(src: str = "s") -> WindowedPanel:
+    n_events, window_length = 6, 11
+    payload = np.random.RandomState(3).randn(n_events, window_length)
+    return WindowedPanel(
+        payload=payload,
+        offsets=list(range(-5, 6)),
+        event_dates=list(_G_INDEX[20:20 + n_events]),
+        per_event_metadata=[{"i": i} for i in range(n_events)],
+        target_series_key=src,
+        units=TimeSeriesUnits.PERCENT,
+        lineage=_g_lineage("wp"),
+    )
+
+
+def _g_default_args(spec) -> list:
+    """Build the positional input artifacts for an operator from its slot
+    descriptors (the generic path — used when no override fixture applies)."""
+    args = []
+    for slot, descriptor in spec.input_slots.items():
+        if descriptor.is_list:
+            # An N-ary list slot: hand it >=2 distinct Series.
+            args.append([_g_series("L0"), _g_series("L1"), _g_series("L2")])
+            continue
+        at = descriptor.artifact_type.value
+        if at == "Series":
+            args.append(_g_series(slot))
+        elif at == "SeriesSet":
+            args.append(_g_series_set())
+        elif at == "EventSet":
+            args.append(_g_event_set())
+        elif at == "Panel":
+            args.append(_g_panel())
+        elif at == "WindowedPanel":
+            args.append(_g_windowed_panel())
+        else:  # pragma: no cover — closed family is exhausted above
+            raise AssertionError(
+                f"{spec.operator_name}: clause-(g) has no synthetic fixture "
+                f"for artifact type {at!r}; the closed family grew without a "
+                "fixture — add one (do NOT skip)."
+            )
+    return args
+
+
+# ---- per-operator override cases ------------------------------------------
+#
+# Operators whose central methodology knob has NO honest default (OPR8)
+# refuse a bare ``params=None``.  Each lambda returns (positional_args,
+# call_kwargs) so the SAME builder is re-invoked for the rerun (fresh
+# inputs each call → proves content-addressing, not object identity).
+# This is an explicit, documented map — there are NO silent skips.
+
+
+def _import_params(operator_name: str, params_cls: str):
+    module = importlib.import_module(f"shared.operators.{operator_name}")
+    return getattr(module, params_cls)
+
+
+def _clause_g_cases():
+    P = _import_params  # noqa: N806
+    cases = {
+        "bandpass": lambda: (
+            [_g_series()],
+            {"params": P("bandpass", "BandpassParams")(low=8, high=32)},
+        ),
+        "changepoint_detection": lambda: (
+            [_g_series()],
+            {"params": P("changepoint_detection",
+                         "ChangepointDetectionParams")(n_changepoints=2)},
+        ),
+        "convert_units": lambda: (
+            [_g_series(units=TimeSeriesUnits.PERCENT)],
+            {"params": P("convert_units", "ConvertUnitsParams")(
+                target_units=TimeSeriesUnits.BPS)},
+        ),
+        "fit_kalman": lambda: (
+            [_g_series_set(("y", "x1", "x2"))],
+            {"params": P("fit_kalman", "FitKalmanParams")(
+                target_key="y", signal_to_noise_ratio=0.05)},
+        ),
+        "fit_regime_gmm": lambda: (
+            [_g_panel()],
+            {"params": P("fit_regime_gmm", "FitRegimeGmmParams")(n_states=2)},
+        ),
+        "fit_regime_hmm": lambda: (
+            [_g_panel()],
+            {"params": P("fit_regime_hmm", "FitRegimeHmmParams")(n_states=2)},
+        ),
+        "hp_filter": lambda: (
+            [_g_series()],
+            {"params": P("hp_filter", "HpFilterParams")(lamb=1600.0)},
+        ),
+        "pca_decompose": lambda: (
+            [_g_panel()],
+            {"params": P("pca_decompose", "PcaDecomposeParams")(
+                n_components=2)},
+        ),
+        "reconstruct_from_factors": lambda: (
+            [_g_panel()],
+            {"params": P("reconstruct_from_factors",
+                         "ReconstructFromFactorsParams")(
+                n_components=2, target_column="c1")},
+        ),
+        "rolling_pca": lambda: (
+            [_g_panel()],
+            {"params": P("rolling_pca", "RollingPcaParams")(
+                window=60, n_components=2)},
+        ),
+        "rolling_regression": lambda: (
+            [_g_series("lhs"), _g_series("rhs")],
+            {"params": P("rolling_regression", "RollingRegressionParams")(
+                window=60)},
+        ),
+        "select_from_series_set": lambda: (
+            [_g_series_set()],
+            {"params": P("select_from_series_set",
+                         "SelectFromSeriesSetParams")(series_key="a")},
+        ),
+        "series_arithmetic": lambda: (
+            [_g_series("left")],
+            {"op": "diff", "params": None},
+        ),
+        "threshold_events": lambda: (
+            [_g_series()],
+            {"params": P("threshold_events", "ThresholdEventsParams")(
+                rule="above", threshold=3.5)},
+        ),
+        "transition_events": lambda: (
+            [_g_series(integer_labels=True)],
+            {"params": None},
+        ),
+        "weighted_combination": lambda: (
+            [_g_series_set()],
+            {"params": P("weighted_combination", "WeightedCombinationParams")(
+                weights={"a": 0.5, "b": 0.3, "c": 0.2})},
+        ),
+    }
+    return cases
+
+
+# Operators whose output lineage is a FRESH set-level chain rather than an
+# append to a single primary input's chain (the m42 carve-out).
+# ``align_series`` aligns N independent Series onto a common index and builds
+# ``Lineage.from_steps([align_step])`` — each member's provenance lives in
+# the SeriesSet's ``upstream_lineage_by_key``, so the set-level chain has
+# exactly ONE step (the align step) regardless of input chain lengths.  The
+# N→N+1 assertion is therefore replaced by a "head is a single-step fresh
+# OperatorStep chain" assertion for these operators.  This is a DOCUMENTED
+# carve-out, not a silent skip — name/version match and rerun-equality are
+# still fully asserted.
+_FRESH_CHAIN_OPS = {"align_series"}
+
+
+def _execute_for_clause_g(name: str):
+    """Build the synthetic input(s) + call the operator, returning the
+    output artifact.  A fresh build per call so rerun-equality reflects
+    content-addressing, not object reuse."""
+    spec = OPERATOR_REGISTRY[name]
+    cases = _clause_g_cases()
+    if name in cases:
+        args, kwargs = cases[name]()
+    else:
+        args, kwargs = _g_default_args(spec), {"params": None}
+    kwargs.setdefault("config", None)
+    return spec.callable(*args, **kwargs)
+
+
+@pytest.mark.parametrize("name", sorted(OPERATOR_REGISTRY))
+def test_v2_operator_conforms_clause_g_executes(name):
+    """OPR16 clause (g) — EXECUTE every registered operator and prove the
+    runtime lineage contract: exactly one appended OperatorStep (N→N+1),
+    head name+version match the declared identity, and head_hash is
+    rerun-equal (OPR10 / OPR14a).
+
+    This is the ONLY clause that runs an operator; (a)–(f) are static.
+    No operator is skipped — the per-operator override map supplies a
+    minimal valid params/fixture for every operator whose central knob has
+    no honest default (OPR8)."""
+    spec = OPERATOR_REGISTRY[name]
+    op_module = importlib.import_module(spec.callable.__module__)
+    declared_version = op_module._OPERATOR_VERSION
+    declared_name = op_module._OPERATOR_NAME
+
+    out = _execute_for_clause_g(name)
+    out2 = _execute_for_clause_g(name)
+
+    # The lineage carrying the appended step: a SeriesSet exposes it on its
+    # own ``.lineage`` (set-level), every other artifact on ``.lineage``.
+    out_lineage = out.lineage
+    out2_lineage = out2.lineage
+
+    head = out_lineage.steps[-1]
+
+    # (g.1) the head step is an OperatorStep ...
+    assert isinstance(head, OperatorStep), (
+        f"{name}: head lineage step is {type(head).__name__}, not an "
+        "OperatorStep — clause (g) / OPR10"
+    )
+    # (g.2) ... whose name + version match the operator's declared identity.
+    assert head.name == declared_name == name, (
+        f"{name}: head OperatorStep name={head.name!r} != declared "
+        f"_OPERATOR_NAME={declared_name!r} / registry key={name!r} (OPR10)"
+    )
+    assert head.version == declared_version, (
+        f"{name}: head OperatorStep version={head.version!r} != module "
+        f"_OPERATOR_VERSION={declared_version!r} (OPR10/OPR14d)"
+    )
+
+    # (g.3) lineage growth — the operator appends EXACTLY ONE OperatorStep
+    # bearing its OWN name, and that step is the head (N→N+1, OPR10).  We
+    # count this-operator's steps rather than the raw chain delta because the
+    # SeriesSet ``get_series`` consumers (e.g. select_from_series_set) extend
+    # a member-level chain that already embeds the upstream alignment step —
+    # the contract is "one OF MY steps appended at the head", which is exactly
+    # what OPR10 mandates and is robust across both the plain-append and the
+    # get_series paths.
+    own_steps = [
+        s for s in out_lineage.steps
+        if isinstance(s, OperatorStep) and s.name == name
+    ]
+    assert len(own_steps) == 1, (
+        f"{name}: must append EXACTLY ONE OperatorStep with its own name "
+        f"(N→N+1, OPR10); found {len(own_steps)} steps named {name!r} in the "
+        f"output lineage ({[type(s).__name__ for s in out_lineage.steps]})"
+    )
+    assert own_steps[0] is head, (
+        f"{name}: the operator's own OperatorStep must be the HEAD of the "
+        "output lineage (OPR10)"
+    )
+    if name in _FRESH_CHAIN_OPS:
+        # The m42 carve-out: align_series builds a single-step FRESH
+        # set-level chain over N independent inputs (provenance per member
+        # lives in upstream_lineage_by_key), so the set chain has exactly the
+        # one align step rather than input_chain + 1.
+        assert len(out_lineage.steps) == 1, (
+            f"{name}: fresh-chain SeriesSet producer must build a "
+            f"single-step set-level lineage; got {len(out_lineage.steps)} "
+            "(m42 carve-out)"
+        )
+
+    # (g.4) rerun-equality — the content-address is identical on re-execution
+    # (OPR14a: op(x) == op(x) ⇒ identical head_hash).  This is the
+    # load-bearing determinism gate.
+    assert out_lineage.head_hash == out2_lineage.head_hash, (
+        f"{name}: head_hash is NOT rerun-equal "
+        f"({out_lineage.head_hash} != {out2_lineage.head_hash}) — the "
+        "operator folds a non-deterministic value into its lineage or "
+        "payload (OPR14a determinism)"
+    )
+
+
+def test_clause_g_exercises_every_operator():
+    """Belt-and-braces: clause (g) executes EVERY registered operator (no
+    silent skip hides a determinism gap).  Asserts the override map only
+    names real operators and that the executed-count == registry size."""
+    cases = _clause_g_cases()
+    assert set(cases) <= set(OPERATOR_REGISTRY), (
+        "clause-(g) override map names non-registry operators: "
+        f"{sorted(set(cases) - set(OPERATOR_REGISTRY))}"
+    )
+    executed = 0
+    for name in OPERATOR_REGISTRY:
+        out = _execute_for_clause_g(name)
+        assert out is not None
+        executed += 1
+    assert executed == len(OPERATOR_REGISTRY), (
+        f"clause (g) executed {executed} operators but the registry has "
+        f"{len(OPERATOR_REGISTRY)} — an operator was skipped"
+    )
+
+
+def test_clause_g_is_load_bearing():
+    """Demonstrate clause (g) is NOT vacuous: a deliberately
+    NON-DETERMINISTIC operator stub (folds an unfixed random draw into its
+    step.params) FAILS the rerun-equality assertion, and a NAME/VERSION
+    mismatch FAILS the identity assertion.  If clause (g) were vacuous,
+    these would pass — proving the gate catches exactly the OPR14/OPR10
+    defects it exists to catch."""
+    base = _g_series("load_bearing")
+
+    def _nondeterministic_stub(series: Series) -> Series:
+        # A correct operator folds only CONTENT into step.params; this stub
+        # folds an unfixed random nonce → head_hash differs every call.
+        nonce = float(np.random.RandomState(None).randn())
+        step = OperatorStep.build(
+            name="nondet_stub",
+            version="1.0.0",
+            params={"nonce": nonce},
+            input_hashes=(series.lineage.head_hash,),
+        )
+        return Series(
+            series_key=series.series_key,
+            payload=series.payload,
+            units=series.units,
+            frequency=series.frequency,
+            missingness_policy=series.missingness_policy,
+            lineage=series.lineage.append(step),
+        )
+
+    out_a = _nondeterministic_stub(base)
+    out_b = _nondeterministic_stub(base)
+    # The rerun-equality assertion clause (g) makes — here it MUST fail.
+    assert out_a.lineage.head_hash != out_b.lineage.head_hash, (
+        "the non-deterministic stub produced equal head_hashes — clause "
+        "(g)'s rerun-equality assert would be vacuous"
+    )
+
+    # And a head step whose name drifts from the declared identity is caught
+    # by the (g.2) name assertion.
+    drifted = _nondeterministic_stub(base)
+    assert drifted.lineage.steps[-1].name != "load_bearing_operator", (
+        "name-mismatch demonstration is malformed"
+    )

@@ -79,7 +79,24 @@ def _sweep_leaked_fixture_domain() -> None:
         shutil.rmtree(_LEAKABLE_FIXTURE_DOMAIN, ignore_errors=True)
 
 
-def pytest_configure(config) -> None:  # noqa: ARG001 — pytest hook signature
+def pytest_configure(config) -> None:
+    # --- marker registration -------------------------------------------------
+    # ``db_validation``: the Layer-B DB-parity gate (Fable Plan 2 §10 / PR16
+    # triplet 3rd file).  The ``*_sql_validation.py`` scripts are standalone
+    # ``__main__`` runners (excluded from default collection via
+    # ``collect_ignore`` below), so ``pytest tests/`` proves the DB-parity
+    # layer of NONE of them.  ``tests/test_db_validation_gate.py`` carries
+    # this marker and drives the Track-A validators against the real
+    # ``macro-tsdb`` as a gate-checkable suite; it skips cleanly when the DB
+    # is unreachable.  Run it explicitly with ``pytest -m db_validation``.
+    config.addinivalue_line(
+        "markers",
+        "db_validation: Layer-B DB-parity validation against the real "
+        "macro-tsdb (Fable Plan 2 §10 / PR16); skipped when the DB is "
+        "unreachable.  Select with `pytest -m db_validation`.",
+    )
+
+    # --- leaked-fixture sweep ------------------------------------------------
     # Runs once per session, before collection imports
     # orchestrator.domain_registry, so a survivor folder from a prior
     # hard-killed run can't inflate this session's closed-domain family.

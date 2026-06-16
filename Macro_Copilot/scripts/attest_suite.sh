@@ -49,6 +49,21 @@
 #   0  suite genuinely green (>=1 test collected, 0 failures/errors/collec-errs)
 #   1  test failures and/or collection errors  (the honest RED)
 #   2  environment/usage problem (pytest not runnable, etc.)
+#
+# COMPANION GATE — Layer-B DB-parity (Fable Plan 2 §10/§12 / PR16; review M12)
+#   The per-tool ``tests/test_<tool>_sql_validation.py`` validators are
+#   standalone ``__main__`` runners excluded from default collection, so this
+#   full-suite attestation does NOT exercise their DB-parity layer.  That layer
+#   has its own gate-checkable home:
+#     make db-validation
+#       == docker compose run --rm api-server bash -lc \
+#            "cd /app && micromamba run -n macro-env python -m pytest \
+#             tests/test_db_validation_gate.py -m db_validation -p no:cacheprovider -rA"
+#   which runs the 7 Track-A validators against the live macro-tsdb (skips
+#   cleanly when the DB is down).  The §12 Definition-of-Done attestation is
+#   therefore: ``make attest`` (full suite green) AND ``make db-validation``
+#   (DB parity proven) — the second is what backs "the triplet passes against
+#   the real DB".
 # =============================================================================
 
 set -u -o pipefail

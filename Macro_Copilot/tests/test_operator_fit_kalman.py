@@ -180,6 +180,39 @@ class TestHappyPath:
             "beta_x1"
         ].iloc[0]  # NaN
 
+    def test_add_constant_false_drops_alpha_and_one_warmup_row(self):
+        """m24 / OPR16.2: the ``add_constant=False`` branch is lineage-
+        affecting and was previously untested (every other test uses the
+        True default).  Without the intercept the output-key set flips to
+        EXACTLY [beta_x1, beta_x2] (NO ``alpha``), and ``n_params`` drops by
+        one, so the diffuse-prior warmup shrinks to ``n_regressors - 1``."""
+        out = fit_kalman(
+            _series_set(_tvp_frame()),
+            params=FitKalmanParams(
+                target_key="y", signal_to_noise_ratio=0.05,
+                basis="raw_value", add_constant=False,
+            ),
+        )
+        # Output keys: one beta per regressor, and NO alpha intercept.
+        assert list(out.series_by_key.keys()) == ["beta_x1", "beta_x2"]
+        assert "alpha" not in out.series_by_key
+
+        head = out.lineage.steps[-1].params
+        assert head["add_constant"] is False
+        assert head["output_keys"] == ["beta_x1", "beta_x2"]
+        n_regressors = len(head["regressor_keys"])  # == 2 (x1, x2)
+        # add_constant=False ⇒ n_params == n_regressors (no intercept column),
+        # so the warmup head is n_regressors - 1 rows (vs n_regressors with
+        # the constant).  static_ols_coef has one fewer entry too.
+        assert head["n_params"] == n_regressors
+        assert head["n_warmup"] == n_regressors - 1
+        assert len(head["static_ols_coef"]) == n_regressors
+        # Concretely, raw_value basis ⇒ exactly the first (n_regressors - 1)
+        # rows are the warmup NaN, the rest finite.
+        beta = out.series_by_key["beta_x1"]
+        assert beta.iloc[:n_regressors - 1].isna().all()
+        assert beta.iloc[n_regressors - 1:].notna().all()
+
 
 # ===========================================================================
 # 2. Two-tier NaN

@@ -417,6 +417,17 @@ class TestLineagePropagation:
         head = out.lineage.steps[-1]
         assert head.params["require_matching_frequency"] is False
 
+    def test_rerun_head_hash_is_idempotent(self):
+        """OPR14a / OPR16.2 (m22): apply_mask is deterministic — running it
+        twice on the SAME inputs yields the IDENTICAL content-address
+        (head_hash).  A non-deterministic apply_mask (e.g. one that folded a
+        wall-clock or unfixed-random value into step.params) would fail this
+        one-line idempotency assert."""
+        s = _make_series(n=50)
+        mask = _make_mask_via_threshold(s, threshold=4.5)
+        assert apply_mask(s, mask).lineage.head_hash == \
+            apply_mask(s, mask).lineage.head_hash
+
 
 # ===========================================================================
 # 7. Metadata propagation

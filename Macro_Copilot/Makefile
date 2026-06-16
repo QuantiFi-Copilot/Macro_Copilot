@@ -21,7 +21,7 @@
 # work via their native tools (``pytest``, ``npm run …``).
 # =============================================================================
 
-.PHONY: help check-module-parity check-module-parity-strict attest attest-local
+.PHONY: help check-module-parity check-module-parity-strict attest attest-local db-validation
 
 # -----------------------------------------------------------------------------
 # Default: print the available targets.
@@ -62,6 +62,14 @@ help:
 	@echo "                              attestation must use."
 	@echo "  attest-local                Same, but assumes you are already"
 	@echo "                              inside macro-env (no docker wrap)."
+	@echo ""
+	@echo "  db-validation               Run the Layer-B DB-parity GATE"
+	@echo "                              (Fable Plan 2 §10/§12 / PR16) — the"
+	@echo "                              Track-A *_sql_validation scripts"
+	@echo "                              against the live macro-tsdb via"
+	@echo "                              'pytest -m db_validation'.  Skips"
+	@echo "                              cleanly if the DB is down.  Set"
+	@echo "                              DB_VALIDATION_SCOPE=all for all 58."
 
 # -----------------------------------------------------------------------------
 # Honest full-suite attestation (Fable Plan 2 §10/§12 — review finding B5).
@@ -90,6 +98,25 @@ attest:
 
 attest-local:
 	@bash scripts/attest_suite.sh
+
+# -----------------------------------------------------------------------------
+# DB-validation gate (Fable Plan 2 §10/§12 / PR16 — review finding M12).
+# -----------------------------------------------------------------------------
+#
+# The per-tool ``tests/test_<tool>_sql_validation.py`` Layer-B validators are
+# standalone ``__main__`` runners excluded from default collection, so
+# ``pytest tests/`` proved the DB-parity layer of NONE of them — the §12
+# "triplet passes against the real DB" claim rested on invisible manual runs.
+#
+# ``tests/test_db_validation_gate.py`` (``@pytest.mark.db_validation``) drives
+# the 7 Track-A validators against the live macro-tsdb as a gate-checkable
+# suite and skips cleanly when the DB is unreachable.  NOTE: this target does
+# NOT pass ``--no-deps`` — it needs the DB service up.
+
+db-validation:
+	docker compose run --rm api-server bash -lc \
+	  "cd /app && micromamba run -n macro-env python -m pytest \
+	   tests/test_db_validation_gate.py -m db_validation -p no:cacheprovider -rA"
 
 # -----------------------------------------------------------------------------
 # Module-parity check (Stage 2).
