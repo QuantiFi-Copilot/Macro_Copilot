@@ -82,7 +82,11 @@ from shared.quant.gmm import fit_gmm_em
 
 
 _OPERATOR_NAME = "fit_regime_gmm"
-_OPERATOR_VERSION = "1.0.0"
+# 1.1.0 (OPR14d): the fit now runs on the CANONICALLY-SORTED feature
+# columns, so the content hash + the stamped `means` axis are invariant
+# to a content-preserving column permutation (mirrors fit_regime_hmm).
+# The behavioural change shifts the hash for a given input, per OPR14d.
+_OPERATOR_VERSION = "1.1.0"
 
 _CONFIG_PATH: Path = Path(__file__).resolve().parent / "config.yaml"
 
@@ -163,7 +167,12 @@ def fit_regime_gmm(
         )
 
     frame = features.payload
-    columns = [str(c) for c in frame.columns]
+    # CANONICAL COLUMN ORDER (OPR14 determinism / P4 content-addressing):
+    # sort the feature columns and feed the SORTED frame, so the fit, the
+    # stamped `means` axis and the content hash are all invariant to a
+    # content-preserving column permutation (mirrors the fit_regime_hmm
+    # twin — the two must stay aligned).
+    columns = sorted(str(c) for c in frame.columns)
     n_features = len(columns)
     if n_features < _MIN_FEATURES:
         raise FitRegimeGmmError(
@@ -172,11 +181,13 @@ def fit_regime_gmm(
             "is a threshold; use threshold_events instead."
         )
 
-    # ORDER-INSENSITIVE NaN policy: drop rows with any NaN feature
-    # (complete-case); the output carries a NaN label on those dates.
     full_index = frame.index
     n_total = int(len(full_index))
-    complete_mask = frame.notna().all(axis=1).to_numpy()
+    sorted_frame = frame[columns]
+
+    # ORDER-INSENSITIVE NaN policy: drop rows with any NaN feature
+    # (complete-case); the output carries a NaN label on those dates.
+    complete_mask = sorted_frame.notna().all(axis=1).to_numpy()
     n_complete = int(complete_mask.sum())
     n_dropped = n_total - n_complete
 
@@ -190,7 +201,7 @@ def fit_regime_gmm(
             "lookback."
         )
 
-    x = frame.to_numpy(dtype=float)[complete_mask]
+    x = sorted_frame.to_numpy(dtype=float)[complete_mask]
 
     # ------------------------------------------------------------------
     # 4. The fit (shared/quant; design-locked EM + canonical relabel).
@@ -236,7 +247,7 @@ def fit_regime_gmm(
         "label_semantics": "categorical_nonarithmetic",  # P5 disclosure
         "fit_scope": "full_sample",                # LOOK-AHEAD (P5)
         "n_features": n_features,
-        "feature_columns": sorted(columns),
+        "feature_columns": columns,  # already canonically sorted
         "n_obs": n_total,
         "n_complete_rows": n_complete,
         "n_dropped_rows": n_dropped,

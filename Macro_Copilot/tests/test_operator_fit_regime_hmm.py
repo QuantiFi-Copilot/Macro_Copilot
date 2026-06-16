@@ -197,6 +197,43 @@ class TestRefusalsAndDiscipline:
             == fit_regime_hmm(p, params=prm).lineage.head_hash
         )
 
+    def test_column_permutation_is_invariant(self):
+        # O50/OPR14/P4: the marquee GMM-bug-avoidance property — the HMM
+        # sorts the feature columns before the fit, so identical data in
+        # PERMUTED column order produces an IDENTICAL content head_hash,
+        # identical decoded labels, AND a `means` axis aligned with the
+        # (sorted) feature_columns it stamps.  This pins the property so a
+        # copy-paste of the raw-order to_numpy path cannot regress it
+        # undetected.  REAL reproduction: permute -> fit twice -> compare.
+        # Names chosen so the presented order is NOT already sorted.
+        frame = _hmm_frame(cols=("z_first", "a_second"))
+        frame_swapped = frame[["a_second", "z_first"]]  # same data
+        assert list(frame.columns) != list(frame_swapped.columns)
+
+        prm = FitRegimeHmmParams(n_states=3)
+        out = fit_regime_hmm(_panel(frame), params=prm)
+        out_swapped = fit_regime_hmm(_panel(frame_swapped), params=prm)
+
+        # (a) identical content head_hash
+        assert out.lineage.head_hash == out_swapped.lineage.head_hash
+        # (b) identical decoded (Viterbi) label Series
+        np.testing.assert_array_equal(
+            out.payload.to_numpy(), out_swapped.payload.to_numpy(),
+        )
+        # (c) the means axis is consistent AND aligned with the SORTED
+        #     feature_columns it stamps.
+        head = out.lineage.steps[-1]
+        head_swapped = out_swapped.lineage.steps[-1]
+        assert head.params["feature_columns"] == ["a_second", "z_first"]
+        assert (
+            head_swapped.params["feature_columns"]
+            == ["a_second", "z_first"]
+        )
+        np.testing.assert_allclose(
+            np.array(head.params["means"]),
+            np.array(head_swapped.params["means"]),
+        )
+
     def test_n_states_changes_identity(self):
         p = _panel(_hmm_frame())
         h2 = fit_regime_hmm(

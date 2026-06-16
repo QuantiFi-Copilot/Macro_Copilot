@@ -186,6 +186,44 @@ class TestRefusalsAndDiscipline:
             == fit_regime_gmm(p, params=prm).lineage.head_hash
         )
 
+    def test_column_permutation_is_invariant(self):
+        # M1/OPR14/P4: identical data presented in PERMUTED column order
+        # must produce an IDENTICAL content head_hash, identical decoded
+        # labels, AND a `means` axis that aligns with the (sorted)
+        # feature_columns it stamps.  The operator sorts the columns
+        # before the fit (mirroring the fit_regime_hmm twin); without it,
+        # the raw-order fit hashed differently and mis-labelled the means
+        # axis.  REAL reproduction: permute -> fit twice -> compare.
+        # Column names chosen so the presented order is NOT already
+        # sorted ("z_first" sorts AFTER "a_second").
+        frame = _regime_frame(cols=("z_first", "a_second"))
+        frame_swapped = frame[["a_second", "z_first"]]  # same data
+        assert list(frame.columns) != list(frame_swapped.columns)
+
+        prm = FitRegimeGmmParams(n_states=3)
+        out = fit_regime_gmm(_panel(frame), params=prm)
+        out_swapped = fit_regime_gmm(_panel(frame_swapped), params=prm)
+
+        # (a) identical content head_hash
+        assert out.lineage.head_hash == out_swapped.lineage.head_hash
+        # (b) identical decoded label Series
+        np.testing.assert_array_equal(
+            out.payload.to_numpy(), out_swapped.payload.to_numpy(),
+        )
+        # (c) the means axis is consistent AND aligned with the SORTED
+        #     feature_columns it stamps.
+        head = out.lineage.steps[-1]
+        head_swapped = out_swapped.lineage.steps[-1]
+        assert head.params["feature_columns"] == ["a_second", "z_first"]
+        assert (
+            head_swapped.params["feature_columns"]
+            == ["a_second", "z_first"]
+        )
+        np.testing.assert_allclose(
+            np.array(head.params["means"]),
+            np.array(head_swapped.params["means"]),
+        )
+
     def test_n_states_changes_identity(self):
         p = _panel(_regime_frame())
         h2 = fit_regime_gmm(
