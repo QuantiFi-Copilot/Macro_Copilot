@@ -49,7 +49,12 @@ export function InflationSwapRateLevelWidget({ params }: Props) {
         : typeof lookbackRaw === 'number'
           ? lookbackRaw
           : 252;
-    return { curve_family: cf, tenor: t, lookback_days: lookback };
+    return {
+      curve_family: cf,
+      tenor: t,
+      lookback_days: lookback,
+      as_of_date: typeof params.as_of_date === 'string' ? params.as_of_date : undefined,
+    };
   }, [params]);
 
   const { data, error, isLoading } = useFetchDetailInflationSwapRateLevel(

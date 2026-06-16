@@ -65,6 +65,7 @@ export function BreakevenCurveSpreadWidget({ params }: Props) {
       short_tenor: st,
       long_tenor: lt,
       lookback_days: lookback,
+      as_of_date: typeof params.as_of_date === 'string' ? params.as_of_date : undefined,
     };
   }, [params]);
 

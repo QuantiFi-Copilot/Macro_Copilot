@@ -55,7 +55,12 @@ export function BondFuturesPriceLevelWidget({ params }: Props) {
         : typeof lookbackRaw === 'number'
           ? lookbackRaw
           : 252;
-    return { curve_family: cf, contract_code: cc, lookback_days: lookback };
+    return {
+      curve_family: cf,
+      contract_code: cc,
+      lookback_days: lookback,
+      as_of_date: typeof params.as_of_date === 'string' ? params.as_of_date : undefined,
+    };
   }, [params]);
 
   const { data, error, isLoading } = useFetchDetailBondFuturesPrice(fetchParams);

@@ -47,7 +47,12 @@ export function FinancingRateWidget({ params }: Props) {
           : 252;
     const method =
       typeof params.method === 'string' ? params.method : 'overnight_index_proxy';
-    return { proxy_curve: pc, method, lookback_days: lookback };
+    return {
+      proxy_curve: pc,
+      method,
+      lookback_days: lookback,
+      as_of_date: typeof params.as_of_date === 'string' ? params.as_of_date : undefined,
+    };
   }, [params]);
 
   const { data, error, isLoading } = useFetchDetailFinancingRate(fetchParams);

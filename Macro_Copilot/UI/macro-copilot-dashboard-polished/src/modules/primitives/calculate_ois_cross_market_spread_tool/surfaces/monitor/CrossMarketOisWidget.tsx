@@ -66,6 +66,7 @@ export function CrossMarketOisWidget({ params }: Props) {
       curve_family_2: cf2,
       tenor,
       lookback_days: lookback,
+      as_of_date: typeof params.as_of_date === 'string' ? params.as_of_date : undefined,
     };
   }, [params]);
 

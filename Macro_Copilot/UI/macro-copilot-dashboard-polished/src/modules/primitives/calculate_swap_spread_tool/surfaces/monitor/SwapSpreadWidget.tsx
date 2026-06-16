@@ -67,6 +67,7 @@ export function SwapSpreadWidget({ params }: Props) {
       ois_curve_family: meta.oisFamily,
       tenor: t,
       lookback_days: lookback,
+      as_of_date: typeof params.as_of_date === 'string' ? params.as_of_date : undefined,
     };
   }, [params]);
 

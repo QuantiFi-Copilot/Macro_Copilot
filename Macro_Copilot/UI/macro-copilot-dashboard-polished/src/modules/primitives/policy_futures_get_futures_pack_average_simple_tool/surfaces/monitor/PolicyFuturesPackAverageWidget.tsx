@@ -57,6 +57,7 @@ export function PolicyFuturesPackAverageWidget({ params }: Props) {
       curve_family: cf,
       pack,
       lookback_days: lookback,
+      as_of_date: typeof params.as_of_date === 'string' ? params.as_of_date : undefined,
     };
   }, [params]);
 

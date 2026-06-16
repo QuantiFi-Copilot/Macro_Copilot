@@ -74,6 +74,7 @@ export function PolicyFuturesButterflyWidget({ params }: Props) {
       strip_position_body: selected.body,
       strip_position_wing_long: selected.wingLong,
       lookback_days: lookback,
+      as_of_date: typeof params.as_of_date === 'string' ? params.as_of_date : undefined,
     };
   }, [params]);
 

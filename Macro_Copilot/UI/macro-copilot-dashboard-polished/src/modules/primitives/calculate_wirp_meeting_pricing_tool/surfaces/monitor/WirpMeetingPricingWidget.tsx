@@ -49,7 +49,12 @@ export function WirpMeetingPricingWidget({ params }: Props) {
         : null;
     if (!cb) return null;
     // The tile shows the NEXT meeting only — next-N mode with n=1.
-    return { central_bank: cb, selection_mode: 'next_n_meetings', n_meetings: 1 };
+    return {
+      central_bank: cb,
+      selection_mode: 'next_n_meetings',
+      n_meetings: 1,
+      as_of_date: typeof params.as_of_date === 'string' ? params.as_of_date : undefined,
+    };
   }, [params]);
 
   const { data, error, isLoading } = useFetchDetailWirpMeetingPricing(fetchParams);

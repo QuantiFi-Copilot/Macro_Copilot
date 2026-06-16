@@ -181,6 +181,7 @@ export type RealYieldDetailParams = {
   z_score_window_days?: number;
   z_score_min_periods?: number;
   z_score_ddof?: number;
+  as_of_date?: string;
 };
 
 export function fetchDetailRealYield(
@@ -206,6 +207,7 @@ export type BreakevenDetailParams = {
   z_score_window_days?: number;
   z_score_min_periods?: number;
   z_score_ddof?: number;
+  as_of_date?: string;
 };
 
 export function fetchDetailBreakeven(
@@ -236,6 +238,7 @@ export type ForwardBreakevenDetailParams = {
   end_tenor: string;
   lookback_days?: number;
   field_name?: string;
+  as_of_date?: string;
 };
 
 export function fetchDetailForwardBreakeven(
@@ -262,6 +265,7 @@ export type BreakevenButterflyDetailParams = {
   long_tenor: string;
   lookback_days?: number;
   field_name?: string;
+  as_of_date?: string;
 };
 
 export function fetchDetailBreakevenButterfly(
@@ -290,6 +294,7 @@ export type BreakevenCurveSpreadDetailParams = {
   long_tenor: string;
   lookback_days?: number;
   field_name?: string;
+  as_of_date?: string;
 };
 
 export function fetchDetailBreakevenCurveSpread(
@@ -316,6 +321,7 @@ export type RealYieldButterflyDetailParams = {
   long_tenor: string;
   lookback_days?: number;
   field_name?: string;
+  as_of_date?: string;
 };
 
 export function fetchDetailRealYieldButterfly(
@@ -341,6 +347,7 @@ export type CrossMarketZcisDetailParams = {
   tenor: string;
   lookback_days?: number;
   field_name?: string;
+  as_of_date?: string;
 };
 
 export function fetchDetailCrossMarketZcis(
@@ -368,6 +375,7 @@ export type InflationSwapButterflyDetailParams = {
   long_tenor: string;
   lookback_days?: number;
   field_name?: string;
+  as_of_date?: string;
 };
 
 export function fetchDetailInflationSwapButterfly(
@@ -396,6 +404,7 @@ export type OisButterflyDetailParams = {
   long_tenor: string;
   lookback_days?: number;
   field_name?: string;
+  as_of_date?: string;
 };
 
 export function fetchDetailOisButterfly(
@@ -422,6 +431,7 @@ export type OisCurveSpreadDetailParams = {
   long_tenor: string;
   lookback_days?: number;
   field_name?: string;
+  as_of_date?: string;
 };
 
 export function fetchDetailOisCurveSpread(
@@ -449,6 +459,7 @@ export type OisCrossMarketSpreadDetailParams = {
   tenor: string;
   lookback_days?: number;
   field_name?: string;
+  as_of_date?: string;
 };
 
 export function fetchDetailOisCrossMarketSpread(
@@ -481,6 +492,7 @@ export type SwapSpreadDetailParams = {
   lookback_days?: number;
   sovereign_field_name?: string;
   ois_field_name?: string;
+  as_of_date?: string;
 };
 
 export function fetchDetailSwapSpread(
@@ -504,6 +516,7 @@ export type OisRateLevelDetailParams = {
   tenor: string;
   lookback_days?: number;
   field_name?: string;
+  as_of_date?: string;
 };
 
 export function fetchDetailOisRateLevel(
@@ -543,6 +556,7 @@ export type OisForwardRateDetailParams = {
   end_date?: string;
   lookback_days?: number;
   field_name?: string;
+  as_of_date?: string;
 };
 
 export function fetchDetailOisForwardRate(
@@ -577,6 +591,7 @@ export type InflationSwapForwardDetailParams = {
   end_tenor: string;
   lookback_days?: number;
   field_name?: string;
+  as_of_date?: string;
 };
 
 export function fetchDetailInflationSwapForward(
@@ -602,6 +617,7 @@ export type InflationSwapRateLevelDetailParams = {
   tenor: string;
   lookback_days?: number;
   field_name?: string;
+  as_of_date?: string;
 };
 
 export function fetchDetailInflationSwapRateLevel(
@@ -632,6 +648,7 @@ export type SwapBreakevenBasisDetailParams = {
   tenor: string;
   lookback_days?: number;
   field_name?: string;
+  as_of_date?: string;
 };
 
 export function fetchDetailSwapBreakevenBasis(
@@ -659,6 +676,7 @@ export type InflationSwapCurveSpreadDetailParams = {
   long_tenor: string;
   lookback_days?: number;
   field_name?: string;
+  as_of_date?: string;
 };
 
 export function fetchDetailInflationSwapCurveSpread(
@@ -854,6 +872,7 @@ export type RealYieldCurveSpreadDetailParams = {
   z_score_window_days?: number;
   z_score_min_periods?: number;
   z_score_ddof?: number;
+  as_of_date?: string;
 };
 
 export function fetchDetailRealYieldCurveSpread(
@@ -870,6 +889,7 @@ export type SpreadDetailParams = {
   long_tenor?: string;
   lookback_days?: number;
   field_name?: string;
+  as_of_date?: string;
 };
 
 export function fetchDetailSpread(
@@ -884,6 +904,7 @@ export type CrossMarketDetailParams = {
   tenor?: string;
   lookback_days?: number;
   field_name?: string;
+  as_of_date?: string;
 };
 
 export function fetchDetailCrossMarket(
@@ -965,6 +986,7 @@ export type BondFuturesPriceDetailParams = {
   contract_code: string;
   lookback_days?: number;
   field_name?: string;
+  as_of_date?: string;
 };
 
 export function fetchDetailBondFuturesPrice(
@@ -1157,6 +1179,7 @@ export type CrossCountryBreakevenSpreadDetailParams = {
   tenor: string;
   lookback_days?: number;
   field_name?: string;
+  as_of_date?: string;
 };
 
 export function fetchDetailCrossCountryBreakevenSpread(
@@ -1189,6 +1212,7 @@ export type CrossCountryRealYieldSpreadDetailParams = {
   tenor: string;
   lookback_days?: number;
   field_name?: string;
+  as_of_date?: string;
 };
 
 export function fetchDetailCrossCountryRealYieldSpread(
@@ -1216,6 +1240,7 @@ export type FinancingRateDetailParams = {
   method?: string;
   proxy_curve: string;
   lookback_days?: number;
+  as_of_date?: string;
 };
 
 export function fetchDetailFinancingRate(
@@ -1243,6 +1268,7 @@ export type OtrOfrSpreadDetailParams = {
   tenor: string;
   lookback_days?: number;
   field_name?: string;
+  as_of_date?: string;
 };
 
 export function fetchDetailOtrOfrSpread(
@@ -1334,6 +1360,7 @@ export type ZscoreCustomDetailParams = {
   z_score_window_days: number;
   lookback_days?: number;
   field_name?: string;
+  as_of_date?: string;
 };
 
 export function fetchDetailZscoreCustom(
@@ -1350,6 +1377,7 @@ export type WirpMeetingPricingDetailParams = {
   selection_mode?: 'next_n_meetings' | 'specific_meeting_date';
   n_meetings?: number;
   meeting_date?: string;
+  as_of_date?: string;
 };
 
 export function fetchDetailWirpMeetingPricing(
@@ -1407,6 +1435,7 @@ export type FuturesVolumeOiDetailParams = {
   curve_family: string;
   contract_code: string;
   lookback_days?: number;
+  as_of_date?: string;
 };
 
 export function fetchDetailFuturesVolumeOi(

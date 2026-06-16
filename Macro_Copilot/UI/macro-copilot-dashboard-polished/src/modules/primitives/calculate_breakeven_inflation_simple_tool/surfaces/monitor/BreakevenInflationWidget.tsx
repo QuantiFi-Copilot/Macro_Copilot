@@ -56,6 +56,7 @@ export function BreakevenInflationWidget({ params }: Props) {
       linker_curve_family: meta.linkerFamily,
       tenor: t,
       lookback_days: lookback,
+      as_of_date: typeof params.as_of_date === 'string' ? params.as_of_date : undefined,
     };
   }, [params]);
 

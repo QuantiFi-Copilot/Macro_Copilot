@@ -54,6 +54,7 @@ export function ZScoreCustomWidget({ params }: Props) {
       curve_family: family,
       tenor: t,
       z_score_window_days: windowDays,
+      as_of_date: typeof params.as_of_date === 'string' ? params.as_of_date : undefined,
       // Display window stays at the backend default (365) — the tile
       // only renders the snapshot, not the series.
     };

@@ -76,6 +76,7 @@ export function OisCurveSpreadWidget({ params }: Props) {
       short_tenor: selected.short,
       long_tenor: selected.long,
       lookback_days: lookback,
+      as_of_date: typeof params.as_of_date === 'string' ? params.as_of_date : undefined,
     };
   }, [params]);
 

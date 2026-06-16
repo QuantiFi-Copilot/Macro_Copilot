@@ -73,6 +73,7 @@ export function PolicyFuturesCalendarSpreadWidget({ params }: Props) {
       strip_position_short: selected.short,
       strip_position_long: selected.long,
       lookback_days: lookback,
+      as_of_date: typeof params.as_of_date === 'string' ? params.as_of_date : undefined,
     };
   }, [params]);
 

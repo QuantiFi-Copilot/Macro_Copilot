@@ -65,6 +65,7 @@ export function BondFuturesScannerWidget({ params }: Props) {
       curve_families: scopeRaw === SCOPE_ALL ? undefined : scopeRaw,
       top_n: Number.isFinite(topN) ? topN : undefined,
       min_abs_z_score: Number.isFinite(minAbsZ) ? minAbsZ : undefined,
+      as_of_date: typeof params.as_of_date === 'string' ? params.as_of_date : undefined,
     };
   }, [params]);
 

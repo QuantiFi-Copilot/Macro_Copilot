@@ -75,6 +75,7 @@ export function InflationSwapButterflyWidget({ params }: Props) {
       belly_tenor: selected.belly,
       long_tenor: selected.long,
       lookback_days: lookback,
+      as_of_date: typeof params.as_of_date === 'string' ? params.as_of_date : undefined,
     };
   }, [params]);
 

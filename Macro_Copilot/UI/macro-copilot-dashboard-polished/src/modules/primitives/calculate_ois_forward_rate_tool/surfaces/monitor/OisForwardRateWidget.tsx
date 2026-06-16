@@ -57,6 +57,7 @@ export function OisForwardRateWidget({ params }: Props) {
       start_tenor: pair.startTenor,
       end_tenor: pair.endTenor,
       lookback_days: lookback,
+      as_of_date: typeof params.as_of_date === 'string' ? params.as_of_date : undefined,
     };
   }, [params]);
 

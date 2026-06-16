@@ -78,6 +78,7 @@ export function PolicyFuturesCrossMarketSpreadWidget({ params }: Props) {
       curve_family_b: cfB,
       strip_position: stripPosition,
       lookback_days: lookback,
+      as_of_date: typeof params.as_of_date === 'string' ? params.as_of_date : undefined,
     };
   }, [params]);
 
