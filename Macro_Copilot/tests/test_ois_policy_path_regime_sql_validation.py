@@ -10,6 +10,13 @@ regime labels against SQL.  Two layers:
     rate, slope, curvature, and realized-vol are finite and in plausible
     ranges (front rate 0–10%, |slope| < 500 bps).
 
+  LAYER 1c — LITERAL-SQL CONVENTION CHECK.  For one (cf, strip_position,
+    trade_date) cell, run a literal ``SELECT 100 − field_value`` directly
+    against the view and assert it equals the Python-over-rows implied
+    rate.  This makes the inverse-pricing convention cross-check a literal
+    SQL statement (not just Python reproducing the same arithmetic over
+    fetched rows).
+
   LAYER 2 — MODEL-STATE PROPERTIES + DETERMINISM.  fit_scope=='full_sample';
     converged; persistence in [0,1]; >= 2 distinct decoded labels; regime
     names from the configured vocabulary; rerun-identical current_metrics.
@@ -26,6 +33,8 @@ import math
 import sys
 from datetime import date, timedelta
 from typing import List
+
+from sqlalchemy import text
 
 from database.database import get_db_engine
 from rates_agent.ois.tools.ois_policy_path_regime import (
@@ -74,6 +83,43 @@ def validate_case(engine, cf) -> List[str]:
         failures.append(f"{cf}: strip slope {slope.iloc[-1]:.1f} bps implausible")
     if not math.isfinite(float(slope.std())):
         failures.append(f"{cf}: non-finite slope series")
+
+    # LAYER 1c — literal-SQL convention cross-check.  For the front cell
+    # (strip_position=1) on its as-of date, a literal `SELECT 100 -
+    # field_value` must equal the Python-over-rows implied front rate.
+    if inverse:
+        as_of_cell = front.index[-1]
+        cell_sql = text(
+            """
+            SELECT 100.0 - v.field_value::double precision AS implied_rate
+            FROM macro_data.v_market_data_daily_enriched AS v
+            WHERE v.instrument_type = 'policy_future'
+              AND v.field_name = 'PX_LAST'
+              AND v.curve_family = :cf
+              AND (v.attributes->>'strip_position')::int = 1
+              AND v.field_value IS NOT NULL
+              AND v.trade_date = :as_of
+            """
+        )
+        with engine.connect() as conn:
+            cell_rows = conn.execute(
+                cell_sql,
+                {"cf": cf, "as_of": as_of_cell.date().isoformat()},
+            ).mappings().all()
+        if not cell_rows:
+            failures.append(
+                f"{cf}: literal-SQL 100−field_value returned no front cell "
+                f"for {as_of_cell.date().isoformat()}"
+            )
+        else:
+            sql_implied = float(cell_rows[0]["implied_rate"])
+            py_implied = float(front.iloc[-1])
+            if abs(sql_implied - py_implied) > 1e-9:
+                failures.append(
+                    f"{cf}: literal-SQL 100−field_value={sql_implied:.6f} != "
+                    f"Python implied front {py_implied:.6f} "
+                    f"on {as_of_cell.date().isoformat()}"
+                )
 
     # LAYER 2 — model-state properties + determinism.
     params = OISPolicyPathRegimeInput(curve_family=cf, n_states=3,

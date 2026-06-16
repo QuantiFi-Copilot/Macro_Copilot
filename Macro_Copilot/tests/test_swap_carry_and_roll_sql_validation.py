@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import date, timedelta
+from datetime import date
 from typing import List
 
 import pandas as pd
@@ -38,23 +38,38 @@ _DEFAULT_CASES = (("USD_SOFR_OIS", "10Y", "3M"), ("EUR_ESTR_OIS", "10Y", "3M"))
 
 
 def _latest_curve(engine, cf) -> pd.DataFrame:
+    """Fetch the latest-available OIS curve cross-section, anchored on the
+    data's own MAX(trade_date) (NOT today−60d).
+
+    The OIS substrate vintage can lag wall-clock by months; anchoring the
+    fetch on a fixed today−N window goes dormant the moment the data is
+    older than N days.  Mirrors the forward_rate reference validator's
+    ``WITH latest_date`` CTE so the parity gate runs on whatever the most
+    recent stored curve is.
+    """
     sql = text("""
-        SELECT trade_date, tenor, field_value::double precision AS v
-        FROM macro_data.v_market_data_daily_enriched
-        WHERE curve_family = :cf AND field_name = 'PX_LAST'
-          AND instrument_type = 'ois_swap' AND tenor IS NOT NULL
-          AND trade_date >= :start
-        ORDER BY trade_date, tenor
+        WITH latest_date AS (
+            SELECT MAX(trade_date) AS as_of
+            FROM macro_data.v_market_data_daily_enriched
+            WHERE curve_family = :cf AND field_name = 'PX_LAST'
+              AND instrument_type = 'ois_swap' AND tenor IS NOT NULL
+        )
+        SELECT t.trade_date, t.tenor,
+               t.field_value::double precision AS v
+        FROM macro_data.v_market_data_daily_enriched t
+        CROSS JOIN latest_date l
+        WHERE t.curve_family = :cf AND t.field_name = 'PX_LAST'
+          AND t.instrument_type = 'ois_swap' AND t.tenor IS NOT NULL
+          AND t.trade_date = l.as_of
+        ORDER BY t.tenor
     """)
-    start = (date.today() - timedelta(days=60)).isoformat()
     with engine.connect() as conn:
-        rows = conn.execute(sql, {"cf": cf, "start": start}).mappings().all()
+        rows = conn.execute(sql, {"cf": cf}).mappings().all()
     df = pd.DataFrame([dict(r) for r in rows])
     if df.empty:
         return df
     df["trade_date"] = pd.to_datetime(df["trade_date"])
-    last = df["trade_date"].max()
-    return df[df["trade_date"] == last]
+    return df
 
 
 def validate_case(engine, cf, tenor, horizon) -> List[str]:
@@ -62,6 +77,10 @@ def validate_case(engine, cf, tenor, horizon) -> List[str]:
     day = _latest_curve(engine, cf)
     if day.empty:
         return [f"{cf}: no curve data"]
+    as_of = day["trade_date"].max().date()
+    stale_days = (date.today() - as_of).days
+    note = f" (data stale by {stale_days}d)" if stale_days > 7 else ""
+    print(f"    · {cf}: latest curve as-of {as_of.isoformat()}{note}")
     ordered = sort_tenors_by_years(day["tenor"].tolist())
     rate_by_tenor = dict(zip(day["tenor"], day["v"]))
     years = [tenor_to_years(t) for t in ordered]

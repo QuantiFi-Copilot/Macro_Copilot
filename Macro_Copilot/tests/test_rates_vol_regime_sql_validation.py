@@ -11,6 +11,15 @@ path against SQL.  Two layers:
     plausible ranges — a structural sanity check on the input the fit
     consumes.
 
+  LAYER 1b — MAGNITUDE TIE (SQL ↔ model).  The realized daily std from
+    SQL is a model-free anchor for the GARCH conditional vol.  Assert the
+    median of the fitted conditional-vol series sits within a coarse
+    factor band of that realized std:
+        0.3·realized_std < median(conditional_vol_bps) < 3·realized_std
+    A wildly-wrong-but-plausible σ_t (passing the bare range check) now
+    fails this numeric proximity tie — the LAYER-1 anchor is no longer a
+    pure range check disconnected from the fit.
+
   LAYER 2 — MODEL-STATE PROPERTIES + DETERMINISM.  persistence = α+β in
     (0,1) and == α+β; ω>0, α>=0, β>=0; fit_scope=='full_sample';
     regime_label in {calm,normal,elevated}; vol_percentile in [0,100];
@@ -92,6 +101,27 @@ def validate_case(engine, curve_family, tenor) -> List[str]:
         return failures + [f"{curve_family} {tenor}: primitive error — {r1['error']}"]
     r2 = calculate_rates_vol_regime(engine=engine, params=params)
     cm = r1["current_metrics"]
+
+    # LAYER 1b — coarse magnitude tie between the SQL realized std and the
+    # fitted conditional-vol series.  Only meaningful when the realized
+    # std itself was plausible (else the anchor is unreliable).
+    if 0.5 < realized_std_bps < 30.0:
+        cv = [row["conditional_vol_bps"] for row in r1["time_series"]
+              if row.get("conditional_vol_bps") is not None]
+        if cv:
+            median_cv = float(pd.Series(cv).median())
+            lo, hi = 0.3 * realized_std_bps, 3.0 * realized_std_bps
+            if not (lo < median_cv < hi):
+                failures.append(
+                    f"{curve_family} {tenor}: median conditional vol "
+                    f"{median_cv:.2f} bps outside the [{lo:.2f}, {hi:.2f}] "
+                    f"band tied to realized std {realized_std_bps:.2f} bps"
+                )
+        else:
+            failures.append(
+                f"{curve_family} {tenor}: no conditional-vol series to "
+                "magnitude-tie against the realized std"
+            )
 
     if not (0.0 < cm["persistence"] < 1.0):
         failures.append(f"{curve_family} {tenor}: persistence {cm['persistence']} not in (0,1)")

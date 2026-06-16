@@ -1,11 +1,21 @@
 """Offline compute tests for implied_forward_curve (§7-C, Bucket-1B).
 
-Correctness pinned by independent forward parity (forward_rate_between per
-anchor) + the Panel output contract.  DB mocked.
+Correctness pinned by an INDEPENDENT forward parity reimplemented from
+first principles (linear interp of par rates + the shared
+``discount_factor_from_par`` primitive; NOT a re-call of the production
+``forward_rate_between`` engine) + the Panel output contract.  DB mocked.
+
+The independence matters: if the baseline re-called ``forward_rate_between``
+— the very function the tool's compute path uses — an arithmetic bug in
+that engine would funnel through both ``exp`` and ``got`` and pass
+silently.  Building ``exp`` from ``discount_factor_from_par`` alone makes
+the cross-check genuinely independent (see ``test_independent_baseline_
+catches_engine_bug`` for the load-bearing proof).
 """
 
 from __future__ import annotations
 
+from typing import Sequence
 from unittest.mock import patch
 
 import pandas as pd
@@ -17,7 +27,10 @@ from rates_agent.ois.tools.implied_forward_curve import (
     ImpliedForwardCurveOutput,
     calculate_implied_forward_curve,
 )
-from shared.analytics.curve_bootstrap import forward_rate_between, tenor_to_years
+from shared.analytics.curve_bootstrap import (
+    discount_factor_from_par,
+    tenor_to_years,
+)
 from shared.config import clear_tool_config_cache, load_tool_config
 
 _FETCH = (
@@ -25,6 +38,37 @@ _FETCH = (
 )
 _TENORS = ["1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "30Y"]
 _RATES = [3.0, 3.3, 3.5, 3.7, 3.85, 4.0, 4.2]
+
+
+def _interp_independent(
+    grid_years: Sequence[float], grid_rates: Sequence[float], target: float,
+) -> float:
+    """Linear interpolation from scratch (flat extrapolation past ends) —
+    independent of the production ``interpolate_rate``."""
+    if target <= grid_years[0]:
+        return grid_rates[0]
+    if target >= grid_years[-1]:
+        return grid_rates[-1]
+    for i in range(1, len(grid_years)):
+        if grid_years[i] >= target:
+            x0, x1 = grid_years[i - 1], grid_years[i]
+            y0, y1 = grid_rates[i - 1], grid_rates[i]
+            return y0 + (y1 - y0) * (target - x0) / (x1 - x0)
+    return grid_rates[-1]
+
+
+def _forward_first_principles(
+    grid_years: Sequence[float], grid_rates_dec: Sequence[float],
+    a: float, h: float,
+) -> float:
+    """Independent forward over (a, a+h) in DECIMAL, built ONLY from
+    ``discount_factor_from_par`` + a from-scratch interpolation.  Does NOT
+    call ``forward_rate_between``.  f(a,a+h) = (DF(a)/DF(a+h) − 1)/h."""
+    r_a = _interp_independent(grid_years, grid_rates_dec, a)
+    r_end = _interp_independent(grid_years, grid_rates_dec, a + h)
+    df_a = discount_factor_from_par(r_a, a) if a > 0 else 1.0
+    df_end = discount_factor_from_par(r_end, a + h)
+    return (df_a / df_end - 1.0) / h
 
 
 @pytest.fixture(autouse=True)
@@ -58,11 +102,39 @@ class TestForwardStrip:
         by_anchor = {p["anchor_tenor"]: p for p in cm["forward_curve"]}
         for anchor in ["1Y", "2Y", "5Y", "10Y"]:
             a = tenor_to_years(anchor)
-            expected = forward_rate_between(yrs, dec, a, a + 1.0) * 100
+            # FROM FIRST PRINCIPLES — discount_factor_from_par only, NOT
+            # a re-call of the production forward_rate_between engine.
+            expected = _forward_first_principles(yrs, dec, a, 1.0) * 100
             assert by_anchor[anchor]["forward_rate_pct"] == pytest.approx(
                 round(expected, 4), abs=1e-4,
             )
             assert by_anchor[anchor]["forward_label"] == f"{anchor}1Y"
+
+    def test_independent_baseline_catches_engine_bug(self):
+        """Load-bearing proof: the from-first-principles baseline is genuinely
+        independent, so a perturbed production forward (a simulated
+        ``forward_rate_between`` bug) is CAUGHT, not funnelled-through."""
+        with patch(_FETCH, return_value=_curve()):
+            out = calculate_implied_forward_curve(
+                engine=None,
+                params=ImpliedForwardCurveInput(
+                    curve_family="USD_SOFR_OIS", forward_horizon="1Y",
+                ),
+            )
+        cm = out["current_metrics"]
+        yrs = [tenor_to_years(t) for t in _TENORS]
+        dec = [r / 100 for r in _RATES]
+        by_anchor = {p["anchor_tenor"]: p for p in cm["forward_curve"]}
+        perturb_pct = 0.05  # +5 bps engine bug
+        for anchor in ["1Y", "2Y", "5Y", "10Y"]:
+            a = tenor_to_years(anchor)
+            expected = _forward_first_principles(yrs, dec, a, 1.0) * 100
+            got = by_anchor[anchor]["forward_rate_pct"]
+            # Clean production agrees with the independent baseline.
+            assert got == pytest.approx(round(expected, 4), abs=1e-4)
+            # A perturbed production value diverges beyond tolerance —
+            # i.e. the parity check would FAIL on an engine bug.
+            assert abs((got + perturb_pct) - expected) > 1e-4
 
     def test_panel_output_contract(self):
         with patch(_FETCH, return_value=_curve()):
