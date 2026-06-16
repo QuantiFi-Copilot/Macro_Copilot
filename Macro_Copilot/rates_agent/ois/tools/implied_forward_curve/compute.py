@@ -32,6 +32,7 @@ from shared.analytics.curve_bootstrap import (
 from shared.artifacts.lineage import Lineage, PrimitiveStep
 from shared.artifacts.missingness import RawNoCleaning
 from shared.artifacts.types import Panel
+from shared.analytics.rates_fetch import latest_trade_date
 from shared.artifacts.units import TimeSeriesUnits as ArtifactUnits
 from shared.config import ToolConfig, load_tool_config
 
@@ -98,7 +99,21 @@ def calculate_implied_forward_curve(
     # ------------------------------------------------------------------
     # 1. Fetch the OIS curve.
     # ------------------------------------------------------------------
-    start_date = date.today() - timedelta(days=int(params.lookback_days) + 30)
+    # Anchor the fetch window to the curve's latest available trade_date
+    # (not date.today()) so a short lookback still resolves to real data
+    # when ingestion lags wall-clock; falls back to today only when the
+    # curve has no rows.  instrument_type matches _fetch_curve's hard
+    # 'ois_swap' filter so the probe surfaces the same latest date.
+    anchor = (
+        latest_trade_date(
+            engine,
+            curve_family=params.curve_family,
+            field_name=field,
+            instrument_type="ois_swap",
+        )
+        or date.today()
+    )
+    start_date = anchor - timedelta(days=int(params.lookback_days) + 30)
     raw = _fetch_curve(engine, params.curve_family, field, start_date)
     if raw.empty:
         return {

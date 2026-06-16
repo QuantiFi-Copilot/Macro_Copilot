@@ -89,6 +89,7 @@ from shared.analytics.levels import (
     clean_single_series,
     compute_level_metrics,
 )
+from shared.analytics.rates_fetch import latest_trade_date
 from shared.config import ToolConfig, load_tool_config
 from shared.schemas import TimeSeries, TimeSeriesRow, TimeSeriesUnits
 
@@ -359,7 +360,24 @@ def calculate_inflation_swap_rate_level(
     # 1. Date window
     # ------------------------------------------------------------------
     buffer_calendar_days = int(z_window * buffer_mult)
-    start_date = date.today() - timedelta(
+    # Anchor the fetch window to this pillar's latest available trade_date
+    # (not date.today()) so a short lookback still resolves to real data
+    # when the ZCIS series lags wall-clock by several business days; falls
+    # back to today only when the pillar has no rows.  Filters mirror the
+    # fetch_zcis_single_pillar read (curve_family + tenor + field_name);
+    # instrument_type='inflation_swap' further tightens the probe to the
+    # ZCIS universe.
+    anchor = (
+        latest_trade_date(
+            engine,
+            curve_family=params.curve_family,
+            tenor=params.tenor,
+            field_name=field_name_resolved,
+            instrument_type=_ZCIS_INSTRUMENT_TYPE,
+        )
+        or date.today()
+    )
+    start_date = anchor - timedelta(
         days=params.lookback_days + buffer_calendar_days
     )
 

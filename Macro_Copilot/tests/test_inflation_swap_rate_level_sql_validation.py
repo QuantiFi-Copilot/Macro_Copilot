@@ -184,10 +184,16 @@ def sql_baseline(
     """
     baseline_sql = text(
         """
-        WITH raw AS (
-            SELECT
-                v.trade_date,
-                v.field_value::double precision AS field_value
+        WITH pillar_max AS (
+            -- Anchor the fetch window to THIS pillar's latest available
+            -- trade_date (not CURRENT_DATE) — the same floor the Python
+            -- tool now uses via latest_trade_date — so the parity check
+            -- compares identical windows even when the ZCIS series lags
+            -- wall-clock by more than (lookback_days + 378) days.  Without
+            -- this, a CURRENT_DATE floor starts AFTER the last data, the
+            -- baseline goes empty, and the value-parity gate breaks while
+            -- the tool still returns real data (the regression class).
+            SELECT MAX(v.trade_date) AS as_of
             FROM macro_data.v_market_data_daily_enriched v
             JOIN macro_data.instrument_master i
               ON v.instrument_id = i.instrument_id
@@ -196,7 +202,22 @@ def sql_baseline(
               AND v.curve_family = :curve_family
               AND v.tenor        = :tenor
               AND v.field_name   = :field_name
-              AND v.trade_date  >= CURRENT_DATE - ((:lookback_days + 378) * INTERVAL '1 day')
+        ),
+        raw AS (
+            SELECT
+                v.trade_date,
+                v.field_value::double precision AS field_value
+            FROM macro_data.v_market_data_daily_enriched v
+            JOIN macro_data.instrument_master i
+              ON v.instrument_id = i.instrument_id
+            CROSS JOIN pillar_max p
+            WHERE v.instrument_type = 'inflation_swap'
+              AND (i.attributes ->> 'pricing_type') = 'zero_coupon_breakeven'
+              AND v.curve_family = :curve_family
+              AND v.tenor        = :tenor
+              AND v.field_name   = :field_name
+              AND v.trade_date  >= COALESCE(p.as_of, CURRENT_DATE)
+                                   - ((:lookback_days + 378) * INTERVAL '1 day')
         ),
         clean AS (
             SELECT

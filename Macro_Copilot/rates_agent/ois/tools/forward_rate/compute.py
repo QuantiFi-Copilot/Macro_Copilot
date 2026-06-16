@@ -108,6 +108,7 @@ from shared.analytics.curve_bootstrap import (
     tenor_to_years,
 )
 from shared.analytics.levels import delta_bps, trailing_high_low_percentile
+from shared.analytics.rates_fetch import latest_trade_date
 from shared.analytics.spreads import rolling_zscore, safe_float
 from shared.config import ToolConfig, load_tool_config
 from shared.schemas import TimeSeries, TimeSeriesRow, TimeSeriesUnits
@@ -407,7 +408,19 @@ def calculate_ois_forward_rate(
     buffer_calendar_days = int(
         max(z_window, trailing_window) * buffer_multiplier
     )
-    fetch_start_date = date.today() - timedelta(
+    # Anchor the fetch window to the curve's latest available trade_date
+    # (not date.today()) so a short lookback still resolves to real data
+    # when ingestion lags wall-clock (weekend / holiday / stale snapshot);
+    # falls back to today only when the curve has no rows.
+    anchor = (
+        latest_trade_date(
+            engine,
+            curve_family=params.curve_family,
+            field_name=field_name_resolved,
+        )
+        or date.today()
+    )
+    fetch_start_date = anchor - timedelta(
         days=params.lookback_days + buffer_calendar_days
     )
 
