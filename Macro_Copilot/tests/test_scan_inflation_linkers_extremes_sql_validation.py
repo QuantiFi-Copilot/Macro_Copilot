@@ -154,10 +154,28 @@ def sql_per_stem_z_scores(
 
     sql = text(
         """
-        WITH params AS (
+        WITH universe_max AS (
+            -- When no explicit as_of_date is supplied, anchor the fetch
+            -- window to the linker universe's latest available
+            -- trade_date (NOT CURRENT_DATE) — the same way the Python
+            -- tool now does (latest_trade_date floor) — so the parity
+            -- check compares identical windows even when the feed lags
+            -- "today".
+            SELECT MAX(trade_date) AS max_trade_date
+            FROM macro_data.v_market_data_daily_enriched
+            WHERE instrument_type = :instrument_type
+              AND field_name      = :field_name
+              AND curve_family    = ANY(:curve_families)
+              AND tenor          IS NOT NULL
+              AND field_value    IS NOT NULL
+        ),
+        params AS (
             SELECT
-                COALESCE(CAST(:as_of_date AS DATE), CURRENT_DATE)
-                  AS anchor_date
+                COALESCE(
+                    CAST(:as_of_date AS DATE),
+                    (SELECT max_trade_date FROM universe_max),
+                    CURRENT_DATE
+                ) AS anchor_date
         ),
         raw_yields AS (
             SELECT

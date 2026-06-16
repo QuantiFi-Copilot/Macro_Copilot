@@ -62,7 +62,7 @@ from rates_agent.sovereign_bonds.tools.half_life.schemas import (
     HalfLifeOutput,
 )
 from shared.analytics.levels import clean_single_series
-from shared.analytics.rates_fetch import fetch_single_tenor
+from shared.analytics.rates_fetch import fetch_single_tenor, latest_trade_date
 from shared.analytics.stats import ou_half_life
 from shared.config import ToolConfig, load_tool_config
 from shared.schemas import (
@@ -272,22 +272,56 @@ def calculate_half_life(
     # ------------------------------------------------------------------
     # Build the series from whichever input variant is set
     # ------------------------------------------------------------------
-    start_date = date.today() - timedelta(days=params.lookback_days)
+    # Only the DB-backed paths (series_spec / pair_spec) fetch by trade_date,
+    # so the date-window anchor is computed INSIDE those branches, filtered to
+    # the leg(s) about to be fetched.  Anchoring to the latest available
+    # trade_date (not date.today()) keeps the window resolving to real data
+    # when ingestion lags (weekend / holiday / stale snapshot); it falls back
+    # to today only when the leg has no rows.  The pasted_series path does NOT
+    # fetch — it carries the caller's own dates — so it is left untouched.
     try:
         if params.series_spec is not None:
+            anchor = (
+                latest_trade_date(
+                    engine,
+                    curve_family=params.series_spec.curve_family,
+                    tenor=params.series_spec.tenor,
+                    field_name=_resolve_field_name(
+                        params.series_spec.field_name, default_field
+                    ),
+                )
+                or date.today()
+            )
+            start_date = anchor - timedelta(days=params.lookback_days)
             series, label, units = _build_series_from_series_spec(
                 engine=engine, spec=params.series_spec,
                 default_field=default_field,
                 ffill_limit=ffill_limit, start_date=start_date,
             )
         elif params.pair_spec is not None:
+            # Two legs (cf1, cf2) inner-joined at the same tenor.  Anchor on
+            # cf1 — both legs share the tenor and field, so cf1's latest
+            # trade_date is a sound window start for the pair.
+            anchor = (
+                latest_trade_date(
+                    engine,
+                    curve_family=params.pair_spec.cf1,
+                    tenor=params.pair_spec.tenor,
+                    field_name=_resolve_field_name(
+                        params.pair_spec.field_name, default_field
+                    ),
+                )
+                or date.today()
+            )
+            start_date = anchor - timedelta(days=params.lookback_days)
             series, label, units = _build_series_from_pair_spec(
                 engine=engine, spec=params.pair_spec,
                 default_field=default_field,
                 ffill_limit=ffill_limit, start_date=start_date,
             )
         else:
-            # pasted_series — input model_validator ensures it's set
+            # pasted_series — input model_validator ensures it's set.  No
+            # fetch: the caller's pasted dates are used as-is (no anchoring).
             assert params.pasted_series is not None
             series, label, units = _build_series_from_pasted(
                 params.pasted_series

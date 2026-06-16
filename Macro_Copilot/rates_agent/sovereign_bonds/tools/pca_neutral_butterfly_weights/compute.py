@@ -40,6 +40,7 @@ from rates_agent.sovereign_bonds.tools.pca_neutral_butterfly_weights.schemas imp
 )
 from shared.analytics.curve_bootstrap import sort_tenors_by_years, tenor_to_years
 from shared.analytics.panel_assembly import fetch_instrument_panel
+from shared.analytics.rates_fetch import latest_trade_date
 from shared.config import ToolConfig, load_tool_config
 from shared.quant.pca import fit_pca
 from shared.schemas import TimeSeries, TimeSeriesRow, TimeSeriesUnits
@@ -93,7 +94,16 @@ def calculate_pca_neutral_butterfly_weights(
     # ------------------------------------------------------------------
     # 1. Fetch the yield panel.
     # ------------------------------------------------------------------
-    start_date = date.today() - timedelta(days=int(params.lookback_days))
+    # Anchor to the latest available trade_date (not date.today()) so the
+    # window resolves to real data when ingestion lags (weekend / holiday /
+    # stale snapshot); falls back to today only when the curve has no rows.
+    anchor = (
+        latest_trade_date(
+            engine, curve_family=params.curve_family, field_name=field
+        )
+        or date.today()
+    )
+    start_date = anchor - timedelta(days=int(params.lookback_days))
     raw = fetch_instrument_panel(
         engine=engine,
         leg_specs=[(params.curve_family, t, field) for t in fit_tenors],

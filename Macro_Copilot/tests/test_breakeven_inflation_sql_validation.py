@@ -171,7 +171,13 @@ def test_breakeven_inflation_matches_sql_baseline(engine):
     cfg = load_tool_config(CONFIG_PATH)
     z_buffer = float(cfg.convention_value("z_score_buffer_multiplier"))
     z_window = int(cfg.convention_value("z_score_window_days"))
-    fetch_start = date.today() - timedelta(
+    # Anchor the independent fetch window to the latest available
+    # trade_date — the same way the primitive now does — so the parity
+    # check compares identical windows even when the DB lags "today".
+    from shared.analytics.rates_fetch import latest_trade_date
+
+    anchor = latest_trade_date(engine, tenor=_TENOR) or date.today()
+    fetch_start = anchor - timedelta(
         days=_LOOKBACK + int(z_window * z_buffer),
     )
 

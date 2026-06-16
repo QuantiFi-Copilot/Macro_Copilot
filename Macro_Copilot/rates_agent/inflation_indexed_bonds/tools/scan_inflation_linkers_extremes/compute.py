@@ -122,6 +122,7 @@ from shared.analytics.levels import clean_single_series
 from shared.analytics.rates_fetch import (
     fetch_scan_universe,
     fetch_scan_universe_reference,
+    latest_trade_date,
 )
 from shared.analytics.spreads import rolling_zscore, safe_float
 from shared.config import ToolConfig, load_tool_config
@@ -400,8 +401,23 @@ def calculate_scan_inflation_linkers_extremes(
     # ------------------------------------------------------------------
     fetch_window_days = int(z_window * buffer_mult)
     requested_as_of: Optional[date] = params.as_of_date
+    # When no explicit as_of_date is supplied, anchor the fetch window
+    # to the linker universe's latest available trade_date (not
+    # date.today()) so a short window still resolves to real data when
+    # the feed lags wall-clock; fall back to today only when the
+    # filtered universe is empty.  An explicit requested_as_of is the
+    # user's chosen anchor and is left untouched.
     fetch_anchor: date = (
-        requested_as_of if requested_as_of is not None else date.today()
+        requested_as_of
+        if requested_as_of is not None
+        else (
+            latest_trade_date(
+                engine,
+                field_name=field_name,
+                instrument_type=_LINKER_INSTRUMENT_TYPE,
+            )
+            or date.today()
+        )
     )
     start_date = fetch_anchor - timedelta(
         days=fetch_window_days + int(ffill_limit)

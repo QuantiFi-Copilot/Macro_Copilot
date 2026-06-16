@@ -38,6 +38,7 @@ import numpy as np
 from database.database import get_db_engine
 from shared.analytics.curve_bootstrap import sort_tenors_by_years
 from shared.analytics.panel_assembly import fetch_instrument_panel
+from shared.analytics.rates_fetch import latest_trade_date
 from rates_agent.sovereign_bonds.tools.pca_neutral_butterfly_weights import (
     PcaNeutralButterflyWeightsInput,
     calculate_pca_neutral_butterfly_weights,
@@ -86,7 +87,11 @@ def _hand_solve_sigma(loadings, sd, idx) -> Tuple[float, float]:
 def _fetch_changes(engine, cf):
     fit_tenors = sort_tenors_by_years(list(set(_FIT_TENORS) | set(_FLY)))
     cols = [f"{cf}_{t}" for t in fit_tenors]
-    start = date.today() - timedelta(days=_LOOKBACK)
+    # Anchor the independent window to the latest available trade_date — the
+    # same way the primitive now does — so the parity check compares identical
+    # windows even when the DB lags "today".
+    anchor = latest_trade_date(engine, curve_family=cf, field_name=_FIELD) or date.today()
+    start = anchor - timedelta(days=_LOOKBACK)
     raw = fetch_instrument_panel(
         engine=engine,
         leg_specs=[(cf, t, _FIELD) for t in fit_tenors],

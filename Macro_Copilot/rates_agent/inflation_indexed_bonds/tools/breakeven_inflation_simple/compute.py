@@ -159,7 +159,7 @@ from shared.analytics.levels import (
     period_changes,
     trailing_high_low_percentile,
 )
-from shared.analytics.rates_fetch import fetch_single_tenor
+from shared.analytics.rates_fetch import fetch_single_tenor, latest_trade_date
 from shared.analytics.spreads import (
     compute_spread_bps,
     pivot_and_align_tenors,
@@ -590,7 +590,23 @@ def calculate_breakeven_inflation_simple(
     #    first displayed row, even if a future config decouples them)
     # ------------------------------------------------------------------
     buffer_calendar_days = int(max(z_window, trailing_window) * buffer_multiplier)
-    start_date = date.today() - timedelta(
+    # Anchor the fetch window to the latest available trade_date (not
+    # date.today()) so a short lookback still resolves to real data when
+    # the linker / nominal feeds lag wall-clock; falls back to today only
+    # when the filtered universe is empty.  Filter on the shared tenor +
+    # field both legs fetch at — the most-recent of the two legs' last
+    # trade_date is the right floor (the pivot/align step intersects
+    # them anyway).  The display cutoff below stays anchored to the
+    # data's last aligned trade_date (see step 5).
+    anchor = (
+        latest_trade_date(
+            engine,
+            tenor=params.tenor,
+            field_name=field_name_resolved,
+        )
+        or date.today()
+    )
+    start_date = anchor - timedelta(
         days=params.lookback_days + buffer_calendar_days
     )
 

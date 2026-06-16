@@ -81,7 +81,7 @@ from rates_agent.sovereign_bonds.tools.rolling_regression.schemas import (
     RollingRegressionOutput,
 )
 from shared.analytics.levels import clean_single_series
-from shared.analytics.rates_fetch import fetch_single_tenor
+from shared.analytics.rates_fetch import fetch_single_tenor, latest_trade_date
 from shared.analytics.regression import rolling_ols
 from shared.analytics.spreads import safe_float
 from shared.config import ToolConfig, load_tool_config
@@ -329,7 +329,24 @@ def calculate_rolling_regression(
     # YAML-driven (calibration, not structural identity) — see
     # `regression_buffer_multiplier` in config.yaml.
     buffer_calendar_days = int(regression_window_days * buffer_multiplier)
-    start_date = date.today() - timedelta(
+    # Anchor to the latest available trade_date (not date.today()) so the fetch
+    # window resolves to real data when ingestion lags (weekend / holiday /
+    # stale snapshot).  Anchor on the TARGET leg's filters — the series being
+    # explained, guaranteed present in the panel — and reuse that same anchor
+    # for the display-window cutoff so the two windows stay coherent.  Falls
+    # back to today only when the target curve has no rows.
+    anchor = (
+        latest_trade_date(
+            engine,
+            curve_family=params.target_spec.curve_family,
+            tenor=params.target_spec.tenor,
+            field_name=_resolve_field_name(
+                params.target_spec.field_name, default_field
+            ),
+        )
+        or date.today()
+    )
+    start_date = anchor - timedelta(
         days=params.lookback_days + buffer_calendar_days
     )
 
@@ -395,7 +412,7 @@ def calculate_rolling_regression(
     #    documented under planned_extensions in other sovereign tools'
     #    configs and deferred to a separate cross-tool PR)
     # ------------------------------------------------------------------
-    cutoff = pd.Timestamp(date.today() - timedelta(days=params.lookback_days))
+    cutoff = pd.Timestamp(anchor - timedelta(days=params.lookback_days))
     display_idx = panel.index[panel.index >= cutoff]
     if len(display_idx) == 0:
         return {

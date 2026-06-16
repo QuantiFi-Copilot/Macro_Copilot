@@ -93,7 +93,7 @@ from shared.analytics.levels import (
     clean_single_series,
     compute_level_metrics,
 )
-from shared.analytics.rates_fetch import fetch_single_tenor
+from shared.analytics.rates_fetch import fetch_single_tenor, latest_trade_date
 from shared.config import ToolConfig, load_tool_config
 from shared.schemas import TimeSeries, TimeSeriesRow, TimeSeriesUnits
 
@@ -270,7 +270,22 @@ def get_real_yield_level(
     # 1. Date window
     # ------------------------------------------------------------------
     buffer_calendar_days = int(z_window * buffer_mult)
-    start_date = date.today() - timedelta(
+    # Anchor the fetch window to the latest available trade_date (not
+    # date.today()) so a short lookback still resolves to real data when
+    # the linker feed lags wall-clock; falls back to today only when the
+    # filtered universe is empty.  The display cutoff below is separately
+    # anchored to the data's last observation (see step 5).
+    anchor = (
+        latest_trade_date(
+            engine,
+            curve_family=params.curve_family,
+            tenor=params.tenor,
+            field_name=field_name_resolved,
+            instrument_type=_LINKER_INSTRUMENT_TYPE,
+        )
+        or date.today()
+    )
+    start_date = anchor - timedelta(
         days=params.lookback_days + buffer_calendar_days
     )
 

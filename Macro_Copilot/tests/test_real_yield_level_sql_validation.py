@@ -136,16 +136,29 @@ def sql_baseline(
     """
     baseline_sql = text(
         """
-        WITH raw AS (
-            SELECT
-                trade_date,
-                field_value::double precision AS field_value
+        WITH anchor AS (
+            -- Anchor the fetch floor to the latest available trade_date
+            -- (NOT CURRENT_DATE) — the same way the Python tool now does
+            -- (latest_trade_date floor) — so the parity check compares
+            -- identical windows even when the linker feed lags "today".
+            SELECT COALESCE(MAX(trade_date), CURRENT_DATE) AS anchor_date
             FROM macro_data.v_market_data_daily_enriched
             WHERE instrument_type = 'inflation_linker'
               AND curve_family = :curve_family
               AND tenor = :tenor
               AND field_name = :field_name
-              AND trade_date >= CURRENT_DATE - ((:lookback_days + 378) * INTERVAL '1 day')
+        ),
+        raw AS (
+            SELECT
+                trade_date,
+                field_value::double precision AS field_value
+            FROM macro_data.v_market_data_daily_enriched
+            CROSS JOIN anchor a
+            WHERE instrument_type = 'inflation_linker'
+              AND curve_family = :curve_family
+              AND tenor = :tenor
+              AND field_name = :field_name
+              AND trade_date >= a.anchor_date - ((:lookback_days + 378) * INTERVAL '1 day')
         ),
         clean AS (
             SELECT

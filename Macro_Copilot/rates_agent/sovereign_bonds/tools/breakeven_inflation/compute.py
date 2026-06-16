@@ -29,7 +29,7 @@ from rates_agent.sovereign_bonds.tools.breakeven_inflation.schemas import (
     BreakevenInflationOutput,
     BreakevenInflationTimeSeriesRow,
 )
-from shared.analytics.rates_fetch import fetch_tenor_group
+from shared.analytics.rates_fetch import fetch_tenor_group, latest_trade_date
 from shared.analytics.spreads import (
     compute_spread_bps,
     pivot_and_align_tenors,
@@ -98,7 +98,14 @@ def calculate_breakeven_inflation(
     # Date window with warm-up buffer (same recipe as curve_spread).
     # ------------------------------------------------------------------
     buffer_calendar_days = int(z_window * buffer_mult)
-    start_date = date.today() - timedelta(
+    # Anchor to the latest available trade_date (not date.today()) so the
+    # window resolves to real data when ingestion lags (weekend / holiday
+    # / stale snapshot).  Both legs fetch at params.tenor; the most-recent
+    # trade_date across that tenor is the right floor (the align step
+    # intersects the legs anyway).  Falls back to today only when the
+    # tenor has no rows.
+    anchor = latest_trade_date(engine, tenor=params.tenor) or date.today()
+    start_date = anchor - timedelta(
         days=params.lookback_days + buffer_calendar_days
     )
 
@@ -199,8 +206,11 @@ def calculate_breakeven_inflation(
         round_decimals=z_round,
     )
 
-    # Trim to the displayed lookback (discard warm-up rows).
-    cutoff = pd.Timestamp(date.today() - timedelta(days=params.lookback_days))
+    # Trim to the displayed lookback (discard warm-up rows).  Anchored to
+    # the same latest trade_date as the fetch window so a short lookback
+    # does not slice past the last available data (which would empty the
+    # display frame when the feed lags wall-clock).
+    cutoff = pd.Timestamp(anchor - timedelta(days=params.lookback_days))
     display_df = wide.loc[wide.index >= cutoff].copy()
     if display_df.empty:
         return {
