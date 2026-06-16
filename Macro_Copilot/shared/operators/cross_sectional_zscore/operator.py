@@ -192,6 +192,9 @@ def cross_sectional_zscore(
     )
     out_set_lineage = series_set.lineage.append(z_step)
 
+    # ART9 LIN-2 invariant: each out-upstream carries the INPUT producer's
+    # step but NOT this zscore step — get_series appends self.lineage.steps[-1]
+    # (zscore).  Appending zscore here too would double-append downstream.
     input_head_step = series_set.lineage.steps[-1]
     out_upstream_by_key = {
         k: series_set.upstream_lineage_by_key[k].append(input_head_step)

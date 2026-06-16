@@ -284,6 +284,9 @@ def align_series(
     units_by_key = {
         output_keys[i]: s.units for i, s in enumerate(series_list)
     }
+    # ART9 LIN-2 invariant: store each member's upstream WITHOUT this op's
+    # own step — get_series appends self.lineage.steps[-1] (the align step).
+    # Storing it WITH the align step here would double-append at consume time.
     upstream_lineage_by_key = {
         output_keys[i]: s.lineage for i, s in enumerate(series_list)
     }

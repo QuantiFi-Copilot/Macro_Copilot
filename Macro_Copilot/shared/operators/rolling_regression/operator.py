@@ -291,6 +291,9 @@ def rolling_regression(
         "alpha": combined_missingness,
         "r_squared": combined_missingness,
     }
+    # ART9 LIN-2 invariant: store each member's upstream WITHOUT this op's
+    # own step — get_series appends self.lineage.steps[-1] (the regression
+    # step).  Storing it WITH that step here would double-append downstream.
     upstream_lineage_by_key = {
         "beta": lhs.lineage,
         "alpha": lhs.lineage,
