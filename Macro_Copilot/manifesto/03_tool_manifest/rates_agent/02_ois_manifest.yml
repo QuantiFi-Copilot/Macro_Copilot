@@ -543,7 +543,7 @@ tools:
   - name: calculate_swap_carry_and_roll
     domain: rates
     sub_agent: ois
-    bucket: 1B
+    bucket: 1A
     category: carry_roll
     status: built
 
@@ -563,9 +563,12 @@ tools:
       forecast and NOT the data-gated cash-bond carry/roll.
 
     bucket_rationale: >-
-      Bucket-1B: deterministic curve interpolation (s(T), s(T−h), s(h)) — no
-      model state, no fit.  The analytic OIS carry/roll explicitly distinct
-      from the cash-bond carry/roll, which stays deferred (no per-bond
+      Bucket-1A: strict deterministic curve interpolation + subtraction
+      (s(T), s(T−h), s(h) via linear interp; roll/carry = differences ×1e4) —
+      no model fit, no solver, no model state; conventions YAML-locked.
+      Consistent with the identical-engine sibling calculate_ois_forward_rate
+      (also 1A).  The analytic OIS carry/roll explicitly distinct from the
+      cash-bond carry/roll, which stays deferred (no per-bond
       price/coupon/financing data).
 
     pm_overridable:
@@ -595,7 +598,7 @@ tools:
   - name: calculate_implied_forward_curve
     domain: rates
     sub_agent: ois
-    bucket: 1B
+    bucket: 1A
     category: forward_curve
     status: built
 
@@ -614,9 +617,12 @@ tools:
       single-point forward_rate tool to the whole term-structure-of-forwards.
 
     bucket_rationale: >-
-      Bucket-1B: deterministic par-as-zero forward arithmetic
-      (forward_rate_between per anchor) — no model state.  Emits a typed
-      Panel artifact (BRIDGEABLE_PANEL), the natural forward-curve object.
+      Bucket-1A: strict deterministic curve arithmetic — pure linear interp +
+      dual-DF par-as-zero forward (forward_rate_between per anchor) — no
+      statistical fit, no solver, no model state; conventions YAML-locked.
+      Same forward engine as the 1A sibling calculate_ois_forward_rate, so the
+      forwards cohort is consistent.  Emits a typed Panel artifact
+      (BRIDGEABLE_PANEL), the natural forward-curve object.
 
     pm_overridable:
       - curve_family

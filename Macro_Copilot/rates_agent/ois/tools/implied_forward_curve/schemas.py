@@ -1,4 +1,4 @@
-"""Pydantic I/O schemas for implied_forward_curve (§7-C, Bucket-1B).
+"""Pydantic I/O schemas for implied_forward_curve (§7-C, Bucket-1A).
 
 Emits the forward STRIP as a typed Panel artifact (the composable output)
 plus a snapshot of the latest forward-curve cross-section.

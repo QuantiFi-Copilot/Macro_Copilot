@@ -1,4 +1,4 @@
-"""compute.py — OIS implied forward strip (§7-C, Bucket-1B analytic).
+"""compute.py — OIS implied forward strip (§7-C, Bucket-1A analytic).
 
 The forward STRIP: for a fixed forward window (e.g. 1Y), the implied forward
 rate anchored at each tenor across the curve grid (1y1y, 2y1y, …), assembled

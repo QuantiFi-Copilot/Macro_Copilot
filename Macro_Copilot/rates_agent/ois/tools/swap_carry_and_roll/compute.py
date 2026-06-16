@@ -1,4 +1,4 @@
-"""compute.py — OIS swap carry + roll-down (§7-C, Bucket-1B analytic).
+"""compute.py — OIS swap carry + roll-down (§7-C, Bucket-1A analytic).
 
 Decomposes the carry + roll-down of a par OIS swap held over a horizon h,
 from the OIS par curve.  RECEIVER, annualized bps, curve-unchanged

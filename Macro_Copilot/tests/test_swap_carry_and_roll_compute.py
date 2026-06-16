@@ -1,4 +1,4 @@
-"""Offline compute tests for swap_carry_and_roll (§7-C, Bucket-1B).
+"""Offline compute tests for swap_carry_and_roll (§7-C, Bucket-1A).
 
 Correctness is pinned by the exact curve-interpolation formula
 (roll = s(T)−s(T−h), carry = s(T)−s(h), total = roll+carry) recomputed

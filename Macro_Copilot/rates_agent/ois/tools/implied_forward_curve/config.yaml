@@ -1,7 +1,8 @@
 # =============================================================================
 # calculate_implied_forward_curve_tool — tool configuration
 # =============================================================================
-# A §7-C data-ready analytic primitive (Bucket-1B; deterministic, no model).
+# A §7-C data-ready analytic primitive (Bucket-1A; strict deterministic
+# curve arithmetic — pure linear interp + dual-DF forward, no model fit/solver).
 # The forward STRIP: the implied forward rate for a fixed forward window
 # (e.g. 1Y) anchored at each tenor across the curve grid — the 1y-forward
 # curve (1y1y, 2y1y, 3y1y, …), assembled as a Panel.  The generalization of

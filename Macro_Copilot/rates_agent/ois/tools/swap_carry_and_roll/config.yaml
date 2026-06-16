@@ -1,8 +1,9 @@
 # =============================================================================
 # calculate_swap_carry_and_roll_tool — tool configuration
 # =============================================================================
-# A §7-C data-ready analytic primitive (Bucket-1B; deterministic, no model
-# state).  Decomposes the carry + roll-down of a par OIS swap held over a
+# A §7-C data-ready analytic primitive (Bucket-1A; strict deterministic
+# arithmetic on stored curve data — no model fit/solver, no model state).
+# Decomposes the carry + roll-down of a par OIS swap held over a
 # horizon h, from the OIS par curve we already hold (NOT the cash-bond
 # carry/roll, which is data-gated → DEFER LOG).
 #

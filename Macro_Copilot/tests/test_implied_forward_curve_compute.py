@@ -1,4 +1,4 @@
-"""Offline compute tests for implied_forward_curve (§7-C, Bucket-1B).
+"""Offline compute tests for implied_forward_curve (§7-C, Bucket-1A).
 
 Correctness pinned by an INDEPENDENT forward parity reimplemented from
 first principles (linear interp of par rates + the shared

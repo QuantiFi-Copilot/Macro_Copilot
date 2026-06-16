@@ -1,4 +1,4 @@
-"""Pydantic I/O schemas for swap_carry_and_roll (§7-C, Bucket-1B)."""
+"""Pydantic I/O schemas for swap_carry_and_roll (§7-C, Bucket-1A)."""
 
 from __future__ import annotations
 
