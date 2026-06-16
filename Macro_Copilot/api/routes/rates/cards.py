@@ -193,12 +193,15 @@ _BATCH_YIELD_SQL = text("""
     WHERE instrument_type = 'sovereign_benchmark'
       AND field_name      = :field_name
       AND trade_date     >= :start_date
+      AND (CAST(:end_date AS date) IS NULL OR trade_date <= :end_date)
       AND tenor IS NOT NULL
     ORDER BY curve_family, tenor, trade_date
 """)
 
 
-def _compute_yield_snapshot(engine: Engine) -> list[YieldSnapshotRow]:
+def _compute_yield_snapshot(
+    engine: Engine, as_of_date: Optional[str] = None
+) -> list[YieldSnapshotRow]:
     """Batch-compute yield metrics for all sovereign benchmark instruments.
 
     Performance shape: ONE bulk SQL query for every (curve_family,
@@ -223,11 +226,16 @@ def _compute_yield_snapshot(engine: Engine) -> list[YieldSnapshotRow]:
     ffill_limit = cs_config.convention_value("ffill_limit_days")
 
     buffer_days = int(z_window * buffer_mult)
+    # Optional caller-supplied as-of date caps the snapshot window: when
+    # provided it overrides the latest-trade-date anchor AND bounds the
+    # SQL upper edge so the grid reflects that historical date.
+    as_of = date.fromisoformat(as_of_date) if as_of_date else None
     # Anchor the 1y window to the latest available trade_date in the sovereign
     # universe (not date.today()) so the grid resolves to real data when
     # ingestion lags; falls back to today only on an empty universe.
     anchor = (
-        latest_trade_date(
+        as_of
+        or latest_trade_date(
             engine, instrument_type="sovereign_benchmark", field_name=field_name
         )
         or date.today()
@@ -237,7 +245,11 @@ def _compute_yield_snapshot(engine: Engine) -> list[YieldSnapshotRow]:
     with engine.connect() as conn:
         result = conn.execute(
             _BATCH_YIELD_SQL,
-            {"field_name": field_name, "start_date": start_date.isoformat()},
+            {
+                "field_name": field_name,
+                "start_date": start_date.isoformat(),
+                "end_date": anchor.isoformat() if as_of else None,
+            },
         )
         rows = result.fetchall()
         columns = list(result.keys())
@@ -304,9 +316,10 @@ def yield_snapshot(
     engine: Engine = Depends(get_engine),
     tenors: str = Query(default="", description="Comma-separated tenor filter."),
     curves: str = Query(default="", description="Comma-separated curve filter."),
+    as_of_date: Optional[str] = None,
 ):
     try:
-        rows = _compute_yield_snapshot(engine)
+        rows = _compute_yield_snapshot(engine, as_of_date=as_of_date)
     except Exception as exc:
         logger.exception("yield-snapshot: DB query failed")
         raise HTTPException(status_code=503, detail=f"Database unavailable: {exc}")
@@ -339,6 +352,7 @@ def curve_shapes(
     curves: str = Query(default=""),
     short_tenor: str = Query(default="2Y"),
     long_tenor: str = Query(default="10Y"),
+    as_of_date: Optional[str] = None,
 ):
     curve_list = (
         [c.strip() for c in curves.split(",") if c.strip()]
@@ -373,6 +387,7 @@ def curve_shapes(
             params = CurveSpreadInput(
                 curve_family=curve_family, short_tenor=short_tenor,
                 long_tenor=long_tenor, lookback_days=90,
+                as_of_date=as_of_date,
             )
             output = calculate_curve_spread(
                 engine=engine, params=params, config=cs_config,
@@ -414,6 +429,7 @@ def scanner(
     top_n: int = Query(default=10, ge=1, le=50),
     min_z: float = Query(default=1.5, ge=0.0, alias="min_abs_z_score"),
     curves: str = Query(default=""),
+    as_of_date: Optional[str] = None,
 ):
     parsed_families = (
         [c.strip() for c in curves.split(",") if c.strip()]
@@ -423,6 +439,7 @@ def scanner(
     try:
         params = ScannerInput(
             curve_families=parsed_families, top_n=top_n, min_abs_z_score=min_z,
+            as_of_date=as_of_date,
         )
         output = scan_extremes(engine=engine, params=params)
     except Exception as exc:
@@ -454,7 +471,10 @@ def scanner(
 
 
 @router.get("/cross-market", response_model=CrossMarketResponse, summary="Cross-Market Spreads")
-def cross_market(engine: Engine = Depends(get_engine)):
+def cross_market(
+    engine: Engine = Depends(get_engine),
+    as_of_date: Optional[str] = None,
+):
     # Load the cross_market_spread config ONCE per request, before the
     # per-pair loop.  This makes the config dependency observable at
     # the endpoint and ensures load_tool_config runs once, not once
@@ -481,6 +501,7 @@ def cross_market(engine: Engine = Depends(get_engine)):
             params = CrossMarketSpreadInput(
                 curve_family_1=cf1, curve_family_2=cf2,
                 tenor=tenor, lookback_days=90,
+                as_of_date=as_of_date,
             )
             output = calculate_cross_market_spread(
                 engine=engine, params=params, config=cm_config,
@@ -523,6 +544,7 @@ def regimes(
     curves: str = Query(default=""),
     front_tenor: str = Query(default="2Y"),
     back_tenor: str = Query(default="10Y"),
+    as_of_date: Optional[str] = None,
 ):
     """User-facing endpoint name retains "regimes" because that's how PMs
     talk in industry chat ("today's regime is bear-flattening").  The
@@ -562,6 +584,7 @@ def regimes(
                 params = CurveMoveInput(
                     curve_family=curve_family, front_tenor=front_tenor,
                     back_tenor=back_tenor, lookback_period=period,
+                    as_of_date=as_of_date,
                 )
                 output = classify_curve_move_compute(
                     engine=engine, params=params, config=cm_config,
