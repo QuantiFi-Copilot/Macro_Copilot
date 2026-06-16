@@ -25,11 +25,23 @@ honesty crux): mean reversion requires ``0 < φ < 1``.  A unit-root /
 trending series (φ ≥ 1) or an oscillatory / explosive one (φ ≤ 0) has
 NO finite half-life, so the operator REFUSES rather than emit a garbage
 number (a ScalarMetric has no None channel — the stationarity_adf
-perfect-ramp-refusal precedent).  A merely-SLOW but valid reversion
-(0 < φ < 1 with φ near 1, a large but finite half-life) IS emitted —
-the φ and R² in lineage disclose the weakness; pair with
-``stationarity_adf`` to confirm the series is stationary before
-trusting a long half-life.
+perfect-ramp-refusal precedent).
+
+THE SIGNIFICANCE REFUSAL (M2 / P2 / P5 — describe-not-forecast, no
+half-correct calculation): the SIGN of φ is a POINT ESTIMATE, not a
+verdict.  Finite-sample AR(1)-OLS bias pushes β slightly negative on a
+true unit root, so a pure random walk reads ``0 < φ < 1`` and yields a
+finite half-life ~96% of the time — a confident-looking number for a
+series that has no mean reversion.  So the operator ALSO gates on the
+Dickey–Fuller unit-root test computed in the quant core (β SE → DF
+t-statistic ``β/SE(β)`` → MacKinnon p-value): the half-life is emitted
+ONLY when the unit-root null is REJECTED at 5% (``unit_root_rejected``).
+A random walk does not reject (median p ≈ 0.51) → REFUSED; a genuine OU
+rejects (p ≈ 1e-28) → emitted.  The df_tstat / unit_root_pvalue /
+beta_std_err / unit_root_rejected / unit_root_alpha all ride in lineage
+(P5).  A merely-SLOW but SIGNIFICANT reversion (φ near 1, a large but
+finite half-life, unit root rejected) IS emitted — the φ, R² and the
+unit-root stats in lineage disclose the weakness.
 
 DESIGN LOCK (OPR7, lineage-stamped): the AR(1) OLS estimator
 (``estimation_method='ar1_ols'``).  Exact-MLE and Kalman-OU are
@@ -51,13 +63,17 @@ Contract highlights (cite by OPR-number):
     estimator lock documented + stamped).
   - OPR9      : one ``Series`` in, one ``ScalarMetric`` out.
   - OPR10     : one ``OperatorStep``; half-life + φ/θ/α/μ/σ_eq + the
-    fit R² + drop counts ride in params.
+    fit R² + the unit-root significance stats (df_tstat,
+    unit_root_pvalue, beta_std_err, unit_root_rejected) + drop counts
+    ride in params.
   - OPR11     : COUNT units (a half-life is a count of observations,
     NOT dimensionless); input units recorded in lineage.
   - OPR13     : typed ``FitOuError`` refusals: non-Series input; fewer
-    than 12 finite observations; zero variance; NOT mean-reverting
-    (φ ∉ (0,1) — unit-root/trending/explosive/oscillatory); a
-    non-finite half-life.
+    than 12 finite observations; zero variance; NOT mean-reverting by
+    point estimate (φ ∉ (0,1) — unit-root/trending/explosive/
+    oscillatory); mean reversion NOT statistically significant (the
+    Dickey–Fuller unit-root null is not rejected at 5% — a random
+    walk); a non-finite half-life.
   - OPR14     : pure + rerun-deterministic.
 """
 
@@ -81,7 +97,21 @@ from shared.quant.ou import fit_ou_ar1
 
 
 _OPERATOR_NAME = "fit_ou"
-_OPERATOR_VERSION = "1.0.0"
+# v2.0.0 (OPR14d behavioural change): the half-life is now gated on a
+# unit-root SIGNIFICANCE test (Dickey–Fuller / MacKinnon p-value), not
+# only the point-estimate sign of φ.  A series whose unit root cannot be
+# rejected (a random walk) is REFUSED rather than emitting a spurious
+# "mean-reverting" half-life (M2 / P2 / P5).  The lineage flag is also
+# renamed is_mean_reverting → point_estimate_mean_reverting and the
+# significance stats (df_tstat, unit_root_pvalue, beta_std_err,
+# unit_root_rejected, unit_root_alpha) are added.
+_OPERATOR_VERSION = "2.0.0"
+
+# The unit-root rejection level the operator gates on (one-sided
+# Dickey–Fuller).  The half-life is only emitted when the unit-root null
+# is rejected at this level — the same 5% threshold the quant core and
+# stationarity_adf use.
+_UNIT_ROOT_ALPHA = 0.05
 
 _CONFIG_PATH: Path = Path(__file__).resolve().parent / "config.yaml"
 
@@ -120,15 +150,18 @@ def fit_ou(
     ScalarMetric
         The mean-reversion half-life (steps to close half the gap to
         equilibrium) in COUNT units; φ, θ, α, the equilibrium μ, the
-        stationary σ_eq, the fit R² and the NaN-drop audit ride in
-        lineage.
+        stationary σ_eq, the fit R², the unit-root significance stats
+        (df_tstat, unit_root_pvalue, beta_std_err, unit_root_rejected)
+        and the NaN-drop audit ride in lineage.
 
     Raises
     ------
     FitOuError
         The input is not a ``Series``; fewer than 12 finite
-        observations; zero variance; the series is NOT mean-reverting
-        (φ ∉ (0,1)); or a non-finite half-life.
+        observations; zero variance; the series is NOT mean-reverting by
+        point estimate (φ ∉ (0,1)); mean reversion is NOT statistically
+        significant (the Dickey–Fuller unit-root null is not rejected at
+        5% — a random walk); or a non-finite half-life.
     """
     # ------------------------------------------------------------------
     # 1. Load config + identity check — OPR12.
@@ -184,8 +217,9 @@ def fit_ou(
     result = fit_ou_ar1(values)
 
     # The not-mean-reverting refusal (OPR13/P5): a ScalarMetric has no
-    # None channel, so φ ∉ (0,1) must REFUSE rather than emit garbage.
-    if not result.is_mean_reverting or result.half_life is None:
+    # None channel, so a POINT estimate of φ ∉ (0,1) must REFUSE rather
+    # than emit garbage.
+    if not result.point_estimate_mean_reverting or result.half_life is None:
         raise FitOuError(
             "fit_ou: the series is NOT mean-reverting "
             f"(phi={result.phi:.6g}; mean reversion requires "
@@ -195,6 +229,33 @@ def fit_ou(
             "unit-root null, or variance_ratio for trend-vs-revert "
             "direction."
         )
+
+    # The SIGNIFICANCE refusal (M2 / P2 / P5 — describe-not-forecast).
+    # A point estimate of β < 0 is NOT a verdict: finite-sample AR(1)-OLS
+    # bias makes a pure random walk read mean-reverting ~96% of the time.
+    # Refuse unless the Dickey–Fuller unit-root null is REJECTED at 5% —
+    # a half-life on a series we cannot distinguish from a random walk is
+    # a half-correct calculation the scope boundary forbids.
+    if not result.unit_root_rejected:
+        pval_txt = (
+            f"{result.unit_root_pvalue:.4g}"
+            if result.unit_root_pvalue is not None else "undefined"
+        )
+        raise FitOuError(
+            "fit_ou: mean reversion is NOT statistically significant "
+            f"(Dickey-Fuller unit-root p-value={pval_txt} >= "
+            f"{_UNIT_ROOT_ALPHA}; df_tstat="
+            f"{result.df_tstat:.4g} vs the DF critical region).  The "
+            "point estimate phi="
+            f"{result.phi:.6g} looks mean-reverting, but finite-sample "
+            "OLS bias makes a random walk read that way ~96% of the "
+            "time, so the half-life would be spurious.  The unit root "
+            "cannot be rejected — this series is statistically "
+            "indistinguishable from a random walk.  Use stationarity_adf "
+            "for the full unit-root test, or variance_ratio for "
+            "trend-vs-revert direction."
+        )
+
     half_life = float(result.half_life)
     if not np.isfinite(half_life):
         raise FitOuError(
@@ -225,7 +286,28 @@ def fit_ou(
             float(result.r_squared)
             if result.r_squared is not None else None
         ),
-        "is_mean_reverting": bool(result.is_mean_reverting),
+        # Point-estimate sign (NOT a verdict — renamed per M2 so a
+        # consumer cannot misread it as significance).
+        "point_estimate_mean_reverting": bool(
+            result.point_estimate_mean_reverting
+        ),
+        # Unit-root SIGNIFICANCE (the M2 honesty surface, P5): the
+        # half-life is emitted ONLY because this null was rejected.
+        "beta_std_err": (
+            float(result.beta_std_err)
+            if result.beta_std_err is not None else None
+        ),
+        "df_tstat": (
+            float(result.df_tstat)
+            if result.df_tstat is not None else None
+        ),
+        "unit_root_pvalue": (
+            float(result.unit_root_pvalue)
+            if result.unit_root_pvalue is not None else None
+        ),
+        "unit_root_rejected": bool(result.unit_root_rejected),
+        "unit_root_alpha": _UNIT_ROOT_ALPHA,
+        "unit_root_test": "dickey_fuller_mackinnon",  # design-locked
         "estimation_method": "ar1_ols",  # design-locked (OPR7)
         "test_scope": "full_sample",     # descriptive disclosure (P5)
         "n_obs": n_obs,

@@ -14,7 +14,10 @@ Covers (full Codex-review-pattern coverage):
      - random walk → not mean reverting; half_life=None.
      - β below |min_abs_beta_for_half_life| → half_life=None.
      - β <= -1 (formula undefined) → half_life=None even though
-       is_mean_reverting=True.
+       point_estimate_mean_reverting=True.
+     - M2 significance disclosure: a weak / random-walk series gets
+       unit_root_rejected=False (the half-life, if any, is disclosed
+       as not statistically significant — never a confident finding).
   6. Cross-layer guard: series shorter than min_observations →
      controlled error envelope (FastAPI maps to HTTP 422 via the
      user_input_phrases shape).
@@ -254,7 +257,8 @@ class TestSeriesSpecPath:
 
         for k in (
             "as_of_date", "series_label", "series_units",
-            "is_mean_reverting", "half_life_days",
+            "point_estimate_mean_reverting", "unit_root_rejected",
+            "unit_root_pvalue", "half_life_days",
             "half_life_ci_lower_days", "half_life_ci_upper_days",
             "long_run_mean_native", "current_value_native",
             "current_deviation_native",
@@ -266,7 +270,11 @@ class TestSeriesSpecPath:
 
         assert cm["series_label"] == "UST_10Y"
         assert cm["series_units"] == TimeSeriesUnits.PERCENT.value
-        assert cm["is_mean_reverting"] is True
+        assert cm["point_estimate_mean_reverting"] is True
+        # A genuine planted OU is statistically significant — the
+        # half-life is a confident finding (M2).
+        assert cm["unit_root_rejected"] is True
+        assert cm["unit_root_pvalue"] is not None
         assert cm["half_life_days"] is not None
         assert cm["confidence_level_used"] == 0.95
 
@@ -367,7 +375,7 @@ class TestPastedSeriesPath:
         cm = out["current_metrics"]
         assert cm["series_units"] == TimeSeriesUnits.BPS.value
         assert cm["series_label"] == "custom_residual_bps"
-        assert cm["is_mean_reverting"] is True
+        assert cm["point_estimate_mean_reverting"] is True
 
     def test_pasted_native_rounding_follows_units(self):
         """When series_units=BPS, native scalars must round to
@@ -457,7 +465,7 @@ class TestNumericalCorrectness:
         out = _run_series_spec(params, {"UST_10Y": target_df})
         cm = out["current_metrics"]
         expected_half_life = -math.log(2.0) / math.log(0.95)
-        assert cm["is_mean_reverting"] is True
+        assert cm["point_estimate_mean_reverting"] is True
         assert abs(cm["beta"] - (-0.05)) < 0.02
         assert abs(cm["half_life_days"] - expected_half_life) < 5.0
         assert abs(cm["long_run_mean_native"] - 4.0) < 0.05
@@ -470,7 +478,7 @@ class TestNumericalCorrectness:
 class TestEdgeCases:
     def test_divergent_series_not_mean_reverting(self):
         """A deterministically divergent AR(1) (β > 0) must surface
-        as is_mean_reverting=False with half_life=None and
+        as point_estimate_mean_reverting=False with half_life=None and
         long_run_mean=None — these are the structural-rule
         edge-cases the v6 plan locked in."""
         div_df = _divergent_df(beta_true=0.01)
@@ -482,15 +490,56 @@ class TestEdgeCases:
         cm = out["current_metrics"]
         # β > 0 is the deterministic divergent branch.
         assert cm["beta"] > 0, f"expected β > 0 on divergent series, got {cm['beta']}"
-        assert cm["is_mean_reverting"] is False
+        assert cm["point_estimate_mean_reverting"] is False
+        # A β>0 divergent series cannot reject the unit root either.
+        assert cm["unit_root_rejected"] is not True
         assert cm["half_life_days"] is None
         assert cm["long_run_mean_native"] is None
         assert cm["current_deviation_native"] is None
 
+    def test_random_walk_disclosed_not_significant(self):
+        """M2 honesty surface on the half_life primitive (the
+        direct-fetch lane that DISCLOSES rather than refuses): a pure
+        random walk may read point_estimate_mean_reverting=True (the
+        β-sign point estimate) with a finite half_life, but
+        unit_root_rejected MUST be False so a consumer cannot read it
+        as a confident mean-reversion finding.  Search for a seed that
+        produces the dangerous point-MR-but-not-significant case."""
+        chosen_df = None
+        for seed in range(60):
+            rng = np.random.default_rng(seed)
+            rw = np.cumsum(rng.standard_normal(400))
+            bdays = pd.bdate_range(
+                date(2026, 4, 30) - timedelta(days=800), date(2026, 4, 30),
+            )[-400:]
+            df = pd.DataFrame({
+                "trade_date": [d.date() for d in bdays], "field_value": rw,
+            })
+            out = _run_series_spec(
+                HalfLifeInput(
+                    series_spec=SeriesSpec(curve_family="UST", tenor="10Y"),
+                    lookback_days=1825,
+                ),
+                {"UST_10Y": df},
+                config=_custom_config(min_observations=252),
+            )
+            cm = out.get("current_metrics")
+            if cm and cm["point_estimate_mean_reverting"] and not cm["unit_root_rejected"]:
+                chosen_df = cm
+                break
+        assert chosen_df is not None, "no point-MR non-significant RW found"
+        # The point estimate says mean-reverting, but the verdict refuses.
+        assert chosen_df["point_estimate_mean_reverting"] is True
+        assert chosen_df["unit_root_rejected"] is False
+        # The non-significance is disclosed via the p-value on the surface.
+        assert chosen_df["unit_root_pvalue"] is not None
+        assert chosen_df["unit_root_pvalue"] >= 0.05
+
     def test_min_abs_beta_floor_suppresses_half_life(self):
         """Build a series with extremely weak mean reversion so the
         OLS β is below the YAML's |β| floor.  half_life_days must be
-        None even though is_mean_reverting may be True (β < 0).
+        None even though point_estimate_mean_reverting may be True
+        (β < 0).
 
         We force this by setting min_abs_beta_for_half_life much
         higher than the planted β."""

@@ -153,12 +153,37 @@ class HalfLifeMetrics(BaseModel):
             "read this field to know the unit."
         ),
     )
-    is_mean_reverting: bool = Field(
+    point_estimate_mean_reverting: bool = Field(
         ...,
         description=(
-            "Strict structural test: ``β < 0``.  Does NOT involve a "
-            "statistical-significance test (those would be a sibling "
-            "tool — see methodology.planned_extensions)."
+            "POINT-ESTIMATE structural sign: ``β < 0``.  This is the "
+            "SIGN of the OLS estimate, NOT a significance verdict — a "
+            "pure random walk reads True ~96% of the time from "
+            "finite-sample bias.  Read ``unit_root_rejected`` / "
+            "``unit_root_pvalue`` for the honest statistical verdict "
+            "(renamed from is_mean_reverting per the M2 over-claim fix)."
+        ),
+    )
+    unit_root_rejected: Optional[bool] = Field(
+        None,
+        description=(
+            "Whether the Dickey–Fuller unit-root null (β = 0, a random "
+            "walk with NO mean reversion) is REJECTED at 5%.  This — "
+            "NOT point_estimate_mean_reverting — is whether the data "
+            "statistically supports mean reversion.  False/None means "
+            "the half-life is NOT statistically significant and must "
+            "not be read as a confident mean-reversion finding.  None "
+            "when the β standard error is undefined (singular design)."
+        ),
+    )
+    unit_root_pvalue: Optional[float] = Field(
+        None,
+        description=(
+            "MacKinnon one-sided p-value for the Dickey–Fuller "
+            "unit-root null.  Low (< 0.05) ⇒ reject the unit root ⇒ "
+            "genuine, significant mean reversion.  High ⇒ the series "
+            "is statistically indistinguishable from a random walk and "
+            "the half-life is spurious.  None when undefined."
         ),
     )
     half_life_days: Optional[float] = Field(
@@ -166,9 +191,12 @@ class HalfLifeMetrics(BaseModel):
         description=(
             "Half-life in trading-day units, rounded per "
             "``half_life_round_decimals``.  None when "
-            "is_mean_reverting=False, when β <= -1 (oscillating "
-            "divergence — formula undefined), or when |β| is below "
-            "``min_abs_beta_for_half_life`` (numerical instability)."
+            "point_estimate_mean_reverting=False, when β <= -1 "
+            "(oscillating divergence — formula undefined), or when |β| "
+            "is below ``min_abs_beta_for_half_life`` (numerical "
+            "instability).  WARNING: a non-None half-life with "
+            "unit_root_rejected=False is statistically a random walk — "
+            "read unit_root_rejected before trusting it."
         ),
     )
     half_life_ci_lower_days: Optional[float] = Field(
@@ -214,7 +242,9 @@ class HalfLifeMetrics(BaseModel):
             "``ou_beta_round_decimals`` (the OU-specific rounding "
             "convention — distinct from the regression-family "
             "``beta_round_decimals`` because OU drift β values are "
-            "much smaller in magnitude).  β < 0 → mean reverting."
+            "much smaller in magnitude).  β < 0 is the point-estimate "
+            "sign of mean reversion; read unit_root_rejected for "
+            "whether it is statistically significant."
         ),
     )
     beta_ci_lower: Optional[float] = Field(

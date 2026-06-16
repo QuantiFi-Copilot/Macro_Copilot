@@ -22,9 +22,14 @@ What stays HERE is the finance-aware machinery layered on top: the OLS
 the core's ``(X'X)^-1`` factor by σ²), the delta-method half-life CI (a
 closed-form transform of the β CI, NOT a separate numerical procedure),
 the confidence-level lookup, and the LOOSER
-``is_mean_reverting = β < 0`` definition the rates ``half_life``
-primitive relies on (the core's strict ``0 < φ < 1`` gate governs only
-whether a finite half-life is emitted, not this flag).
+``point_estimate_mean_reverting = β < 0`` POINT-estimate sign the rates
+``half_life`` primitive relies on (the core's strict ``0 < φ < 1`` gate
+governs only whether a finite half-life is emitted, not this flag).  The
+unit-root SIGNIFICANCE test (β SE, Dickey–Fuller t-statistic, MacKinnon
+p-value, ``unit_root_rejected``) is computed in the core and surfaced
+here too (the M2 over-claim fix): the point-estimate sign is NOT a
+verdict, so a random walk's half-life is disclosed as not-significant,
+never read as a confident mean-reversion finding.
 
 Likewise the PCA / SVD decomposition is NOT re-implemented here:
 ``pca_yield_changes`` delegates the economy SVD + the ``S²/(n−1)``
@@ -90,9 +95,27 @@ class OuFitResult:
     beta_ci_lower, beta_ci_upper : Optional[float]
         Two-sided CI on β at ``confidence_level``.  None when
         ``beta_std_err`` is None.
-    is_mean_reverting : bool
-        Strict structural definition: ``β < 0``.  Does NOT involve a
-        statistical-significance test (those would be a sibling tool).
+    point_estimate_mean_reverting : bool
+        POINT-ESTIMATE structural sign: ``β < 0``.  This is the SIGN of
+        the OLS estimate, NOT a significance verdict — a pure random
+        walk reads ``True`` ~96% of the time from finite-sample bias.
+        Read ``unit_root_rejected`` for the honest verdict (renamed
+        from ``is_mean_reverting`` per the M2 over-claim fix).
+    df_tstat : Optional[float]
+        The Dickey–Fuller t-statistic ``β / SE(β)`` (the ADF(0) /
+        intercept statistic).  More negative ⇒ stronger evidence
+        against the unit-root null.  None when ``beta_std_err`` is None.
+    unit_root_pvalue : Optional[float]
+        MacKinnon one-sided p-value for the unit-root null (``β = 0``,
+        no mean reversion).  Low ⇒ reject the unit root ⇒ genuine,
+        statistically significant mean reversion.  None when
+        ``df_tstat`` is None.
+    unit_root_rejected : Optional[bool]
+        Whether the unit root is rejected at the 5% level — the
+        SIGNIFICANCE verdict.  A consumer must read THIS (not
+        ``point_estimate_mean_reverting``) before trusting the
+        half-life: a random walk does not reject it.  None when no
+        p-value is available.
     half_life : Optional[float]
         Half-life in series-step units (typically trading days for
         sovereign-yield series).  Defined as ``-ln(2) / ln(1 + β)``
@@ -129,7 +152,10 @@ class OuFitResult:
     beta_std_err: Optional[float]
     beta_ci_lower: Optional[float]
     beta_ci_upper: Optional[float]
-    is_mean_reverting: bool
+    point_estimate_mean_reverting: bool
+    df_tstat: Optional[float]
+    unit_root_pvalue: Optional[float]
+    unit_root_rejected: Optional[bool]
     half_life: Optional[float]
     half_life_ci_lower: Optional[float]
     half_life_ci_upper: Optional[float]
@@ -222,9 +248,12 @@ def ou_half_life(
     ``-2 < β < 0`` because the half-life formula via
     ``-ln(2) / ln(1+β)`` requires ``1+β > 0``.  Series with
     ``-2 < β <= -1`` exhibit oscillating-but-bounded behaviour; we
-    surface them as ``is_mean_reverting=True`` (β < 0) but with
-    ``half_life=None`` (no closed-form formula in this primitive).
-    Documented in the dataclass attributes section.
+    surface them as ``point_estimate_mean_reverting=True`` (β < 0) but
+    with ``half_life=None`` (no closed-form formula in this primitive).
+    The β-sign flag is a POINT estimate, not a verdict; the unit-root
+    ``unit_root_rejected`` / ``unit_root_pvalue`` significance read is
+    surfaced beside it so a random walk is not mistaken for a confident
+    mean-reverter.  Documented in the dataclass attributes section.
     """
     # ------------------------------------------------------------------
     # Validate + clean
@@ -265,18 +294,16 @@ def ou_half_life(
     r_squared = core.r_squared
 
     # ------------------------------------------------------------------
-    # Beta standard error: σ² · (X'X)^-1, bottom-right element.  The
-    # (X'X)^-1 factor comes from the shared core; σ² and the z-scaling
-    # are the finance-aware extra.  (X'X)^-1 is None on a singular
-    # design — same as the legacy LinAlgError path.
+    # Beta standard error + the unit-root SIGNIFICANCE test both come
+    # from the shared core (the β SE = √(σ²·(X'X)^-1), the Dickey–Fuller
+    # t-statistic β/SE(β), and its MacKinnon p-value — the SAME verdict
+    # the fit_ou operator gates on, so both lanes agree).  Only the
+    # two-sided z-scaled CI is the finance-aware extra layered here.
     # ------------------------------------------------------------------
-    p = 2  # alpha + beta
-    beta_std_err: Optional[float] = None
-    if n_obs > p and core.xx_inv_beta is not None:
-        sigma2 = core.ss_res / (n_obs - p)
-        var_beta = float(sigma2 * core.xx_inv_beta)
-        if var_beta >= 0 and math.isfinite(var_beta):
-            beta_std_err = math.sqrt(var_beta)
+    beta_std_err = core.beta_std_err
+    df_tstat = core.df_tstat
+    unit_root_pvalue = core.unit_root_pvalue
+    unit_root_rejected = core.unit_root_rejected
 
     if beta_std_err is not None:
         beta_ci_lower: Optional[float] = beta - z * beta_std_err
@@ -285,13 +312,17 @@ def ou_half_life(
         beta_ci_lower = beta_ci_upper = None
 
     # ------------------------------------------------------------------
-    # Mean-reversion test — this primitive's LOOSER structural
-    # definition (β < 0).  Deliberately broader than the operator's
-    # strict 0 < φ < 1 gate: it admits oscillatory β <= -1 as
+    # Mean-reversion POINT estimate — this primitive's LOOSER structural
+    # sign (β < 0).  Deliberately broader than the operator's strict
+    # 0 < φ < 1 gate: it admits oscillatory β <= -1 as point-estimate
     # mean-reverting, with half_life=None (the formula needs 1+β > 0).
+    # This is ONLY a sign, NOT a significance verdict (M2): a random walk
+    # reads β < 0 ~96% of the time from finite-sample bias.  The honest
+    # verdict is ``unit_root_rejected`` above, surfaced alongside so a
+    # consumer cannot read a random walk's half-life as confident.
     # See shared.quant.ou.OuCoreFit for why the gate is the caller's.
     # ------------------------------------------------------------------
-    is_mean_reverting = beta < 0.0
+    point_estimate_mean_reverting = beta < 0.0
 
     # ------------------------------------------------------------------
     # Half-life + long-run mean come straight from the shared core (its
@@ -324,7 +355,10 @@ def ou_half_life(
         beta_std_err=beta_std_err,
         beta_ci_lower=beta_ci_lower,
         beta_ci_upper=beta_ci_upper,
-        is_mean_reverting=is_mean_reverting,
+        point_estimate_mean_reverting=point_estimate_mean_reverting,
+        df_tstat=df_tstat,
+        unit_root_pvalue=unit_root_pvalue,
+        unit_root_rejected=unit_root_rejected,
         half_life=half_life,
         half_life_ci_lower=half_life_ci_lower,
         half_life_ci_upper=half_life_ci_upper,

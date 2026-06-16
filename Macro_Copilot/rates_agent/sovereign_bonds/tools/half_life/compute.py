@@ -335,7 +335,9 @@ def calculate_half_life(
         as_of_date=series.dropna().index[-1].strftime("%Y-%m-%d"),
         series_label=label,
         series_units=units,
-        is_mean_reverting=fit.is_mean_reverting,
+        point_estimate_mean_reverting=fit.point_estimate_mean_reverting,
+        unit_root_rejected=fit.unit_root_rejected,
+        unit_root_pvalue=_round_or_none(fit.unit_root_pvalue, r2_dec),
         half_life_days=_round_or_none(fit.half_life, half_life_dec),
         half_life_ci_lower_days=_round_or_none(
             fit.half_life_ci_lower, half_life_dec

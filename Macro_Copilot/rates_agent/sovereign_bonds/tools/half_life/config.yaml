@@ -195,9 +195,19 @@ methodology:
         Δx_t = α + β · x_{t-1} + ε_t
 
     Returns:
-      - is_mean_reverting: bool       (β < 0; strict structural test)
+      - point_estimate_mean_reverting: bool  (β < 0; the POINT-estimate
+                                        SIGN, NOT a significance verdict)
+      - unit_root_rejected: Optional[bool]   (the Dickey-Fuller
+                                        unit-root null rejected at 5% —
+                                        the honest verdict; a random
+                                        walk reads False here)
+      - unit_root_pvalue: Optional[float]    (MacKinnon p-value for the
+                                        unit-root null)
       - half_life: Optional[float]    (-ln(2)/ln(1+β) when -1<β<0
-                                        AND |β| >= floor; else None)
+                                        AND |β| >= floor; else None.
+                                        WARNING: a non-None half-life
+                                        with unit_root_rejected=False is
+                                        statistically a random walk)
       - long_run_mean: -α/β           (when mean-reverting)
       - current_deviation             (current_value − long_run_mean)
       - β + 95% CI from OLS standard errors
@@ -226,11 +236,17 @@ methodology:
        CI on half_life inherit those assumptions.  Real residuals
        on yield series often violate them; the CI should be
        interpreted as a rough sizing tool, not a hypothesis test."
-    - "is_mean_reverting is purely structural (β < 0).  This tool
-       does NOT perform a stationarity hypothesis test (ADF / KPSS).
-       That is the cointegration_test tool's territory; it is
-       deliberately deferred behind the statsmodels dependency
-       prerequisite."
+    - "point_estimate_mean_reverting is purely a POINT-estimate sign
+       (β < 0), NOT a significance verdict — finite-sample OLS bias
+       makes a random walk read mean-reverting ~96% of the time.  So
+       this tool ALSO surfaces unit_root_rejected / unit_root_pvalue:
+       the Dickey-Fuller unit-root test (β SE -> t-stat -> MacKinnon
+       p-value) from the shared OU core, the same verdict the fit_ou
+       operator gates on.  A consumer MUST read unit_root_rejected
+       before trusting the half-life; a False there means the series is
+       statistically a random walk.  The dedicated, AUGMENTED unit-root
+       test (and the full stationarity battery) remains the
+       stationarity_adf / cointegration_test territory."
     - "Half-life is in series-step units.  For sovereign yield
        series at trading-day frequency the units are trading days.
        For pair_spec (cross-market spread) the units are also
@@ -239,8 +255,8 @@ methodology:
     - "Stability range: half-life is emitted only when -1 < β < 0
        AND |β| >= min_abs_beta_for_half_life.  Series with
        β <= -1 (oscillating divergence) or β >= 0 (random walk /
-       divergent) get is_mean_reverting=(β<0) but half_life=None.
-       Documented in the OuFitResult dataclass."
+       divergent) get point_estimate_mean_reverting=(β<0) but
+       half_life=None.  Documented in the OuFitResult dataclass."
     - "lookback_days controls fetch + fit window for series_spec /
        pair_spec.  Default 1825 (≈5 years of trading days) because
        OU CIs at 252 obs are very wide; 1250-2520 is the typical

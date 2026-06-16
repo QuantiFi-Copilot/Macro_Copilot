@@ -103,7 +103,18 @@ class TestHappyPath:
         assert head.params["phi"] == pytest.approx(ref.phi)
         assert head.params["equilibrium"] == pytest.approx(ref.mu)
         assert head.params["r_squared"] == pytest.approx(ref.r_squared)
-        assert head.params["is_mean_reverting"] is True
+        assert head.params["point_estimate_mean_reverting"] is True
+        # The unit-root significance surface (M2): the half-life is only
+        # emitted because the null was rejected — the stats must ride in
+        # lineage (P5 disclosure).
+        assert head.params["unit_root_rejected"] is True
+        assert head.params["unit_root_pvalue"] == pytest.approx(
+            ref.unit_root_pvalue
+        )
+        assert head.params["df_tstat"] == pytest.approx(ref.df_tstat)
+        assert head.params["beta_std_err"] == pytest.approx(ref.beta_std_err)
+        assert head.params["unit_root_alpha"] == 0.05
+        assert head.params["unit_root_test"] == "dickey_fuller_mackinnon"
         assert head.params["estimation_method"] == "ar1_ols"
 
     def test_half_life_sensible_for_known_phi(self):
@@ -175,6 +186,46 @@ class TestRefusalsAndDiscipline:
         s = _series("exp", values=x)
         with pytest.raises(FitOuError, match="NOT mean-reverting"):
             fit_ou(s)
+
+    def test_random_walk_refused_as_not_significant(self):
+        """The M2 honesty crux: a pure random walk's point estimate
+        reads mean-reverting (β<0) ~96% of the time, but the unit root
+        is NOT rejected, so the operator must REFUSE rather than emit a
+        spurious confident half-life.  Pick a seed whose finite-sample β
+        is negative (the dangerous case) so we exercise the SIGNIFICANCE
+        refusal, not the point-estimate one."""
+        # Seed search: find a random walk that is point-estimate
+        # mean-reverting (so the OLD code would have emitted) but whose
+        # unit root cannot be rejected.
+        chosen = None
+        for seed in range(50):
+            rng = np.random.default_rng(seed)
+            rw = np.cumsum(rng.standard_normal(252))
+            r = fit_ou_ar1(rw)
+            if r.point_estimate_mean_reverting and not r.unit_root_rejected:
+                chosen = rw
+                break
+        assert chosen is not None, "no point-MR non-significant RW found"
+        s = _series("rw", values=chosen)
+        with pytest.raises(FitOuError, match="NOT statistically significant"):
+            fit_ou(s)
+
+    def test_random_walk_population_mostly_refused(self):
+        """Population-level M2 reproduction THROUGH the operator: of 100
+        pure random walks, the operator must refuse the overwhelming
+        majority (pre-fix it emitted 96%).  At most ~the 5% Type-I rate
+        may slip through as genuine 5%-level rejections."""
+        rng = np.random.default_rng(777)
+        emitted = 0
+        for _ in range(100):
+            rw = np.cumsum(rng.standard_normal(252))
+            s = _series("rw", values=rw)
+            try:
+                fit_ou(s)
+                emitted += 1
+            except FitOuError:
+                pass
+        assert emitted <= 15, f"operator emitted on {emitted}/100 random walks"
 
     def test_params_none_equals_empty_params(self):
         s, _ = _ou()

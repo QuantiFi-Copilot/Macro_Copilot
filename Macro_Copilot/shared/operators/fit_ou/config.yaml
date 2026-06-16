@@ -1,22 +1,27 @@
 operator:
   name: fit_ou
   method_family: statistical_relationship
-  version: "1.0.0"
+  version: "2.0.0"
   description: >-
     Ornstein-Uhlenbeck / AR(1) mean-reversion fit of one Series,
     emitting the HALF-LIFE as a ScalarMetric in COUNT units (a positive
     count of observations — steps to close half the gap to
     equilibrium). The full fit — phi (AR(1) coefficient), theta
-    (mean-reversion speed), the equilibrium mu, the stationary sigma_eq
-    and the Delta-x-fit R-squared (the mean-reversion signal strength)
-    — rides in lineage. Finance-blind: generalises the rates half_life
-    primitive to ANY series. The math has no library (it lives in
-    shared/quant/ou.py). Mean reversion requires 0 < phi < 1; a
-    unit-root/trending (phi >= 1) or oscillatory/explosive (phi <= 0)
-    series is REFUSED (no finite half-life — never a garbage number).
-    The AR(1) OLS estimator is design-locked (Vasicek 1977; Hamilton
-    1994 Ch. 17). Full-sample descriptive fit; NaN rows dropped with
-    the interior-drop count in lineage.
+    (mean-reversion speed), the equilibrium mu, the stationary sigma_eq,
+    the Delta-x-fit R-squared (the mean-reversion signal strength) and
+    the unit-root SIGNIFICANCE (the Dickey-Fuller t-statistic, its
+    MacKinnon p-value and the beta standard error) — rides in lineage.
+    Finance-blind: generalises the rates half_life primitive to ANY
+    series. The math has no library (it lives in shared/quant/ou.py).
+    Mean reversion requires the POINT estimate 0 < phi < 1 AND that the
+    unit-root null be REJECTED at 5% (the Dickey-Fuller / MacKinnon
+    test): a unit-root/trending (phi >= 1) or oscillatory/explosive
+    (phi <= 0) series, OR a series statistically indistinguishable from
+    a random walk (unit root not rejected), is REFUSED (no finite
+    half-life — never a garbage number). The AR(1) OLS estimator is
+    design-locked (Vasicek 1977; Hamilton 1994 Ch. 17). Full-sample
+    descriptive fit; NaN rows dropped with the interior-drop count in
+    lineage.
 
 # fit_ou deliberately has ZERO knobs in v1 (the A4 model-fit family
 # opener; the stationarity_adf precedent) — an OU fit has no honest
@@ -39,15 +44,26 @@ methodology:
     discrete OU model by regressing the one-period change on the lagged
     level (Delta-x_t = alpha + beta * x_{t-1}; phi = 1 + beta). The
     half-life = -ln(2)/ln(phi) is emitted (steps to close half the gap
-    to the equilibrium mu = -alpha/beta). Mean reversion requires
-    0 < phi < 1: a unit-root/trending series (phi >= 1, beta >= 0) or an
-    oscillatory/explosive one (phi <= 0, beta <= -1) has NO finite
-    half-life and is REFUSED (a ScalarMetric has no None channel — the
-    honesty rule). A merely-SLOW but valid reversion (phi near 1, a
-    large but finite half-life) IS emitted — the phi and R-squared in
-    lineage disclose the weakness; pair with stationarity_adf to
-    confirm stationarity before trusting a long half-life. COUNT units
-    — a half-life is a count of observations, not dimensionless.
+    to the equilibrium mu = -alpha/beta) ONLY when TWO conditions hold:
+    (1) the POINT estimate is mean-reverting (0 < phi < 1) and (2) the
+    unit root is statistically REJECTED. The sign of phi is only a
+    point estimate: finite-sample AR(1)-OLS bias makes a pure random
+    walk read 0 < phi < 1 (and so emit a spurious half-life) about 96%
+    of the time. So the operator computes the Dickey-Fuller unit-root
+    test (beta standard error -> DF t-statistic beta/SE(beta) ->
+    MacKinnon one-sided p-value, the same DF surface stationarity_adf
+    uses) and REFUSES unless the unit-root null is rejected at 5%
+    (unit_root_rejected). A series that is statistically a random walk
+    is refused, NOT emitted as a confident half-life (P2 'no
+    half-correct calculation' / P5). A unit-root/trending series
+    (phi >= 1, beta >= 0) or an oscillatory/explosive one (phi <= 0,
+    beta <= -1) is likewise REFUSED (a ScalarMetric has no None channel
+    — the honesty rule). A merely-SLOW but SIGNIFICANT reversion (phi
+    near 1, a large but finite half-life, unit root rejected) IS emitted
+    — the phi, R-squared and the unit-root stats (df_tstat,
+    unit_root_pvalue, beta_std_err) in lineage disclose the strength;
+    pair with stationarity_adf for the augmented test. COUNT units — a
+    half-life is a count of observations, not dimensionless.
     test_scope='full_sample' rides in lineage — this DESCRIBES the
     whole observed history; never feed it into point-in-time
     compositions.
@@ -65,14 +81,14 @@ card:
     - "User asks HOW FAST a series reverts to its mean ('what is the half-life of this spread?', 'how quickly does X mean-revert?') — the half-life (in observations) answers it."
     - "Estimating the mean-reversion speed of a spread/residual for stat-arb sizing — typically on a stationary spread or a regression residual."
   when_not_to_use:
-    - "User asks WHETHER it is stationary / mean-reverts at all — stationarity_adf (a hypothesis test on the unit-root null); fit_ou ESTIMATES the speed and REFUSES non-reverting series."
+    - "User asks WHETHER it is stationary / mean-reverts at all — stationarity_adf (the AUGMENTED unit-root test, returns the statistic + p-value as a number); fit_ou ESTIMATES the reversion SPEED and REFUSES series whose unit root it cannot reject (it runs its own DF(0) significance gate, but stationarity_adf is the dedicated hypothesis test)."
     - "User wants random-walk-vs-trend DIRECTION — variance_ratio; or long-memory persistence — hurst_exponent."
     - "User wants the z-to-equilibrium PATH over time (a Series) — that is the ou_zscore planned extension, a separate operator."
     - "User wants a time-varying half-life — this is a FULL-SAMPLE descriptive fit (one number for the whole history)."
   upstream_requirements:
-    - "Input is ONE Series (any units), >= 12 finite observations, non-constant, and MEAN-REVERTING (0 < phi < 1 — else refused).  NaN rows are dropped (interior drops disclosed in lineage)."
+    - "Input is ONE Series (any units), >= 12 finite observations, non-constant, MEAN-REVERTING by point estimate (0 < phi < 1), AND statistically significant (the Dickey-Fuller unit-root null rejected at 5% — a random walk is refused).  NaN rows are dropped (interior drops disclosed in lineage)."
   downstream_pattern:
-    - "Output is a ScalarMetric in COUNT units (the half-life; metric_key fit_ou__<key>).  Terminal for 'how fast does it revert' asks; lineage carries phi, theta, the equilibrium mu, sigma_eq and the fit R-squared (read R-squared to gauge a weak fit; pair with stationarity_adf for significance)."
+    - "Output is a ScalarMetric in COUNT units (the half-life; metric_key fit_ou__<key>).  Terminal for 'how fast does it revert' asks; lineage carries phi, theta, the equilibrium mu, sigma_eq, the fit R-squared AND the unit-root significance (df_tstat, unit_root_pvalue, beta_std_err, unit_root_rejected) — the half-life is only emitted because the unit root was rejected."
   knobs_quick_ref:
     none: "Zero knobs in v1 — the AR(1) OLS estimator is design-locked; exact-MLE/Kalman-OU are planned extensions."
   example_shapes:
