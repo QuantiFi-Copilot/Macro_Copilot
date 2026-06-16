@@ -216,7 +216,8 @@ def calculate_ois_butterfly(
     # window resolves to real data when ingestion lags (weekend / holiday /
     # stale snapshot); falls back to today only when the curve has no rows.
     anchor = (
-        latest_trade_date(
+        params.as_of_date
+        or latest_trade_date(
             engine,
             curve_family=params.curve_family,
             field_name=field_name_resolved,
@@ -236,6 +237,7 @@ def calculate_ois_butterfly(
         tenors=[params.short_tenor, params.belly_tenor, params.long_tenor],
         field_name=field_name_resolved,
         start_date=start_date,
+        end_date=anchor,
     )
 
     if raw_df.empty:

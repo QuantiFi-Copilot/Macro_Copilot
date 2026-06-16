@@ -98,7 +98,8 @@ def calculate_pca_neutral_butterfly_weights(
     # window resolves to real data when ingestion lags (weekend / holiday /
     # stale snapshot); falls back to today only when the curve has no rows.
     anchor = (
-        latest_trade_date(
+        params.as_of_date
+        or latest_trade_date(
             engine, curve_family=params.curve_family, field_name=field
         )
         or date.today()
@@ -107,7 +108,7 @@ def calculate_pca_neutral_butterfly_weights(
     raw = fetch_instrument_panel(
         engine=engine,
         leg_specs=[(params.curve_family, t, field) for t in fit_tenors],
-        start_date=start_date, end_date=None, ffill_limit_days=ffill_limit,
+        start_date=start_date, end_date=anchor, ffill_limit_days=ffill_limit,
     )
     if raw.empty:
         return {

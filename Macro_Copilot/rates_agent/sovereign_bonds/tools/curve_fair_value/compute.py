@@ -122,7 +122,8 @@ def calculate_curve_fair_value(
     # window resolves to real data when ingestion lags; falls back to today
     # only when the curve has no rows (e.g. mocked engine=None in unit tests).
     anchor = (
-        latest_trade_date(engine, curve_family=params.curve_family)
+        params.as_of_date
+        or latest_trade_date(engine, curve_family=params.curve_family)
         or date.today()
     )
     start_date = anchor - timedelta(days=int(params.lookback_days))
@@ -130,7 +131,7 @@ def calculate_curve_fair_value(
         engine=engine,
         leg_specs=[(params.curve_family, t, field) for t in tenors],
         start_date=start_date,
-        end_date=None,
+        end_date=anchor,
         ffill_limit_days=ffill_limit,
     )
     if raw.empty:

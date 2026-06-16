@@ -170,7 +170,9 @@ def _divergent_df(
 
 
 def _run_series_spec(params, fetched_by_label: dict, config=None):
-    def fake_fetch(*, engine, curve_family, tenor, field_name, start_date):
+    def fake_fetch(
+        *, engine, curve_family, tenor, field_name, start_date, end_date=None,
+    ):
         key = f"{curve_family}_{tenor}"
         if key not in fetched_by_label:
             raise AssertionError(f"unexpected fetch for {key}")
@@ -320,7 +322,10 @@ class TestPairSpecPath:
             lookback_days=1825,
         )
 
-        def fake_fetch(*, engine, curve_family, tenor, field_name, start_date):
+        def fake_fetch(
+            *, engine, curve_family, tenor, field_name, start_date,
+            end_date=None,
+        ):
             return {"IT_BTP": cf1_df, "DE_BUND": cf2_df}[curve_family]
 
         with patch(

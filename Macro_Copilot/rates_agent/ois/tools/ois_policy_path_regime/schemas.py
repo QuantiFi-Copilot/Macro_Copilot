@@ -6,6 +6,7 @@ lineage) + the current PRICED policy regime — not just a snapshot.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -41,6 +42,12 @@ class OISPolicyPathRegimeInput(BaseModel):
         ge=120,
         le=10950,
         description="Calendar days of strip history to fit on (~10y).",
+    )
+    as_of_date: Optional[date] = Field(
+        default=None,
+        description=("Optional as-of date (YYYY-MM-DD): compute as of this trade "
+                     "date instead of the latest available data.  None → latest "
+                     "(live snapshot).  Supply a date for a historical, replayable view."),
     )
 
 

@@ -10,6 +10,7 @@ tenor) rather than the cross-domain swap_spread shape.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -97,6 +98,12 @@ class BreakevenInflationInput(BaseModel):
     real_field_name: str = Field(
         default="YLD_YTM_MID",
         description="Bloomberg field for the real leg.",
+    )
+    as_of_date: Optional[date] = Field(
+        default=None,
+        description=("Optional as-of date (YYYY-MM-DD): compute as of this trade "
+                     "date instead of the latest available data.  None → latest "
+                     "(live snapshot).  Supply a date for a historical, replayable view."),
     )
 
     @model_validator(mode="after")

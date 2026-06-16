@@ -138,7 +138,8 @@ def scan_ois_extremes(
     # universe scan fetches; falls back to today only when the universe is
     # empty.  Mirrors the sovereign scan_extremes anchor.
     anchor = (
-        latest_trade_date(
+        params.as_of_date
+        or latest_trade_date(
             engine, instrument_type=instrument_type, field_name=params.field_name
         )
         or date.today()
@@ -153,6 +154,7 @@ def scan_ois_extremes(
         instrument_type=instrument_type,
         field_name=params.field_name,
         start_date=start_date,
+        end_date=anchor,
         curve_families=params.curve_families,
     )
 

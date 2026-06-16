@@ -17,6 +17,7 @@ cleanup PR.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -87,6 +88,12 @@ class ZscoreCustomInput(BaseModel):
             "this input — otherwise the YAML default is silently "
             "shadowed."
         ),
+    )
+    as_of_date: Optional[date] = Field(
+        default=None,
+        description=("Optional as-of date (YYYY-MM-DD): compute as of this trade "
+                     "date instead of the latest available data.  None → latest "
+                     "(live snapshot).  Supply a date for a historical, replayable view."),
     )
 
 

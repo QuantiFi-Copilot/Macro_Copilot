@@ -144,7 +144,7 @@ def _native_round_decimals(units: TimeSeriesUnits, conv: dict) -> int:
 
 def _build_series_from_series_spec(
     *, engine: Engine, spec: SeriesSpec, default_field: str,
-    ffill_limit: int, start_date: date,
+    ffill_limit: int, start_date: date, end_date: Optional[date] = None,
 ) -> tuple[pd.Series, str, TimeSeriesUnits]:
     """Fetch + clean a single sovereign yield series.  Returns
     (clean Series, label, units)."""
@@ -155,6 +155,7 @@ def _build_series_from_series_spec(
         tenor=spec.tenor,
         field_name=field,
         start_date=start_date,
+        end_date=end_date,
     )
     if raw.empty:
         raise ValueError(
@@ -174,7 +175,7 @@ def _build_series_from_series_spec(
 
 def _build_series_from_pair_spec(
     *, engine: Engine, spec: PairSpec, default_field: str,
-    ffill_limit: int, start_date: date,
+    ffill_limit: int, start_date: date, end_date: Optional[date] = None,
 ) -> tuple[pd.Series, str, TimeSeriesUnits]:
     """Fetch both legs and produce ``(cf1 − cf2) * 100`` in bps —
     matching cross_market_spread's direction convention.  Returns
@@ -184,7 +185,7 @@ def _build_series_from_pair_spec(
     def fetch_leg(cf: str) -> pd.Series:
         raw = fetch_single_tenor(
             engine=engine, curve_family=cf, tenor=spec.tenor,
-            field_name=field, start_date=start_date,
+            field_name=field, start_date=start_date, end_date=end_date,
         )
         if raw.empty:
             raise ValueError(
@@ -282,7 +283,8 @@ def calculate_half_life(
     try:
         if params.series_spec is not None:
             anchor = (
-                latest_trade_date(
+                params.as_of_date
+                or latest_trade_date(
                     engine,
                     curve_family=params.series_spec.curve_family,
                     tenor=params.series_spec.tenor,
@@ -297,13 +299,15 @@ def calculate_half_life(
                 engine=engine, spec=params.series_spec,
                 default_field=default_field,
                 ffill_limit=ffill_limit, start_date=start_date,
+                end_date=anchor,
             )
         elif params.pair_spec is not None:
             # Two legs (cf1, cf2) inner-joined at the same tenor.  Anchor on
             # cf1 — both legs share the tenor and field, so cf1's latest
             # trade_date is a sound window start for the pair.
             anchor = (
-                latest_trade_date(
+                params.as_of_date
+                or latest_trade_date(
                     engine,
                     curve_family=params.pair_spec.cf1,
                     tenor=params.pair_spec.tenor,
@@ -318,6 +322,7 @@ def calculate_half_life(
                 engine=engine, spec=params.pair_spec,
                 default_field=default_field,
                 ffill_limit=ffill_limit, start_date=start_date,
+                end_date=anchor,
             )
         else:
             # pasted_series — input model_validator ensures it's set.  No

@@ -448,6 +448,7 @@ def _fetch_two_legs(
     tenor: str,
     field_name: str,
     start_date: date,
+    end_date: Optional[date] = None,
 ) -> tuple[pd.DataFrame, str | None]:
     """Fetch the nominal-leg and linker-leg single-tenor series, each
     with its own instrument_type filter, and return a single
@@ -460,6 +461,13 @@ def _fetch_two_legs(
 
     Either leg returning zero rows is a controlled failure — see the
     no-proxy guard rationale in the module docstring.
+
+    ``end_date`` (optional, default ``None``): historical as-of UPPER
+    bound, threaded into both legs' ``fetch_single_tenor`` calls.
+    ``None`` returns each leg's frame unchanged byte-for-byte (the
+    pre-as-of default).  The compute path passes ``end_date=anchor``;
+    when the caller does not supply ``as_of_date`` the anchor is the
+    latest available ``trade_date``, so the cap drops zero rows.
     """
     linker_df = fetch_single_tenor(
         engine=engine,
@@ -468,6 +476,7 @@ def _fetch_two_legs(
         field_name=field_name,
         start_date=start_date,
         instrument_type=_LINKER_INSTRUMENT_TYPE,
+        end_date=end_date,
     )
     if linker_df.empty:
         msg = (
@@ -492,6 +501,7 @@ def _fetch_two_legs(
         field_name=field_name,
         start_date=start_date,
         instrument_type=_NOMINAL_INSTRUMENT_TYPE,
+        end_date=end_date,
     )
     if nominal_df.empty:
         msg = (
@@ -599,7 +609,8 @@ def calculate_breakeven_inflation_simple(
     # them anyway).  The display cutoff below stays anchored to the
     # data's last aligned trade_date (see step 5).
     anchor = (
-        latest_trade_date(
+        params.as_of_date
+        or latest_trade_date(
             engine,
             tenor=params.tenor,
             field_name=field_name_resolved,
@@ -638,6 +649,7 @@ def calculate_breakeven_inflation_simple(
         tenor=params.tenor,
         field_name=field_name_resolved,
         start_date=start_date,
+        end_date=anchor,
     )
     if fetch_error is not None:
         return {"error": fetch_error}

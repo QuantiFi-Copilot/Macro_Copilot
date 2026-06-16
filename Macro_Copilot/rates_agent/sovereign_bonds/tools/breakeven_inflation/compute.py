@@ -104,7 +104,11 @@ def calculate_breakeven_inflation(
     # trade_date across that tenor is the right floor (the align step
     # intersects the legs anyway).  Falls back to today only when the
     # tenor has no rows.
-    anchor = latest_trade_date(engine, tenor=params.tenor) or date.today()
+    anchor = (
+        params.as_of_date
+        or latest_trade_date(engine, tenor=params.tenor)
+        or date.today()
+    )
     start_date = anchor - timedelta(
         days=params.lookback_days + buffer_calendar_days
     )
@@ -123,6 +127,7 @@ def calculate_breakeven_inflation(
         tenors=[params.tenor],
         field_name=params.nominal_field_name,
         start_date=start_date,
+        end_date=anchor,
     )
     real_df = fetch_tenor_group(
         engine=engine,
@@ -130,6 +135,7 @@ def calculate_breakeven_inflation(
         tenors=[params.tenor],
         field_name=params.real_field_name,
         start_date=start_date,
+        end_date=anchor,
     )
 
     if nominal_df.empty:

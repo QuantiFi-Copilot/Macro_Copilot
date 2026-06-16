@@ -195,7 +195,7 @@ def _synthetic_bond_leg(
 
 
 def _patched_zcis_fetch_factory(legs: dict):
-    def _stub(*, engine, curve_family, tenor, field_name, start_date):
+    def _stub(*, engine, curve_family, tenor, field_name, start_date, end_date=None):
         key = (curve_family, tenor)
         if key in legs:
             return legs[key]
@@ -209,7 +209,7 @@ def _patched_zcis_fetch_factory(legs: dict):
 
 def _patched_bond_fetch_factory(legs: dict):
     def _stub(
-        *, engine, curve_family, tenor, field_name, start_date,
+        *, engine, curve_family, tenor, field_name, start_date, end_date=None,
         instrument_type=None,
     ):
         key = (curve_family, tenor, instrument_type)
@@ -1196,7 +1196,7 @@ class TestFieldNameThreading:
         bond_captured: list = []
 
         def _zcis_capture_stub(
-            *, engine, curve_family, tenor, field_name, start_date,
+            *, engine, curve_family, tenor, field_name, start_date, end_date=None,
         ):
             zcis_captured.append((curve_family, tenor, field_name))
             return zcis_legs.get(
@@ -1209,7 +1209,7 @@ class TestFieldNameThreading:
             )
 
         def _bond_capture_stub(
-            *, engine, curve_family, tenor, field_name, start_date,
+            *, engine, curve_family, tenor, field_name, start_date, end_date=None,
             instrument_type=None,
         ):
             bond_captured.append(
@@ -1266,7 +1266,7 @@ class TestFieldNameThreading:
         zcis_captured: list = []
         bond_captured: list = []
 
-        def _zcis_stub(*, engine, curve_family, tenor, field_name, start_date):
+        def _zcis_stub(*, engine, curve_family, tenor, field_name, start_date, end_date=None):
             zcis_captured.append((curve_family, tenor, field_name))
             return zcis_legs.get(
                 (curve_family, tenor),
@@ -1278,7 +1278,7 @@ class TestFieldNameThreading:
             )
 
         def _bond_stub(
-            *, engine, curve_family, tenor, field_name, start_date,
+            *, engine, curve_family, tenor, field_name, start_date, end_date=None,
             instrument_type=None,
         ):
             bond_captured.append(
@@ -1329,7 +1329,7 @@ class TestFieldNameThreading:
         zcis_captured: list = []
         bond_captured: list = []
 
-        def _zcis_stub(*, engine, curve_family, tenor, field_name, start_date):
+        def _zcis_stub(*, engine, curve_family, tenor, field_name, start_date, end_date=None):
             zcis_captured.append((curve_family, tenor, field_name))
             return zcis_legs.get(
                 (curve_family, tenor),
@@ -1341,7 +1341,7 @@ class TestFieldNameThreading:
             )
 
         def _bond_stub(
-            *, engine, curve_family, tenor, field_name, start_date,
+            *, engine, curve_family, tenor, field_name, start_date, end_date=None,
             instrument_type=None,
         ):
             bond_captured.append(

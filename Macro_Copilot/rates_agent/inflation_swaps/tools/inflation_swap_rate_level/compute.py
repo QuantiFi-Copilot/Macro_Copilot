@@ -89,7 +89,7 @@ from shared.analytics.levels import (
     clean_single_series,
     compute_level_metrics,
 )
-from shared.analytics.rates_fetch import latest_trade_date
+from shared.analytics.rates_fetch import _cap_to_end_date, latest_trade_date
 from shared.config import ToolConfig, load_tool_config
 from shared.schemas import TimeSeries, TimeSeriesRow, TimeSeriesUnits
 
@@ -199,6 +199,7 @@ def fetch_zcis_single_pillar(
     tenor: str,
     field_name: str,
     start_date: date,
+    end_date: Optional[date] = None,
 ) -> pd.DataFrame:
     """Fetch a single-pillar ZCIS series on one curve.
 
@@ -212,6 +213,14 @@ def fetch_zcis_single_pillar(
     ``curve_family=<user>``, and ``tenor=<user>`` — the no-proxy guard
     documented in the module docstring.  Empty DataFrame if no rows
     match.
+
+    ``end_date`` (optional, default ``None``): historical as-of UPPER
+    bound.  Applied via the canonical ``_cap_to_end_date`` helper —
+    ``None`` returns the frame unchanged byte-for-byte (the default for
+    every pre-as-of caller), so this is a strict additive extension.
+    The compute path passes ``end_date=anchor``; when the caller does
+    not supply ``as_of_date`` the anchor is the latest available
+    ``trade_date``, so the cap drops zero rows.
     """
     with engine.connect() as conn:
         result = conn.execute(
@@ -227,7 +236,7 @@ def fetch_zcis_single_pillar(
         )
         rows = result.fetchall()
         columns = list(result.keys())
-    return pd.DataFrame(rows, columns=columns)
+    return _cap_to_end_date(pd.DataFrame(rows, columns=columns), end_date)
 
 
 def _resolve_reference_metadata(
@@ -368,7 +377,8 @@ def calculate_inflation_swap_rate_level(
     # instrument_type='inflation_swap' further tightens the probe to the
     # ZCIS universe.
     anchor = (
-        latest_trade_date(
+        params.as_of_date
+        or latest_trade_date(
             engine,
             curve_family=params.curve_family,
             tenor=params.tenor,
@@ -396,6 +406,7 @@ def calculate_inflation_swap_rate_level(
         tenor=params.tenor,
         field_name=field_name_resolved,
         start_date=start_date,
+        end_date=anchor,
     )
 
     if raw_df.empty:

@@ -118,7 +118,7 @@ def _patched_fetch_factory(legs: dict):
     """Build a stand-in for ``fetch_zcis_single_pillar`` that
     dispatches by (curve_family, tenor).
     """
-    def _stub(*, engine, curve_family, tenor, field_name, start_date):
+    def _stub(*, engine, curve_family, tenor, field_name, start_date, end_date=None):
         key = (curve_family, tenor)
         if key in legs:
             return legs[key]
@@ -602,7 +602,7 @@ class TestFieldNameYamlFallthrough:
     def _capture_fetch_calls(self, params, config, legs):
         captured = []
 
-        def _stub(*, engine, curve_family, tenor, field_name, start_date):
+        def _stub(*, engine, curve_family, tenor, field_name, start_date, end_date=None):
             captured.append({
                 "curve_family": curve_family,
                 "tenor": tenor,

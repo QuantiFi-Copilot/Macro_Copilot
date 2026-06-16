@@ -51,18 +51,26 @@ _FETCH_SQL = text("""
       AND field_name   = :field_name
       AND instrument_type = 'ois_swap'
       AND trade_date  >= :start_date
+      AND (CAST(:end_date AS date) IS NULL OR trade_date <= :end_date)
       AND tenor IS NOT NULL
     ORDER BY trade_date, tenor
 """)
 
 
 def _fetch_curve(engine: Engine, curve_family: str, field_name: str,
-                 start_date: date) -> pd.DataFrame:
-    """Fetch every (date, tenor) observation on one OIS curve."""
+                 start_date: date, end_date: Optional[date] = None) -> pd.DataFrame:
+    """Fetch every (date, tenor) observation on one OIS curve.
+
+    ``end_date`` (optional): inclusive upper-bound ``trade_date`` cap —
+    the historical as-of upper bound.  ``None`` (the live-snapshot
+    default) leaves the upper bound open, so the SQL predicate is a
+    no-op and the result is byte-identical to the pre-as-of path.
+    """
     with engine.connect() as conn:
         result = conn.execute(_FETCH_SQL, {
             "curve_family": curve_family, "field_name": field_name,
             "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat() if end_date is not None else None,
         })
         rows = result.fetchall()
         columns = list(result.keys())
@@ -119,7 +127,8 @@ def calculate_swap_carry_and_roll(
     # ='ois_swap') the curve fetch uses; falls back to today only when the
     # curve has no rows.
     anchor = (
-        latest_trade_date(
+        params.as_of_date
+        or latest_trade_date(
             engine,
             curve_family=params.curve_family,
             field_name=field,
@@ -128,7 +137,7 @@ def calculate_swap_carry_and_roll(
         or date.today()
     )
     start_date = anchor - timedelta(days=int(params.lookback_days) + 30)
-    raw = _fetch_curve(engine, params.curve_family, field, start_date)
+    raw = _fetch_curve(engine, params.curve_family, field, start_date, end_date=anchor)
     if raw.empty:
         return {
             "error": (

@@ -130,7 +130,8 @@ def calculate_ois_policy_path_regime(
     # uses (curve_family + price field + instrument_type='policy_future');
     # falls back to today only when the strip has no rows.
     anchor = (
-        latest_trade_date(
+        params.as_of_date
+        or latest_trade_date(
             engine,
             curve_family=cf,
             field_name=field,
@@ -145,7 +146,7 @@ def calculate_ois_policy_path_regime(
         strip_positions=positions,
         field_name=field,
         start_date=start_date,
-        end_date=None,
+        end_date=anchor,
         ffill_limit_days=ffill_limit,
     )
     if raw_panel.empty:

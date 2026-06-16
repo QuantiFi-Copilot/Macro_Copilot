@@ -276,7 +276,8 @@ def get_real_yield_level(
     # filtered universe is empty.  The display cutoff below is separately
     # anchored to the data's last observation (see step 5).
     anchor = (
-        latest_trade_date(
+        params.as_of_date
+        or latest_trade_date(
             engine,
             curve_family=params.curve_family,
             tenor=params.tenor,
@@ -304,6 +305,7 @@ def get_real_yield_level(
         field_name=field_name_resolved,
         start_date=start_date,
         instrument_type=_LINKER_INSTRUMENT_TYPE,
+        end_date=anchor,
     )
 
     if raw_df.empty:

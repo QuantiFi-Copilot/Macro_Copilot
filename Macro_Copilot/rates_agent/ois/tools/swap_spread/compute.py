@@ -231,7 +231,7 @@ def calculate_swap_spread(
         tenor=params.tenor,
         field_name=ois_field_resolved,
     )
-    anchor = min(
+    anchor = params.as_of_date or min(
         [d for d in (_sov_anchor, _ois_anchor) if d], default=date.today()
     )
     start_date = anchor - timedelta(
@@ -249,6 +249,7 @@ def calculate_swap_spread(
         ois_field_name=ois_field_resolved,
         tenor=params.tenor,
         start_date=start_date,
+        end_date=anchor,
     )
 
     if raw_df.empty:

@@ -191,6 +191,7 @@ def _fetch_one_series(
     default_field: str,
     ffill_limit: int,
     start_date: date,
+    end_date: Optional[date] = None,
 ) -> Tuple[pd.Series, str]:
     """Fetch + clean one series; return (clean Series, resolved field
     name).  Raises a ValueError on missing data — caller turns it into
@@ -202,6 +203,7 @@ def _fetch_one_series(
         tenor=spec.tenor,
         field_name=field,
         start_date=start_date,
+        end_date=end_date,
     )
     if raw.empty:
         raise ValueError(
@@ -336,7 +338,8 @@ def calculate_rolling_regression(
     # for the display-window cutoff so the two windows stay coherent.  Falls
     # back to today only when the target curve has no rows.
     anchor = (
-        latest_trade_date(
+        params.as_of_date
+        or latest_trade_date(
             engine,
             curve_family=params.target_spec.curve_family,
             tenor=params.target_spec.tenor,
@@ -360,6 +363,7 @@ def calculate_rolling_regression(
             default_field=default_field,
             ffill_limit=ffill_limit,
             start_date=start_date,
+            end_date=anchor,
         )
         regressor_cleans: List[pd.Series] = []
         for spec in params.regressor_specs:
@@ -369,6 +373,7 @@ def calculate_rolling_regression(
                 default_field=default_field,
                 ffill_limit=ffill_limit,
                 start_date=start_date,
+                end_date=anchor,
             )
             regressor_cleans.append(r_clean)
     except ValueError as exc:

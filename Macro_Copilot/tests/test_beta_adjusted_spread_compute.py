@@ -139,7 +139,9 @@ def _custom_config(**overrides) -> ToolConfig:
 
 
 def _run(params, fetched_by_label: dict, config=None):
-    def fake_fetch(*, engine, curve_family, tenor, field_name, start_date):
+    def fake_fetch(
+        *, engine, curve_family, tenor, field_name, start_date, end_date=None,
+    ):
         key = f"{curve_family}_{tenor}"
         if key not in fetched_by_label:
             raise AssertionError(f"unexpected fetch for {key}")
@@ -764,7 +766,10 @@ class TestBufferMultiplierWiring:
 
         captured = []
 
-        def cap(*, engine, curve_family, tenor, field_name, start_date):
+        def cap(
+            *, engine, curve_family, tenor, field_name, start_date,
+            end_date=None,
+        ):
             captured.append(start_date)
             return {"IT_BTP_10Y": target_df, "DE_BUND_10Y": regressor_df}[
                 f"{curve_family}_{tenor}"

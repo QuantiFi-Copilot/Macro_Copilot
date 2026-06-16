@@ -31,6 +31,7 @@ sibling tool, not a parameter override of this one.  Pinned by
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -101,6 +102,15 @@ class HalfLifeInput(BaseModel):
             "controlled-error envelope from the OU primitive fires "
             "with a clear message naming both numbers."
         ),
+    )
+    as_of_date: Optional[date] = Field(
+        default=None,
+        description=("Optional as-of date (YYYY-MM-DD): compute as of this trade "
+                     "date instead of the latest available data.  None → latest "
+                     "(live snapshot).  Supply a date for a historical, replayable view.  "
+                     "Applies to the series_spec / pair_spec DB-backed paths only; "
+                     "the pasted_series path carries the caller's own dates and "
+                     "ignores this field."),
     )
 
     @model_validator(mode="after")

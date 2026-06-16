@@ -73,6 +73,7 @@ DataFrame and cannot drift.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import List, Optional
 
 from pydantic import BaseModel, Field, model_validator
@@ -208,6 +209,12 @@ class SwapSpreadInput(BaseModel):
             "from config.yaml (currently 'PX_LAST').  Same sentinel "
             "discipline as sovereign_field_name."
         ),
+    )
+    as_of_date: Optional[date] = Field(
+        default=None,
+        description=("Optional as-of date (YYYY-MM-DD): compute as of this trade "
+                     "date instead of the latest available data.  None → latest "
+                     "(live snapshot).  Supply a date for a historical, replayable view."),
     )
 
     @model_validator(mode="after")

@@ -6,6 +6,7 @@ lineage) + the current vol-regime classification — not just a snapshot.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -39,6 +40,12 @@ class RatesVolRegimeInput(BaseModel):
             "Bloomberg field; None (default) → config default_field_name "
             "(YLD_YTM_MID)."
         ),
+    )
+    as_of_date: Optional[date] = Field(
+        default=None,
+        description=("Optional as-of date (YYYY-MM-DD): compute as of this trade "
+                     "date instead of the latest available data.  None → latest "
+                     "(live snapshot).  Supply a date for a historical, replayable view."),
     )
 
 

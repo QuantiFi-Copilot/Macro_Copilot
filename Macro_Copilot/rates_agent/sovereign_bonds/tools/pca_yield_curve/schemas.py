@@ -39,6 +39,7 @@ as-is.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -143,6 +144,12 @@ class PcaYieldCurveInput(BaseModel):
             "otherwise the playbook auto-discovery is silently "
             "shadowed."
         ),
+    )
+    as_of_date: Optional[date] = Field(
+        default=None,
+        description=("Optional as-of date (YYYY-MM-DD): compute as of this trade "
+                     "date instead of the latest available data.  None → latest "
+                     "(live snapshot).  Supply a date for a historical, replayable view."),
     )
 
 

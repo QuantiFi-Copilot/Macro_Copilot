@@ -157,14 +157,18 @@ def _synthetic_curve_df(
 def _run(params, fetched_df, config=None):
     """Patch fetch_tenor_group + date inside the compute module and
     run the tool."""
-    def fake_fetch(*, engine, curve_family, tenors, field_name, start_date):
+    def fake_fetch(
+        *, engine, curve_family, tenors, field_name, start_date, end_date=None,
+    ):
         # fake_fetch: filter rows to the requested tenors and the
-        # requested calendar start date so lookback semantics stay
-        # honest in unit tests.
+        # requested calendar window (start, and end when supplied) so
+        # lookback semantics stay honest in unit tests.
         mask = (
             fetched_df["tenor"].isin(tenors)
             & (fetched_df["trade_date"] >= start_date)
         )
+        if end_date is not None:
+            mask &= fetched_df["trade_date"] <= end_date
         return fetched_df.loc[mask].copy()
 
     with patch(
@@ -798,7 +802,10 @@ class TestCurveFamilyAgnosticScope:
         """Variant of _run() that also captures the resolved
         field_name passed to fetch_tenor_group, so tests can assert
         per-playbook auto-discovery happened correctly."""
-        def fake_fetch(*, engine, curve_family, tenors, field_name, start_date):
+        def fake_fetch(
+            *, engine, curve_family, tenors, field_name, start_date,
+            end_date=None,
+        ):
             captured["field_name"] = field_name
             captured["curve_family"] = curve_family
             captured["tenors"] = list(tenors)
@@ -806,6 +813,8 @@ class TestCurveFamilyAgnosticScope:
                 fetched_df["tenor"].isin(tenors)
                 & (fetched_df["trade_date"] >= start_date)
             )
+            if end_date is not None:
+                mask &= fetched_df["trade_date"] <= end_date
             return fetched_df.loc[mask].copy()
 
         with patch(

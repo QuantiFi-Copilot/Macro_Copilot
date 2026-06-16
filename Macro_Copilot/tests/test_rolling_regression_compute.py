@@ -135,7 +135,9 @@ def _run(params, fetched_series_by_label: dict, config=None):
     """Mock fetch_single_tenor to return one of the synthetic
     DataFrames keyed by ``"{curve_family}_{tenor}"``."""
 
-    def fake_fetch(*, engine, curve_family, tenor, field_name, start_date):
+    def fake_fetch(
+        *, engine, curve_family, tenor, field_name, start_date, end_date=None,
+    ):
         key = f"{curve_family}_{tenor}"
         if key not in fetched_series_by_label:
             raise AssertionError(f"unexpected fetch for {key}")
@@ -717,7 +719,9 @@ class TestBufferMultiplierIsConfigDriven:
 
         captured_start_dates = []
 
-        def capture_fetch(*, engine, curve_family, tenor, field_name, start_date):
+        def capture_fetch(
+            *, engine, curve_family, tenor, field_name, start_date, end_date=None,
+        ):
             captured_start_dates.append(start_date)
             key = f"{curve_family}_{tenor}"
             return {"UST_10Y": target_df, "DE_BUND_10Y": regressor_df}[key]

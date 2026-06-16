@@ -29,6 +29,7 @@ responsibility — locked in methodology.assumptions in the YAML.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -117,6 +118,12 @@ class BetaAdjustedSpreadInput(BaseModel):
             "constructing this input — otherwise the YAML default is "
             "silently shadowed."
         ),
+    )
+    as_of_date: Optional[date] = Field(
+        default=None,
+        description=("Optional as-of date (YYYY-MM-DD): compute as of this trade "
+                     "date instead of the latest available data.  None → latest "
+                     "(live snapshot).  Supply a date for a historical, replayable view."),
     )
 
     @model_validator(mode="after")

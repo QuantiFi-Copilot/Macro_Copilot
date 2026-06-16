@@ -193,7 +193,8 @@ def get_ois_rate_level(
     # window resolves to real data when ingestion lags (weekend / holiday /
     # stale snapshot); falls back to today only when the series has no rows.
     anchor = (
-        latest_trade_date(
+        params.as_of_date
+        or latest_trade_date(
             engine,
             curve_family=params.curve_family,
             tenor=params.tenor,
@@ -214,6 +215,7 @@ def get_ois_rate_level(
         tenor=params.tenor,
         field_name=field_name_resolved,
         start_date=start_date,
+        end_date=anchor,
     )
 
     if raw_df.empty:

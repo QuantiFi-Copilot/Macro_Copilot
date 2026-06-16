@@ -202,7 +202,7 @@ def _resolve_field_name(
 
 def _fetch_one(
     *, engine: Engine, curve_family: str, tenor: str, field_name: str,
-    ffill_limit: int, start_date: date,
+    ffill_limit: int, start_date: date, end_date: Optional[date] = None,
 ) -> pd.Series:
     """Fetch + clean one yield series.  Raises ValueError on missing
     data — caller turns it into the controlled error envelope."""
@@ -212,6 +212,7 @@ def _fetch_one(
         tenor=tenor,
         field_name=field_name,
         start_date=start_date,
+        end_date=end_date,
     )
     if raw.empty:
         raise ValueError(
@@ -331,7 +332,7 @@ def calculate_beta_adjusted_spread(
         curve_family=params.regressor_curve_family,
         field_name=field_name_resolved,
     )
-    anchor = min(
+    anchor = params.as_of_date or min(
         [d for d in (_a_target, _a_regressor) if d is not None],
         default=date.today(),
     )
@@ -350,6 +351,7 @@ def calculate_beta_adjusted_spread(
             field_name=field_name_resolved,
             ffill_limit=ffill_limit,
             start_date=start_date,
+            end_date=anchor,
         )
         regressor_clean = _fetch_one(
             engine=engine,
@@ -358,6 +360,7 @@ def calculate_beta_adjusted_spread(
             field_name=field_name_resolved,
             ffill_limit=ffill_limit,
             start_date=start_date,
+            end_date=anchor,
         )
     except ValueError as exc:
         return {"error": str(exc)}

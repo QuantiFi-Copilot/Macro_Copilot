@@ -66,6 +66,7 @@ DataFrame and cannot drift — proven by point-by-point parity tests.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
@@ -174,6 +175,12 @@ class OISButterflyInput(BaseModel):
             "shadowed.  See the curve_move_classifier wrapper-shadowing "
             "fix (commit b2605ee) for the canonical pattern."
         ),
+    )
+    as_of_date: Optional[date] = Field(
+        default=None,
+        description=("Optional as-of date (YYYY-MM-DD): compute as of this trade "
+                     "date instead of the latest available data.  None → latest "
+                     "(live snapshot).  Supply a date for a historical, replayable view."),
     )
 
     @model_validator(mode="after")

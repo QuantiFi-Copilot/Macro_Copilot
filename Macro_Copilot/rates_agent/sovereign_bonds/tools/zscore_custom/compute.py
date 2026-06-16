@@ -170,7 +170,8 @@ def calculate_zscore_custom(
     # window resolves to real data when ingestion lags; falls back to today
     # only when the curve has no rows (e.g. mocked engine=None in unit tests).
     anchor = (
-        latest_trade_date(engine, curve_family=params.curve_family)
+        params.as_of_date
+        or latest_trade_date(engine, curve_family=params.curve_family)
         or date.today()
     )
     start_date = anchor - timedelta(
@@ -186,6 +187,7 @@ def calculate_zscore_custom(
         tenor=params.tenor,
         field_name=field_name_resolved,
         start_date=start_date,
+        end_date=anchor,
     )
 
     if raw_df.empty:

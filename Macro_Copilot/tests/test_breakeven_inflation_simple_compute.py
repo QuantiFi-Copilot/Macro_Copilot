@@ -208,6 +208,7 @@ def _patched_fetch_factory(nominal_df: pd.DataFrame, linker_df: pd.DataFrame):
         field_name,
         start_date,
         instrument_type=None,
+        end_date=None,
     ):
         if instrument_type == "inflation_linker":
             return linker_df
