@@ -34,6 +34,7 @@ classification test below forces that decision.
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import inspect
 import re
@@ -366,6 +367,27 @@ _G_N = 160
 _G_INDEX = pd.bdate_range("2022-01-03", periods=_G_N)
 
 
+def _stable_seed(key: str) -> int:
+    """A PROCESS-INDEPENDENT seed for a given fixture key.
+
+    Python's built-in ``hash(str)`` is salted per process
+    (``PYTHONHASHSEED`` randomisation), so ``hash(str(key)) % 9973`` maps
+    the SAME ``key`` to a DIFFERENT seed in every test process.  For
+    clause (g) that is poison: it draws a fresh random synthetic series
+    each run, and ~2.8% of those seeds happen to drive ``fit_garch``'s
+    MLE into a degenerate / boundary regime, so the determinism gate
+    itself flaked ~1-in-a-handful of runs depending on ``PYTHONHASHSEED``.
+
+    ``hashlib.blake2b`` is a stable, salt-free digest: the same ``key``
+    deterministically maps to the same seed in EVERY process and on EVERY
+    machine — so the synthetic fixture is genuinely fixed-seed (as the
+    docstring above promises) and the gate is reproducible.  The modulus
+    keeps the seed inside numpy's legal ``RandomState`` range.
+    """
+    digest = hashlib.blake2b(str(key).encode("utf-8"), digest_size=8).digest()
+    return int.from_bytes(digest, "big") % 9973
+
+
 def _g_lineage(key: str) -> Lineage:
     """A single-step synthetic upstream chain (a stand-in primitive)."""
     step = PrimitiveStep.build(
@@ -389,7 +411,7 @@ def _g_series(
         # transition_events consumes integer-valued regime labels.
         payload_values = np.resize([0, 1, 2, 1, 0], _G_N).astype(float)
     else:
-        rng = np.random.RandomState(abs(hash(str(key))) % 9973)
+        rng = np.random.RandomState(_stable_seed(key))
         payload_values = 3.0 + 0.01 * np.arange(_G_N) + 0.2 * rng.randn(_G_N)
     payload = pd.Series(payload_values, index=_G_INDEX, name=str(key))
     return Series(
@@ -468,6 +490,51 @@ def _g_windowed_panel(src: str = "s") -> WindowedPanel:
     )
 
 
+# fit_garch is fit AS GIVEN (it does NOT difference internally) and correctly
+# REFUSES a degenerate / essentially-integrated fit (persistence alpha+beta at
+# the stationarity boundary).  The generic _g_default_args trend series
+# (3.0 + 0.01*t + 0.2*noise) is a strongly-trending LEVEL — the worst-possible
+# GARCH input — and on a minority of RandomState seeds drives the MLE to that
+# boundary (persistence -> 0.999999), so fit_garch gets its OWN fixture below:
+# a genuine STATIONARY GARCH(1,1) simulation (true persistence alpha+beta=0.9),
+# the heteroskedastic data the operator is DESIGNED to accept.  The fixed
+# RandomState seed makes the series byte-identical across the clause-(g) rerun
+# (head_hash equality) AND across PROCESSES — closing the per-process
+# hash(str(key)) non-determinism the generic path silently carried.  n=600
+# (vs the 160-row generic fixture) keeps the GARCH MLE comfortably away from
+# the boundary: at n=160 the small-sample estimate is unstable (can land at
+# ~0.998, a hair from the 0.99999 refuse), whereas n=600 fits stably at ~0.82
+# — well below both the 0.99 near-integrated disclosure and the refuse line.
+_G_GARCH_N = 600
+_G_GARCH_INDEX = pd.bdate_range("2020-01-02", periods=_G_GARCH_N)
+
+
+def _g_garch_series(key: str = "garch") -> Series:
+    """A genuine stationary GARCH(1,1) path (omega=0.1, alpha=0.1, beta=0.8 ->
+    persistence 0.9) under a FIXED seed — deterministic across reruns and
+    processes, and heteroskedastic enough that fit_garch's MLE converges to a
+    stationary interior optimum (NOT the integrated boundary)."""
+    omega, alpha, beta = 0.1, 0.1, 0.8  # persistence 0.9 — clearly stationary
+    rng = np.random.RandomState(20240617)
+    z = rng.standard_normal(_G_GARCH_N)
+    eps = np.empty(_G_GARCH_N)
+    sigma2 = np.empty(_G_GARCH_N)
+    sigma2[0] = omega / (1.0 - alpha - beta)  # unconditional variance
+    eps[0] = np.sqrt(sigma2[0]) * z[0]
+    for t in range(1, _G_GARCH_N):
+        sigma2[t] = omega + alpha * eps[t - 1] ** 2 + beta * sigma2[t - 1]
+        eps[t] = np.sqrt(sigma2[t]) * z[t]
+    payload = pd.Series(eps, index=_G_GARCH_INDEX, name=str(key))
+    return Series(
+        series_key=str(key),
+        payload=payload,
+        units=TimeSeriesUnits.PERCENT,
+        frequency="B",
+        missingness_policy=RawNoCleaning(),
+        lineage=_g_lineage(key),
+    )
+
+
 def _g_default_args(spec) -> list:
     """Build the positional input artifacts for an operator from its slot
     descriptors (the generic path — used when no override fixture applies)."""
@@ -527,6 +594,13 @@ def _clause_g_cases():
             [_g_series(units=TimeSeriesUnits.PERCENT)],
             {"params": P("convert_units", "ConvertUnitsParams")(
                 target_units=TimeSeriesUnits.BPS)},
+        ),
+        "fit_garch": lambda: (
+            # A real stationary GARCH(1,1) path (the data fit_garch is built
+            # for) instead of the generic near-pure-trend series, which the
+            # operator correctly refuses as integrated on a minority of seeds.
+            [_g_garch_series()],
+            {"params": None},
         ),
         "fit_kalman": lambda: (
             [_g_series_set(("y", "x1", "x2"))],
