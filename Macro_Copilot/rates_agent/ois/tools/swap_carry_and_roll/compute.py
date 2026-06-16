@@ -36,6 +36,7 @@ from shared.analytics.curve_bootstrap import (
     sort_tenors_by_years,
     tenor_to_years,
 )
+from shared.analytics.rates_fetch import latest_trade_date
 from shared.config import ToolConfig, load_tool_config
 from shared.schemas import TimeSeries, TimeSeriesRow, TimeSeriesUnits
 
@@ -112,7 +113,21 @@ def calculate_swap_carry_and_roll(
     # ------------------------------------------------------------------
     # 1. Fetch the OIS curve.
     # ------------------------------------------------------------------
-    start_date = date.today() - timedelta(days=int(params.lookback_days) + 30)
+    # Anchor to the latest available trade_date (not date.today()) so the
+    # window resolves to real data when ingestion lags (weekend / holiday /
+    # stale snapshot).  Probe the same (curve_family, field, instrument_type
+    # ='ois_swap') the curve fetch uses; falls back to today only when the
+    # curve has no rows.
+    anchor = (
+        latest_trade_date(
+            engine,
+            curve_family=params.curve_family,
+            field_name=field,
+            instrument_type="ois_swap",
+        )
+        or date.today()
+    )
+    start_date = anchor - timedelta(days=int(params.lookback_days) + 30)
     raw = _fetch_curve(engine, params.curve_family, field, start_date)
     if raw.empty:
         return {

@@ -77,7 +77,7 @@ from shared.analytics.levels import (
     clean_single_series,
     compute_level_metrics,
 )
-from shared.analytics.rates_fetch import fetch_single_tenor
+from shared.analytics.rates_fetch import fetch_single_tenor, latest_trade_date
 from shared.config import ToolConfig, load_tool_config
 from shared.schemas import TimeSeries, TimeSeriesRow, TimeSeriesUnits
 
@@ -189,7 +189,19 @@ def get_ois_rate_level(
     # 1. Date window
     # ------------------------------------------------------------------
     buffer_calendar_days = int(z_window * buffer_mult)
-    start_date = date.today() - timedelta(
+    # Anchor to the latest available trade_date (not date.today()) so the
+    # window resolves to real data when ingestion lags (weekend / holiday /
+    # stale snapshot); falls back to today only when the series has no rows.
+    anchor = (
+        latest_trade_date(
+            engine,
+            curve_family=params.curve_family,
+            tenor=params.tenor,
+            field_name=field_name_resolved,
+        )
+        or date.today()
+    )
+    start_date = anchor - timedelta(
         days=params.lookback_days + buffer_calendar_days
     )
 

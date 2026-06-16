@@ -40,6 +40,7 @@ from shared.analytics.panel_assembly import (
     _strip_panel_column_key,
     fetch_policy_futures_strip_panel,
 )
+from shared.analytics.rates_fetch import latest_trade_date
 from shared.artifacts.lineage import Lineage, PrimitiveStep
 from shared.artifacts.missingness import RawNoCleaning
 from shared.artifacts.types import Panel
@@ -123,7 +124,21 @@ def calculate_ois_policy_path_regime(
     # ------------------------------------------------------------------
     # 1. Fetch the strip (front / belly / back) + the universe metadata.
     # ------------------------------------------------------------------
-    start_date = date.today() - timedelta(days=int(params.lookback_days))
+    # Anchor to the latest available trade_date (not date.today()) so the
+    # window resolves to real data when ingestion lags (weekend / holiday /
+    # stale snapshot).  Probe the same policy-futures filter the strip fetch
+    # uses (curve_family + price field + instrument_type='policy_future');
+    # falls back to today only when the strip has no rows.
+    anchor = (
+        latest_trade_date(
+            engine,
+            curve_family=cf,
+            field_name=field,
+            instrument_type="policy_future",
+        )
+        or date.today()
+    )
+    start_date = anchor - timedelta(days=int(params.lookback_days))
     raw_panel, universe_meta = fetch_policy_futures_strip_panel(
         engine=engine,
         curve_families=[cf],

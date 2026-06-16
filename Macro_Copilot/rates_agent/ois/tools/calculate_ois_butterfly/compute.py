@@ -81,7 +81,7 @@ from shared.analytics.levels import (
     delta_bps,
     trailing_high_low_percentile,
 )
-from shared.analytics.rates_fetch import fetch_tenor_group
+from shared.analytics.rates_fetch import fetch_tenor_group, latest_trade_date
 from shared.analytics.spreads import (
     compute_spread_bps,
     pivot_and_align_tenors,
@@ -212,7 +212,18 @@ def calculate_ois_butterfly(
     #    first displayed row, even if a future config decouples them)
     # ------------------------------------------------------------------
     buffer_calendar_days = int(max(z_window, trailing_window) * buffer_multiplier)
-    start_date = date.today() - timedelta(
+    # Anchor to the latest available trade_date (not date.today()) so the
+    # window resolves to real data when ingestion lags (weekend / holiday /
+    # stale snapshot); falls back to today only when the curve has no rows.
+    anchor = (
+        latest_trade_date(
+            engine,
+            curve_family=params.curve_family,
+            field_name=field_name_resolved,
+        )
+        or date.today()
+    )
+    start_date = anchor - timedelta(
         days=params.lookback_days + buffer_calendar_days
     )
 

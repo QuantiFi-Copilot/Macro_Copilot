@@ -226,14 +226,33 @@ def sql_baseline(
     """
     baseline_sql = text(
         """
-        WITH raw AS (
+        WITH data_anchor AS (
+            -- Anchor the fetch floor to the data's own latest trade_date
+            -- (over the union of both legs), NOT CURRENT_DATE — the tool now
+            -- anchors its window to ``latest_trade_date`` so the displayed
+            -- z-score warm-up starts from the same place.  With CURRENT_DATE
+            -- the independent fetch floor lands AFTER the tool's (when the DB
+            -- lags "today"), starving the rolling window at the start of the
+            -- display and producing spurious historical-row z-score
+            -- mismatches.  Mirror the tool's data-relative anchor here.
+            SELECT MAX(trade_date) AS anchor
+            FROM macro_data.v_market_data_daily_enriched
+            WHERE tenor = :tenor
+              AND (
+                    (curve_family = :sovereign_curve_family
+                     AND field_name = :sovereign_field_name)
+                 OR (curve_family = :ois_curve_family
+                     AND field_name = :ois_field_name)
+              )
+        ),
+        raw AS (
             SELECT
                 trade_date,
                 curve_family,
                 field_value::double precision AS field_value
-            FROM macro_data.v_market_data_daily_enriched
+            FROM macro_data.v_market_data_daily_enriched, data_anchor
             WHERE tenor = :tenor
-              AND trade_date >= CURRENT_DATE
+              AND trade_date >= COALESCE(data_anchor.anchor, CURRENT_DATE)
                   - ((:lookback_days + 378) * INTERVAL '1 day')
               AND (
                     (curve_family = :sovereign_curve_family

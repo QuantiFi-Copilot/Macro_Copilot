@@ -76,7 +76,7 @@ from shared.analytics.levels import (
     period_changes,
     trailing_high_low_percentile,
 )
-from shared.analytics.rates_fetch import fetch_cross_domain_pair
+from shared.analytics.rates_fetch import fetch_cross_domain_pair, latest_trade_date
 from shared.analytics.spreads import (
     compute_spread_bps,
     pivot_and_align_tenors,
@@ -213,7 +213,28 @@ def calculate_swap_spread(
     buffer_calendar_days = int(
         max(z_window, trailing_window) * buffer_multiplier
     )
-    start_date = date.today() - timedelta(
+    # Anchor to the latest available trade_date (not date.today()) so the
+    # window resolves to real data when ingestion lags (weekend / holiday /
+    # stale snapshot).  Cross-domain pair: probe each leg's own
+    # (curve_family, field_name) and take the EARLIER of the two latest
+    # dates so both legs are guaranteed to have data in the window; falls
+    # back to today only when neither leg has rows.
+    _sov_anchor = latest_trade_date(
+        engine,
+        curve_family=params.sovereign_curve_family,
+        tenor=params.tenor,
+        field_name=sovereign_field_resolved,
+    )
+    _ois_anchor = latest_trade_date(
+        engine,
+        curve_family=params.ois_curve_family,
+        tenor=params.tenor,
+        field_name=ois_field_resolved,
+    )
+    anchor = min(
+        [d for d in (_sov_anchor, _ois_anchor) if d], default=date.today()
+    )
+    start_date = anchor - timedelta(
         days=params.lookback_days + buffer_calendar_days
     )
 
