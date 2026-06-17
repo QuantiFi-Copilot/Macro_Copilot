@@ -2739,6 +2739,7 @@ def scanner_detail(
             "through to the schema default ('YLD_YTM_MID')."
         ),
     ),
+    as_of_date: Optional[str] = None,
 ):
     """Same payload semantics as the MCP wrapper; consumed by the frontend
     module's ``surfaces/BuildExtended.tsx`` (universe scan + ranked detail)
@@ -2769,6 +2770,8 @@ def scanner_detail(
             input_kwargs["min_abs_z_score"] = min_abs_z_score
         if field_name is not None:
             input_kwargs["field_name"] = field_name
+        if as_of_date and as_of_date.strip():
+            input_kwargs["as_of_date"] = as_of_date
         params = ScannerInput(**input_kwargs)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
