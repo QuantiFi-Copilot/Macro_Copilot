@@ -204,6 +204,8 @@ export interface UseFuturesVolumeOiArgs {
   curveFamily: string;
   contractCode: string;
   lookbackDays?: number;
+  /** As-of trade date (YYYY-MM-DD).  Undefined/empty → latest live data. */
+  asOfDate?: string;
 }
 
 export interface UseFuturesVolumeOiResult {
@@ -223,6 +225,7 @@ export function useFuturesVolumeOi(
     curve_family: args.curveFamily,
     contract_code: args.contractCode,
     lookback_days: args.lookbackDays,
+    as_of_date: args.asOfDate || undefined,
   };
 
   useEffect(() => {
@@ -251,7 +254,7 @@ export function useFuturesVolumeOi(
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [args.curveFamily, args.contractCode, args.lookbackDays]);
+  }, [args.curveFamily, args.contractCode, args.lookbackDays, args.asOfDate]);
 
   return { data, isLoading, errorMessage };
 }

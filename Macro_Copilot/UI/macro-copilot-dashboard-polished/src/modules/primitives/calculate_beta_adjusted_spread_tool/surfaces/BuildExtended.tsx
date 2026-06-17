@@ -30,6 +30,7 @@ import {
   ControlsStrip,
   LineageFooter,
   MethodologyCard,
+  asOfDateControl,
   type BuildExtendedProps,
   type ControlDescriptor,
 } from '@/components/shared/build';
@@ -170,6 +171,7 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
       value: resolved.fieldName,
       advanced: true,
     },
+    asOfDateControl(params.as_of_date),
   ];
 
   const cm = data?.current_metrics ?? null;

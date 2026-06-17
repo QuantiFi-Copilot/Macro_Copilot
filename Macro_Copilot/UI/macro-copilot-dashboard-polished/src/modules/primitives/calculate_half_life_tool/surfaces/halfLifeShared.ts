@@ -143,6 +143,8 @@ export interface UseHalfLifeArgs {
   curveFamily2?: string;
   lookbackDays?: number;
   fieldName?: string;
+  /** As-of trade date (YYYY-MM-DD).  Undefined/empty → latest live data. */
+  asOfDate?: string;
 }
 
 export interface UseHalfLifeResult {
@@ -163,6 +165,7 @@ export function useHalfLifeData(args: UseHalfLifeArgs): UseHalfLifeResult {
     curve_family_2: args.curveFamily2,
     lookback_days: args.lookbackDays,
     field_name: args.fieldName,
+    as_of_date: args.asOfDate || undefined,
   };
 
   useEffect(() => {
@@ -197,6 +200,7 @@ export function useHalfLifeData(args: UseHalfLifeArgs): UseHalfLifeResult {
     args.curveFamily2,
     args.lookbackDays,
     args.fieldName,
+    args.asOfDate,
   ]);
 
   return { data, isLoading, errorMessage };

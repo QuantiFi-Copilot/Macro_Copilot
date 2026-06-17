@@ -28,6 +28,7 @@ import {
   KPIStrip,
   LineageFooter,
   MethodologyCard,
+  asOfDateControl,
   type BuildExtendedProps,
   type ControlDescriptor,
 } from '@/components/shared/build';
@@ -70,6 +71,7 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
     country,
     tenor,
     lookbackDays: Number.isFinite(lookbackDays) ? lookbackDays : undefined,
+    asOfDate: params.as_of_date,
   });
 
   // ----- URL update on control change (pilot pushParams pattern) -----
@@ -120,6 +122,7 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
       value: lookbackStr,
       options: OTR_LOOKBACK_OPTIONS,
     },
+    asOfDateControl(params.as_of_date),
   ];
 
   const cm = data?.current_metrics ?? null;

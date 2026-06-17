@@ -51,6 +51,8 @@ export interface UseRealYieldArgs {
   zScoreWindowDays?: number;
   zScoreMinPeriods?: number;
   zScoreDdof?: number;
+  /** As-of trade date (YYYY-MM-DD).  Undefined/empty → latest live data. */
+  asOfDate?: string;
 }
 
 export interface UseRealYieldResult {
@@ -76,6 +78,7 @@ export function useRealYieldLevel(args: UseRealYieldArgs): UseRealYieldResult {
     z_score_window_days: args.zScoreWindowDays,
     z_score_min_periods: args.zScoreMinPeriods,
     z_score_ddof: args.zScoreDdof,
+    as_of_date: args.asOfDate || undefined,
   };
 
   useEffect(() => {
@@ -112,6 +115,7 @@ export function useRealYieldLevel(args: UseRealYieldArgs): UseRealYieldResult {
     args.zScoreWindowDays,
     args.zScoreMinPeriods,
     args.zScoreDdof,
+    args.asOfDate,
   ]);
 
   return { data, isLoading, errorMessage };

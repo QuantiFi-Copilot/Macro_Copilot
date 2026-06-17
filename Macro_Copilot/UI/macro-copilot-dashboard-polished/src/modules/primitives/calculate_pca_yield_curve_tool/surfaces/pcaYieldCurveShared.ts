@@ -167,6 +167,8 @@ export interface UsePcaYieldCurveArgs {
   nComponents?: number;
   changeFrequency?: string;
   fieldName?: string;
+  /** As-of trade date (YYYY-MM-DD).  Undefined/empty → latest live data. */
+  asOfDate?: string;
 }
 
 export interface UsePcaYieldCurveResult {
@@ -201,6 +203,7 @@ export function usePcaYieldCurveData(
           ? args.changeFrequency
           : undefined,
       field_name: args.fieldName || undefined,
+      as_of_date: args.asOfDate || undefined,
     };
     let cancelled = false;
     setIsLoading(true);
@@ -227,6 +230,7 @@ export function usePcaYieldCurveData(
     args.nComponents,
     args.changeFrequency,
     args.fieldName,
+    args.asOfDate,
   ]);
 
   return { data, isLoading, errorMessage };

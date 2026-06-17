@@ -31,6 +31,7 @@ import { useNavigate } from 'react-router-dom';
 import { useRequestFocusedMode } from '@/components/build/lib/focusedMode';
 import {
   BuildExtendedShell,
+  asOfDateControl,
   percentileLabel,
   regimeForZScore,
   signedFixed,
@@ -96,6 +97,7 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
     curveFamily,
     contractCode,
     lookbackDays: Number(lookbackDays),
+    asOfDate: params.as_of_date,
   });
 
   // ----- URL update on control change -----
@@ -166,6 +168,7 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
       value: lookbackDays,
       options: LOOKBACK_OPTIONS,
     },
+    asOfDateControl(params.as_of_date),
   ];
 
   // ----- Top-right cards: OI Z-score / OI Percentile / Front contract -----

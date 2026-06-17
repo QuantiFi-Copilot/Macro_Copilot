@@ -250,6 +250,8 @@ export interface UseOisCurveSpreadArgs {
   longTenor: string;
   lookbackDays?: number;
   fieldName?: string;
+  /** As-of trade date (YYYY-MM-DD).  Undefined/empty → latest live data. */
+  asOfDate?: string;
 }
 
 export interface UseOisCurveSpreadResult {
@@ -274,6 +276,7 @@ export function useOisCurveSpread(
     long_tenor: args.longTenor,
     lookback_days: args.lookbackDays,
     field_name: args.fieldName,
+    as_of_date: args.asOfDate || undefined,
   };
 
   useEffect(() => {
@@ -308,6 +311,7 @@ export function useOisCurveSpread(
     args.longTenor,
     args.lookbackDays,
     args.fieldName,
+    args.asOfDate,
   ]);
 
   return { data, isLoading, errorMessage };

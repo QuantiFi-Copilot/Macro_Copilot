@@ -28,6 +28,7 @@ import { useNavigate } from 'react-router-dom';
 import { useRequestFocusedMode } from '@/components/build/lib/focusedMode';
 import {
   BuildExtendedShell,
+  asOfDateControl,
   percentileLabel,
   signedFixed,
   toneForZScore,
@@ -107,6 +108,7 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
     longTenor,
     lookbackDays: Number(lookbackDays),
     fieldName,
+    asOfDate: params.as_of_date,
   });
 
   // ----- URL update on control change -----
@@ -202,6 +204,7 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
       value: fieldName,
       options: FIELD_OPTIONS,
     },
+    asOfDateControl(params.as_of_date),
   ];
 
   // ----- Top-right cards: Z-score / Percentile / signed 5-zone regime -----

@@ -86,6 +86,8 @@ export interface BetaAdjustedSpreadResolvedParams {
   regressionWindowDays: string;
   lookbackDays: string;
   fieldName: string;
+  /** As-of trade date (YYYY-MM-DD).  Undefined/empty → latest live data. */
+  asOfDate?: string;
 }
 
 interface StructuredSeriesSpec {
@@ -136,6 +138,7 @@ export function resolveBetaAdjustedSpreadParams(
     lookbackDays:
       params.lookback_days || BETA_ADJUSTED_SPREAD_DEFAULTS.lookback_days,
     fieldName: params.field_name || BETA_ADJUSTED_SPREAD_DEFAULTS.field_name,
+    asOfDate: params.as_of_date || undefined,
   };
 }
 
@@ -151,6 +154,9 @@ export function flattenBetaAdjustedSpreadParams(
     regression_window_days: p.regressionWindowDays,
     lookback_days: p.lookbackDays,
     field_name: p.fieldName,
+    // Only round-trip as_of_date when explicitly set — empty → omitted so
+    // the wire stays byte-identical to the latest-data default.
+    ...(p.asOfDate ? { as_of_date: p.asOfDate } : {}),
   };
 }
 
@@ -191,6 +197,7 @@ export function useBetaAdjustedSpreadData(
       regression_window_days: Number(p.regressionWindowDays),
       lookback_days: Number(p.lookbackDays),
       field_name: p.fieldName || undefined,
+      as_of_date: p.asOfDate || undefined,
     };
     let cancelled = false;
     setIsLoading(true);
@@ -219,6 +226,7 @@ export function useBetaAdjustedSpreadData(
     p.regressionWindowDays,
     p.lookbackDays,
     p.fieldName,
+    p.asOfDate,
   ]);
 
   return { data, isLoading, errorMessage };

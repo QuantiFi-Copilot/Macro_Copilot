@@ -77,6 +77,8 @@ export interface UseRegimeDataArgs {
   backTenor: string;
   lookbackPeriod: string;
   fieldName?: string;
+  /** As-of trade date (YYYY-MM-DD).  Undefined/empty → latest live data. */
+  asOfDate?: string;
 }
 
 export interface UseRegimeDataResult {
@@ -103,6 +105,7 @@ export function useRegimeData(args: UseRegimeDataArgs): UseRegimeDataResult {
       back_tenor: args.backTenor,
       lookback_period: args.lookbackPeriod || undefined,
       field_name: args.fieldName || undefined,
+      as_of_date: args.asOfDate || undefined,
     };
     let cancelled = false;
     setIsLoading(true);
@@ -129,6 +132,7 @@ export function useRegimeData(args: UseRegimeDataArgs): UseRegimeDataResult {
     args.backTenor,
     args.lookbackPeriod,
     args.fieldName,
+    args.asOfDate,
   ]);
 
   return { data, isLoading, errorMessage };

@@ -31,6 +31,7 @@ import {
   KPIStrip,
   LineageFooter,
   MethodologyCard,
+  asOfDateControl,
   toneTextClass,
   type BuildExtendedProps,
   type ControlDescriptor,
@@ -86,6 +87,7 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
     selectionMode,
     nMeetings: isSpecificMode ? undefined : Number(nMeetingsStr),
     meetingDate: isSpecificMode ? meetingDate : undefined,
+    asOfDate: params.as_of_date,
   });
 
   const cm = data?.current_metrics;
@@ -162,6 +164,7 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
             options: WIRP_N_MEETINGS_OPTIONS,
           } as ControlDescriptor,
         ]),
+    asOfDateControl(params.as_of_date),
   ];
 
   const asOfDate = cm?.next_as_of_date ?? meetings[0]?.as_of_date ?? null;

@@ -162,6 +162,8 @@ export interface UseRealYieldButterflyArgs {
   longTenor: string;
   lookbackDays?: number;
   fieldName?: string;
+  /** As-of trade date (YYYY-MM-DD).  Undefined/empty → latest live data. */
+  asOfDate?: string;
 }
 
 export interface UseRealYieldButterflyResult {
@@ -186,6 +188,7 @@ export function useRealYieldButterfly(
     long_tenor: args.longTenor,
     lookback_days: args.lookbackDays,
     field_name: args.fieldName,
+    as_of_date: args.asOfDate || undefined,
   };
 
   useEffect(() => {
@@ -226,6 +229,7 @@ export function useRealYieldButterfly(
     args.longTenor,
     args.lookbackDays,
     args.fieldName,
+    args.asOfDate,
   ]);
 
   return { data, isLoading, errorMessage };

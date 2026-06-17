@@ -115,6 +115,8 @@ export interface UseFinancingRateArgs {
   proxyCurve: string;
   method?: string;
   lookbackDays?: number;
+  /** As-of trade date (YYYY-MM-DD).  Undefined/empty → latest live data. */
+  asOfDate?: string;
 }
 
 export interface UseFinancingRateResult {
@@ -137,6 +139,7 @@ export function useFinancingRate(
     proxy_curve: args.proxyCurve,
     method: args.method,
     lookback_days: args.lookbackDays,
+    as_of_date: args.asOfDate || undefined,
   };
 
   useEffect(() => {
@@ -165,7 +168,7 @@ export function useFinancingRate(
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [args.proxyCurve, args.method, args.lookbackDays]);
+  }, [args.proxyCurve, args.method, args.lookbackDays, args.asOfDate]);
 
   return { data, isLoading, errorMessage };
 }

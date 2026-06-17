@@ -31,6 +31,7 @@ import {
   FreshnessPill,
   LineageFooter,
   MethodologyCard,
+  asOfDateControl,
   toneTextClass,
   type ControlDescriptor,
 } from '@/components/shared/build';
@@ -120,6 +121,7 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
     topN: Number(topNStr),
     minAbsZScore: Number(minAbsZStr),
     fieldName,
+    asOfDate: params.as_of_date,
   });
 
   const summary = parseScanSummary(data?.scan_summary ?? '');
@@ -191,6 +193,7 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
       value: fieldName,
       options: FIELD_OPTIONS,
     },
+    asOfDateControl(params.as_of_date),
   ];
 
   return (

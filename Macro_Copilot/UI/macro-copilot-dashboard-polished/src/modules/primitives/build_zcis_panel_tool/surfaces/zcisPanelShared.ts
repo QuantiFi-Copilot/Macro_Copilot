@@ -165,6 +165,8 @@ export interface UseZcisPanelArgs {
   calendarPolicy?: string;
   /** Empty → omitted → YAML default (forward_fill_only). */
   missingDataPolicy?: string;
+  /** As-of trade date (YYYY-MM-DD).  Undefined/empty → latest live data. */
+  asOfDate?: string;
 }
 
 export interface UseZcisPanelResult {
@@ -202,6 +204,7 @@ export function useZcisPanel(args: UseZcisPanelArgs): UseZcisPanelResult {
       field_name: args.fieldName || undefined,
       calendar_policy: args.calendarPolicy || undefined,
       missing_data_policy: args.missingDataPolicy || undefined,
+      as_of_date: args.asOfDate || undefined,
     };
 
     let cancelled = false;
@@ -230,6 +233,7 @@ export function useZcisPanel(args: UseZcisPanelArgs): UseZcisPanelResult {
     args.fieldName,
     args.calendarPolicy,
     args.missingDataPolicy,
+    args.asOfDate,
   ]);
 
   return { data, isLoading, errorMessage };

@@ -148,6 +148,8 @@ export interface UseSovereignYieldPanelArgs {
   fieldName?: string;
   /** Empty → omitted → YAML default (forward_fill_only). */
   missingDataPolicy?: string;
+  /** As-of trade date (YYYY-MM-DD).  Undefined/empty → latest live data. */
+  asOfDate?: string;
 }
 
 export interface UseSovereignYieldPanelResult {
@@ -194,6 +196,7 @@ export function useSovereignYieldPanel(
       end_date: args.endDate || undefined,
       field_name: args.fieldName || undefined,
       missing_data_policy: args.missingDataPolicy || undefined,
+      as_of_date: args.asOfDate || undefined,
     };
 
     let cancelled = false;
@@ -221,6 +224,7 @@ export function useSovereignYieldPanel(
     args.endDate,
     args.fieldName,
     args.missingDataPolicy,
+    args.asOfDate,
   ]);
 
   return { data, isLoading, errorMessage };

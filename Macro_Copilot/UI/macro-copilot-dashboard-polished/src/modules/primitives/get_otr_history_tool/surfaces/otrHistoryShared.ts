@@ -120,6 +120,8 @@ export interface UseOtrHistoryArgs {
   country: string;
   tenor: string;
   lookbackDays?: number;
+  /** As-of trade date (YYYY-MM-DD).  Undefined/empty → latest live data. */
+  asOfDate?: string;
 }
 
 export interface UseOtrHistoryResult {
@@ -139,6 +141,7 @@ export function useOtrHistoryData(args: UseOtrHistoryArgs): UseOtrHistoryResult 
     country: args.country,
     tenor: args.tenor,
     lookback_days: args.lookbackDays,
+    as_of_date: args.asOfDate || undefined,
   };
 
   useEffect(() => {
@@ -167,7 +170,7 @@ export function useOtrHistoryData(args: UseOtrHistoryArgs): UseOtrHistoryResult 
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [args.country, args.tenor, args.lookbackDays]);
+  }, [args.country, args.tenor, args.lookbackDays, args.asOfDate]);
 
   return { data, isLoading, errorMessage };
 }

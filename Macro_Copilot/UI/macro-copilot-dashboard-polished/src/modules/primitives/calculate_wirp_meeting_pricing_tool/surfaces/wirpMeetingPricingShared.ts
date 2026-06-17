@@ -136,6 +136,8 @@ export interface UseWirpMeetingPricingArgs {
   /** Only sent in 'specific_meeting_date' mode (YYYY-MM-DD); backend
    *  forbids it in 'next_n_meetings' mode. */
   meetingDate?: string;
+  /** As-of trade date (YYYY-MM-DD).  Undefined/empty → latest live data. */
+  asOfDate?: string;
 }
 
 export interface UseWirpMeetingPricingResult {
@@ -163,6 +165,7 @@ export function useWirpMeetingPricing(
     // n_meetings in specific mode and meeting_date in next-N mode.
     n_meetings: isSpecificMode ? undefined : args.nMeetings,
     meeting_date: isSpecificMode ? args.meetingDate : undefined,
+    as_of_date: args.asOfDate || undefined,
   };
 
   useEffect(() => {
@@ -199,7 +202,7 @@ export function useWirpMeetingPricing(
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [args.centralBank, args.selectionMode, args.nMeetings, args.meetingDate]);
+  }, [args.centralBank, args.selectionMode, args.nMeetings, args.meetingDate, args.asOfDate]);
 
   return { data, isLoading, errorMessage };
 }

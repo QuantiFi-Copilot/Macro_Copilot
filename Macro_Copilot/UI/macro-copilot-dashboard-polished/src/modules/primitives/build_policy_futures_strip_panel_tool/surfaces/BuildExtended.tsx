@@ -31,6 +31,7 @@ import {
   KPIStrip,
   LineageFooter,
   MethodologyCard,
+  asOfDateControl,
   type BuildExtendedProps,
   type ControlDescriptor,
 } from '@/components/shared/build';
@@ -82,6 +83,7 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
     fieldName,
     calendarPolicy,
     missingDataPolicy,
+    asOfDate: params.as_of_date,
   });
 
   // ----- URL update on control change (pilot pushParams pattern) -----
@@ -166,6 +168,7 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
       options: MISSING_DATA_POLICY_OPTIONS,
       advanced: true,
     },
+    asOfDateControl(params.as_of_date),
   ];
 
   const roster = data ? buildColumnRoster(data) : [];

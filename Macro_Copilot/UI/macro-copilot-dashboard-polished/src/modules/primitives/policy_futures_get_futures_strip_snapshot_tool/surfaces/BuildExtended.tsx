@@ -37,6 +37,7 @@ import {
   KPIStrip,
   LineageFooter,
   MethodologyCard,
+  asOfDateControl,
   signedFixed,
   toneForChange,
   toneForZScore,
@@ -133,12 +134,6 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
       options: POLICY_FUTURES_CURVE_OPTIONS,
     },
     {
-      name: 'as_of_date',
-      label: 'As of (YYYY-MM-DD, blank = latest)',
-      kind: 'text',
-      value: asOfDate ?? '',
-    },
-    {
       name: 'last_price_field_name',
       label: 'Price Field',
       kind: 'enum',
@@ -153,6 +148,7 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
       value: oiField ?? '',
       advanced: true,
     },
+    asOfDateControl(params.as_of_date),
   ];
 
   // ----- Identity -----

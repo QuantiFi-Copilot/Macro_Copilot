@@ -143,6 +143,8 @@ export interface UseScanExtremesArgs {
   topN?: number;
   minAbsZScore?: number;
   fieldName?: string;
+  /** As-of trade date (YYYY-MM-DD).  Undefined/empty → latest live data. */
+  asOfDate?: string;
 }
 
 export interface UseScanExtremesResult {
@@ -170,6 +172,7 @@ export function useScanExtremes(args: UseScanExtremesArgs): UseScanExtremesResul
       top_n: args.topN,
       min_abs_z_score: args.minAbsZScore,
       field_name: args.fieldName,
+      as_of_date: args.asOfDate || undefined,
     };
     fetchDetailScanner(params)
       .then((p) => {
@@ -186,7 +189,7 @@ export function useScanExtremes(args: UseScanExtremesArgs): UseScanExtremesResul
     return () => {
       cancelled = true;
     };
-  }, [curveFamiliesKey, args.topN, args.minAbsZScore, args.fieldName]);
+  }, [curveFamiliesKey, args.topN, args.minAbsZScore, args.fieldName, args.asOfDate]);
 
   return { data, isLoading, errorMessage };
 }

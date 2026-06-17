@@ -101,6 +101,30 @@ function ControlField({
           onChange={(e) => onChange(control.name, e.target.value)}
           className="w-[120px] rounded-md border border-line-subtle bg-bg-elevated px-2.5 py-1.5 text-[12.5px] text-fg-primary focus:border-ice-300 focus:outline-none"
         />
+      ) : control.kind === 'date' ? (
+        // As-of / replay control — native picker + a "Live" clear that
+        // mirrors the Monitor's AsOfControl.  Empty value = latest live
+        // data; a YYYY-MM-DD value = compute as of that historical date.
+        <div className="flex items-center gap-1.5">
+          <input
+            id={id}
+            type="date"
+            value={control.value}
+            onChange={(e) => onChange(control.name, e.target.value)}
+            aria-label={control.label}
+            className="rounded-md border border-line-subtle bg-bg-elevated px-2.5 py-1.5 text-[12.5px] text-fg-primary outline-none focus:border-ice-300 [color-scheme:dark]"
+          />
+          {control.value && (
+            <button
+              type="button"
+              onClick={() => onChange(control.name, '')}
+              title="Back to latest (live) data"
+              className="rounded px-1.5 py-1 text-[10.5px] font-medium text-fg-muted transition-colors hover:text-fg-primary"
+            >
+              Live
+            </button>
+          )}
+        </div>
       ) : (
         <input
           id={id}

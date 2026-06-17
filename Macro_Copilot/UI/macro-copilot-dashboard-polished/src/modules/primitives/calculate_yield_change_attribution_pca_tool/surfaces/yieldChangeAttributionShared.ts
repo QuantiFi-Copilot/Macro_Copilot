@@ -154,6 +154,8 @@ export interface UseYieldChangeAttributionArgs {
   /** Comma-joined tenor subset for the inline fit; empty → full universe. */
   tenorsCsv?: string;
   fieldName?: string;
+  /** As-of trade date (YYYY-MM-DD).  Undefined/empty → latest live data. */
+  asOfDate?: string;
 }
 
 export interface UseYieldChangeAttributionResult {
@@ -191,6 +193,7 @@ export function useYieldChangeAttributionData(
           : undefined,
       tenors: parseTenorsParam(args.tenorsCsv),
       field_name: args.fieldName || undefined,
+      as_of_date: args.asOfDate || undefined,
     };
     let cancelled = false;
     setIsLoading(true);
@@ -220,6 +223,7 @@ export function useYieldChangeAttributionData(
     args.changeFrequency,
     args.tenorsCsv,
     args.fieldName,
+    args.asOfDate,
   ]);
 
   return { data, isLoading, errorMessage };

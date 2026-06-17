@@ -25,6 +25,7 @@ import {
   FreshnessPill,
   LineageFooter,
   MethodologyCard,
+  asOfDateControl,
   toneTextClass,
   type ControlDescriptor,
 } from '@/components/shared/build';
@@ -164,6 +165,7 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
       value: topNStr,
       options: TOP_N_OPTIONS,
     },
+    asOfDateControl(params.as_of_date),
   ];
 
   const anchorLabel = summary.asOfSpanStart && summary.asOfSpanEnd

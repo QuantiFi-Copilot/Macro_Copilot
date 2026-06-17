@@ -178,6 +178,8 @@ export interface UseInflationSwapRateLevelArgs {
   tenor: string;
   lookbackDays?: number;
   fieldName?: string;
+  /** As-of trade date (YYYY-MM-DD).  Undefined/empty → latest live data. */
+  asOfDate?: string;
 }
 
 export interface UseInflationSwapRateLevelResult {
@@ -201,6 +203,7 @@ export function useInflationSwapRateLevel(
     tenor: args.tenor,
     lookback_days: args.lookbackDays,
     field_name: args.fieldName,
+    as_of_date: args.asOfDate || undefined,
   };
 
   useEffect(() => {
@@ -229,7 +232,7 @@ export function useInflationSwapRateLevel(
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [args.curveFamily, args.tenor, args.lookbackDays, args.fieldName]);
+  }, [args.curveFamily, args.tenor, args.lookbackDays, args.fieldName, args.asOfDate]);
 
   return { data, isLoading, errorMessage };
 }

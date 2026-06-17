@@ -198,6 +198,8 @@ export interface UseLinkerPanelArgs {
   calendarPolicy?: string;
   /** Empty → omitted → YAML default (forward_fill_only). */
   missingDataPolicy?: string;
+  /** As-of trade date (YYYY-MM-DD).  Undefined/empty → latest live data. */
+  asOfDate?: string;
 }
 
 export interface UseLinkerPanelResult {
@@ -234,6 +236,7 @@ export function useLinkerPanel(args: UseLinkerPanelArgs): UseLinkerPanelResult {
       field_name: args.fieldName || undefined,
       calendar_policy: args.calendarPolicy || undefined,
       missing_data_policy: args.missingDataPolicy || undefined,
+      as_of_date: args.asOfDate || undefined,
     };
 
     let cancelled = false;
@@ -261,6 +264,7 @@ export function useLinkerPanel(args: UseLinkerPanelArgs): UseLinkerPanelResult {
     args.fieldName,
     args.calendarPolicy,
     args.missingDataPolicy,
+    args.asOfDate,
   ]);
 
   return { data, isLoading, errorMessage };

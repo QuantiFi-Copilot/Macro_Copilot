@@ -135,6 +135,8 @@ export interface UseCrossMarketZcisArgs {
   tenor: string;
   lookbackDays?: number;
   fieldName?: string;
+  /** As-of trade date (YYYY-MM-DD).  Undefined/empty → latest live data. */
+  asOfDate?: string;
 }
 
 export interface UseCrossMarketZcisResult {
@@ -158,6 +160,7 @@ export function useCrossMarketZcisSpread(
     tenor: args.tenor,
     lookback_days: args.lookbackDays,
     field_name: args.fieldName,
+    as_of_date: args.asOfDate || undefined,
   };
 
   useEffect(() => {
@@ -201,6 +204,7 @@ export function useCrossMarketZcisSpread(
     args.tenor,
     args.lookbackDays,
     args.fieldName,
+    args.asOfDate,
   ]);
 
   return { data, isLoading, errorMessage };

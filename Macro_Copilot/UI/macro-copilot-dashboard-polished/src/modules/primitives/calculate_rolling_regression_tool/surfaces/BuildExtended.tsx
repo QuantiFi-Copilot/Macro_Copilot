@@ -27,6 +27,7 @@ import {
   ControlsStrip,
   LineageFooter,
   MethodologyCard,
+  asOfDateControl,
   type BuildExtendedProps,
   type ControlDescriptor,
 } from '@/components/shared/build';
@@ -136,6 +137,8 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
       next.lookbackDays = value;
     } else if (name === 'field_name') {
       next.fieldName = value;
+    } else if (name === 'as_of_date') {
+      next.asOfDate = value || undefined;
     }
     pushParams(flattenRollingRegressionParams(next));
   };
@@ -225,6 +228,7 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
       ],
       advanced: true,
     },
+    asOfDateControl(params.as_of_date),
   ];
 
   // ----- Identity copy -----

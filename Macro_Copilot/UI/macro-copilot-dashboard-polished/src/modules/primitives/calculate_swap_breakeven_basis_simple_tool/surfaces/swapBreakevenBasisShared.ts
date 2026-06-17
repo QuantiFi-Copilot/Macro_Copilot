@@ -181,6 +181,10 @@ export interface UseSwapBreakevenBasisArgs {
   tenor: string;
   lookbackDays?: number;
   fieldName?: string;
+  /** As-of trade date (YYYY-MM-DD).  Undefined/empty → latest live data.
+   *  Threaded into the composed fetch so BOTH the ZCIS leg and the
+   *  bond-implied breakeven leg resolve at the same as-of trade date. */
+  asOfDate?: string;
 }
 
 export interface UseSwapBreakevenBasisResult {
@@ -205,6 +209,7 @@ export function useSwapBreakevenBasis(
     tenor: args.tenor,
     lookback_days: args.lookbackDays,
     field_name: args.fieldName,
+    as_of_date: args.asOfDate || undefined,
   };
 
   useEffect(() => {
@@ -251,6 +256,7 @@ export function useSwapBreakevenBasis(
     args.tenor,
     args.lookbackDays,
     args.fieldName,
+    args.asOfDate,
   ]);
 
   return { data, isLoading, errorMessage };

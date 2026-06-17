@@ -146,6 +146,8 @@ export interface UseOisScannerArgs {
   topN?: number;
   minAbsZScore?: number;
   fieldName?: string;
+  /** As-of trade date (YYYY-MM-DD).  Undefined/empty → latest live data. */
+  asOfDate?: string;
 }
 
 export interface UseOisScannerResult {
@@ -173,6 +175,7 @@ export function useOisScanner(args: UseOisScannerArgs): UseOisScannerResult {
       top_n: args.topN,
       min_abs_z_score: args.minAbsZScore,
       field_name: args.fieldName,
+      as_of_date: args.asOfDate || undefined,
     };
     fetchDetailOisScanner(params)
       .then((p) => {
@@ -189,7 +192,7 @@ export function useOisScanner(args: UseOisScannerArgs): UseOisScannerResult {
     return () => {
       cancelled = true;
     };
-  }, [curveFamiliesKey, args.topN, args.minAbsZScore, args.fieldName]);
+  }, [curveFamiliesKey, args.topN, args.minAbsZScore, args.fieldName, args.asOfDate]);
 
   return { data, isLoading, errorMessage };
 }

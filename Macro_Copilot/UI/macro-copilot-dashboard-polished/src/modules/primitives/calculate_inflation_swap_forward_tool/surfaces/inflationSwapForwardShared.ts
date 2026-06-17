@@ -239,6 +239,8 @@ export interface UseInflationSwapForwardArgs {
   endTenor: string;
   lookbackDays?: number;
   fieldName?: string;
+  /** As-of trade date (YYYY-MM-DD).  Undefined/empty → latest live data. */
+  asOfDate?: string;
 }
 
 export interface UseInflationSwapForwardResult {
@@ -264,6 +266,7 @@ export function useInflationSwapForward(
     end_tenor: args.endTenor,
     lookback_days: args.lookbackDays,
     field_name: args.fieldName,
+    as_of_date: args.asOfDate || undefined,
   };
 
   useEffect(() => {
@@ -298,6 +301,7 @@ export function useInflationSwapForward(
     args.endTenor,
     args.lookbackDays,
     args.fieldName,
+    args.asOfDate,
   ]);
 
   return { data, isLoading, errorMessage };

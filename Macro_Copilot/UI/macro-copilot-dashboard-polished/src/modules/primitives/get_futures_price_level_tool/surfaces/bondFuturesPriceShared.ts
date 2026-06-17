@@ -445,6 +445,8 @@ export interface UseBondFuturesPriceArgs {
   contractCode: string;
   lookbackDays?: number;
   fieldName?: string;
+  /** As-of trade date (YYYY-MM-DD).  Undefined/empty → latest live data. */
+  asOfDate?: string;
 }
 
 export interface UseBondFuturesPriceResult {
@@ -465,6 +467,7 @@ export function useBondFuturesPrice(
     contract_code: args.contractCode,
     lookback_days: args.lookbackDays,
     field_name: args.fieldName,
+    as_of_date: args.asOfDate || undefined,
   };
 
   useEffect(() => {
@@ -493,7 +496,7 @@ export function useBondFuturesPrice(
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [args.curveFamily, args.contractCode, args.lookbackDays, args.fieldName]);
+  }, [args.curveFamily, args.contractCode, args.lookbackDays, args.fieldName, args.asOfDate]);
 
   return { data, isLoading, errorMessage };
 }

@@ -160,8 +160,10 @@ export interface ControlDescriptor {
   name: string;
   /** Human-facing label (e.g. "Curve Family"). */
   label: string;
-  /** Control kind — drives the JSX shape. */
-  kind: 'enum' | 'text' | 'number';
+  /** Control kind — drives the JSX shape.  ``date`` renders a native
+   *  date picker plus a "Live" clear affordance (the as-of / replay
+   *  control); an empty ``value`` means latest live data. */
+  kind: 'enum' | 'text' | 'number' | 'date';
   /** Current value (string-form to mirror URL state). */
   value: string;
   /** Option list when ``kind === 'enum'``. */

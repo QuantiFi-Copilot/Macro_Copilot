@@ -213,6 +213,8 @@ export interface UseSwapSpreadArgs {
   lookbackDays?: number;
   sovereignFieldName?: string;
   oisFieldName?: string;
+  /** As-of trade date (YYYY-MM-DD).  Undefined/empty → latest live data. */
+  asOfDate?: string;
 }
 
 export interface UseSwapSpreadResult {
@@ -235,6 +237,7 @@ export function useSwapSpread(args: UseSwapSpreadArgs): UseSwapSpreadResult {
     lookback_days: args.lookbackDays,
     sovereign_field_name: args.sovereignFieldName,
     ois_field_name: args.oisFieldName,
+    as_of_date: args.asOfDate || undefined,
   };
 
   useEffect(() => {
@@ -275,6 +278,7 @@ export function useSwapSpread(args: UseSwapSpreadArgs): UseSwapSpreadResult {
     args.lookbackDays,
     args.sovereignFieldName,
     args.oisFieldName,
+    args.asOfDate,
   ]);
 
   return { data, isLoading, errorMessage };

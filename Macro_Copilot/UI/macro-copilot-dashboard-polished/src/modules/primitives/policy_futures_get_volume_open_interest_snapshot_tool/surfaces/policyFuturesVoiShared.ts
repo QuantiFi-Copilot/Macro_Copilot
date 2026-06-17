@@ -210,6 +210,8 @@ export interface UsePolicyVoiArgs {
   curveFamily: string;
   stripPosition: number;
   lookbackDays?: number;
+  /** As-of trade date (YYYY-MM-DD).  Undefined/empty → latest live data. */
+  asOfDate?: string;
 }
 
 export interface UsePolicyVoiResult {
@@ -231,6 +233,7 @@ export function usePolicyVoiSnapshot(
     curve_family: args.curveFamily,
     strip_position: args.stripPosition,
     lookback_days: args.lookbackDays,
+    as_of_date: args.asOfDate || undefined,
   };
 
   useEffect(() => {
@@ -259,7 +262,7 @@ export function usePolicyVoiSnapshot(
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [args.curveFamily, args.stripPosition, args.lookbackDays]);
+  }, [args.curveFamily, args.stripPosition, args.lookbackDays, args.asOfDate]);
 
   return { data, isLoading, errorMessage };
 }

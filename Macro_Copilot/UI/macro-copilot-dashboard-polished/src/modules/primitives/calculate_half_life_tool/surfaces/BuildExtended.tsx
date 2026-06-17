@@ -32,6 +32,7 @@ import {
   FreshnessPill,
   LineageFooter,
   MethodologyCard,
+  asOfDateControl,
   type BuildExtendedProps,
   type ControlDescriptor,
 } from '@/components/shared/build';
@@ -88,6 +89,7 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
     curveFamily2,
     lookbackDays: Number(lookbackDays),
     fieldName,
+    asOfDate: params.as_of_date,
   });
 
   // ----- URL update on control change -----
@@ -183,6 +185,7 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
       options: HALF_LIFE_FIELD_OPTIONS,
       advanced: true,
     },
+    asOfDateControl(params.as_of_date),
   ];
 
   // ----- Identity -----

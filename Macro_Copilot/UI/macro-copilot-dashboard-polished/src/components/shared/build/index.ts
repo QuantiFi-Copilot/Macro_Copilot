@@ -28,6 +28,8 @@ export { InfoTooltip } from './elements/InfoTooltip';
 export { ZScoreRegimeSlider } from './elements/ZScoreRegimeSlider';
 
 // Lib (helpers + types)
+export { asOfDateControl } from './lib/asOfDateControl';
+
 export {
   countryCaveatFor,
   registeredCurveFamilies,

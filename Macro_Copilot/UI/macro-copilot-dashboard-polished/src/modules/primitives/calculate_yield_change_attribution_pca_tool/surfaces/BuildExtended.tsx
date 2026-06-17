@@ -31,6 +31,7 @@ import {
   ControlsStrip,
   LineageFooter,
   MethodologyCard,
+  asOfDateControl,
   type BuildExtendedProps,
   type ControlDescriptor,
 } from '@/components/shared/build';
@@ -101,6 +102,7 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
     changeFrequency,
     tenorsCsv,
     fieldName: fieldName || undefined,
+    asOfDate: params.as_of_date,
   });
 
   // ----- URL update on control change (pilot pushParams pattern) -----
@@ -196,6 +198,7 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
       value: fieldName,
       advanced: true,
     },
+    asOfDateControl(params.as_of_date),
   ];
 
   const cm = data?.current_metrics ?? null;

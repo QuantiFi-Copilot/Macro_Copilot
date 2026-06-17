@@ -716,6 +716,8 @@ export type ScanExtremesDetailParams = {
   /** Bloomberg observation field to scan.  Omit for the YAML default
    *  (YLD_YTM_MID). */
   field_name?: string;
+  /** As-of trade date (YYYY-MM-DD).  Omit/empty → latest live data. */
+  as_of_date?: string;
 };
 
 export function fetchDetailScanner(
@@ -920,6 +922,8 @@ export type ButterflyDetailParams = {
   long_tenor?: string;
   lookback_days?: number;
   field_name?: string;
+  /** As-of trade date (YYYY-MM-DD).  Omit/empty → latest live data. */
+  as_of_date?: string;
 };
 
 export function fetchDetailButterfly(
@@ -1146,6 +1150,8 @@ export type RegimeDetailParams = {
   back_tenor?: string;
   lookback_period?: string;
   field_name?: string;
+  /** As-of trade date (YYYY-MM-DD).  Omit/empty → latest live data. */
+  as_of_date?: string;
 };
 
 export function fetchDetailRegime(
@@ -1317,6 +1323,8 @@ export type HalfLifeDetailParams = {
   curve_family_2?: string;
   lookback_days?: number;
   field_name?: string;
+  /** As-of trade date (YYYY-MM-DD).  Omit/empty → latest live data. */
+  as_of_date?: string;
 };
 
 export function fetchDetailHalfLife(
@@ -1397,6 +1405,8 @@ export type PcaYieldCurveDetailParams = {
   n_components?: number;
   change_frequency?: 'daily' | 'weekly';
   field_name?: string;
+  /** As-of trade date (YYYY-MM-DD).  Omit/empty → latest live data. */
+  as_of_date?: string;
 };
 
 export function fetchDetailPcaYieldCurve(
@@ -1420,6 +1430,8 @@ export type RollingRegressionDetailParams = {
   regression_window_days: number;
   lookback_days?: number;
   field_name?: string;
+  /** As-of trade date (YYYY-MM-DD).  Omit/empty → latest live data. */
+  as_of_date?: string;
 };
 
 export function fetchDetailRollingRegression(
@@ -1455,6 +1467,8 @@ export type BetaAdjustedSpreadDetailParams = {
   regression_window_days: number;
   lookback_days?: number;
   field_name?: string;
+  /** As-of trade date (YYYY-MM-DD).  Omit/empty → latest live data. */
+  as_of_date?: string;
 };
 
 export function fetchDetailBetaAdjustedSpread(
@@ -1480,6 +1494,8 @@ export type YieldChangeAttributionDetailParams = {
   change_frequency?: 'daily' | 'weekly';
   tenors?: ReadonlyArray<string>;
   field_name?: string;
+  /** As-of trade date (YYYY-MM-DD).  Omit/empty → latest live data. */
+  as_of_date?: string;
 };
 
 export function fetchDetailYieldChangeAttribution(
@@ -1505,6 +1521,8 @@ export type OtrHistoryDetailParams = {
   country: string;
   tenor: string;
   lookback_days?: number;
+  /** As-of trade date (YYYY-MM-DD).  Omit/empty → latest live data. */
+  as_of_date?: string;
 };
 
 export function fetchDetailOtrHistory(
@@ -1538,6 +1556,8 @@ export type OisScannerDetailParams = {
   /** Bloomberg observation field to scan.  Omit for the schema default
    *  (PX_LAST — mid par swap rate). */
   field_name?: string;
+  /** As-of trade date (YYYY-MM-DD).  Omit/undefined → latest live data. */
+  as_of_date?: string;
 };
 
 export function fetchDetailOisScanner(
@@ -1633,6 +1653,8 @@ export type SovereignYieldPanelDetailParams = {
   field_name?: string;
   /** 'raise' | 'forward_fill_only' | 'drop_rows_any_missing'.  Omit → YAML. */
   missing_data_policy?: string;
+  /** As-of trade date (YYYY-MM-DD).  Omit/empty → latest live data. */
+  as_of_date?: string;
 };
 
 export function fetchDetailSovereignYieldPanel(
@@ -1667,6 +1689,8 @@ export type LinkerPanelDetailParams = {
   calendar_policy?: string;
   /** 'raise' | 'forward_fill_only' | 'drop_rows_any_missing'.  Omit → YAML. */
   missing_data_policy?: string;
+  /** As-of trade date (YYYY-MM-DD).  Omit/empty → latest live data. */
+  as_of_date?: string;
 };
 
 export function fetchDetailLinkerPanel(
@@ -1701,6 +1725,8 @@ export type ZcisPanelDetailParams = {
   calendar_policy?: string;
   /** 'raise' | 'forward_fill_only' | 'drop_rows_any_missing'.  Omit → YAML. */
   missing_data_policy?: string;
+  /** As-of trade date (YYYY-MM-DD).  Omit/empty → latest live data. */
+  as_of_date?: string;
 };
 
 export function fetchDetailZcisPanel(
@@ -1734,6 +1760,8 @@ export type PolicyFuturesStripPanelDetailParams = {
   calendar_policy?: string;
   /** 'raise' | 'forward_fill_only' | 'drop_rows_any_missing'.  Omit → YAML. */
   missing_data_policy?: string;
+  /** As-of trade date (YYYY-MM-DD).  Omit/empty → latest live data. */
+  as_of_date?: string;
 };
 
 export function fetchDetailPolicyFuturesStripPanel(

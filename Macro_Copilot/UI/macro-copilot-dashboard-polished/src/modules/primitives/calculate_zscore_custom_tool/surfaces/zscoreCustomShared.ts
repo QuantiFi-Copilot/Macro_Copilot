@@ -137,6 +137,8 @@ export interface UseZscoreCustomArgs {
   zScoreWindowDays: number;
   lookbackDays?: number;
   fieldName?: string;
+  /** As-of trade date (YYYY-MM-DD).  Undefined/empty → latest live data. */
+  asOfDate?: string;
 }
 
 export interface UseZscoreCustomResult {
@@ -160,6 +162,7 @@ export function useZscoreCustomData(
     z_score_window_days: args.zScoreWindowDays,
     lookback_days: args.lookbackDays,
     field_name: args.fieldName,
+    as_of_date: args.asOfDate || undefined,
   };
 
   useEffect(() => {
@@ -198,6 +201,7 @@ export function useZscoreCustomData(
     args.zScoreWindowDays,
     args.lookbackDays,
     args.fieldName,
+    args.asOfDate,
   ]);
 
   return { data, isLoading, errorMessage };
