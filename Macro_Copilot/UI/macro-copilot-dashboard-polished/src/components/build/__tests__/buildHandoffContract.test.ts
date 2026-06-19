@@ -97,24 +97,20 @@ function assertEqual<T>(actual: T, expected: T, label: string): void {
 // ----------------------------------------------------------------------------
 
 const BACKEND_WORKSPACE_TOOLS_SNAPSHOT: ReadonlyArray<string> = [
-  // Stage 1 — snapshot expanded to 59 entries to mirror
-  // ``orchestrator.events.workspace_tools_snapshot()`` on `build` today.
-  // Composition:
-  //   * 52 entries from rates_agent.workflows._PRIMITIVE_SPECS (the
-  //     full backend runnable-primitive set).
-  //   * 4 manifest-only typed-view / paused tools (calculate_butterfly,
-  //     classify_curve_move, scan_extremes, scan_ois_extremes).
-  //   * 2 workflow-incompatible tools added in Stage 1
-  //     (get_otr_history_tool, calculate_wirp_meeting_pricing_tool)
-  //     via orchestrator.events._MANIFEST_ONLY_BUILD_TOOLS — the
-  //     frontend renders them via the workflow_incompatible decoder
-  //     kind (UnsupportedKnownToolCanvas with the per-tool reason).
-  //   * 1 MCP alias (calculate_ois_rate_level_tool → registry-canonical
-  //     get_ois_rate_level_tool).
-  //
-  // Runnable primitives (52 — from _PRIMITIVE_SPECS)
+  // I4 sync (2026-06-19): mirrors ``orchestrator.events.
+  // workspace_tools_snapshot()`` VERBATIM as returned live (65 entries).
+  // The prior snapshot (59) had drifted — it predated 7 analytical /
+  // regime primitives (curve_fair_value, implied_forward_curve,
+  // ois_policy_path_regime, pca_neutral_butterfly_weights,
+  // rates_vol_regime, sovereign_curve_regime, swap_carry_and_roll) AND
+  // the backend's switch to the get_/policy_futures_-prefixed MCP names
+  // for four scanner/panel tools.  That drift was the root of the
+  // "Could not decode workspace context" dead-end for those tools: the
+  // orphan check below validated against a stale snapshot, so the gaps
+  // were invisible.  Both checks are now alias-aware (they compare the
+  // NORMALISED backend set against the normalised frontend set), so an
+  // alias-source backend name and its canonical are treated as covered.
   'build_linker_panel_tool',
-  'build_policy_futures_strip_panel_tool',
   'build_sovereign_yield_panel_tool',
   'build_zcis_panel_tool',
   'calculate_beta_adjusted_spread_tool',
@@ -122,14 +118,17 @@ const BACKEND_WORKSPACE_TOOLS_SNAPSHOT: ReadonlyArray<string> = [
   'calculate_breakeven_curve_spread_tool',
   'calculate_breakeven_inflation_simple_tool',
   'calculate_breakeven_inflation_tool',
+  'calculate_butterfly_tool',
   'calculate_cpi_surprise_tool',
   'calculate_cross_country_breakeven_spread_simple_tool',
   'calculate_cross_country_real_yield_spread_simple_tool',
   'calculate_cross_market_inflation_swap_spread_tool',
   'calculate_cross_market_spread_tool',
+  'calculate_curve_fair_value_tool',
   'calculate_curve_spread_tool',
   'calculate_forward_breakeven_simple_tool',
   'calculate_half_life_tool',
+  'calculate_implied_forward_curve_tool',
   'calculate_inflation_swap_butterfly_tool',
   'calculate_inflation_swap_curve_spread_tool',
   'calculate_inflation_swap_forward_tool',
@@ -139,46 +138,59 @@ const BACKEND_WORKSPACE_TOOLS_SNAPSHOT: ReadonlyArray<string> = [
   'calculate_ois_cross_market_spread_tool',
   'calculate_ois_curve_spread_tool',
   'calculate_ois_forward_rate_tool',
+  'calculate_ois_policy_path_regime_tool',
+  'calculate_ois_rate_level_tool',
   'calculate_otr_ofr_spread_tool',
+  'calculate_pca_neutral_butterfly_weights_tool',
   'calculate_pca_yield_curve_tool',
+  'calculate_rates_vol_regime_tool',
   'calculate_real_yield_butterfly_tool',
   'calculate_real_yield_curve_spread_tool',
   'calculate_rolling_regression_tool',
+  'calculate_sovereign_curve_regime_tool',
   'calculate_swap_breakeven_basis_simple_tool',
+  'calculate_swap_carry_and_roll_tool',
   'calculate_swap_spread_tool',
+  'calculate_wirp_meeting_pricing_tool',
   'calculate_yield_change_attribution_pca_tool',
   'calculate_zscore_custom_tool',
+  'classify_curve_move_tool',
   'compute_financing_rate_tool',
   'get_futures_price_level_tool',
   'get_futures_volume_oi_tool',
   'get_ois_rate_level_tool',
+  'get_otr_history_tool',
   'get_real_yield_level_tool',
-  'get_scan_policy_futures_extremes_tool',
+  'get_scan_inflation_linkers_extremes_tool',
+  'get_scan_inflation_swaps_extremes_tool',
   'get_yield_levels_tool',
+  'policy_futures_build_policy_futures_strip_panel_tool',
   'policy_futures_get_futures_butterfly_simple_tool',
   'policy_futures_get_futures_calendar_spread_tool',
   'policy_futures_get_futures_cross_market_spread_tool',
   'policy_futures_get_futures_pack_average_simple_tool',
   'policy_futures_get_futures_price_level_tool',
   'policy_futures_get_futures_strip_snapshot_tool',
+  'policy_futures_get_scan_policy_futures_extremes_tool',
   'policy_futures_get_volume_open_interest_snapshot_tool',
   'scan_bond_futures_extremes_tool',
-  'scan_inflation_linkers_extremes_tool',
-  'scan_inflation_swaps_extremes_tool',
-  // Manifest-only typed-view / paused (4)
-  'calculate_butterfly_tool',
-  'classify_curve_move_tool',
   'scan_extremes_tool',
   'scan_ois_extremes_tool',
-  // Stage 1 — workflow-incompatible (2)
-  'get_otr_history_tool',
-  'calculate_wirp_meeting_pricing_tool',
-  // MCP alias (1)
-  'calculate_ois_rate_level_tool',
 ].sort();
 
 const BACKEND_SET: ReadonlySet<string> = new Set(
   BACKEND_WORKSPACE_TOOLS_SNAPSHOT,
+);
+
+// I4 — the backend gate emits some MCP-exposed / domain-prefixed names
+// (e.g. ``get_scan_inflation_linkers_extremes_tool``,
+// ``policy_futures_build_policy_futures_strip_panel_tool``) that the
+// frontend normalises to a canonical before routing.  Compare the
+// NORMALISED backend set against the (already-normalised) frontend
+// routeable set so an alias-source name and its canonical are treated
+// as the same tool in BOTH directions.
+const BACKEND_NORMALIZED: ReadonlySet<string> = new Set(
+  BACKEND_WORKSPACE_TOOLS_SNAPSHOT.map(normalizeToolName),
 );
 
 // ----------------------------------------------------------------------------
@@ -218,7 +230,9 @@ check('contract: every frontend-routeable tool is in the backend gate', () => {
   const fe = computeFrontendRouteable();
   const missing: string[] = [];
   for (const t of fe) {
-    if (!BACKEND_SET.has(t)) missing.push(t);
+    // Alias-aware: a frontend canonical is covered if the backend emits
+    // it directly OR emits an alias that normalises to it.
+    if (!BACKEND_NORMALIZED.has(t)) missing.push(t);
   }
   if (missing.length > 0) {
     throw new Error(

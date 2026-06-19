@@ -116,6 +116,21 @@ const KNOWN_TOOL_ALIASES: Record<string, string> = {
   // frontend module / typed-detail endpoint.
   get_futures_pack_average_simple_tool:
     'policy_futures_get_futures_pack_average_simple_tool',
+  // I4 backend↔frontend parity (workspace-handoff completeness): the
+  // backend ``_get_workspace_tools()`` set emits these names for the
+  // scanner / panel families, but the frontend registry / module
+  // folders use the un-prefixed (or non-``get_``) canonical.  Without
+  // these aliases an Ask→Build hand-off whose ONLY tool is one of
+  // these decode-nulls into the "Could not decode workspace context"
+  // dead-end.  Mapped to the canonical the frontend already knows.
+  get_scan_inflation_linkers_extremes_tool:
+    'scan_inflation_linkers_extremes_tool',
+  get_scan_inflation_swaps_extremes_tool:
+    'scan_inflation_swaps_extremes_tool',
+  policy_futures_get_scan_policy_futures_extremes_tool:
+    'get_scan_policy_futures_extremes_tool',
+  policy_futures_build_policy_futures_strip_panel_tool:
+    'build_policy_futures_strip_panel_tool',
 };
 
 /** Normalise a tool name to the backend-canonical form.
@@ -337,6 +352,22 @@ const _HAND_AUTHORED_RUNNABLE_PRIMITIVE_TOOLS = new Set<string>([
   'calculate_cross_market_inflation_swap_spread_tool',
   'calculate_swap_breakeven_basis_simple_tool',
   'calculate_inflation_swap_butterfly_tool',
+  // I4 backend↔frontend parity — analytical/regime primitives that ship
+  // in the backend ``_PRIMITIVE_SPECS`` (verified runnable: each has a
+  // ``POST /tools/{name}/run`` endpoint) and are emitted into Ask
+  // workspace_context, but had no frontend module and were absent from
+  // every registry — so an Ask→Build hand-off for any of them
+  // decode-nulled into the "Could not decode workspace context"
+  // dead-end.  Routed through the schema-driven GenericPrimitiveBuilder
+  // (no bespoke module required).  Locked by the
+  // buildHandoffContract parity test.
+  'calculate_curve_fair_value_tool',
+  'calculate_implied_forward_curve_tool',
+  'calculate_ois_policy_path_regime_tool',
+  'calculate_pca_neutral_butterfly_weights_tool',
+  'calculate_rates_vol_regime_tool',
+  'calculate_sovereign_curve_regime_tool',
+  'calculate_swap_carry_and_roll_tool',
 ]);
 
 // Stage 3 — module-derived contribution: every module that claims the

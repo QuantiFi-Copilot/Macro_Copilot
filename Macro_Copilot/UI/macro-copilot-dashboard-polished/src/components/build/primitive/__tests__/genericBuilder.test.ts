@@ -133,6 +133,20 @@ check('RUNNABLE_PRIMITIVE_TOOLS: contains exactly the 52 _PRIMITIVE_SPECS keys (
     'calculate_cross_market_inflation_swap_spread_tool',
     'calculate_swap_breakeven_basis_simple_tool',
     'calculate_inflation_swap_butterfly_tool',
+    // I4 (2026-06-19) — analytical / regime primitives that ship in
+    // backend ``_PRIMITIVE_SPECS`` (verified runnable: each has a
+    // ``POST /tools/{name}/run`` endpoint) but had no frontend module
+    // and were absent from this registry, so an Ask→Build hand-off for
+    // any of them decode-nulled into "Could not decode workspace
+    // context".  Added to RUNNABLE so they route through the
+    // schema-driven GenericPrimitiveBuilder.
+    'calculate_curve_fair_value_tool',
+    'calculate_implied_forward_curve_tool',
+    'calculate_ois_policy_path_regime_tool',
+    'calculate_pca_neutral_butterfly_weights_tool',
+    'calculate_rates_vol_regime_tool',
+    'calculate_sovereign_curve_regime_tool',
+    'calculate_swap_carry_and_roll_tool',
   ];
   assertEqual(
     RUNNABLE_PRIMITIVE_TOOLS.size,
