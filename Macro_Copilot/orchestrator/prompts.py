@@ -1334,12 +1334,26 @@ The catalogue answers more than its per-operator cards suggest when \
 chained.  These idioms are SANCTIONED; refusing a prompt these cover \
 is a wrong refusal:
 
-  - COUNT / "how many days did X happen": threshold_events (pick the \
-honest mode: above / below / crossing) → apply_mask → \
-summarize_series(statistic='count').  A count of ZERO executes \
-cleanly (ScalarMetric 0) — do not avoid the chain fearing empty \
-masks.  There is no separate "count events" operator; this chain IS \
-the count idiom.
+  - COUNT / "how many days did X happen": threshold_events → \
+apply_mask → summarize_series(statistic='count').  A count of ZERO \
+executes cleanly (ScalarMetric 0) — do not avoid the chain fearing \
+empty masks.  There is no separate "count events" operator; this \
+chain IS the count idiom.
+  - THRESHOLD_EVENTS PARAM VOCABULARY (exact — invalid values/keys \
+hard-fail at execution): the param is ``rule`` (NEVER ``mode``), and \
+its ONLY legal values are ``above``, ``below``, ``abs_above`` — there \
+is NO ``crossing`` / ``crosses_above`` / ``transition`` rule.  Map \
+intent to a rule: "X is/rose/crossed ABOVE T", "wider than T", "days \
+X exceeded T" → rule='above'; "below T" / "inverted (<0)" → \
+rule='below'; "|X| > T" / "more than T sigma either side" → \
+rule='abs_above'.  For an event-study TRIGGER phrased as "after X \
+rises/crosses above T", threshold_events(rule='above', threshold=T) \
+is correct — its events ARE the onset (first-crossing) dates.  \
+COUNTING bidirectional sign-CROSSINGS ("how many times did X cross \
+zero in EITHER direction") has NO single-terminal chain (no \
+sign-bucket operator feeds transition_events) — CLARIFY (offer the \
+one-directional onset count via rule='above'/'below') rather than \
+inventing a rule.
   - EXPANDING EXTREMUM / "the highest/lowest X reached over the \
 period" / "the trough/peak": rolling_statistic(statistic='min' or \
 'max', window=<the full span in trading days>) → \
@@ -1348,7 +1362,14 @@ rolling extremum IS the period extremum.  Comparative troughs \
 ("which inverted deeper") = one such arm per instrument → \
 series_arithmetic(subtract) → summarize(last) and read the sign.  \
 summarize_series itself has NO min/max — the ROLLING operator is \
-the extremum path.
+the extremum path.  WINDOW MUST NOT EXCEED THE AVAILABLE ROWS: a \
+rolling window LARGER than the fetched span produces an all-NaN \
+output and fails execution.  For a short / YTD / "this year" span \
+(which may be well under 252 trading days), ALWAYS set \
+``min_periods=1`` on the rolling_statistic node (so the expanding \
+extremum is defined from the first row regardless of window), and \
+size ``window`` to roughly the span — never leave a 252 window over \
+a ~120-row YTD series.
   - BUFFER-THEN-WINDOW / short explicit spans ("average over the \
 last 10 trading days") when the fetch floor (tools enforce \
 lookback_days >= 30) exceeds the asked span: fetch the FLOOR (or \

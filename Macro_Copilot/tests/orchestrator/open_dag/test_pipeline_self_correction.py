@@ -357,6 +357,14 @@ _EVENT_GRID_ERROR = (
     "trading-day grid.  events_len=1303, target_len=1297."
 )
 
+# i1a/i1b: invalid threshold_events rule literal / wrong param key.
+_THRESHOLD_RULE_ERROR = (
+    "WorkflowExecutionError: Workflow 'event_regime_x': node 'events' "
+    "('threshold_events') params failed Pydantic validation: 1 validation "
+    "error for ThresholdEventsParams\nrule\n  Input should be 'abs_above', "
+    "'above' or 'below' [type=literal_error, input_value='crosses_above']"
+)
+
 # I1: terminal-shape mismatch — a Series terminal against a scalar contract.
 _TERMINAL_SHAPE_ERROR = (
     "Terminal shape mismatch (deterministic Boundary A): Workflow "
@@ -495,6 +503,24 @@ class TestMandatoryRemediationInjection:
         correction = composer.corrections[1]
         assert correction and "MANDATORY FIX" in correction
         assert "rolling_window" in correction
+
+    async def test_threshold_rule_error_appends_rule_vocab_mandate(self):
+        # i1a/i1b: invalid threshold_events rule/param -> recompose must
+        # seed the rule-vocabulary mandate.
+        composer = _SequenceComposer([GOLDEN_SUMMARY_SINGLE_STAT])
+        executor = _RaisingExecutor(_THRESHOLD_RULE_ERROR)
+        pipe = _pipeline_for(
+            _route(["scalar"]),
+            composer=composer,
+            gate=_SequenceGate([_PASS]),
+            executor=executor,
+        )
+        outcome = await pipe.run("after the 2s10s rises above 0")
+        assert outcome.status == "EXECUTION_REFUSE"
+        correction = composer.corrections[1]
+        assert correction and "MANDATORY FIX" in correction
+        assert "rule" in correction and "above" in correction
+        assert "crossing" in correction or "crosses_above" in correction
 
     async def test_event_grid_mismatch_appends_align_mandate(self):
         # i1c: cross-instrument event_windows index mismatch → recompose

@@ -246,6 +246,21 @@ _MANDATORY_REMEDIATIONS: Tuple[Tuple[str, str], ...] = (
         "fails identically.",
     ),
     (
+        # i1a/i1b: the composer emitted an invalid threshold_events param —
+        # a non-existent rule literal (e.g. 'crosses_above') or the wrong
+        # key ('mode' instead of 'rule').  Pydantic rejects it at execution.
+        "ThresholdEventsParams",
+        "MANDATORY FIX (machine-enforced, not optional): the failure "
+        "above is an invalid threshold_events param.  The param is named "
+        "``rule`` (NEVER ``mode``) and its ONLY legal values are "
+        "'above', 'below', 'abs_above' — there is NO 'crossing' / "
+        "'crosses_above' / 'transition' rule.  In your re-composed DAG "
+        "set rule='above' for an 'above/rises above/crosses above T' "
+        "trigger, rule='below' for 'below T / inverted', or "
+        "rule='abs_above' for '|X| > T'.  Do NOT re-emit a crossing-style "
+        "rule name or a 'mode' key.",
+    ),
+    (
         # i1c (cross-instrument event study): event_windows requires the
         # EventSet mask and the target to share an identical trading-day
         # index; a trigger and target from different markets/calendars
