@@ -31,6 +31,7 @@ import pandas as pd
 
 from shared.artifacts.lineage import OperatorStep, sanitize_params_for_lineage
 from shared.artifacts.types import ScalarMetric, Series
+from shared.artifacts.units import TimeSeriesUnits
 from shared.config.operator_config import (
     OperatorConfig,
     OperatorConfigError,
@@ -284,10 +285,22 @@ def summarize_series(
         if params.statistic == "quantile"
         else params.statistic
     )
+    # u06: a COUNT is dimensionless (a number of matching observations /
+    # days), NOT in the input's units.  Inheriting the input's units made
+    # a count of inverted days emit ``ScalarMetric(count=9, units=percent)``,
+    # which the L6 layer then mis-narrated as "9% of trading days".  Emit
+    # COUNT for the count statistic — matching conditional_aggregate's
+    # count convention; every other statistic stays dimensionful in the
+    # input's units (a mean/quantile of a bps series is bps).
+    output_units = (
+        TimeSeriesUnits.COUNT
+        if params.statistic == "count"
+        else series.units
+    )
     return ScalarMetric(
         metric_key=metric_key,
         value=central,
-        units=series.units,
+        units=output_units,
         lineage=series.lineage.append(step),
     )
 

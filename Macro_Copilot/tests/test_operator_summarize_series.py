@@ -153,7 +153,9 @@ class TestStatisticComputation:
         assert isinstance(out, ScalarMetric)
         assert out.metric_key == "count"
         assert out.value == 0.0
-        assert out.units == s.units
+        # u06: a count is dimensionless (COUNT), not the input's units.
+        from shared.artifacts.units import TimeSeriesUnits
+        assert out.units == TimeSeriesUnits.COUNT
         # Normal lineage discipline — same fields as any other run.
         head = out.lineage.steps[-1]
         assert head.params["central_value"] == 0.0
@@ -265,6 +267,25 @@ class TestRefusals:
                 summarize_series(
                     s, params=SummarizeSeriesParams(statistic=stat),
                 )
+
+    def test_count_emits_count_units_not_input_units(self):
+        """u06: a count must be dimensionless (COUNT), not the input
+        series' units — otherwise the L6 layer mis-narrates a count of
+        days as a percentage."""
+        from shared.artifacts.units import TimeSeriesUnits
+        # A percent-denominated input (e.g. a yield level).
+        s = _make_series(series_key="x", values=[1.0, 2.0, 3.0])
+        out = summarize_series(
+            s, params=SummarizeSeriesParams(statistic="count"),
+        )
+        assert out.metric_key == "count"
+        assert out.value == 3.0
+        assert out.units == TimeSeriesUnits.COUNT
+        # A non-count statistic still inherits the input's units.
+        mean_out = summarize_series(
+            s, params=SummarizeSeriesParams(statistic="mean"),
+        )
+        assert mean_out.units == s.units
 
     def test_empty_input_raises_with_units_hint(self):
         """R3 diagnostics (I2): a non-count statistic on an EMPTY input

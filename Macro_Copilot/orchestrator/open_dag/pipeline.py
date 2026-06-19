@@ -246,6 +246,22 @@ _MANDATORY_REMEDIATIONS: Tuple[Tuple[str, str], ...] = (
         "fails identically.",
     ),
     (
+        # i1c (cross-instrument event study): event_windows requires the
+        # EventSet mask and the target to share an identical trading-day
+        # index; a trigger and target from different markets/calendars
+        # don't, so the composer must align them upstream.
+        "share the same trading-day grid",
+        "MANDATORY FIX (machine-enforced, not optional): the failure "
+        "above is an event_windows index mismatch — the trigger (events) "
+        "series and the target series are on DIFFERENT trading-day grids "
+        "(different markets/calendars).  In your re-composed DAG you MUST "
+        "align them BEFORE the event study: align_series([trigger_leaf, "
+        "target_leaf]) -> select_from_series_set for each -> "
+        "threshold_events on the aligned trigger -> event_windows(mask, "
+        "the aligned target).  Do NOT route the raw target straight into "
+        "event_windows when the trigger is a different instrument.",
+    ),
+    (
         # I1 (event-study scalar collapse): the deterministic Boundary A
         # terminal-shape check refused because the terminal artifact type
         # doesn't match the L1 expected_answer_shape — most often a Series

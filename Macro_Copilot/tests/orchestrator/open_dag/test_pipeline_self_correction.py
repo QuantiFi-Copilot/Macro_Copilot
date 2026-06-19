@@ -348,6 +348,15 @@ _ROLLING_WINDOW_ERROR = (
     "threshold_basis='rolling_zscore' requires rolling_window to be set."
 )
 
+# i1c: cross-instrument event study — event_windows index mismatch.
+_EVENT_GRID_ERROR = (
+    "WorkflowExecutionError: Workflow 'event_regime_cross_market': node "
+    "'windows' failed during execution: EventWindowsError: event_windows: "
+    "events.mask.index and target.payload.index must be identical.  Use "
+    "align_series upstream so the events and target share the same "
+    "trading-day grid.  events_len=1303, target_len=1297."
+)
+
 # I1: terminal-shape mismatch — a Series terminal against a scalar contract.
 _TERMINAL_SHAPE_ERROR = (
     "Terminal shape mismatch (deterministic Boundary A): Workflow "
@@ -486,6 +495,23 @@ class TestMandatoryRemediationInjection:
         correction = composer.corrections[1]
         assert correction and "MANDATORY FIX" in correction
         assert "rolling_window" in correction
+
+    async def test_event_grid_mismatch_appends_align_mandate(self):
+        # i1c: cross-instrument event_windows index mismatch → recompose
+        # must seed the align_series-upstream mandate.
+        composer = _SequenceComposer([GOLDEN_SUMMARY_SINGLE_STAT])
+        executor = _RaisingExecutor(_EVENT_GRID_ERROR)
+        pipe = _pipeline_for(
+            _route(["scalar"]),
+            composer=composer,
+            gate=_SequenceGate([_PASS]),
+            executor=executor,
+        )
+        outcome = await pipe.run("Bund move after a US 10Y jump")
+        assert outcome.status == "EXECUTION_REFUSE"
+        correction = composer.corrections[1]
+        assert correction and "MANDATORY FIX" in correction
+        assert "align_series" in correction
 
     async def test_terminal_shape_mismatch_appends_collapse_mandate(self):
         # I1: a Series terminal vs scalar contract must seed the recompose

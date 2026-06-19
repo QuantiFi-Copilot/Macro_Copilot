@@ -1231,10 +1231,16 @@ The canonical "event-conditional aggregate" shape is:
             v
     event_windows -> conditional_aggregate  (output: Series)
 
-The trigger leaf and the target leaf are DIFFERENT leaves — one \
-becomes the EventSet (via threshold_events), the other goes straight \
-into the ``target`` slot of event_windows.  Do NOT route the target \
-through align_series + select.
+The trigger and target are DIFFERENT leaves — one becomes the EventSet \
+(threshold_events), the other feeds the ``target`` slot.  event_windows \
+REQUIRES the mask and target to share an IDENTICAL trading-day index.  \
+Same-calendar trigger+target (e.g. US 2s10s trigger, US 10Y target): \
+feed the target straight in, no align.  CROSS-INSTRUMENT on different \
+calendars (US trigger, a Bund/gilt/JGB/futures target): align FIRST — \
+align_series([trigger, target]) -> select each -> threshold_events(on \
+the aligned trigger) -> event_windows(mask, aligned target).  Skipping \
+it fails at execution ("events and target [must] share the same \
+trading-day grid").
 
 EVENT-STUDY SCALAR COLLAPSE.  ``conditional_aggregate`` ALWAYS returns \
 a SERIES (the per-offset average response curve).  That is the right \
@@ -2138,7 +2144,11 @@ Re-derive the sign story from the echoed legs before narrating it.
 ONE year, 504 is two; a window=252 result must never be described \
 as "2-year".  When prose names a span, it must match the executed \
 span / window, not the user's phrasing.
-   - Bands or ranges YOU compute from the summary's mean/std are \
+   - A COUNT metric (metric_key='count', units=count) is an INTEGER \
+NUMBER OF DAYS / observations — narrate it as "N days" (e.g. count=9 \
+→ "9 trading days").  NEVER read a count as a percentage ("9% of \
+days") or attach a yield/bps unit to it.\
+\n   - Bands or ranges YOU compute from the summary's mean/std are \
 DERIVED — label them ("a ±1σ band of …"), never present them as \
 observed trading ranges.
    - No dated market episodes ("the 2022 repricing", "September's \
