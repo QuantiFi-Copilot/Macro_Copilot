@@ -184,6 +184,90 @@ _MANDATORY_REMEDIATIONS: Tuple[Tuple[str, str], ...] = (
         "names.  Do NOT rebuild the same DAG without output_keys: that "
         "fails identically.",
     ),
+    (
+        # I2 (live gilt-SONIA all-NaN): a threshold_events condition
+        # matched ZERO rows → apply_mask returned an empty Series (FM-6
+        # zero-match) → summarize_series raised "0 finite observations".
+        # The dominant cause is a bps/percent UNITS mismatch on the
+        # threshold.  Keyed on the summarize error substring.
+        "0 finite observations",
+        "MANDATORY FIX (machine-enforced, not optional): the execution "
+        "failure above means an upstream threshold_events / apply_mask "
+        "selected ZERO rows, so the final summary had nothing to reduce.  "
+        "The overwhelmingly most common cause is a bps-vs-percent UNITS "
+        "mismatch on the threshold.  Rates series do NOT share one unit: "
+        "yield/rate LEVELS are PERCENT (4.5% = 4.5) while dedicated SPREAD "
+        "/ BREAKEVEN tools emit BPS (40 bps = 40), and a spread you built "
+        "by subtracting two percent levels is PERCENT (40 bps = 0.40) — so "
+        "you cannot assume which.  In your re-composed DAG you MUST insert "
+        "a convert_units node with target_units=\"bps\" IMMEDIATELY before "
+        "threshold_events (series -> convert_units -> threshold_events) and "
+        "set the threshold to the BPS NUMBER verbatim (50 for \"50 bps\", "
+        "-25 for \"-25 bps\").  convert_units reads the series' ACTUAL "
+        "units and normalises (percent->bps ×100, bps->bps no-op), so the "
+        "threshold is correct regardless of the upstream native unit.  Do "
+        "NOT just swap in a fractional percent threshold (0.50): that is "
+        "right only for a genuinely-percent series and wrong for a bps "
+        "spread tool.  If the condition is in sigmas, use "
+        'threshold_basis="rolling_zscore" (unit-free) instead.  Also '
+        "verify the rule direction (above/below) and the spread sign.  Do "
+        "NOT rebuild the same DAG with the same raw threshold: it fails "
+        "identically.",
+    ),
+    (
+        # u05: threshold_basis='rolling_zscore' requires a rolling_window
+        # param; the composer set the basis but omitted the window, a hard
+        # validation error at execution.
+        "rolling_window to be set",
+        "MANDATORY FIX (machine-enforced, not optional): the failure "
+        "above is a threshold_events node using "
+        "threshold_basis='rolling_zscore' WITHOUT the required "
+        "rolling_window param.  In your re-composed DAG you MUST add "
+        "rolling_window to that node (the lookback over which the "
+        "z-score mean/std are computed — 252 for a 1-year mean, 504 for "
+        "2-year).  Do NOT drop the rolling_zscore basis or rebuild the "
+        "same node without rolling_window.",
+    ),
+    (
+        # I3 (ev02 bps-pin): the composer pinned a LeafHole's
+        # expected_units to a unit the bound tool does not emit (e.g.
+        # expected_units=bps on a rates tool that emits percent) ->
+        # E_UNIT_MISMATCH at the assembler contract check.
+        "expected units",
+        "MANDATORY FIX (machine-enforced, not optional): the assembly "
+        "failure above is a LeafHole UNITS-PIN mismatch — you pinned "
+        "expected_units to a unit the bound primitive does not emit "
+        "(rates tools emit PERCENT, not bps).  In your re-composed DAG you "
+        "MUST EITHER (a) leave that LeafHole's expected_units NULL (any "
+        "unit acceptable — the default) and let a downstream convert_units "
+        "operator node handle any conversion, OR (b) keep expected_units "
+        "null and add an explicit convert_units node where a later slot "
+        "genuinely needs bps.  Do NOT re-pin the same mismatched unit: it "
+        "fails identically.",
+    ),
+    (
+        # I1 (event-study scalar collapse): the deterministic Boundary A
+        # terminal-shape check refused because the terminal artifact type
+        # doesn't match the L1 expected_answer_shape — most often a Series
+        # terminal (e.g. conditional_aggregate's per-offset response curve,
+        # or a rolling_* transform) against a ['scalar'] contract.
+        "expects answer shape",
+        "MANDATORY FIX (machine-enforced, not optional): the failure "
+        "above is a TERMINAL-SHAPE mismatch — the DAG's terminal artifact "
+        "does not match the requested answer shape.  If the terminal is a "
+        "SERIES (or SeriesSet) but the question wants ONE NUMBER "
+        "(['scalar']), you are one operator short: append summarize_series "
+        "as the new terminal to collapse it — statistic='last' for the "
+        "latest / end-of-window value (e.g. the forward move at the end of "
+        "an event-study response curve), or 'mean' for the average across "
+        "the series.  (For an event_windows -> conditional_aggregate "
+        "response curve answering a scalar ask, "
+        "conditional_aggregate -> summarize_series(last) is the canonical "
+        "collapse.)  If instead the contract wants a SERIES but your "
+        "terminal is a scalar, do NOT over-collapse — make the "
+        "series-producing operator the terminal.  Do NOT rebuild the same "
+        "terminal shape: it fails the check identically.",
+    ),
 )
 
 
@@ -1079,10 +1163,15 @@ class OpenDagPipeline:
         if len(md) > 600:
             md = md[:600] + " …"
         correction = md or "The previous DAG was rejected; build a different one."
-        if outcome.status == "EXECUTION_REFUSE":
+        # FM-10 + I2/I3: machine-enforced remediations apply to BOTH
+        # EXECUTION_REFUSE (frequency / duplicate-key / zero-match-units)
+        # and ASSEMBLY_REFUSE (the expected_units LeafHole pin mismatch is
+        # caught at the assembler contract check, never reaching execution).
+        if outcome.status in ("EXECUTION_REFUSE", "ASSEMBLY_REFUSE"):
             # Scan the FULL (untruncated) failure text so a long error
             # cannot hide the trigger substring; the gate verdict reason
-            # carries the raw executor error even when markdown reflows it.
+            # carries the raw executor / assembler error even when markdown
+            # reflows it.
             full_text = outcome.markdown or ""
             verdict = getattr(outcome.intent_chain, "gate_verdict", None)
             if verdict is not None and getattr(verdict, "reason", None):

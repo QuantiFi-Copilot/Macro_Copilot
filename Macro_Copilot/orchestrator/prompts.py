@@ -1236,6 +1236,16 @@ becomes the EventSet (via threshold_events), the other goes straight \
 into the ``target`` slot of event_windows.  Do NOT route the target \
 through align_series + select.
 
+EVENT-STUDY SCALAR COLLAPSE.  ``conditional_aggregate`` ALWAYS returns \
+a SERIES (the per-offset average response curve).  That is the right \
+terminal when the ask wants the PATH/response over the window.  But \
+when the ask wants ONE NUMBER (expected_answer_shape ['scalar'] — "the \
+average forward move after …"), it is one operator SHORT and its \
+Series terminal fails the terminal-shape check.  You MUST append \
+summarize_series to collapse it: statistic='last' for the end-of-window \
+("forward move"), or 'mean' for the across-offset average.  Scalar \
+event-study chain: … conditional_aggregate -> summarize_series.
+
 THE SUMMARY DISCIPLINE (FOR DESCRIPTIVE STATISTICS — "what is the \
 mean / std / median / average of X over the period")
 
@@ -1344,6 +1354,35 @@ different (longer) window.
 REQUIRES diff(periods=1) BEFORE cumulative(sum) — cumulative applied \
 to the raw LEVEL is a different quantity entirely.  Never skip the \
 diff node; a reviewer will check the chain structurally.
+  - BPS-PHRASED THRESHOLDS — ALWAYS convert_units→bps FIRST (critical: \
+a wrong-units threshold silently matches ZERO rows and the whole DAG \
+fails with "0 finite observations").  Rates series do NOT share one \
+unit: a yield / rate / forward LEVEL is in PERCENT (a 10Y of "4.5%" is \
+4.5), a curve / cross-market / swap SPREAD or a BREAKEVEN is in BPS (a \
+2s10s of "+40 bps" is 40), and a spread you build YOURSELF via \
+series_arithmetic(subtract) of two percent levels is PERCENT (40 bps = \
+0.40).  You generally CANNOT know a leaf's native unit at compose time \
+(the selector binds the primitive later), and the unit of a derived \
+series depends on how you built it — so NEVER guess.  THE ROBUST RULE \
+(use it for EVERY bps-phrased threshold / comparison / literal — \
+"wider than 50 bps", "below -25 bps", "moved more than 10 bps"): wire \
+the series → a convert_units node with params target_units='bps' → \
+threshold_events, and set the threshold to the BPS NUMBER verbatim \
+(50, -25, 10).  convert_units reads the series' ACTUAL units and \
+normalises (percent→bps is ×100; an already-bps series is an identity \
+no-op), so the threshold is correct no matter the upstream unit — you \
+do not have to figure out which.  Do NOT instead guess the native unit \
+and pass a fractional threshold (0.50, -0.25): that is right ONLY for \
+a genuinely-percent series and silently wrong (and gate-refused) for a \
+bps spread.  For "N sigma / N standard deviations from the mean" \
+conditions use threshold_basis='rolling_zscore' (threshold=2.0, \
+unit-free — no convert_units needed) AND you MUST also set the \
+``rolling_window`` param (the lookback over which the z-score's mean \
+and std are computed) — e.g. rolling_window=252 for "vs its 1-year \
+mean", 504 for "2-year".  threshold_basis='rolling_zscore' WITHOUT \
+rolling_window is a hard validation error at execution.  And do NOT \
+pin a LeafHole's ``expected_units`` (leave it null — the convert_units \
+node, not a leaf pin, does any conversion).
   - SELF-JOIN output_keys: whenever align_series's input arms \
 descend from the SAME leaf or instrument fetched twice (lagged vs \
 original, transformed vs raw), SET ``output_keys`` with distinct \
@@ -1777,6 +1816,24 @@ empirical quantile / std of series changes CANNOT be passed as the \
 or holding-period scaling.  If the prompt is position-framed, \
 REFUSE (the catalogue is position-blind); never PASS a descriptive \
 statistic wearing a position-risk label.
+  - THRESHOLD UNITS — JUDGE AGAINST THE SERIES ACTUALLY FED, AND \
+HONOUR convert_units.  Rates units are NOT uniform: yield/rate LEVELS \
+are PERCENT, dedicated SPREAD / BREAKEVEN tools emit BPS, and a \
+spread built by series_arithmetic(subtract) of two percent levels is \
+PERCENT.  When a threshold_events node is fed DIRECTLY by a \
+convert_units node with target_units='bps' (series → convert_units → \
+threshold_events), the thresholded series IS in bps — a bps-number \
+threshold (50, -25) is then CORRECT; do NOT refuse it claiming the \
+original leaf was percent (the convert_units already normalised it).  \
+Conversely, when threshold_events reads a series with NO upstream \
+convert_units, judge the threshold against THAT series' real unit: a \
+fractional threshold (0.50) is right on a genuinely-percent series, a \
+whole-number bps threshold is right on a bps spread/breakeven series. \
+Do NOT infer the unit from free-text role labels / output_meaning \
+prose (those drift) — read the operator wiring.  A clear units \
+mismatch with no convert_units to reconcile it is a REFUSE so the \
+recompose inserts convert_units→bps; but a convert_units-normalised \
+chain must PASS.
 
 SALVAGEABLE MULTI-FACET → CLARIFY, NOT REFUSE: when the DAG \
 faithfully serves ONE facet of a multi-facet ask and the remaining \

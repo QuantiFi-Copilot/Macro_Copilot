@@ -323,6 +323,40 @@ _DUP_KEY_ERROR = (
     "must have a unique series_key."
 )
 
+# I2 (live gilt-SONIA): a bps-magnitude threshold on a percent spread
+# matched zero rows → apply_mask empty → summarize raised this.
+_ZERO_FINITE_ERROR = (
+    "WorkflowExecutionError: Workflow 'event_regime_swap_spread_regime_mean': "
+    "node 'summarize' failed during execution: SummarizeSeriesError: "
+    "summarize_series: input has 0 finite observations after dropna "
+    "(0 total, all NaN).  The input series is EMPTY — an upstream "
+    "apply_mask / threshold_events matched ZERO rows."
+)
+
+# I3 (ev02): the assembler contract check refuses an expected_units pin
+# the bound tool does not satisfy.
+_UNIT_PIN_ERROR = (
+    "Assembler contract check: leaf 'leaf_sonia' LeafRequest expected units "
+    "'bps', but the bound primitive 'calculate_ois_rate_level_tool' declares "
+    "'percent'."
+)
+
+# u05: threshold_basis='rolling_zscore' without the required rolling_window.
+_ROLLING_WINDOW_ERROR = (
+    "WorkflowExecutionError: Workflow 'event_regime_sigma_mask': node "
+    "'threshold' failed during execution: ThresholdEventsError: "
+    "threshold_basis='rolling_zscore' requires rolling_window to be set."
+)
+
+# I1: terminal-shape mismatch — a Series terminal against a scalar contract.
+_TERMINAL_SHAPE_ERROR = (
+    "Terminal shape mismatch (deterministic Boundary A): Workflow "
+    "'event_regime_forward_move': terminal node 'aggregate' produces a "
+    "'Series', but the question expects answer shape ['scalar'] (a 'Series' "
+    "answers a different question).  Rebuild the DAG so its terminal "
+    "produces the requested shape."
+)
+
 
 class TestMandatoryRemediationInjection:
     async def test_incompatible_frequencies_appends_param_mandate(self):
@@ -390,6 +424,102 @@ class TestMandatoryRemediationInjection:
         await pipe.run("...")
         correction = composer.corrections[1]
         assert correction and "MANDATORY FIX" not in correction
+
+    async def test_zero_finite_observations_appends_units_mandate(self):
+        # I2: the empty-mask / zero-event execution failure must seed the
+        # recompose with the bps/percent units remediation.
+        composer = _SequenceComposer([GOLDEN_SUMMARY_SINGLE_STAT])
+        executor = _RaisingExecutor(_ZERO_FINITE_ERROR)
+        pipe = _pipeline_for(
+            _route(["scalar"]),
+            composer=composer,
+            gate=_SequenceGate([_PASS]),
+            executor=executor,
+        )
+        outcome = await pipe.run(
+            "average gilt yield on days the gilt-SONIA spread was wider "
+            "than 50 bps"
+        )
+        assert outcome.status == "EXECUTION_REFUSE"
+        assert composer.calls == 2
+        correction = composer.corrections[1]
+        assert correction and "MANDATORY FIX" in correction
+        assert "PERCENT" in correction and "convert_units" in correction
+        assert "0.50" in correction  # the explicit 50bps->0.50 mapping
+        assert "require_matching_frequency" not in correction  # right mandate
+        assert "convert_units" in outcome.recompose_trace[0].reason
+
+    async def test_expected_units_pin_appends_convert_units_mandate(self):
+        # I3: an ASSEMBLY_REFUSE carrying the E_UNIT_MISMATCH "expected
+        # units" text must seed the recompose with the units-pin mandate.
+        # Driven directly through _derive_correction with a synthetic
+        # ASSEMBLY_REFUSE outcome (an assembly refusal is harder to stub
+        # end-to-end; the injection logic is what's under test).
+        from orchestrator.open_dag.pipeline import PipelineOutcome
+
+        pipe = _pipeline(
+            composer=_SequenceComposer([GOLDEN_SUMMARY_SINGLE_STAT]),
+            gate=_SequenceGate([_PASS]),
+        )
+        outcome = PipelineOutcome(
+            status="ASSEMBLY_REFUSE",
+            markdown=f"**Assembly refused.**\n\n```\n{_UNIT_PIN_ERROR}\n```",
+            intent_chain=None,
+        )
+        correction = pipe._derive_correction(outcome)
+        assert "MANDATORY FIX" in correction
+        assert "expected_units" in correction and "convert_units" in correction
+        assert "null" in correction  # leave the pin null
+
+    async def test_rolling_window_missing_appends_window_mandate(self):
+        # u05: rolling_zscore basis without rolling_window.
+        composer = _SequenceComposer([GOLDEN_SUMMARY_SINGLE_STAT])
+        executor = _RaisingExecutor(_ROLLING_WINDOW_ERROR)
+        pipe = _pipeline_for(
+            _route(["scalar"]),
+            composer=composer,
+            gate=_SequenceGate([_PASS]),
+            executor=executor,
+        )
+        outcome = await pipe.run("days the 10Y was >2 sigma above its 1y mean")
+        assert outcome.status == "EXECUTION_REFUSE"
+        correction = composer.corrections[1]
+        assert correction and "MANDATORY FIX" in correction
+        assert "rolling_window" in correction
+
+    async def test_terminal_shape_mismatch_appends_collapse_mandate(self):
+        # I1: a Series terminal vs scalar contract must seed the recompose
+        # with the summarize_series collapse mandate.  Driven directly
+        # through _derive_correction with a synthetic ASSEMBLY_REFUSE.
+        from orchestrator.open_dag.pipeline import PipelineOutcome
+
+        pipe = _pipeline(
+            composer=_SequenceComposer([GOLDEN_SUMMARY_SINGLE_STAT]),
+            gate=_SequenceGate([_PASS]),
+        )
+        outcome = PipelineOutcome(
+            status="ASSEMBLY_REFUSE",
+            markdown=f"**Refused.**\n\n```\n{_TERMINAL_SHAPE_ERROR}\n```",
+            intent_chain=None,
+        )
+        correction = pipe._derive_correction(outcome)
+        assert "MANDATORY FIX" in correction
+        assert "summarize_series" in correction
+
+    async def test_assembly_refuse_without_units_text_gets_no_mandate(self):
+        from orchestrator.open_dag.pipeline import PipelineOutcome
+
+        pipe = _pipeline(
+            composer=_SequenceComposer([GOLDEN_SUMMARY_SINGLE_STAT]),
+            gate=_SequenceGate([_PASS]),
+        )
+        outcome = PipelineOutcome(
+            status="ASSEMBLY_REFUSE",
+            markdown="Assembly refused: leaf binding produced a low-confidence fit.",
+            intent_chain=None,
+        )
+        correction = pipe._derive_correction(outcome)
+        assert "MANDATORY FIX" not in correction
 
     async def test_gate_refuse_mentioning_frequencies_not_injected(self):
         # The mandate is scoped to EXECUTION_REFUSE: a gate critique that

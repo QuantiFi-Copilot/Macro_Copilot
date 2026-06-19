@@ -266,6 +266,32 @@ class TestRefusals:
                     s, params=SummarizeSeriesParams(statistic=stat),
                 )
 
+    def test_empty_input_raises_with_units_hint(self):
+        """R3 diagnostics (I2): a non-count statistic on an EMPTY input
+        (the apply_mask zero-match shape) raises with the bps/percent
+        units hint AND preserves the '0 finite observations' substring
+        the pipeline recompose remediation keys on."""
+        s = _make_series(series_key="x", values=[])
+        for stat in ("mean", "median", "last", "sum"):
+            with pytest.raises(SummarizeSeriesError) as ei:
+                summarize_series(
+                    s, params=SummarizeSeriesParams(statistic=stat),
+                )
+            msg = str(ei.value)
+            assert "0 finite observations" in msg   # recompose trigger
+            assert "EMPTY" in msg
+            assert "convert_units" in msg and "bps" in msg
+
+    def test_all_nan_nonempty_keeps_generic_message(self):
+        """An all-NaN-but-non-empty input is a data-gap case, NOT a
+        zero-match — it must NOT claim the series is empty."""
+        s = _make_series(series_key="x", values=[math.nan, math.nan])
+        with pytest.raises(SummarizeSeriesError) as ei:
+            summarize_series(s)
+        msg = str(ei.value)
+        assert "0 finite observations" in msg
+        assert "EMPTY" not in msg
+
     def test_std_on_single_observation_raises(self):
         s = _make_series(series_key="x", values=[5.0])
         with pytest.raises(SummarizeSeriesError, match=r">=2"):

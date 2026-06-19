@@ -185,10 +185,35 @@ def summarize_series(
     # 0.0; dispersion on n<2 is recorded as None per OPR10).  Every
     # other statistic keeps the refusal byte-identical.
     if n_used == 0 and params.statistic != "count":
+        # R3 diagnostics: an EMPTY input (n_total==0) almost always means
+        # an upstream apply_mask / threshold_events selected ZERO rows (the
+        # FM-6 zero-match contract returns an empty Series).  The single
+        # most common cause is a UNITS mismatch on the threshold — rates
+        # series are PERCENT-denominated (a 2s10s spread is ~0.40, i.e.
+        # ~40 bps), so a threshold expressed as the bare bps number (e.g.
+        # 50 for "50 bps") matches nothing; it must be 0.50 in the series'
+        # percent units, or the series must be convert_units'd to bps
+        # first.  An all-NaN-but-non-empty input (n_total>0) instead points
+        # to data gaps over the window.  The substring "0 finite
+        # observations" is load-bearing: the pipeline's recompose
+        # remediation keys on it.
+        if n_total == 0:
+            hint = (
+                "  The input series is EMPTY — an upstream apply_mask / "
+                "threshold_events matched ZERO rows.  Most often this is a "
+                "bps-vs-percent UNITS mismatch on the threshold: rate "
+                "LEVELS are percent while spread/breakeven tools emit bps "
+                "and a subtracted-levels spread is percent, so a raw "
+                "threshold can be off by 100x.  The robust fix is to "
+                "convert_units the series to bps immediately before "
+                "threshold_events and use the bps number.  Also check the "
+                "rule direction (above/below) and sign."
+            )
+        else:
+            hint = "  Cannot compute a meaningful summary."
         raise SummarizeSeriesError(
             f"summarize_series: input has 0 finite observations "
-            f"after dropna ({n_total} total, all NaN).  Cannot "
-            "compute a meaningful summary."
+            f"after dropna ({n_total} total, all NaN).{hint}"
         )
     # ``count`` is well-defined even when the std would not be (n=1
     # → std=NaN); the dispersion guard below handles that case.
