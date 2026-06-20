@@ -178,7 +178,10 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
   const condition = conditionQuality(data);
 
   return (
-    <div className="flex flex-col gap-4">
+    // h-full + min-h-0 + overflow-y-auto = the rich-model scroll chassis;
+    // without it a tall result is clipped inside BuildShell's fixed-height
+    // overflow-hidden <main> (matches half_life / rolling_regression).
+    <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto">
       {/* ---------- Identity header ---------- */}
       <header className="flex flex-wrap items-baseline justify-between gap-2">
         <div>

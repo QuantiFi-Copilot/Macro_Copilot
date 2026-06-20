@@ -29,6 +29,7 @@ import { useRequestFocusedMode } from '@/components/build/lib/focusedMode';
 import {
   BuildExtendedShell,
   asOfDateControl,
+  coerceToOption,
   percentileLabel,
   regimeForZScore,
   signedFixed,
@@ -66,9 +67,11 @@ const SOVEREIGN_FIELD_OPTIONS = [
   { value: 'YLD_YTM_ASK', label: 'YLD_YTM_ASK' },
 ];
 
+// OIS curves carry only PX_LAST / PX_BID / PX_ASK in the market-data view —
+// there is NO PX_MID row for any OIS family (verified across all six).  PX_MID
+// is omitted because selecting it would 500; PX_LAST is the OIS mid convention.
 const OIS_FIELD_OPTIONS = [
   { value: 'PX_LAST', label: 'PX_LAST' },
-  { value: 'PX_MID', label: 'PX_MID' },
   { value: 'PX_BID', label: 'PX_BID' },
   { value: 'PX_ASK', label: 'PX_ASK' },
 ];
@@ -88,12 +91,50 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
   useRequestFocusedMode(true);
 
   // ----- Resolve effective params -----
-  const sovereignFamily = params.sovereign_curve_family ?? 'UST';
-  const oisFamily = params.ois_curve_family ?? 'USD_SOFR_OIS';
-  const tenor = params.tenor ?? '10Y';
+  // Enum-constrained params are clamped to their option sets so a stale or
+  // hand-crafted pre-fill (e.g. an OIS field of "MID", or a tenor the pair
+  // doesn't carry) falls back to a backend-valid default instead of 500-ing —
+  // and the <select> can't display one option while sending another.  The OIS
+  // leg is DERIVED from the sovereign's canonical currency pairing (a swap
+  // spread is single-currency; the backend rejects cross-currency pairs), so
+  // an incoming `ois_curve_family` that disagrees is overridden, not sent.
+  // `lookback_days` is a preset, not a constraint — left unclamped.
+  const sovereignFamily = coerceToOption(
+    params.sovereign_curve_family,
+    SWAP_SPREAD_PAIR_OPTIONS,
+    'UST',
+  );
+  const pairMeta = pairForSovereign(sovereignFamily);
+  const oisFamily =
+    pairMeta?.oisFamily ?? params.ois_curve_family ?? 'USD_SOFR_OIS';
+  const tenorOptions =
+    SWAP_SPREAD_TENOR_OPTIONS_BY_PAIR[sovereignFamily]
+    ?? SWAP_SPREAD_TENOR_OPTIONS_BY_PAIR.UST;
+  const tenor = coerceToOption(params.tenor, tenorOptions, tenorOptions[0].value);
   const lookbackDays = params.lookback_days ?? DEFAULTS.lookback_days;
-  const sovereignField = params.sovereign_field_name || DEFAULTS.sovereign_field_name;
-  const oisField = params.ois_field_name || DEFAULTS.ois_field_name;
+  const sovereignField = coerceToOption(
+    params.sovereign_field_name,
+    SOVEREIGN_FIELD_OPTIONS,
+    DEFAULTS.sovereign_field_name,
+  );
+  const oisField = coerceToOption(
+    params.ois_field_name,
+    OIS_FIELD_OPTIONS,
+    DEFAULTS.ois_field_name,
+  );
+
+  // Coerced, fully-resolved param set — control edits spread THIS (not the raw
+  // pre-fill) so an invalid incoming value is scrubbed from the URL on the next
+  // change instead of lingering.
+  const effectiveParams: Record<string, string> = {
+    sovereign_curve_family: sovereignFamily,
+    ois_curve_family: oisFamily,
+    tenor,
+    lookback_days: lookbackDays,
+    sovereign_field_name: sovereignField,
+    ois_field_name: oisField,
+  };
+  if (params.as_of_date) effectiveParams.as_of_date = params.as_of_date;
 
   const { data, isLoading, errorMessage } = useSwapSpread({
     sovereignCurveFamily: sovereignFamily,
@@ -121,7 +162,7 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
   };
 
   const handleControlChange = (name: string, value: string) => {
-    const nextParams = { ...params };
+    const nextParams = { ...effectiveParams };
     if (name === 'pair') {
       // The single Sovereign-Leg control expands to BOTH legs.  The sovereign
       // family uniquely determines the canonical OIS counterparty by currency.
@@ -151,9 +192,7 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
   };
 
   // ----- Controls -----
-  const tenorOptions =
-    SWAP_SPREAD_TENOR_OPTIONS_BY_PAIR[sovereignFamily]
-    ?? SWAP_SPREAD_TENOR_OPTIONS_BY_PAIR.UST;
+  // `tenorOptions` resolved above (shared with the tenor clamp).
   const controls: ReadonlyArray<ControlDescriptor> = [
     {
       name: 'pair',

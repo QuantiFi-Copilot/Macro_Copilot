@@ -30,6 +30,8 @@ export { ZScoreRegimeSlider } from './elements/ZScoreRegimeSlider';
 // Lib (helpers + types)
 export { asOfDateControl } from './lib/asOfDateControl';
 
+export { coerceToOption } from './lib/coerceOption';
+
 export {
   countryCaveatFor,
   registeredCurveFamilies,

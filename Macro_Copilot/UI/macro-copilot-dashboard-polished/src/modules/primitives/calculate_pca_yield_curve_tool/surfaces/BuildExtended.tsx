@@ -42,6 +42,7 @@ import {
   QualityBadge,
   qualityLevelForFlag,
 } from '@/components/shared/build/model';
+import { MultiTenorPicker } from '@/components/build/model/controls/MultiTenorPicker';
 import {
   PCA_CHANGE_FREQUENCY_OPTIONS,
   PCA_COMPACT_CAVEAT,
@@ -81,6 +82,12 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
   // ----- Resolve effective params (URL strings; comma-joined tenors) -----
   const curveFamily = params.curve_family || DEFAULTS.curve_family;
   const tenorsCsv = params.tenors ?? DEFAULTS.tenors;
+  // tenors[] is a multi-select (chips), not a freeform string — an empty
+  // selection means "use the curve_family's full tenor universe".
+  const tenorsList = tenorsCsv
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
   const lookbackDays = params.lookback_days || DEFAULTS.lookback_days;
   const nComponents = params.n_components || DEFAULTS.n_components;
   const changeFrequency = params.change_frequency || DEFAULTS.change_frequency;
@@ -130,12 +137,9 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
       value: curveFamily,
       options: PCA_CURVE_FAMILY_OPTIONS,
     },
-    {
-      name: 'tenors',
-      label: 'Tenors (subset, comma-joined)',
-      kind: 'text',
-      value: tenorsCsv,
-    },
+    // `tenors` is rendered below the strip as a MultiTenorPicker (chips), not
+    // as a freeform text control — a blank box forced users to guess valid
+    // tenor mnemonics.
     {
       name: 'lookback_days',
       label: 'Lookback',
@@ -171,7 +175,13 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
   const cols = cm ? componentNames(cm) : [];
 
   return (
-    <div className="flex flex-col gap-4">
+    // h-full + min-h-0 + overflow-y-auto = the rich-model scroll chassis (the
+    // analog of BuildExtendedShell / PrimitiveCanvasShell).  Without it this
+    // surface mounts as a bare flex column inside BuildShell's fixed-height
+    // overflow-hidden <main>, so a tall result (loadings + variance + factor
+    // chart + diagnostics + methodology) is clipped with no scrollbar.  Matches
+    // the already-correct half_life / rolling_regression surfaces.
+    <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto">
       {/* ---------- Identity header ---------- */}
       <header className="flex flex-wrap items-baseline justify-between gap-2">
         <div>
@@ -197,6 +207,19 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
         controls={controls}
         onChange={handleControlChange}
         onReset={handleReset}
+      />
+
+      {/* ---------- Tenor subset (multi-select chips) ---------- */}
+      {/* Replaces the old freeform "comma-joined tenors" text box so users see
+          and click the selectable tenor universe instead of guessing.  The
+          chip set is the canonical cross-family ladder; the backend resolves
+          the curve_family's actual subset and an empty selection = full
+          universe.  (A fully curve_family-filtered list needs a tenor-metadata
+          endpoint that does not exist yet.) */}
+      <MultiTenorPicker
+        label="Tenors (subset)"
+        value={tenorsList}
+        onChange={(next) => handleControlChange('tenors', next.join(','))}
       />
 
       {/* ---------- Result body ---------- */}

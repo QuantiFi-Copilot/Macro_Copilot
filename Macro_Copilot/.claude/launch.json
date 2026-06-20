@@ -4,8 +4,14 @@
     {
       "name": "dashboard",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "UI/macro-copilot-dashboard-polished", "run", "dev"],
-      "port": 5173
+      "runtimeArgs": [
+        "--prefix",
+        "UI/macro-copilot-dashboard-polished",
+        "run",
+        "dev"
+      ],
+      "port": 5173,
+      "autoPort": false
     }
   ]
 }

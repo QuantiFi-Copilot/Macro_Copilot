@@ -34,6 +34,7 @@ import {
   BuildExtendedShell,
   asOfDateControl,
   bucketForPercentile,
+  coerceToOption,
   percentileLabel,
   signedFixed,
   toneForZScore,
@@ -69,9 +70,12 @@ const LOOKBACK_OPTIONS = [
   { value: '1825', label: '5Y' },
 ];
 
+// OIS curves carry only PX_LAST / PX_BID / PX_ASK in the market-data view —
+// there is NO PX_MID row for any OIS family.  (Verified across all six OIS
+// curve families.)  Offering PX_MID would 500 on selection, so it is omitted;
+// PX_LAST is the OIS mid-rate convention.
 const FIELD_OPTIONS = [
   { value: 'PX_LAST', label: 'PX_LAST' },
-  { value: 'PX_MID', label: 'PX_MID' },
   { value: 'PX_BID', label: 'PX_BID' },
   { value: 'PX_ASK', label: 'PX_ASK' },
 ];
@@ -100,11 +104,49 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
   useRequestFocusedMode(true);
 
   // ----- Resolve effective params -----
-  const curveFamily = params.curve_family ?? 'USD_SOFR_OIS';
-  const shortTenor = params.short_tenor ?? '2Y';
-  const longTenor = params.long_tenor ?? '10Y';
+  // Every enum-constrained param is clamped to its option set: a pre-filled
+  // value that is not a valid option (e.g. an OIS field of "MID", or a tenor
+  // absent from the selected family's grid) falls back to a backend-valid
+  // default instead of silently 500-ing — and, because the control's `value`
+  // reads from the SAME resolved variable, the <select> can no longer display
+  // one option while sending another.  `lookback_days` is intentionally NOT
+  // clamped: its dropdown is a preset, the backend accepts any positive int.
+  const curveFamily = coerceToOption(
+    params.curve_family,
+    OIS_CURVE_OPTIONS,
+    'USD_SOFR_OIS',
+  );
+  const familyTenors =
+    TENOR_OPTIONS_BY_CURVE[curveFamily] ?? TENOR_OPTIONS_BY_CURVE.USD_SOFR_OIS;
+  const shortTenor = coerceToOption(
+    params.short_tenor,
+    familyTenors,
+    familyTenors[0].value,
+  );
+  const longOptionsForShort = longTenorOptions(curveFamily, shortTenor);
+  const longTenor = coerceToOption(
+    params.long_tenor,
+    longOptionsForShort,
+    longOptionsForShort[0]?.value ?? familyTenors[familyTenors.length - 1].value,
+  );
   const lookbackDays = params.lookback_days ?? DEFAULTS.lookback_days;
-  const fieldName = params.field_name || DEFAULTS.field_name;
+  const fieldName = coerceToOption(
+    params.field_name,
+    FIELD_OPTIONS,
+    DEFAULTS.field_name,
+  );
+
+  // Coerced, fully-resolved param set — control edits spread THIS (not the raw
+  // pre-fill) so an invalid incoming value is also scrubbed from the URL on the
+  // next change instead of lingering.
+  const effectiveParams: Record<string, string> = {
+    curve_family: curveFamily,
+    short_tenor: shortTenor,
+    long_tenor: longTenor,
+    lookback_days: lookbackDays,
+    field_name: fieldName,
+  };
+  if (params.as_of_date) effectiveParams.as_of_date = params.as_of_date;
 
   const { data, isLoading, errorMessage } = useOisCurveSpread({
     curveFamily,
@@ -131,7 +173,7 @@ const BuildExtended: React.FC<BuildExtendedProps> = ({
   };
 
   const handleControlChange = (name: string, value: string) => {
-    const nextParams = { ...params, [name]: value };
+    const nextParams = { ...effectiveParams, [name]: value };
     if (name === 'curve_family') {
       // Reset to the new family's first valid (short, long) pair.
       const tenors = TENOR_OPTIONS_BY_CURVE[value] ?? [];
