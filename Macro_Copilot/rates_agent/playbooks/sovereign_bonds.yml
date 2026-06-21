@@ -6,7 +6,7 @@ description: "Daily sovereign benchmark curve points for core liquid macro sover
 
 extraction:
   start_date: "2005-01-01"
-  incremental_window_days: 14
+  incremental_window_days: 70
 
 target_metrics:
   - metric_id: "yield_mid"

@@ -6,7 +6,7 @@ description: "Daily rolling short-rate / policy futures (SOFR, Euribor, SONIA) a
 
 extraction:
   start_date: "2005-01-01"
-  incremental_window_days: 14
+  incremental_window_days: 70
 
 target_metrics:
   - metric_id: "last_price"

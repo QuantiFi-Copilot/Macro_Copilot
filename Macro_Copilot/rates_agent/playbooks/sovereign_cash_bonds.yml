@@ -86,7 +86,7 @@ extraction:
   start_date: "2005-01-01"
   # Each bond's history naturally begins at its own issue date; a long
   # start_date simply lets the extractor pull each bond's full life.
-  incremental_window_days: 14
+  incremental_window_days: 70
 
 target_metrics:
   - metric_id: "yield_mid"

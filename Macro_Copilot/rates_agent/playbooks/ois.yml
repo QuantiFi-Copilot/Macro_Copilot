@@ -5,7 +5,7 @@ dataset_name: ois_curves
 description: Daily OIS curve data for prototype ingestion, with Bloomberg-validated market/reference fields and manually encoded stable curve conventions.
 extraction:
   start_date: '2005-01-01'
-  incremental_window_days: 14
+  incremental_window_days: 70
 target_metrics:
 - metric_id: quoted_rate_mid
   bloomberg_field: PX_LAST

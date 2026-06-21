@@ -122,7 +122,16 @@ wirp:
   #   past 540: the earliest meeting (2025-01-24) is -483d from the probe's
   #     as_of; 540 includes it with margin, and nothing in event_calendar
   #     predates it.
-  forward_horizon_days: 365
+  # RE-CALIBRATED 2026-06-20: 365 -> 330. The renderer applies the horizon to a
+  # ROLLING `today`, so ~30 days after the 2026-05-22 calibration `today+365`
+  # over-reached the first unpriced far-future meeting (2027-06-09) and the strict
+  # 4/4 coverage gate correctly aborted at 74/76 (2 far-future meetings WIRP has
+  # not priced yet). Covered edge 2027-04-29 is ~+313d from today; first unpriced
+  # ~+354d; 330 sits in that gap, re-excluding the unpriced tail so the universe =
+  # only meetings WIRP prices. Re-run scripts/wirp_coverage_check.py and re-tune
+  # forward_horizon_days as the priced frontier advances (expected maintenance of a
+  # rolling-horizon curated universe — NOT a gate weakening).
+  forward_horizon_days: 330
   past_horizon_days: 540
 
 # GENERATED — see ADR 0009 §3. The seed ships EMPTY; utils/render_wirp_

@@ -7,14 +7,14 @@
 # is regenerated on every push. The resolver never edits the seed.
 #
 #   seed_playbook                 : sovereign_cash_bonds.yml
-#   seed_playbook_sha256          : c62042d8ccc4770ea6481d35b534fec8eb8113a13697a48e89434a27c46f47f0
-#   rendered_body_sha256          : a34e49f45cfbe9cfd957aa0e431104a18da432162466408388a8572f89db02d7
+#   seed_playbook_sha256          : dfff506b3684cc729dbadc88ab7925ca2ae08267f26f4bcb06b2e9301df59490
+#   rendered_body_sha256          : fc9345d98d3668d1dd5d669c14357174054fd2d454c6064d712122ed5ad5dad6
 #   seed_universe_count           : 14
 #   effective_universe_count      : 14
 #   otr_history_rows              : 14
 #   otr_history_latest_created_at : 2026-05-21T19:35:43.367563+01:00
-#   as_of_date                    : 2026-06-05
-#   rendered_at                   : 2026-06-05 01:13:10
+#   as_of_date                    : 2026-06-20
+#   rendered_at                   : 2026-06-20 22:12:59
 # ============================================================================
 playbook_name: sovereign_cash_bonds
 playbook_version: '1.1'
@@ -47,7 +47,7 @@ description: 'Daily per-bond data for individual CUSIP-level sovereign cash bond
   '
 extraction:
   start_date: '2005-01-01'
-  incremental_window_days: 14
+  incremental_window_days: 70
 target_metrics:
 - metric_id: yield_mid
   bloomberg_field: YLD_YTM_MID

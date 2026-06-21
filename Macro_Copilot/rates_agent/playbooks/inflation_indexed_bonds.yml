@@ -30,7 +30,7 @@ description: "Daily sovereign inflation-indexed bond benchmark points for US TIP
 
 extraction:
   start_date: "2005-01-01"
-  incremental_window_days: 14
+  incremental_window_days: 70
 
 target_metrics:
   - metric_id: "yield_mid"

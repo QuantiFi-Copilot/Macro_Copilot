@@ -73,7 +73,7 @@ extraction:
   start_date: "2005-01-01"
   # Standard project default. The 14d incremental window covers normal
   # overnight publication latency plus weekends/holidays comfortably.
-  incremental_window_days: 14
+  incremental_window_days: 70
 
 target_metrics:
   - metric_id: "last_price"
