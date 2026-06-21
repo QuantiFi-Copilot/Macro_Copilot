@@ -48,7 +48,6 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional
 if TYPE_CHECKING:
     from orchestrator.open_dag import BoundLeaf, LeafRequest
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import (
     AIMessage,
     HumanMessage,
@@ -209,12 +208,19 @@ class DomainAgentSession:
             ]
         )
 
-        model = ChatAnthropic(
-            model=self._model_name,
+        # Built through the single LLM chokepoint (P10).  Routing through
+        # the factory also fixes KI-09: this site previously passed a
+        # literal ``temperature`` and would 400 on a no-sampling model;
+        # ``anthropic_chat_kwargs`` (inside the factory) now strips it.
+        from orchestrator.llm_factory import LlmRole, make_chat_model
+
+        model_with_tools = make_chat_model(
+            role=LlmRole.DOMAIN_REACT,
+            model_name=self._model_name,
             temperature=self._temperature,
             max_tokens=self._max_tokens,
+            tools=tools,
         )
-        model_with_tools = model.bind_tools(tools)
 
         async def agent_node(state: MessagesState) -> dict:
             # Always prepend the cached SystemMessage.  Anthropic's API
@@ -311,11 +317,20 @@ class DomainAgentSession:
             # picks by name, never executes.  Structured-output schema
             # forces the LLM into the SelectorLLMOutput shape.
             from orchestrator.selectors import SelectorLLMOutput
-            self._selector_model = ChatAnthropic(
-                model=self._model_name,
+
+            # Single LLM chokepoint (P10); KI-09: factory strips temperature
+            # for no-sampling models.  Separate model instance — NO tools
+            # bound; the Selector picks by name, never executes.
+            from orchestrator.llm_factory import LlmRole, make_chat_model
+
+            self._selector_model = make_chat_model(
+                role=LlmRole.SELECTOR,
+                model_name=self._model_name,
                 temperature=self._temperature,
                 max_tokens=self._max_tokens,
-            ).with_structured_output(SelectorLLMOutput, include_raw=True)
+                structured_output=SelectorLLMOutput,
+                include_raw=True,
+            )
             logger.info(
                 "[%s] selector catalogue ready (%d tools, %d dropped)",
                 self.domain.value,

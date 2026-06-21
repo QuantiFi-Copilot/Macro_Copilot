@@ -1095,8 +1095,9 @@ class Composer:
         # Late import — keep the module loadable even when the optional
         # LangChain Anthropic stack isn't installed (tests can use the
         # session-level `_compose_model = mock` pattern).
-        from langchain_anthropic import ChatAnthropic
         from langchain_core.messages import SystemMessage
+
+        from orchestrator.llm_factory import LlmRole, make_chat_model
 
         from orchestrator.prompts import (
             COMPOSER_REPAIR_PROMPT,
@@ -1131,15 +1132,24 @@ class Composer:
             ]
         )
 
-        from orchestrator.config import anthropic_chat_kwargs
-
-        _kwargs = anthropic_chat_kwargs(
+        # Single LLM chokepoint (P10).  Two roles off the same model knob:
+        # compose (ShapeSpec) and repair (ShapePatch).
+        self._compose_model = make_chat_model(
+            role=LlmRole.COMPOSER_COMPOSE,
             model_name=self._model_name,
             temperature=self._temperature,
             max_tokens=self._max_tokens,
+            structured_output=ComposerLLMOutput,
+            include_raw=True,
         )
-        self._compose_model = ChatAnthropic(**_kwargs).with_structured_output(ComposerLLMOutput, include_raw=True)
-        self._repair_model = ChatAnthropic(**_kwargs).with_structured_output(ComposerRepairLLMOutput, include_raw=True)
+        self._repair_model = make_chat_model(
+            role=LlmRole.COMPOSER_REPAIR,
+            model_name=self._model_name,
+            temperature=self._temperature,
+            max_tokens=self._max_tokens,
+            structured_output=ComposerRepairLLMOutput,
+            include_raw=True,
+        )
 
         self._is_open = True
         logger.info(

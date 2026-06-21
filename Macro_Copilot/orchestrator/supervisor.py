@@ -31,7 +31,6 @@ import json
 import logging
 from typing import AsyncIterator, List, Optional
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from orchestrator.contracts import (
@@ -133,19 +132,28 @@ class Supervisor:
 
         # Base model — no tools bound.  This is the guardrail: the
         # supervisor cannot call a rates tool because none are attached.
-        from orchestrator.config import anthropic_chat_kwargs
+        # ONE base shared by two roles: route applies the structured
+        # wrapper below; synthesize_stream streams off this same base via
+        # .astream.  Built through the single LLM chokepoint (P10);
+        # default-OFF is byte-identical (P1).  The base carries the
+        # SUPERVISOR_SYNTHESIS role (used by .astream); the route wrapper
+        # re-keys to SUPERVISOR_ROUTE so replay distinguishes the two.
+        from orchestrator.llm_factory import LlmRole, make_chat_model
 
-        self._base_model = ChatAnthropic(
-            **anthropic_chat_kwargs(
-                model_name=model_name,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
+        self._base_model = make_chat_model(
+            role=LlmRole.SUPERVISOR_SYNTHESIS,
+            model_name=model_name,
+            temperature=temperature,
+            max_tokens=max_tokens,
         )
 
         # Route step uses structured output.  ``include_raw=True`` lets us
         # log usage metadata from the raw AIMessage while still receiving
-        # the parsed Pydantic object.
+        # the parsed Pydantic object.  Applied at the site against the one
+        # shared base, exactly as before.  Under replay, a structured
+        # wrapper built off the SUPERVISOR_SYNTHESIS base auto-re-keys to
+        # SUPERVISOR_ROUTE (structured output is the route role; .astream
+        # off the bare base is synthesis), so the two are distinguishable.
         self._route_model = self._base_model.with_structured_output(
             RouteDecision,
             include_raw=True,

@@ -423,9 +423,9 @@ class AnswerRenderer:
         """Build the cached SystemMessage + ChatAnthropic instance."""
         if self._is_open:
             return
-        from langchain_anthropic import ChatAnthropic
         from langchain_core.messages import SystemMessage
 
+        from orchestrator.llm_factory import LlmRole, make_chat_model
         from orchestrator.prompts import ANSWER_SYSTEM_PROMPT
 
         self._cached_system_message = SystemMessage(
@@ -437,15 +437,15 @@ class AnswerRenderer:
                 }
             ]
         )
-        from orchestrator.config import anthropic_chat_kwargs
-
-        self._model = ChatAnthropic(
-            **anthropic_chat_kwargs(
-                model_name=self._model_name,
-                temperature=self._temperature,
-                max_tokens=self._max_tokens,
-            )
-        ).with_structured_output(_AnswerLLMOutput, include_raw=True)
+        # Single LLM chokepoint (P10).
+        self._model = make_chat_model(
+            role=LlmRole.ANSWER,
+            model_name=self._model_name,
+            temperature=self._temperature,
+            max_tokens=self._max_tokens,
+            structured_output=_AnswerLLMOutput,
+            include_raw=True,
+        )
         self._is_open = True
         logger.info(
             "AnswerRenderer ready (model=%s)", self._model_name,

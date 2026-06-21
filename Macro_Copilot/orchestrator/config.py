@@ -74,6 +74,15 @@ GATE_MODEL: str = os.getenv("GATE_MODEL", "claude-sonnet-4-6")
 ANSWER_MODEL: str = os.getenv("ANSWER_MODEL", "claude-sonnet-4-6")
 
 
+# Override-classifier (env-gated workspace param-override intent) model
+# knob.  Promoted from a hardcoded id at the call site to a config knob so
+# every LLM construction goes through one configurable surface (P10); the
+# default is the same Haiku id the site pinned before.
+OVERRIDE_CLASSIFIER_MODEL: str = os.getenv(
+    "OVERRIDE_CLASSIFIER_MODEL", "claude-haiku-4-5-20251001"
+)
+
+
 # Models where the Anthropic API REMOVED sampling params (temperature /
 # top_p / top_k return 400): Opus 4.7+, Fable.  See the claude-api
 # migration guide ("Sampling parameters removed").  Sonnet 4.x and

@@ -236,10 +236,14 @@ def _llm_classify_overrides(
     rather than as a hard error.
     """
     try:
-        from langchain_anthropic import ChatAnthropic
         from langchain_core.messages import HumanMessage, SystemMessage
 
+        from orchestrator.config import (
+            LLM_TEMPERATURE,
+            OVERRIDE_CLASSIFIER_MODEL,
+        )
         from orchestrator.contracts import ProposedOverridesList
+        from orchestrator.llm_factory import LlmRole, make_chat_model
 
         system_prompt = (
             "You classify user messages from a macro-analysis copilot as "
@@ -251,12 +255,18 @@ def _llm_classify_overrides(
         )
         wc_text = f"Workspace context:\n{workspace_context}\n\nUser:\n{user_message}"
 
-        model = ChatAnthropic(
-            model="claude-haiku-4-5-20251001",
-            temperature=0,
+        # Single LLM chokepoint (P10); model id is now a config knob
+        # (OVERRIDE_CLASSIFIER_MODEL) rather than a hardcoded literal.
+        # ``include_raw`` defaults False, matching the prior plain
+        # ``with_structured_output(ProposedOverridesList)`` consumption.
+        structured = make_chat_model(
+            role=LlmRole.OVERRIDE_CLASSIFIER,
+            model_name=OVERRIDE_CLASSIFIER_MODEL,
+            temperature=LLM_TEMPERATURE,
             max_tokens=400,
+            structured_output=ProposedOverridesList,
+            include_raw=False,
         )
-        structured = model.with_structured_output(ProposedOverridesList)
         result = structured.invoke(
             [SystemMessage(content=system_prompt), HumanMessage(content=wc_text)],
         )

@@ -504,9 +504,9 @@ class CoverageGate:
         if self._is_open:
             return
 
-        from langchain_anthropic import ChatAnthropic
         from langchain_core.messages import SystemMessage
 
+        from orchestrator.llm_factory import LlmRole, make_chat_model
         from orchestrator.prompts import COVERAGE_GATE_SYSTEM_PROMPT
 
         self._cached_system_message = SystemMessage(
@@ -518,15 +518,15 @@ class CoverageGate:
                 }
             ]
         )
-        from orchestrator.config import anthropic_chat_kwargs
-
-        self._gate_model = ChatAnthropic(
-            **anthropic_chat_kwargs(
-                model_name=self._model_name,
-                temperature=self._temperature,
-                max_tokens=self._max_tokens,
-            )
-        ).with_structured_output(_GateLLMOutput, include_raw=True)
+        # Single LLM chokepoint (P10).
+        self._gate_model = make_chat_model(
+            role=LlmRole.GATE,
+            model_name=self._model_name,
+            temperature=self._temperature,
+            max_tokens=self._max_tokens,
+            structured_output=_GateLLMOutput,
+            include_raw=True,
+        )
 
         self._is_open = True
         logger.info(

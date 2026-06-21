@@ -174,19 +174,23 @@ class ReferenceResolver:
         temperature: float = 0.0,
         max_tokens: int = 256,
     ):
-        from langchain_anthropic import ChatAnthropic
         from langchain_core.messages import SystemMessage
+
+        from orchestrator.llm_factory import LlmRole, make_chat_model
 
         self._model_name = model_name
         self._temperature = temperature
         self._max_tokens = max_tokens
-        self._base_model = ChatAnthropic(
-            model=model_name,
+        # Single LLM chokepoint (P10); KI-09: factory strips temperature for
+        # no-sampling models.  NOTE: this is the ONLY structured site that
+        # uses ``include_raw=False`` — the resolver consumes the parsed
+        # object directly, not the {"raw","parsed",...} envelope.
+        self._structured_model = make_chat_model(
+            role=LlmRole.REFERENCE_RESOLVER,
+            model_name=model_name,
             temperature=temperature,
             max_tokens=max_tokens,
-        )
-        self._structured_model = self._base_model.with_structured_output(
-            ReferenceResolution,
+            structured_output=ReferenceResolution,
             include_raw=False,
         )
         # Cached system message: the resolver's prompt is static

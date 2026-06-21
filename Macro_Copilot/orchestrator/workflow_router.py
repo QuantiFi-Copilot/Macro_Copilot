@@ -145,8 +145,9 @@ class WorkflowRouter:
         # environments that don't need the LLM dependency.  Same
         # discipline as the per-domain MCP servers' lazy DB-engine
         # acquisition.
-        from langchain_anthropic import ChatAnthropic
         from langchain_core.messages import SystemMessage
+
+        from orchestrator.llm_factory import LlmRole, make_chat_model
 
         # Build the system prompt once at construction time.  The
         # registry is process-wide; in V1 there is no hot-swap path,
@@ -169,14 +170,14 @@ class WorkflowRouter:
 
         # Base model — no tools bound.  The router has structured-
         # output enforcement; the LLM cannot smuggle free-form prose
-        # in place of a decision.
-        self._base_model = ChatAnthropic(
-            model=model_name,
+        # in place of a decision.  Single LLM chokepoint (P10); KI-09:
+        # the factory strips temperature for no-sampling models.
+        self._route_model = make_chat_model(
+            role=LlmRole.WORKFLOW_ROUTER,
+            model_name=model_name,
             temperature=temperature,
             max_tokens=max_tokens,
-        )
-        self._route_model = self._base_model.with_structured_output(
-            WorkflowRouteDecision,
+            structured_output=WorkflowRouteDecision,
             include_raw=True,
         )
 
