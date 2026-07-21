@@ -119,6 +119,34 @@ export const FX_FORWARD_PAIR_OPTIONS: { value: string; label: string }[] = [
   { value: 'USDCHF', label: 'USDCHF' },
 ];
 
+// V1 cross-currency-basis pairs — those with matching local + USD OIS
+// coverage in rates_agent (fx_agent/forwards/tools/cross_currency_basis).
+export const FX_BASIS_PAIR_OPTIONS: { value: string; label: string }[] = [
+  { value: 'EURUSD', label: 'EURUSD' },
+  { value: 'GBPUSD', label: 'GBPUSD' },
+  { value: 'USDJPY', label: 'USDJPY' },
+  { value: 'AUDUSD', label: 'AUDUSD' },
+  { value: 'USDCAD', label: 'USDCAD' },
+];
+
+export const FX_BASKET_SCOPE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'G10', label: 'G10' },
+  { value: 'EM', label: 'EM' },
+  { value: 'ALL', label: 'ALL' },
+];
+
+export const FX_BASKET_CONSTRUCTION_OPTIONS: { value: string; label: string }[] = [
+  { value: 'long_short_top_n', label: 'Long/short top-N (default)' },
+  { value: 'long_only_top_n', label: 'Long-only top-N' },
+];
+
+export const FX_BASKET_TOPN_OPTIONS: { value: string; label: string }[] = [
+  { value: '2', label: 'Top 2' },
+  { value: '3', label: 'Top 3 (default)' },
+  { value: '4', label: 'Top 4' },
+  { value: '5', label: 'Top 5' },
+];
+
 export const FX_FORWARD_TENOR_OPTIONS: { value: string; label: string }[] = [
   { value: '1W', label: '1W' },
   { value: '1M', label: '1M' },
@@ -423,6 +451,55 @@ export const WIDGET_TYPES: Record<string, WidgetTypeMeta> = {
     ],
     sourceTool: 'get_fx_forward_curve',
   },
+  fx_carry_basket: {
+    id: 'fx_carry_basket',
+    label: 'FX Carry Basket',
+    description:
+      'Paper STRATEGY INDEX: cumulative excess-return equity curve of a long-top-N / short-bottom-N FX carry basket (monthly rebalance, equal-weight, no transaction costs), with annualised return / vol / Sharpe / max-drawdown and the live basket constituents. Relative-value & regime tool, not an executable backtest. Backed by get_fx_carry_basket.',
+    category: 'data',
+    defaultSize: 'wide',
+    allowedSizes: ['medium', 'wide'],
+    parameterized: true,
+    paramFields: [
+      { kind: 'select', name: 'market_scope', label: 'Scope', defaultValue: 'G10', options: FX_BASKET_SCOPE_OPTIONS },
+      { kind: 'select', name: 'tenor', label: 'Tenor', defaultValue: '1M', options: FX_FORWARD_TENOR_OPTIONS },
+      { kind: 'select', name: 'top_n', label: 'Top-N', defaultValue: '3', options: FX_BASKET_TOPN_OPTIONS },
+      { kind: 'select', name: 'basket_construction', label: 'Construction', defaultValue: 'long_short_top_n', options: FX_BASKET_CONSTRUCTION_OPTIONS },
+    ],
+    sourceTool: 'get_fx_carry_basket',
+  },
+  fx_vol_smile: {
+    id: 'fx_vol_smile',
+    label: 'FX Vol Smile',
+    description:
+      'The implied-vol smile reconstructed across delta (10ΔP · 25ΔP · ATM · 25ΔC · 10ΔC) from the ATM / 25Δ-RR / 25Δ-BF / 10Δ-RR / 10Δ-BF quotes, plus the raw RR/BF table with rolling 252-day z-scores. Backed by get_fx_vol_smile.',
+    category: 'data',
+    defaultSize: 'medium',
+    allowedSizes: ['medium', 'wide'],
+    parameterized: true,
+    paramFields: [
+      { kind: 'select', name: 'pair', label: 'Pair', defaultValue: 'EURUSD', options: FX_FORWARD_PAIR_OPTIONS },
+      { kind: 'select', name: 'tenor', label: 'Tenor', defaultValue: '1M', options: FX_FORWARD_TENOR_OPTIONS },
+      { kind: 'select', name: 'lookback_days', label: 'Lookback', defaultValue: '365', options: FX_LOOKBACK_DAYS_OPTIONS },
+    ],
+    sourceTool: 'get_fx_vol_smile',
+  },
+  fx_cross_currency_basis: {
+    id: 'fx_cross_currency_basis',
+    label: 'FX Cross-Currency Basis',
+    description:
+      'CIP basis (bps) for one V1 pair (EURUSD/GBPUSD/USDJPY/AUDUSD/USDCAD), with the FX-implied-vs-OIS decomposition that produces it, rolling z-score, 1d/1w/1m changes, and the 252-day range. Sign convention Bloomberg BCRX-style — NEGATIVE = USD scarcity. Cross-domain: reads the rates_agent OIS substrate. Backed by get_fx_cross_currency_basis.',
+    category: 'data',
+    defaultSize: 'medium',
+    allowedSizes: ['medium', 'wide'],
+    parameterized: true,
+    paramFields: [
+      { kind: 'select', name: 'pair', label: 'Pair', defaultValue: 'EURUSD', options: FX_BASIS_PAIR_OPTIONS },
+      { kind: 'select', name: 'tenor', label: 'Tenor', defaultValue: '1M', options: FX_FORWARD_TENOR_OPTIONS },
+      { kind: 'select', name: 'lookback_days', label: 'Lookback', defaultValue: '365', options: FX_LOOKBACK_DAYS_OPTIONS },
+    ],
+    sourceTool: 'get_fx_cross_currency_basis',
+  },
 };
 
 /** Order in which widgets appear in the catalog modal. */
@@ -439,6 +516,9 @@ export const CATALOG_ORDER: string[] = [
   'fx_scanner',
   'fx_carry',
   'fx_forward_curve',
+  'fx_carry_basket',
+  'fx_vol_smile',
+  'fx_cross_currency_basis',
 ];
 
 // ----------------------------------------------------------------------------

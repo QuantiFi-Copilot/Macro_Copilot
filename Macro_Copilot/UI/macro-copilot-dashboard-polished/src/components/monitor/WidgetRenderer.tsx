@@ -27,6 +27,9 @@ import { FXSpotSnapshotWidget } from './widgets/FXSpotSnapshotWidget';
 import { FXScannerWidget } from './widgets/FXScannerWidget';
 import { FXCarryWidget } from './widgets/FXCarryWidget';
 import { FXForwardCurveWidget } from './widgets/FXForwardCurveWidget';
+import { FXCarryBasketWidget } from './widgets/FXCarryBasketWidget';
+import { FXVolSmileWidget } from './widgets/FXVolSmileWidget';
+import { FXCrossCurrencyBasisWidget } from './widgets/FXCrossCurrencyBasisWidget';
 
 type Props = {
   instance: WidgetInstance;
@@ -102,6 +105,12 @@ function Body({ instance }: { instance: WidgetInstance }) {
       return <FXCarryWidget params={instance.params} />;
     case 'fx_forward_curve':
       return <FXForwardCurveWidget params={instance.params} />;
+    case 'fx_carry_basket':
+      return <FXCarryBasketWidget params={instance.params} />;
+    case 'fx_vol_smile':
+      return <FXVolSmileWidget params={instance.params} />;
+    case 'fx_cross_currency_basis':
+      return <FXCrossCurrencyBasisWidget params={instance.params} />;
     default:
       return (
         <WidgetError
