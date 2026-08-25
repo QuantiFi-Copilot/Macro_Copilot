@@ -127,4 +127,17 @@ CI runs `ruff check` and a substrate-level pytest subset on every PR. See `.gith
 
 ---
 
+## Authorship
+
+Macro Copilot is a joint Applied Project (MSc Finance, Imperial College London), built by two contributors with a strict domain split:
+
+| Domain | Author |
+|---|---|
+| **Rates / OIS domain** — sovereign bonds + OIS primitives, workflow templates, platform architecture (L1–L5), orchestration, frontend platform | **Sreeram Andra** ([@Sreeram1503](https://github.com/Sreeram1503)) |
+| **FX domain** — 6 data substrates (spot, forwards, NDF, ATM vol, vol smile, macro indices; 695 instruments), 30 FX tools (carry, CIP / cross-currency basis, vol surface, cross-sectional scanners), FX dashboard widgets | **Sacha Mimoun** ([@sacha-mimoun](https://github.com/sacha-mimoun)) |
+
+The FX domain is developed on a stacked PR series ([#178 → #244](https://github.com/QuantiFi-Copilot/QFin/pulls?q=is%3Apr+author%3Asacha-mimoun)) pending integration into the mainline; the PR and branch history carry the full commit-level record of each author's work.
+
+---
+
 © 2026 Macro Copilot. Private internal repository.
