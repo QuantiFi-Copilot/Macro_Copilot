@@ -6,6 +6,12 @@ it with a calculation you can inspect, reproduce and argue with.
 The platform covers the **rates complex** and **foreign exchange**, on top of a
 Bloomberg-sourced TimescaleDB warehouse.
 
+```
+"Where is carry most attractive across G10 right now, and how unusual is it?"
+"Has the recent move in EUR/USD volatility broken its usual link with the front end?"
+"Is dollar funding getting more expensive in yen?"
+```
+
 ---
 
 ## The idea
@@ -24,8 +30,8 @@ So the architecture separates the two problems:
   components should run, and explains the result. It never produces a number itself.
 - **Deterministic code computes.** Tools own their market conventions explicitly. Given the
   same inputs, they return the same output every time.
-- **Workflows are validated before they run**, then carry a content-addressed record of how
-  they were built, so a result can be reproduced later.
+- **Workflows are validated before they run**, then carry a record of how they were built, so
+  a result can be reproduced later.
 - **When the catalogue cannot express what was asked, the system says so** instead of
   substituting the nearest-sounding calculation.
 
@@ -46,9 +52,27 @@ as its own MCP subprocess with access only to its own toolset, so a request rout
 domain cannot reach another's tools. This is a routing and reliability boundary, not a
 security or entitlement boundary.
 
-Interfaces on top: **Monitor** (recurring views), **Ask** (a conversational research agent),
-**Build** (persistent workflows) and **Library** (the catalogue of what the system can
-actually compute).
+## The foreign-exchange agent
+
+The FX agent is a full analytical domain built on the shared substrate, covering:
+
+- **Spot and forwards** — spot levels and crosses, full forward curves by tenor
+- **Carry** — forward-implied carry, carry decay across the curve, cross-sectional ranking
+- **Volatility** — realised volatility and the volatility risk premium against implied
+- **Cross-asset context** — correlation and beta against macro risk factors, and a macro risk
+  overlay
+- **Screening** — scanners for cross-sectional extremes and currency pressure, a regime
+  classifier, and trade-setup construction
+- **Data quality** — health checks over the ingested FX universe
+
+Market data is loaded declaratively through ingestion playbooks (`fx_agent/playbooks/`) for
+spot, crosses, forwards, the forward curve, volatility and macro risk proxies.
+
+The interface layer includes a dedicated FX page in the React dashboard with views for spot,
+carry, forward curves, realised volatility, volatility risk premium, correlation and beta,
+scanners, the regime classifier, trade setups and the currency-thesis monitor.
+
+Development continues on other branches in this repository.
 
 ## Repository layout
 
@@ -56,10 +80,10 @@ actually compute).
 Macro_Copilot/
   orchestrator/     routing, domain registry, MCP client wiring
   rates_agent/      rates domains, one MCP server each
-  fx_agent/         foreign exchange
-  shared/           finance-blind operators, workflow engine, schemas
+  fx_agent/         foreign exchange: tools, playbooks, MCP server
+  shared/           workflow engine, schemas, statistical components
   manifesto/        tool manifests (the Library reads these)
-  ingestion/        declarative Bloomberg ingestion playbooks
+  ingestion/        declarative Bloomberg ingestion
   database/         TimescaleDB schema and migrations
   api/              FastAPI service
   UI/               React + TypeScript dashboard
@@ -68,17 +92,6 @@ Macro_Copilot/
 
 QuantFinanceProject/   earlier, unrelated Indian-equity research work
 ```
-
-## This branch
-
-`sacha-fx-integration` is a snapshot of the foreign-exchange integration as it stood in
-**May 2026**: FX spot and forward curves, forward-implied carry and carry decay, realised
-volatility and volatility risk premium, correlation and beta, and cross-sectional scanners,
-wired into the shared orchestrator and workflow substrate.
-
-FX work continued after this snapshot — non-deliverable forwards, cross-currency basis,
-volatility smiles and term structure, and the Monitor widgets. The most recent state lives on
-[`codex/fx-ui-wave2-widgets`](../../tree/codex/fx-ui-wave2-widgets).
 
 ## Authorship
 
@@ -89,8 +102,8 @@ Macro Copilot is a two-person project.
 - **Foreign exchange**, its integration into the shared substrate, and the FX interface work:
   **Sacha Mimoun**
 
-The orchestration layer, the typed workflow substrate and the shared operator library were
-developed jointly. `git log` and the branch history record who wrote what.
+The orchestration layer and the typed workflow substrate were developed jointly. `git log`
+and the branch history record who wrote what.
 
 ## Status
 
