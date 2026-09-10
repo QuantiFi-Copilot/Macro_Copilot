@@ -2,6 +2,9 @@
 
 An LLM-orchestrated research platform for macro funds, built on a typed substrate of validated quantitative primitives. Plain-English questions in, deterministic and reproducible analyses out.
 
+> **This branch is the integrated rates + FX build**: both domains run from a single
+> orchestrator, over one data substrate. See [Authorship](#authorship) for the domain split.
+
 ---
 
 ## What we are building
@@ -25,19 +28,19 @@ The LLM does zero math. The compute layer is named, versioned Python tools backe
 
 ---
 
-## Current status (May 2026)
+## Current status
 
 | Layer | Status |
 |---|---|
-| Data substrate (TimescaleDB + Bloomberg ingestion) | LIVE |
-| Primitives — rates: sovereign bonds + OIS | LIVE — 17 tools |
-| Operators — finance-blind structural transforms | LIVE — 9 operators |
-| Workflow templates — rates archetypes | LIVE — 2 of 4 (event_study, regime_conditioned_relationship) |
-| Conversational orchestration — supervisor + per-domain agents over MCP | LIVE |
-| Frontend — Monitor, Library, Ask, Workspace (V1) | LIVE |
+| Data substrate — TimescaleDB + Bloomberg ingestion | LIVE |
+| Primitives — rates: sovereign bonds, OIS, inflation-linked, inflation swaps, policy futures, bond futures | LIVE — 58 tools across 6 domains |
+| Primitives — FX: spot, forwards, NDF, ATM vol, vol smile, macro indices | LIVE — 30 tools, 9 ingestion playbooks |
+| Operators — finance-blind structural transforms | LIVE — 12 operators |
+| Workflow templates — desk archetypes | LIVE — 2 of 4 (event_study, regime_conditioned_relationship) |
+| Conversational orchestration — supervisor + seven domain agents over MCP | LIVE |
+| Frontend — Monitor, Library, Ask, Workspace, FX surfaces | LIVE |
 | **Persistent state, working set, replayable workspaces** | **In progress (Phase 0)** |
-| Backtest archetype, second domain agent (FX) | Scoping |
-| Bond futures, inflation, STIR primitives | Scoping |
+| Backtest archetype | Scoping |
 
 Validation: a 30-prompt rates-agent gauntlet has run at 29/29 correct routings, 29/29 correct tool selections, and 59/59 mathematically accurate outputs against SQL ground-truth values.
 
@@ -50,7 +53,8 @@ Validation: a 30-prompt rates-agent gauntlet has run at 29/29 correct routings, 
 ├── Macro_Copilot/                  # The active product. All work happens here.
 │   ├── api/                        # FastAPI server (REST + WebSocket)
 │   ├── orchestrator/               # LangGraph supervisor, per-domain agents, routing
-│   ├── rates_agent/                # Sovereign bonds + OIS primitives, workflow templates, MCP servers
+│   ├── rates_agent/                # Rates primitives across six domains, workflow templates, MCP servers
+│   ├── fx_agent/                   # FX primitives (spot, forwards, NDF, vol), ingestion playbooks, MCP server
 │   ├── shared/                     # Typed substrate: artifacts, operators, workflow executor, bridge
 │   ├── ingestion/                  # Parquet → TimescaleDB ingestion
 │   ├── database/                   # Schema + connection helpers
@@ -124,6 +128,23 @@ pytest
 ```
 
 CI runs `ruff check` and a substrate-level pytest subset on every PR. See `.github/workflows/ci.yml`.
+
+---
+
+## Authorship
+
+Macro Copilot is a joint Applied Project (Imperial College London), built by two contributors
+with a strict domain split.
+
+| Domain | Author |
+|---|---|
+| **Rates** — sovereign bonds, OIS, inflation-linked, inflation swaps, policy futures and bond futures primitives; workflow templates; platform architecture (L1–L5); orchestration; frontend platform | **Sreeram Andra** ([@Sreeram1503](https://github.com/Sreeram1503)) |
+| **Foreign exchange** — 6 data substrates (spot, forwards, NDF, ATM vol, vol smile, macro indices; 695 instruments); 30 FX tools covering forward-implied carry, CIP and cross-currency basis, the volatility surface and cross-sectional scanners; 9 declarative ingestion playbooks; the FX dashboard surfaces; integration into the shared substrate | **Sacha Mimoun** ([@sacha-mimoun](https://github.com/sacha-mimoun)) |
+
+The FX domain was developed as a stacked PR series
+([#178 → #244](https://github.com/QuantiFi-Copilot/Macro_Copilot/pulls?q=is%3Apr+author%3Asacha-mimoun))
+and is merged into the rates mainline on this branch. The PR and commit history carries the
+full record of each author's work.
 
 ---
 
