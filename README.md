@@ -63,9 +63,6 @@ Validation: a 30-prompt rates-agent gauntlet has run at 29/29 correct routings, 
 │   ├── manifesto/                  # Per-instrument scoping docs + tool manifest YAMLs
 │   ├── tests/                      # pytest suite (substrate, primitives, workflows, gauntlets)
 │   └── environment.yml             # Conda env definition (Python 3.12, blpapi via conda)
-│
-├── QuantFinanceProject/            # Separate, older project. Not part of Macro Copilot.
-│
 ├── pyproject.toml                  # Project metadata + ruff configuration
 ├── pytest.ini                      # Project-wide pytest configuration
 ├── .github/workflows/ci.yml        # CI: ruff lint + pytest substrate subset
