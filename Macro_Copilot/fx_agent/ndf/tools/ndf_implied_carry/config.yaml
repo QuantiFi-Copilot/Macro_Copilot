@@ -1,0 +1,169 @@
+tool:
+  name: calculate_fx_ndf_implied_carry_tool
+  domain: fx_ndf
+  description: |
+    Cross-sectional FX NDF implied carry snapshot — for one tenor,
+    joins the latest underlying-spot and same-tenor NDF outright per
+    NDF family, computes the implied annualized carry, and ranks the
+    universe. Mirrors calculate_fx_carry but for the NDF substrate
+    (outright vs points). Serves both calculate_fx_ndf_implied_carry
+    and the scan_fx_ndf_carry MCP/API surfaces (same compute, the
+    scanner exposes curated defaults).
+  category: desk_invariant_primitive
+
+conventions:
+  default_ndf_field:
+    value: PX_LAST
+    source: bloomberg_field_convention
+    rationale: >-
+      Bloomberg PX_LAST is the canonical observation for NDF outrights.
+
+  default_spot_field:
+    value: PX_LAST
+    source: bloomberg_field_convention
+    rationale: >-
+      Bloomberg PX_LAST is the canonical spot observation used as the
+      denominator for implied carry.
+
+  default_tenor:
+    value: 1M
+    source: team_judgment_pending_review
+    rationale: >-
+      One-month tenor is the standard NDF carry monitor tenor (matches
+      the deliverable-forwards fx_carry convention).
+
+  tenor_1w_days:
+    value: 5
+    source: trading_day_convention
+    rationale: >-
+      Approximate one FX trading week. Matches fx_carry.
+    valid_range: [3, 10]
+
+  tenor_1m_days:
+    value: 21
+    source: trading_day_convention
+    rationale: >-
+      Approximate one FX trading month. Matches fx_carry.
+    valid_range: [15, 30]
+
+  tenor_3m_days:
+    value: 63
+    source: trading_day_convention
+    rationale: >-
+      Approximate three FX trading months. Matches fx_carry.
+    valid_range: [45, 90]
+
+  tenor_6m_days:
+    value: 126
+    source: trading_day_convention
+    rationale: >-
+      Approximate six FX trading months. Matches fx_carry.
+    valid_range: [90, 180]
+
+  tenor_12m_days:
+    value: 252
+    source: trading_day_convention
+    rationale: >-
+      One FX trading year. Matches fx_carry (12M / 252 = 1, so the
+      12M annualised carry equals the raw 12M carry).
+    valid_range: [240, 270]
+
+  annualization_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      Trading-day annualization convention used across the macro stack
+      and matching the deliverable-forwards fx_carry tool.
+    valid_range: [240, 366]
+
+  spot_round_decimals:
+    value: 6
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Six decimals preserves precision across underlying-pair spot
+      magnitudes (USDCNY ~7 vs USDIDR ~16000 vs USDKRW ~1300).
+    valid_range: [2, 8]
+
+  outright_round_decimals:
+    value: 6
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Six decimals on the NDF outright. Same as spot.
+    valid_range: [2, 8]
+
+  carry_pct_round_decimals:
+    value: 2
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Two decimals on annualised implied carry %. Matches fx_carry.
+    valid_range: [0, 6]
+
+  z_score_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      One trading year. Matches fx_carry so cross-asset readers see
+      comparable z-scores at the same horizon.
+    valid_range: [60, 504]
+
+  z_score_min_periods:
+    value: 60
+    source: industry_standard_1y_window
+    rationale: >-
+      Minimum observations before a z-score is emitted; sparse history
+      below this returns None to fail loud.
+    valid_range: [20, 252]
+
+  z_score_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: >-
+      Sample (Bessel-corrected) standard deviation. Same as fx_carry.
+    valid_range: [0, 1]
+
+  trailing_range_window_days:
+    value: 252
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Locked at 252 in V1; the output schema's field names
+      (carry_high_252d / carry_low_252d / carry_percentile_252d) embed
+      the number on the wire — changing without renaming would silently
+      lie about the percentile basis.
+    valid_range: [252, 252]
+
+  ffill_limit_days:
+    value: 5
+    source: trading_day_convention
+    rationale: >-
+      Maximum forward-fill window for missing daily observations before
+      a gap is treated as a true NA. Same as fx_carry.
+    valid_range: [0, 10]
+
+  z_score_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals for z-score and percentile. Same as fx_carry.
+    valid_range: [2, 6]
+
+methodology:
+  what_it_does: |
+    For one NDF tenor, fetches per-day joins of underlying spot and NDF
+    outright over the lookback window, computes per-date implied carry
+    as (outright/spot - 1) * (annualization_days / tenor_days) * 100,
+    then for each NDF family runs the shared compute_level_metrics
+    operator on the historical implied-carry series to get the rolling
+    z-score / percentile / range. Current snapshot uses the LAST common
+    spot+NDF date so the snapshot and the z-score series last point are
+    aligned (no lookahead). Ranks by carry_signed / abs_carry /
+    abs_z_score.
+  assumptions:
+    - "NDF outrights are quoted in spot-equivalent units (USD per local currency), NOT as forward points — the formula uses outright/spot directly with NO divisor (unlike deliverable forwards which need a 10000 / 100 divisor on the points)."
+    - "Default spot_convention='settlement' uses each NDF's official settlement reference (e.g. USDCNY for CCN+) — this is the textbook implied carry definition."
+    - "spot_convention='offshore_tradable' swaps USDCNY -> USDCNH for CCN+ only; other NDFs fall back to settlement so coverage stays uniform."
+    - "The historical join is per trade_date BEFORE the annualisation — z-score is on the implied-carry series, not on the spot-vs-outright basis directly."
+    - "Z-score min_periods (60) and window (252) match the deliverable-forwards fx_carry tool so cross-asset readers compare carry extremeness at the same horizon."
+  citations: []
+  planned_extensions:
+    - "Add bid/ask-aware implied carry once the bid/ask substrate from PR #228 is consumed (compute carry on the bid side and ask side separately, surface the spread cost)."
+    - "Add 'days_to_settle' field on the output so settlement-date risk is visible alongside the carry number."

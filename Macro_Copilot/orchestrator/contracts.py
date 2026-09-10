@@ -47,8 +47,12 @@ class Domain(str, Enum):
     OIS = "ois"
     INFLATION_INDEXED_BONDS = "inflation_indexed_bonds"
     INFLATION_SWAPS = "inflation_swaps"
+<<<<<<< HEAD
     POLICY_FUTURES = "policy_futures"
     BOND_FUTURES = "bond_futures"
+=======
+    FX = "fx"
+>>>>>>> origin/codex/fx-ui-wave2-widgets
 
 
 # ============================================================================

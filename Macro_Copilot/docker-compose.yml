@@ -10,6 +10,17 @@ services:
     image: timescale/timescaledb:latest-pg14
     container_name: macro-tsdb
     restart: unless-stopped
+    # Bump max_locks_per_transaction from the default 128 so that large
+    # historical ingestions (FX Wave 1 size: ~200k-300k market_data_daily
+    # rows per playbook, all inside one atomic transaction) do not hit
+    # "out of shared memory — increase max_locks_per_transaction".
+    # 16384 × max_connections (default 100) gives ample headroom for any
+    # ingestion footprint we currently target. See fx_agent/ROADMAP.md
+    # "Local env fixes" for the discovery context.
+    command:
+      - postgres
+      - -c
+      - max_locks_per_transaction=16384
     environment:
       POSTGRES_DB: macrodata
       POSTGRES_USER: quantuser

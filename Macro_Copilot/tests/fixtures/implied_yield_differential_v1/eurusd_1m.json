@@ -1,0 +1,1347 @@
+{
+  "fixture_name": "eurusd_1m",
+  "tool_module": "fx_agent.forwards.tools.implied_yield_differential",
+  "tool_function": "get_fx_implied_yield_differential",
+  "capture": {
+    "captured_at": "2026-05-27T12:16:08Z",
+    "capture_method": "live_db_v1",
+    "database_name": "macrodata",
+    "start_date": "2025-05-27",
+    "raw_rows_count": 259,
+    "raw_rows_sha256": "ac6f7558b5124eff6bfab046da488576315ed371c08ad00b7295446cefeaf61a"
+  },
+  "input": {
+    "params": {
+      "pair": "EURUSD",
+      "tenor": "1M",
+      "lookback_days": 365,
+      "field_name": "PX_LAST"
+    },
+    "queries": [
+      {
+        "substrate": "joined_spot_forward",
+        "pair": "EURUSD",
+        "rows": [
+          {
+            "trade_date": "2025-05-27",
+            "spot": 1.1328,
+            "forward_points": 23.44
+          },
+          {
+            "trade_date": "2025-05-28",
+            "spot": 1.1292,
+            "forward_points": 22.57
+          },
+          {
+            "trade_date": "2025-05-29",
+            "spot": 1.137,
+            "forward_points": 21.98
+          },
+          {
+            "trade_date": "2025-05-30",
+            "spot": 1.1347,
+            "forward_points": 21.92
+          },
+          {
+            "trade_date": "2025-06-02",
+            "spot": 1.1441,
+            "forward_points": 24.41
+          },
+          {
+            "trade_date": "2025-06-03",
+            "spot": 1.1372,
+            "forward_points": 23.63
+          },
+          {
+            "trade_date": "2025-06-04",
+            "spot": 1.1417,
+            "forward_points": 23.02
+          },
+          {
+            "trade_date": "2025-06-05",
+            "spot": 1.1445,
+            "forward_points": 22.61
+          },
+          {
+            "trade_date": "2025-06-06",
+            "spot": 1.1397,
+            "forward_points": 22.66
+          },
+          {
+            "trade_date": "2025-06-09",
+            "spot": 1.1422,
+            "forward_points": 22.75
+          },
+          {
+            "trade_date": "2025-06-10",
+            "spot": 1.1425,
+            "forward_points": 24.27
+          },
+          {
+            "trade_date": "2025-06-11",
+            "spot": 1.1487,
+            "forward_points": 23.66
+          },
+          {
+            "trade_date": "2025-06-12",
+            "spot": 1.1584,
+            "forward_points": 23.14
+          },
+          {
+            "trade_date": "2025-06-13",
+            "spot": 1.1549,
+            "forward_points": 23.17
+          },
+          {
+            "trade_date": "2025-06-16",
+            "spot": 1.1561,
+            "forward_points": 23.17
+          },
+          {
+            "trade_date": "2025-06-17",
+            "spot": 1.148,
+            "forward_points": 23.76
+          },
+          {
+            "trade_date": "2025-06-18",
+            "spot": 1.148,
+            "forward_points": 23.75
+          },
+          {
+            "trade_date": "2025-06-19",
+            "spot": 1.1495,
+            "forward_points": 23.01
+          },
+          {
+            "trade_date": "2025-06-20",
+            "spot": 1.1523,
+            "forward_points": 23.04
+          },
+          {
+            "trade_date": "2025-06-23",
+            "spot": 1.1578,
+            "forward_points": 23.18
+          },
+          {
+            "trade_date": "2025-06-24",
+            "spot": 1.1609,
+            "forward_points": 24.75
+          },
+          {
+            "trade_date": "2025-06-25",
+            "spot": 1.1659,
+            "forward_points": 23.92
+          },
+          {
+            "trade_date": "2025-06-26",
+            "spot": 1.1701,
+            "forward_points": 24.04
+          },
+          {
+            "trade_date": "2025-06-27",
+            "spot": 1.1718,
+            "forward_points": 24.1
+          },
+          {
+            "trade_date": "2025-06-30",
+            "spot": 1.1787,
+            "forward_points": 25.69
+          },
+          {
+            "trade_date": "2025-07-01",
+            "spot": 1.1806,
+            "forward_points": 25.04
+          },
+          {
+            "trade_date": "2025-07-02",
+            "spot": 1.1799,
+            "forward_points": 24.29
+          },
+          {
+            "trade_date": "2025-07-03",
+            "spot": 1.1757,
+            "forward_points": 24.32
+          },
+          {
+            "trade_date": "2025-07-04",
+            "spot": 1.1778,
+            "forward_points": 24.39
+          },
+          {
+            "trade_date": "2025-07-07",
+            "spot": 1.1709,
+            "forward_points": 25.8
+          },
+          {
+            "trade_date": "2025-07-08",
+            "spot": 1.1725,
+            "forward_points": 25.05
+          },
+          {
+            "trade_date": "2025-07-09",
+            "spot": 1.172,
+            "forward_points": 24.25
+          },
+          {
+            "trade_date": "2025-07-10",
+            "spot": 1.1701,
+            "forward_points": 24.18
+          },
+          {
+            "trade_date": "2025-07-11",
+            "spot": 1.1689,
+            "forward_points": 24.14
+          },
+          {
+            "trade_date": "2025-07-14",
+            "spot": 1.1664,
+            "forward_points": 25.65
+          },
+          {
+            "trade_date": "2025-07-15",
+            "spot": 1.1601,
+            "forward_points": 24.76
+          },
+          {
+            "trade_date": "2025-07-16",
+            "spot": 1.1641,
+            "forward_points": 24.06
+          },
+          {
+            "trade_date": "2025-07-17",
+            "spot": 1.1596,
+            "forward_points": 23.99
+          },
+          {
+            "trade_date": "2025-07-18",
+            "spot": 1.1626,
+            "forward_points": 24.01
+          },
+          {
+            "trade_date": "2025-07-21",
+            "spot": 1.1694,
+            "forward_points": 25.7
+          },
+          {
+            "trade_date": "2025-07-22",
+            "spot": 1.1754,
+            "forward_points": 25.04
+          },
+          {
+            "trade_date": "2025-07-23",
+            "spot": 1.1771,
+            "forward_points": 24.26
+          },
+          {
+            "trade_date": "2025-07-24",
+            "spot": 1.1749,
+            "forward_points": 24.3
+          },
+          {
+            "trade_date": "2025-07-25",
+            "spot": 1.1742,
+            "forward_points": 24.25
+          },
+          {
+            "trade_date": "2025-07-28",
+            "spot": 1.1589,
+            "forward_points": 23.1
+          },
+          {
+            "trade_date": "2025-07-29",
+            "spot": 1.1547,
+            "forward_points": 22.19
+          },
+          {
+            "trade_date": "2025-07-30",
+            "spot": 1.1405,
+            "forward_points": 24.23
+          },
+          {
+            "trade_date": "2025-07-31",
+            "spot": 1.1415,
+            "forward_points": 23.52
+          },
+          {
+            "trade_date": "2025-08-01",
+            "spot": 1.1587,
+            "forward_points": 23.8
+          },
+          {
+            "trade_date": "2025-08-04",
+            "spot": 1.1571,
+            "forward_points": 25.3
+          },
+          {
+            "trade_date": "2025-08-05",
+            "spot": 1.1575,
+            "forward_points": 24.56
+          },
+          {
+            "trade_date": "2025-08-06",
+            "spot": 1.166,
+            "forward_points": 23.9
+          },
+          {
+            "trade_date": "2025-08-07",
+            "spot": 1.1666,
+            "forward_points": 23.92
+          },
+          {
+            "trade_date": "2025-08-08",
+            "spot": 1.1641,
+            "forward_points": 23.89
+          },
+          {
+            "trade_date": "2025-08-11",
+            "spot": 1.1615,
+            "forward_points": 25.53
+          },
+          {
+            "trade_date": "2025-08-12",
+            "spot": 1.1675,
+            "forward_points": 24.93
+          },
+          {
+            "trade_date": "2025-08-13",
+            "spot": 1.1705,
+            "forward_points": 24.15
+          },
+          {
+            "trade_date": "2025-08-14",
+            "spot": 1.1648,
+            "forward_points": 23.98
+          },
+          {
+            "trade_date": "2025-08-15",
+            "spot": 1.1703,
+            "forward_points": 24.05
+          },
+          {
+            "trade_date": "2025-08-18",
+            "spot": 1.1661,
+            "forward_points": 25.35
+          },
+          {
+            "trade_date": "2025-08-19",
+            "spot": 1.1647,
+            "forward_points": 24.58
+          },
+          {
+            "trade_date": "2025-08-20",
+            "spot": 1.1652,
+            "forward_points": 23.84
+          },
+          {
+            "trade_date": "2025-08-21",
+            "spot": 1.1606,
+            "forward_points": 23.62
+          },
+          {
+            "trade_date": "2025-08-22",
+            "spot": 1.1718,
+            "forward_points": 23.77
+          },
+          {
+            "trade_date": "2025-08-25",
+            "spot": 1.1618,
+            "forward_points": 24.96
+          },
+          {
+            "trade_date": "2025-08-26",
+            "spot": 1.1642,
+            "forward_points": 24.21
+          },
+          {
+            "trade_date": "2025-08-27",
+            "spot": 1.1639,
+            "forward_points": 24.13
+          },
+          {
+            "trade_date": "2025-08-28",
+            "spot": 1.1683,
+            "forward_points": 22.57
+          },
+          {
+            "trade_date": "2025-08-29",
+            "spot": 1.1686,
+            "forward_points": 22.54
+          },
+          {
+            "trade_date": "2025-09-01",
+            "spot": 1.1711,
+            "forward_points": 22.54
+          },
+          {
+            "trade_date": "2025-09-02",
+            "spot": 1.164,
+            "forward_points": 23.82
+          },
+          {
+            "trade_date": "2025-09-03",
+            "spot": 1.1662,
+            "forward_points": 23.08
+          },
+          {
+            "trade_date": "2025-09-04",
+            "spot": 1.1649,
+            "forward_points": 22.03
+          },
+          {
+            "trade_date": "2025-09-05",
+            "spot": 1.1717,
+            "forward_points": 21.94
+          },
+          {
+            "trade_date": "2025-09-08",
+            "spot": 1.1763,
+            "forward_points": 21.97
+          },
+          {
+            "trade_date": "2025-09-09",
+            "spot": 1.1708,
+            "forward_points": 24.08
+          },
+          {
+            "trade_date": "2025-09-10",
+            "spot": 1.1695,
+            "forward_points": 23.32
+          },
+          {
+            "trade_date": "2025-09-11",
+            "spot": 1.1734,
+            "forward_points": 21.83
+          },
+          {
+            "trade_date": "2025-09-12",
+            "spot": 1.1734,
+            "forward_points": 21.79
+          },
+          {
+            "trade_date": "2025-09-15",
+            "spot": 1.1761,
+            "forward_points": 21.63
+          },
+          {
+            "trade_date": "2025-09-16",
+            "spot": 1.1867,
+            "forward_points": 23.07
+          },
+          {
+            "trade_date": "2025-09-17",
+            "spot": 1.1813,
+            "forward_points": 22.42
+          },
+          {
+            "trade_date": "2025-09-18",
+            "spot": 1.1788,
+            "forward_points": 21.73
+          },
+          {
+            "trade_date": "2025-09-19",
+            "spot": 1.1746,
+            "forward_points": 21.7
+          },
+          {
+            "trade_date": "2025-09-22",
+            "spot": 1.1803,
+            "forward_points": 21.78
+          },
+          {
+            "trade_date": "2025-09-23",
+            "spot": 1.1815,
+            "forward_points": 23.27
+          },
+          {
+            "trade_date": "2025-09-24",
+            "spot": 1.1738,
+            "forward_points": 22.47
+          },
+          {
+            "trade_date": "2025-09-25",
+            "spot": 1.1666,
+            "forward_points": 21.65
+          },
+          {
+            "trade_date": "2025-09-26",
+            "spot": 1.1703,
+            "forward_points": 22.51
+          },
+          {
+            "trade_date": "2025-09-29",
+            "spot": 1.1727,
+            "forward_points": 23.66
+          },
+          {
+            "trade_date": "2025-09-30",
+            "spot": 1.1734,
+            "forward_points": 22.83
+          },
+          {
+            "trade_date": "2025-10-01",
+            "spot": 1.1732,
+            "forward_points": 22.14
+          },
+          {
+            "trade_date": "2025-10-02",
+            "spot": 1.1715,
+            "forward_points": 21.9
+          },
+          {
+            "trade_date": "2025-10-03",
+            "spot": 1.1742,
+            "forward_points": 21.88
+          },
+          {
+            "trade_date": "2025-10-06",
+            "spot": 1.1711,
+            "forward_points": 23.0
+          },
+          {
+            "trade_date": "2025-10-07",
+            "spot": 1.1657,
+            "forward_points": 22.02
+          },
+          {
+            "trade_date": "2025-10-08",
+            "spot": 1.1628,
+            "forward_points": 21.14
+          },
+          {
+            "trade_date": "2025-10-09",
+            "spot": 1.1564,
+            "forward_points": 20.84
+          },
+          {
+            "trade_date": "2025-10-10",
+            "spot": 1.1619,
+            "forward_points": 20.87
+          },
+          {
+            "trade_date": "2025-10-13",
+            "spot": 1.157,
+            "forward_points": 21.94
+          },
+          {
+            "trade_date": "2025-10-14",
+            "spot": 1.1607,
+            "forward_points": 21.44
+          },
+          {
+            "trade_date": "2025-10-15",
+            "spot": 1.1647,
+            "forward_points": 21.11
+          },
+          {
+            "trade_date": "2025-10-16",
+            "spot": 1.1687,
+            "forward_points": 20.82
+          },
+          {
+            "trade_date": "2025-10-17",
+            "spot": 1.1655,
+            "forward_points": 20.77
+          },
+          {
+            "trade_date": "2025-10-20",
+            "spot": 1.1642,
+            "forward_points": 21.83
+          },
+          {
+            "trade_date": "2025-10-21",
+            "spot": 1.16,
+            "forward_points": 21.25
+          },
+          {
+            "trade_date": "2025-10-22",
+            "spot": 1.1611,
+            "forward_points": 20.62
+          },
+          {
+            "trade_date": "2025-10-23",
+            "spot": 1.1618,
+            "forward_points": 21.02
+          },
+          {
+            "trade_date": "2025-10-24",
+            "spot": 1.1627,
+            "forward_points": 20.38
+          },
+          {
+            "trade_date": "2025-10-27",
+            "spot": 1.1645,
+            "forward_points": 19.81
+          },
+          {
+            "trade_date": "2025-10-28",
+            "spot": 1.1651,
+            "forward_points": 19.2
+          },
+          {
+            "trade_date": "2025-10-29",
+            "spot": 1.1601,
+            "forward_points": 18.9
+          },
+          {
+            "trade_date": "2025-10-30",
+            "spot": 1.1565,
+            "forward_points": 19.61
+          },
+          {
+            "trade_date": "2025-10-31",
+            "spot": 1.1537,
+            "forward_points": 19.52
+          },
+          {
+            "trade_date": "2025-11-03",
+            "spot": 1.152,
+            "forward_points": 19.51
+          },
+          {
+            "trade_date": "2025-11-04",
+            "spot": 1.1482,
+            "forward_points": 20.64
+          },
+          {
+            "trade_date": "2025-11-05",
+            "spot": 1.1492,
+            "forward_points": 19.83
+          },
+          {
+            "trade_date": "2025-11-06",
+            "spot": 1.1547,
+            "forward_points": 19.18
+          },
+          {
+            "trade_date": "2025-11-07",
+            "spot": 1.1566,
+            "forward_points": 19.19
+          },
+          {
+            "trade_date": "2025-11-10",
+            "spot": 1.1557,
+            "forward_points": 19.24
+          },
+          {
+            "trade_date": "2025-11-11",
+            "spot": 1.1582,
+            "forward_points": 20.4
+          },
+          {
+            "trade_date": "2025-11-12",
+            "spot": 1.1593,
+            "forward_points": 19.99
+          },
+          {
+            "trade_date": "2025-11-13",
+            "spot": 1.1633,
+            "forward_points": 19.4
+          },
+          {
+            "trade_date": "2025-11-14",
+            "spot": 1.1621,
+            "forward_points": 19.35
+          },
+          {
+            "trade_date": "2025-11-17",
+            "spot": 1.1592,
+            "forward_points": 19.25
+          },
+          {
+            "trade_date": "2025-11-18",
+            "spot": 1.1581,
+            "forward_points": 20.32
+          },
+          {
+            "trade_date": "2025-11-19",
+            "spot": 1.1538,
+            "forward_points": 19.68
+          },
+          {
+            "trade_date": "2025-11-20",
+            "spot": 1.1528,
+            "forward_points": 18.98
+          },
+          {
+            "trade_date": "2025-11-21",
+            "spot": 1.1513,
+            "forward_points": 21.27
+          },
+          {
+            "trade_date": "2025-11-24",
+            "spot": 1.1521,
+            "forward_points": 20.4
+          },
+          {
+            "trade_date": "2025-11-25",
+            "spot": 1.157,
+            "forward_points": 20.21
+          },
+          {
+            "trade_date": "2025-11-26",
+            "spot": 1.1595,
+            "forward_points": 20.25
+          },
+          {
+            "trade_date": "2025-11-27",
+            "spot": 1.1596,
+            "forward_points": 20.89
+          },
+          {
+            "trade_date": "2025-11-28",
+            "spot": 1.1598,
+            "forward_points": 19.98
+          },
+          {
+            "trade_date": "2025-12-01",
+            "spot": 1.161,
+            "forward_points": 20.99
+          },
+          {
+            "trade_date": "2025-12-02",
+            "spot": 1.1625,
+            "forward_points": 20.51
+          },
+          {
+            "trade_date": "2025-12-03",
+            "spot": 1.1671,
+            "forward_points": 19.84
+          },
+          {
+            "trade_date": "2025-12-04",
+            "spot": 1.1644,
+            "forward_points": 19.47
+          },
+          {
+            "trade_date": "2025-12-05",
+            "spot": 1.1642,
+            "forward_points": 19.4
+          },
+          {
+            "trade_date": "2025-12-08",
+            "spot": 1.1637,
+            "forward_points": 20.61
+          },
+          {
+            "trade_date": "2025-12-09",
+            "spot": 1.1627,
+            "forward_points": 20.14
+          },
+          {
+            "trade_date": "2025-12-10",
+            "spot": 1.1695,
+            "forward_points": 19.52
+          },
+          {
+            "trade_date": "2025-12-11",
+            "spot": 1.1738,
+            "forward_points": 19.25
+          },
+          {
+            "trade_date": "2025-12-12",
+            "spot": 1.174,
+            "forward_points": 19.19
+          },
+          {
+            "trade_date": "2025-12-15",
+            "spot": 1.1753,
+            "forward_points": 20.77
+          },
+          {
+            "trade_date": "2025-12-16",
+            "spot": 1.1747,
+            "forward_points": 20.0
+          },
+          {
+            "trade_date": "2025-12-17",
+            "spot": 1.1741,
+            "forward_points": 19.3
+          },
+          {
+            "trade_date": "2025-12-18",
+            "spot": 1.1722,
+            "forward_points": 18.68
+          },
+          {
+            "trade_date": "2025-12-19",
+            "spot": 1.171,
+            "forward_points": 18.64
+          },
+          {
+            "trade_date": "2025-12-22",
+            "spot": 1.1762,
+            "forward_points": 19.41
+          },
+          {
+            "trade_date": "2025-12-23",
+            "spot": 1.1795,
+            "forward_points": 18.16
+          },
+          {
+            "trade_date": "2025-12-24",
+            "spot": 1.1779,
+            "forward_points": 18.19
+          },
+          {
+            "trade_date": "2025-12-25",
+            "spot": 1.1784,
+            "forward_points": 18.19
+          },
+          {
+            "trade_date": "2025-12-26",
+            "spot": 1.1772,
+            "forward_points": 18.16
+          },
+          {
+            "trade_date": "2025-12-29",
+            "spot": 1.1773,
+            "forward_points": 17.6
+          },
+          {
+            "trade_date": "2025-12-30",
+            "spot": 1.1748,
+            "forward_points": 17.37
+          },
+          {
+            "trade_date": "2025-12-31",
+            "spot": 1.1746,
+            "forward_points": 17.26
+          },
+          {
+            "trade_date": "2026-01-01",
+            "spot": 1.1746,
+            "forward_points": 17.28
+          },
+          {
+            "trade_date": "2026-01-02",
+            "spot": 1.1719,
+            "forward_points": 17.06
+          },
+          {
+            "trade_date": "2026-01-05",
+            "spot": 1.1722,
+            "forward_points": 18.16
+          },
+          {
+            "trade_date": "2026-01-06",
+            "spot": 1.1689,
+            "forward_points": 17.84
+          },
+          {
+            "trade_date": "2026-01-07",
+            "spot": 1.1675,
+            "forward_points": 17.17
+          },
+          {
+            "trade_date": "2026-01-08",
+            "spot": 1.166,
+            "forward_points": 17.13
+          },
+          {
+            "trade_date": "2026-01-09",
+            "spot": 1.1637,
+            "forward_points": 17.15
+          },
+          {
+            "trade_date": "2026-01-12",
+            "spot": 1.1667,
+            "forward_points": 18.78
+          },
+          {
+            "trade_date": "2026-01-13",
+            "spot": 1.1642,
+            "forward_points": 18.19
+          },
+          {
+            "trade_date": "2026-01-14",
+            "spot": 1.1644,
+            "forward_points": 17.59
+          },
+          {
+            "trade_date": "2026-01-15",
+            "spot": 1.1609,
+            "forward_points": 16.88
+          },
+          {
+            "trade_date": "2026-01-16",
+            "spot": 1.1598,
+            "forward_points": 16.85
+          },
+          {
+            "trade_date": "2026-01-19",
+            "spot": 1.1646,
+            "forward_points": 18.1
+          },
+          {
+            "trade_date": "2026-01-20",
+            "spot": 1.1725,
+            "forward_points": 17.9
+          },
+          {
+            "trade_date": "2026-01-21",
+            "spot": 1.1685,
+            "forward_points": 17.24
+          },
+          {
+            "trade_date": "2026-01-22",
+            "spot": 1.1755,
+            "forward_points": 17.18
+          },
+          {
+            "trade_date": "2026-01-23",
+            "spot": 1.1828,
+            "forward_points": 17.35
+          },
+          {
+            "trade_date": "2026-01-26",
+            "spot": 1.188,
+            "forward_points": 16.88
+          },
+          {
+            "trade_date": "2026-01-27",
+            "spot": 1.2041,
+            "forward_points": 16.46
+          },
+          {
+            "trade_date": "2026-01-28",
+            "spot": 1.1954,
+            "forward_points": 15.85
+          },
+          {
+            "trade_date": "2026-01-29",
+            "spot": 1.1971,
+            "forward_points": 15.81
+          },
+          {
+            "trade_date": "2026-01-30",
+            "spot": 1.1851,
+            "forward_points": 15.67
+          },
+          {
+            "trade_date": "2026-02-02",
+            "spot": 1.1791,
+            "forward_points": 15.63
+          },
+          {
+            "trade_date": "2026-02-03",
+            "spot": 1.1819,
+            "forward_points": 15.65
+          },
+          {
+            "trade_date": "2026-02-04",
+            "spot": 1.1807,
+            "forward_points": 15.57
+          },
+          {
+            "trade_date": "2026-02-05",
+            "spot": 1.1777,
+            "forward_points": 15.52
+          },
+          {
+            "trade_date": "2026-02-06",
+            "spot": 1.1815,
+            "forward_points": 15.56
+          },
+          {
+            "trade_date": "2026-02-09",
+            "spot": 1.1914,
+            "forward_points": 15.7
+          },
+          {
+            "trade_date": "2026-02-10",
+            "spot": 1.1895,
+            "forward_points": 15.67
+          },
+          {
+            "trade_date": "2026-02-11",
+            "spot": 1.1872,
+            "forward_points": 15.65
+          },
+          {
+            "trade_date": "2026-02-12",
+            "spot": 1.1871,
+            "forward_points": 15.65
+          },
+          {
+            "trade_date": "2026-02-13",
+            "spot": 1.1868,
+            "forward_points": 15.68
+          },
+          {
+            "trade_date": "2026-02-16",
+            "spot": 1.1851,
+            "forward_points": 15.66
+          },
+          {
+            "trade_date": "2026-02-17",
+            "spot": 1.1855,
+            "forward_points": 15.72
+          },
+          {
+            "trade_date": "2026-02-18",
+            "spot": 1.1783,
+            "forward_points": 15.72
+          },
+          {
+            "trade_date": "2026-02-19",
+            "spot": 1.1773,
+            "forward_points": 15.73
+          },
+          {
+            "trade_date": "2026-02-20",
+            "spot": 1.1784,
+            "forward_points": 15.83
+          },
+          {
+            "trade_date": "2026-02-23",
+            "spot": 1.1785,
+            "forward_points": 15.84
+          },
+          {
+            "trade_date": "2026-02-24",
+            "spot": 1.1772,
+            "forward_points": 15.77
+          },
+          {
+            "trade_date": "2026-02-25",
+            "spot": 1.181,
+            "forward_points": 18.05
+          },
+          {
+            "trade_date": "2026-02-26",
+            "spot": 1.1797,
+            "forward_points": 17.49
+          },
+          {
+            "trade_date": "2026-02-27",
+            "spot": 1.1812,
+            "forward_points": 19.84
+          },
+          {
+            "trade_date": "2026-03-02",
+            "spot": 1.1688,
+            "forward_points": 19.5
+          },
+          {
+            "trade_date": "2026-03-03",
+            "spot": 1.1613,
+            "forward_points": 18.67
+          },
+          {
+            "trade_date": "2026-03-04",
+            "spot": 1.1634,
+            "forward_points": 17.75
+          },
+          {
+            "trade_date": "2026-03-05",
+            "spot": 1.1609,
+            "forward_points": 17.15
+          },
+          {
+            "trade_date": "2026-03-06",
+            "spot": 1.1618,
+            "forward_points": 17.41
+          },
+          {
+            "trade_date": "2026-03-09",
+            "spot": 1.1636,
+            "forward_points": 18.76
+          },
+          {
+            "trade_date": "2026-03-10",
+            "spot": 1.1611,
+            "forward_points": 17.89
+          },
+          {
+            "trade_date": "2026-03-11",
+            "spot": 1.1567,
+            "forward_points": 17.25
+          },
+          {
+            "trade_date": "2026-03-12",
+            "spot": 1.1512,
+            "forward_points": 17.39
+          },
+          {
+            "trade_date": "2026-03-13",
+            "spot": 1.1417,
+            "forward_points": 17.28
+          },
+          {
+            "trade_date": "2026-03-16",
+            "spot": 1.1505,
+            "forward_points": 18.26
+          },
+          {
+            "trade_date": "2026-03-17",
+            "spot": 1.154,
+            "forward_points": 17.76
+          },
+          {
+            "trade_date": "2026-03-18",
+            "spot": 1.1452,
+            "forward_points": 17.2
+          },
+          {
+            "trade_date": "2026-03-19",
+            "spot": 1.1589,
+            "forward_points": 17.42
+          },
+          {
+            "trade_date": "2026-03-20",
+            "spot": 1.1572,
+            "forward_points": 17.39
+          },
+          {
+            "trade_date": "2026-03-23",
+            "spot": 1.1613,
+            "forward_points": 18.59
+          },
+          {
+            "trade_date": "2026-03-24",
+            "spot": 1.1608,
+            "forward_points": 18.02
+          },
+          {
+            "trade_date": "2026-03-25",
+            "spot": 1.1559,
+            "forward_points": 17.41
+          },
+          {
+            "trade_date": "2026-03-26",
+            "spot": 1.1527,
+            "forward_points": 17.41
+          },
+          {
+            "trade_date": "2026-03-27",
+            "spot": 1.1509,
+            "forward_points": 16.91
+          },
+          {
+            "trade_date": "2026-03-30",
+            "spot": 1.1465,
+            "forward_points": 18.14
+          },
+          {
+            "trade_date": "2026-03-31",
+            "spot": 1.1553,
+            "forward_points": 17.6
+          },
+          {
+            "trade_date": "2026-04-01",
+            "spot": 1.1589,
+            "forward_points": 16.64
+          },
+          {
+            "trade_date": "2026-04-02",
+            "spot": 1.1539,
+            "forward_points": 16.63
+          },
+          {
+            "trade_date": "2026-04-03",
+            "spot": 1.1519,
+            "forward_points": 16.62
+          },
+          {
+            "trade_date": "2026-04-06",
+            "spot": 1.1541,
+            "forward_points": 16.65
+          },
+          {
+            "trade_date": "2026-04-07",
+            "spot": 1.1595,
+            "forward_points": 17.57
+          },
+          {
+            "trade_date": "2026-04-08",
+            "spot": 1.1663,
+            "forward_points": 17.05
+          },
+          {
+            "trade_date": "2026-04-09",
+            "spot": 1.1699,
+            "forward_points": 16.56
+          },
+          {
+            "trade_date": "2026-04-10",
+            "spot": 1.1723,
+            "forward_points": 16.59
+          },
+          {
+            "trade_date": "2026-04-13",
+            "spot": 1.1759,
+            "forward_points": 16.62
+          },
+          {
+            "trade_date": "2026-04-14",
+            "spot": 1.1796,
+            "forward_points": 17.82
+          },
+          {
+            "trade_date": "2026-04-15",
+            "spot": 1.1799,
+            "forward_points": 17.24
+          },
+          {
+            "trade_date": "2026-04-16",
+            "spot": 1.1781,
+            "forward_points": 16.65
+          },
+          {
+            "trade_date": "2026-04-17",
+            "spot": 1.1765,
+            "forward_points": 16.63
+          },
+          {
+            "trade_date": "2026-04-20",
+            "spot": 1.1788,
+            "forward_points": 16.69
+          },
+          {
+            "trade_date": "2026-04-21",
+            "spot": 1.1744,
+            "forward_points": 18.19
+          },
+          {
+            "trade_date": "2026-04-22",
+            "spot": 1.1705,
+            "forward_points": 17.63
+          },
+          {
+            "trade_date": "2026-04-23",
+            "spot": 1.1683,
+            "forward_points": 16.57
+          },
+          {
+            "trade_date": "2026-04-24",
+            "spot": 1.1722,
+            "forward_points": 16.63
+          },
+          {
+            "trade_date": "2026-04-27",
+            "spot": 1.1721,
+            "forward_points": 16.63
+          },
+          {
+            "trade_date": "2026-04-28",
+            "spot": 1.1712,
+            "forward_points": 15.99
+          },
+          {
+            "trade_date": "2026-04-29",
+            "spot": 1.1677,
+            "forward_points": 16.81
+          },
+          {
+            "trade_date": "2026-04-30",
+            "spot": 1.1731,
+            "forward_points": 17.08
+          },
+          {
+            "trade_date": "2026-05-01",
+            "spot": 1.1721,
+            "forward_points": 17.03
+          },
+          {
+            "trade_date": "2026-05-04",
+            "spot": 1.1691,
+            "forward_points": 18.09
+          },
+          {
+            "trade_date": "2026-05-05",
+            "spot": 1.1693,
+            "forward_points": 17.5
+          },
+          {
+            "trade_date": "2026-05-06",
+            "spot": 1.1748,
+            "forward_points": 16.95
+          },
+          {
+            "trade_date": "2026-05-07",
+            "spot": 1.1726,
+            "forward_points": 16.96
+          },
+          {
+            "trade_date": "2026-05-08",
+            "spot": 1.1787,
+            "forward_points": 17.08
+          },
+          {
+            "trade_date": "2026-05-11",
+            "spot": 1.1783,
+            "forward_points": 18.24
+          },
+          {
+            "trade_date": "2026-05-12",
+            "spot": 1.1739,
+            "forward_points": 17.66
+          },
+          {
+            "trade_date": "2026-05-13",
+            "spot": 1.1711,
+            "forward_points": 17.06
+          },
+          {
+            "trade_date": "2026-05-14",
+            "spot": 1.1669,
+            "forward_points": 16.87
+          },
+          {
+            "trade_date": "2026-05-15",
+            "spot": 1.1625,
+            "forward_points": 18.17
+          },
+          {
+            "trade_date": "2026-05-18",
+            "spot": 1.1656,
+            "forward_points": 17.54
+          },
+          {
+            "trade_date": "2026-05-19",
+            "spot": 1.1605,
+            "forward_points": 16.85
+          },
+          {
+            "trade_date": "2026-05-20",
+            "spot": 1.1624,
+            "forward_points": 16.38
+          },
+          {
+            "trade_date": "2026-05-21",
+            "spot": 1.1619,
+            "forward_points": 16.23
+          },
+          {
+            "trade_date": "2026-05-22",
+            "spot": 1.1617,
+            "forward_points": 16.22
+          }
+        ]
+      }
+    ]
+  },
+  "expected_output": {
+    "current_metrics": {
+      "as_of_date": "2026-05-22",
+      "pair": "EURUSD",
+      "tenor": "1M",
+      "tenor_days": 21,
+      "usd_leg_position": "quote",
+      "local_currency": "EUR",
+      "current_spot": 1.1617,
+      "current_forward_points": 16.22,
+      "current_forward_points_spot_units": 0.001622,
+      "current_outright_forward": 1.163322,
+      "current_implied_yield_differential_pct": -1.6755,
+      "daily_change_pct": 0.0007,
+      "weekly_change_pct": 0.2001,
+      "monthly_change_pct": 0.0265,
+      "z_score": 1.2166,
+      "high_252d": -1.5804,
+      "low_252d": -2.6441,
+      "percentile_252d": 91.06,
+      "observation_count": 259
+    }
+  }
+}

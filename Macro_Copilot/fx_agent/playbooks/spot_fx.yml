@@ -1,0 +1,316 @@
+playbook_name: "spot_fx"
+playbook_version: "5.0"
+asset_class: "fx"
+dataset_name: "spot_fx"
+description: "Daily G10 + EM spot FX pairs for level monitoring, cross-sectional scanner, relative move analysis, and z-score monitoring. v2.0 (Wave 1) extended G10 coverage from 6 to 9 majors (added NZDUSD, USDNOK, USDSEK). v3.0 (Phase B / Wave 1.5) added 9 EM majors. v4.0 (BBG top-up 2026-05-25) adds 3 APAC NDF-currency spot references (USDCNH offshore tradable, USDINR composite reference, USDCNY onshore PBOC fix). v5.0 (Warehouse seeding 2026-05-25) adds 6 additional liquid EM pairs to broaden APAC + LATAM coverage: USDSGD, USDTWD, USDTHB (APAC deliverable), USDCLP, USDCOP, USDPEN (LATAM deliverable). All 6 confirmed in Phase 1 discovery with full 2000+ history. Total: 38 spot_fx instruments."
+
+extraction:
+  start_date: "2000-01-01"
+  incremental_window_days: 14
+
+target_metrics:
+  - metric_id: "spot_last"
+    bloomberg_field: "PX_LAST"
+
+reference_metrics:
+  - column_name: "security_name"
+    bloomberg_field: "SECURITY_DES"
+
+universe:
+  - ticker: "EURUSD Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "G10_SPOT"
+    market_scope: "G10"
+    region: "Global"
+    pair: "EURUSD"
+    base_ccy: "EUR"
+    quote_ccy: "USD"
+
+  - ticker: "GBPUSD Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "G10_SPOT"
+    market_scope: "G10"
+    region: "Global"
+    pair: "GBPUSD"
+    base_ccy: "GBP"
+    quote_ccy: "USD"
+
+  - ticker: "USDJPY Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "G10_SPOT"
+    market_scope: "G10"
+    region: "Global"
+    pair: "USDJPY"
+    base_ccy: "USD"
+    quote_ccy: "JPY"
+
+  - ticker: "AUDUSD Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "G10_SPOT"
+    market_scope: "G10"
+    region: "Global"
+    pair: "AUDUSD"
+    base_ccy: "AUD"
+    quote_ccy: "USD"
+
+  - ticker: "USDCAD Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "G10_SPOT"
+    market_scope: "G10"
+    region: "Global"
+    pair: "USDCAD"
+    base_ccy: "USD"
+    quote_ccy: "CAD"
+
+  - ticker: "USDCHF Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "G10_SPOT"
+    market_scope: "G10"
+    region: "Global"
+    pair: "USDCHF"
+    base_ccy: "USD"
+    quote_ccy: "CHF"
+
+  # ============================================================
+  # Wave 1 additions (NZD + Nordics)
+  # ============================================================
+  - ticker: "NZDUSD Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "G10_SPOT"
+    market_scope: "G10"
+    region: "Global"
+    pair: "NZDUSD"
+    base_ccy: "NZD"
+    quote_ccy: "USD"
+
+  - ticker: "USDNOK Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "G10_SPOT"
+    market_scope: "G10"
+    region: "Global"
+    pair: "USDNOK"
+    base_ccy: "USD"
+    quote_ccy: "NOK"
+
+  - ticker: "USDSEK Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "G10_SPOT"
+    market_scope: "G10"
+    region: "Global"
+    pair: "USDSEK"
+    base_ccy: "USD"
+    quote_ccy: "SEK"
+
+  # ============================================================
+  # Phase B / Wave 1.5 additions — EM majors (9 pairs)
+  # ------------------------------------------------------------
+  # Uniform start_date 2000-01-01 per Bloomberg verification
+  # 2026-05-25. USDTRY scenario A confirmed (clean back-adjusted
+  # across the 1 Jan 2005 lira redenomination — no 1,000,000x
+  # discontinuity). All 9 EM pairs have PX_LAST from <= 2000-01-03.
+  # market_scope="EM" and fx_family="EM_SPOT" segregate them from
+  # the G10 set so scan_fx_spot can filter by scope at the SQL
+  # layer with zero code change (Codex Q3 lock).
+  # ============================================================
+
+  - ticker: "USDMXN Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "LATAM"
+    pair: "USDMXN"
+    base_ccy: "USD"
+    quote_ccy: "MXN"
+
+  - ticker: "USDBRL Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "LATAM"
+    pair: "USDBRL"
+    base_ccy: "USD"
+    quote_ccy: "BRL"
+
+  - ticker: "USDZAR Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "EMEA"
+    pair: "USDZAR"
+    base_ccy: "USD"
+    quote_ccy: "ZAR"
+
+  - ticker: "USDTRY Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "EMEA"
+    pair: "USDTRY"
+    base_ccy: "USD"
+    quote_ccy: "TRY"
+
+  - ticker: "USDPLN Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "EMEA"
+    pair: "USDPLN"
+    base_ccy: "USD"
+    quote_ccy: "PLN"
+
+  - ticker: "USDHUF Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "EMEA"
+    pair: "USDHUF"
+    base_ccy: "USD"
+    quote_ccy: "HUF"
+
+  - ticker: "USDKRW Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDKRW"
+    base_ccy: "USD"
+    quote_ccy: "KRW"
+
+  - ticker: "USDIDR Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDIDR"
+    base_ccy: "USD"
+    quote_ccy: "IDR"
+
+  - ticker: "USDPHP Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDPHP"
+    base_ccy: "USD"
+    quote_ccy: "PHP"
+
+  # ============================================================
+  # v4.0 additions — APAC NDF-currency spot references (3 pairs)
+  # ------------------------------------------------------------
+  # Mini BBG top-up 2026-05-25 to close a Phase D gap: NDF tools
+  # (calculate_ndf_implied_carry) need a spot reference for the
+  # underlying currency. We had NDFs for CCN+ (CNY) and IRN+ (INR)
+  # but no spot for those underlyings. These 3 spots fill the gap.
+  #
+  # Conventions (Codex nuance — these are NOT all the same tradability):
+  # - USDCNH: free offshore tradable spot for CNH. Primary spot ref
+  #   for CCN+ NDF carry. Data starts 2010-08-23 (CNH offshore
+  #   market launched late 2010).
+  # - USDINR: USD-INR composite cross-rate. Standard reference for
+  #   IRN+ NDF carry analysis. Full 2000+ history.
+  # - USDCNY: ONSHORE PBOC fix-style reference, NOT a freely
+  #   tradable spot. Useful for NDF-vs-onshore-fix gap analysis but
+  #   downstream tools that need "tradable spot only" should filter
+  #   fx_family != 'EM_SPOT_REFERENCE'. Full 2000+ history.
+  # ============================================================
+
+  - ticker: "USDCNH Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDCNH"
+    base_ccy: "USD"
+    quote_ccy: "CNH"
+    spot_convention: "offshore_tradable"
+
+  - ticker: "USDINR Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDINR"
+    base_ccy: "USD"
+    quote_ccy: "INR"
+    spot_convention: "composite_reference"
+
+  - ticker: "USDCNY Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT_REFERENCE"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDCNY"
+    base_ccy: "USD"
+    quote_ccy: "CNY"
+    spot_convention: "onshore_pboc_fix"
+
+  # ============================================================
+  # v5.0 additions — Warehouse seeding 2026-05-25 (6 EM pairs)
+  # ------------------------------------------------------------
+  # APAC liquid EM (USDSGD, USDTWD, USDTHB) and LATAM liquid EM
+  # (USDCLP, USDCOP, USDPEN). All 6 verified Phase 1 discovery
+  # with full 2000-01-03 onward PX_LAST history (6622-6883 rows).
+  # All tradable; market_scope='EM', fx_family='EM_SPOT'. Adding
+  # them brings the EM_SPOT family from 11 → 17 pairs, broadening
+  # APAC + LATAM coverage for scanners and panels. Forwards-side
+  # coverage is uneven: SGD/THB deliverable forwards extracted in
+  # the warehouse-seed batch (extends fx_em_forwards.yml); TWD has
+  # NDFs (extends fx_ndf.yml via NTN+); CLP/COP/PEN forwards
+  # convention unresolved in discovery (USDCLP1M sparse,
+  # USDCOP1M / USDPEN1M ticker formats invalid) — spot-only for
+  # this wave, deferred for follow-up BBG session.
+  # ============================================================
+
+  - ticker: "USDSGD Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDSGD"
+    base_ccy: "USD"
+    quote_ccy: "SGD"
+
+  - ticker: "USDTWD Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDTWD"
+    base_ccy: "USD"
+    quote_ccy: "TWD"
+
+  - ticker: "USDTHB Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDTHB"
+    base_ccy: "USD"
+    quote_ccy: "THB"
+
+  - ticker: "USDCLP Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "LATAM"
+    pair: "USDCLP"
+    base_ccy: "USD"
+    quote_ccy: "CLP"
+
+  - ticker: "USDCOP Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "LATAM"
+    pair: "USDCOP"
+    base_ccy: "USD"
+    quote_ccy: "COP"
+
+  - ticker: "USDPEN Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "LATAM"
+    pair: "USDPEN"
+    base_ccy: "USD"
+    quote_ccy: "PEN"

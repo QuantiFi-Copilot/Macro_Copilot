@@ -1,0 +1,115 @@
+# =============================================================================
+# get_fx_returns_series_tool — tool configuration
+# =============================================================================
+# Single-pair FX log-returns series at a configurable horizon
+# (daily / weekly / monthly). Substrate: spot_fx history fetched via
+# shared.analytics.fx_fetch.fetch_fx_spot_series. Output: clean
+# TimeSeries (closed-enum RATIO units) + snapshot summary stats.
+#
+# Conventions are loaded by ``shared.config.load_tool_config`` at
+# compute() time. Bumping any value here is a deliberate methodology
+# change.
+# =============================================================================
+
+tool:
+  name: get_fx_returns_series_tool
+  domain: spot_fx
+  description: |
+    Compute the log-returns time series for one FX spot pair at a
+    chosen horizon (daily / weekly / monthly). Returns a clean
+    TimeSeries (closed-enum RATIO) plus a snapshot summary (latest
+    return, mean / std / min / max over the lookback window).
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Default Bloomberg field
+  # ---------------------------------------------------------------------------
+  default_field_name:
+    value: PX_LAST
+    source: industry_standard_close
+    rationale: >-
+      End-of-day spot is the canonical price for FX. Override via
+      FXReturnsSeriesInput.field_name only when a caller specifically
+      wants bid/ask returns.
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for holiday gaps in the input spot series
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment
+    rationale: >-
+      Bridge up to one trading week of missing spot observations across
+      local holidays before computing returns. Same convention as
+      sovereign yield_levels / calculate_fx_panel. A larger value
+      could mask real data gaps as zero returns; smaller would create
+      NaN returns more aggressively.
+    valid_range: [0, 10]
+
+  # ---------------------------------------------------------------------------
+  # Horizon → trading-day periods mapping
+  # ---------------------------------------------------------------------------
+  # All three values are in TRADING DAYS, not calendar days.  The
+  # closed Literal in schemas.py enumerates the keys; tightening this
+  # mapping is the only way to add or remove a horizon.
+  horizon_daily_periods:
+    value: 1
+    source: definition
+    rationale: 1 trading day for daily horizon (log(P_t) - log(P_t-1)).
+    valid_range: [1, 1]
+  horizon_weekly_periods:
+    value: 5
+    source: market_convention
+    rationale: 5 trading days for weekly horizon. Mon-to-Mon under business_days calendar.
+    valid_range: [5, 5]
+  horizon_monthly_periods:
+    value: 22
+    source: market_convention
+    rationale: 22 trading days for monthly horizon. ~1 calendar month.
+    valid_range: [20, 22]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding
+  # ---------------------------------------------------------------------------
+  return_round_decimals:
+    value: 6
+    source: precision_choice
+    rationale: >-
+      6 decimals on a log-return ~ 1bp precision (since |log(1+r)| ≈ |r|
+      for small r). Enough to distinguish moves at 0.01% resolution
+      without overstating false precision. The snapshot's
+      current_return is rounded to the same number of decimals as
+      time_series.rows[-1].value so the two agree byte-for-byte.
+    valid_range: [2, 10]
+
+methodology:
+
+  what_it_does: |
+    1. Fetch single-pair PX_LAST history via
+       shared.analytics.fx_fetch.fetch_fx_spot_series.
+    2. Clean via shared.analytics.levels.clean_single_series
+       (coerce types, drop NaN, drop duplicate dates, forward-fill
+       holiday gaps up to ffill_limit_days).
+    3. Compute log-returns at the requested horizon — log(P_t) -
+       log(P_{t-h}) where h is the trading-day periods for the
+       horizon (1 / 5 / 22).
+    4. Build snapshot summary stats over the full returns window:
+       current return, mean, std (ddof=1), min, max,
+       observation_count (non-NaN rows only).
+    5. Build canonical TimeSeries (rows where lag isn't defined yet
+       carry value=None; non-None rows are rounded to
+       return_round_decimals).
+
+  assumptions:
+    - "Spot stored as price level (e.g. USDMXN = 17.34 means 1 USD = 17.34 MXN)."
+    - "Returns are continuously-compounded log-returns, not simple returns. log(P_t / P_{t-h}). Simple returns are derivable in the consumer if needed: exp(log_return) - 1."
+    - "Horizon periods are trading days under the business_days calendar (weekends already excluded by the substrate ingestion). Holiday-aware trading-day calendars are a future extension."
+    - "Snapshot summary stats include the current_return value itself, by design (it's part of the lookback window)."
+
+  citations: []
+
+  planned_extensions:
+    - "Add 'quarterly' horizon (~63 trading days) if a workflow needs it. Closed Literal extension + horizon_*_periods convention."
+    - "Optional simple_returns flag (default False)."
+    - "Roll-forward computation for live dashboards (incremental log-returns rather than full re-fetch)."

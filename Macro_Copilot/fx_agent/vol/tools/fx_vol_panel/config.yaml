@@ -1,0 +1,65 @@
+tool:
+  name: calculate_fx_vol_panel_tool
+  domain: fx_vol
+  description: |
+    Cross-sectional FX vol Panel for a (market_scope, tenor, smile_point)
+    slice. Mirror of calculate_fx_panel for the fx_vol substrate. Returns
+    typed Panel (rows=dates, columns=pairs, values=vol pct) ready for
+    consumption by shared cross-sectional operators (correlation matrix,
+    PCA decomposition, factor loadings, etc.) — those operators are NOT
+    duplicated FX-side per the asset-agnostic shared-compute discipline.
+  category: desk_invariant_primitive
+
+conventions:
+  default_field_name:
+    value: PX_LAST
+    source: bloomberg_field_convention
+    rationale: Canonical FX vol observation.
+
+  default_tenor:
+    value: 1M
+    source: team_judgment_pending_review
+    rationale: 1M is the standard vol monitor tenor.
+
+  default_smile_point:
+    value: ATM
+    source: team_judgment_pending_review
+    rationale: ATM is the structural reference; smile points used for skew/kurtosis.
+
+  default_missing_data_policy:
+    value: forward_fill_only
+    source: industry_standard_1y_window
+    rationale: >-
+      Mirror of fx_panel default. ffill bridges holiday gaps without
+      injecting fake data; residual NaN flagged downstream.
+
+  ffill_limit_days:
+    value: 5
+    source: legacy_default_pre_pilot
+    rationale: 5 trading days covers standard holiday clusters.
+    valid_range: [0, 10]
+
+  calendar_policy:
+    value: business_days
+    source: industry_standard_1y_window
+    rationale: Filter to weekdays only — FX vol substrate is BD-only.
+
+methodology:
+  what_it_does: |
+    For one (market_scope, tenor, smile_point):
+      1. Fetch fx_vol or fx_vol_smile rows via shared.analytics.fx_fetch.
+         fetch_fx_vol_panel (routes by smile_point).
+      2. Pivot long-format to wide Panel (rows=dates, columns=pairs).
+      3. Apply calendar_policy (business_days only) and
+         missing_data_policy (ffill_limit_days then raise/drop/None).
+      4. Construct typed Panel artifact with PERCENT units + lineage step.
+      5. Fail-loud on empty fetch, fully-empty columns, post-policy empty.
+  assumptions:
+    - "Panel values are in PERCENT (8.0 = 8% annualized vol)."
+    - "ATM smile_point routes to instrument_type='fx_vol' substrate; 25R/25B/10R/10B routes to instrument_type='fx_vol_smile'. The fetcher handles the routing — callers don't need to know the substrate split."
+    - "Returns typed Panel artifact (shared.artifacts.types.Panel) consumable by any cross-sectional operator (correlation_matrix, panel_pca, etc.) — those operators belong in shared/, NOT in fx_agent. This is a pure fetcher+pivot+package primitive."
+    - "Asset-agnostic shared-compute discipline: this tool does NOT compute correlation / PCA / factor loadings / regression itself. Use the returned Panel as input to the appropriate shared operator."
+  citations: []
+  planned_extensions:
+    - "Multi-(tenor × smile_point) Panel returning a 3D-indexed artifact once a downstream consumer needs the full surface."
+    - "Bid/ask-aware Panel variant once Phase E3+ bid/ask consumers materialise."

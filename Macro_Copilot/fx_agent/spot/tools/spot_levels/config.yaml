@@ -1,0 +1,122 @@
+tool:
+  name: get_fx_spot_level_tool
+  domain: fx_spot
+  description: |
+    Single-pair FX spot level snapshot — latest spot, daily / weekly /
+    monthly percentage change, rolling 252-trading-day z-score, trailing
+    252-day high / low / percentile, and observation count.
+  category: desk_invariant_primitive
+
+conventions:
+  z_score_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      Trading-day count for a 1-year rolling window. Kept aligned with
+      rates level and spread primitives so cross-asset z-scores use the
+      same horizon.
+    valid_range: [60, 1260]
+
+  z_score_min_periods:
+    value: 60
+    source: team_judgment_pending_review
+    rationale: >-
+      Require roughly three months of observations before emitting a
+      rolling z-score. This mirrors the mature Rates/OIS level tools.
+    valid_range: [20, 252]
+
+  z_score_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: >-
+      Sample standard deviation (Bessel-corrected, ddof=1), matching
+      pandas' default and the rates-agent convention.
+
+  trailing_range_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      The output field names embed 252d, so the trailing high / low /
+      percentile window is locked at one trading year in V1.
+
+  daily_change_periods:
+    value: 1
+    source: trading_day_convention
+    rationale: >-
+      One trading observation back for daily spot percentage change.
+    valid_range: [1, 5]
+
+  weekly_change_periods:
+    value: 5
+    source: trading_day_convention
+    rationale: >-
+      Five trading observations back, approximately one calendar week.
+    valid_range: [3, 10]
+
+  monthly_change_periods:
+    value: 21
+    source: trading_day_convention
+    rationale: >-
+      Twenty-one trading observations back, approximately one calendar
+      month in FX markets.
+    valid_range: [15, 30]
+
+  default_fx_spot_field:
+    value: PX_LAST
+    source: bloomberg_field_convention
+    rationale: >-
+      Bloomberg PX_LAST is the canonical closing / last spot observation
+      for these FX spot tickers. The generic default_field_name key is
+      intentionally not reused because rates uses a different mnemonic.
+
+  spot_round_decimals:
+    value: 6
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Six decimals preserves major-pair spot precision without adding
+      visual noise in the monitor UI.
+    valid_range: [2, 8]
+
+  pct_change_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals on percentage moves. Aligned with the platform-wide
+      rounding convention (matches ndf_outright and the rates/inflation
+      tools — drift fixed in the Phase D/E1 compliance follow-up
+      2026-05-27, PR13 cross-config consistency).
+    valid_range: [0, 6]
+
+  z_score_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals for z-score. Aligned with the platform-wide
+      convention (37 tools use 4; fx_spot_level was the only outlier at
+      3 — drift fixed in the Phase D/E1 compliance follow-up 2026-05-27,
+      PR13 cross-config consistency).
+    valid_range: [0, 6]
+
+  percentile_round_decimals:
+    value: 2
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Two decimals for percentile rank (0-100 scale). Aligned with
+      every other FX level/curve/vol tool (drift fixed 2026-05-27, PR13).
+    valid_range: [0, 4]
+
+methodology:
+  what_it_does: |
+    Fetches one FX spot pair from macro_data.market_data_daily via the
+    instrument_master metadata, computes deterministic level and
+    percentage-change metrics, and reports where the latest spot sits
+    inside a rolling 252-trading-day distribution.
+  assumptions:
+    - "FX spot values are stored as raw spot levels, not percentages."
+    - "Percentage changes use spot ratios: current / prior - 1."
+    - "The pair is identified by instrument_master.attributes['pair'] or by Bloomberg ticker stem."
+    - "The trailing range window is locked at 252 because output field names embed 252d."
+  citations: []
+  planned_extensions:
+    - "Add canonical TimeSeries output once FX workflows need operator composition."
+    - "Promote FX pair metadata to typed columns if pair / base_ccy / quote_ccy become query-hot across tools."

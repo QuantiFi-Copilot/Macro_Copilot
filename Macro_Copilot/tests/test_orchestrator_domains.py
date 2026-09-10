@@ -47,6 +47,9 @@ class TestDomainEnumMembers:
     def test_inflation_swaps_present(self):
         assert Domain.INFLATION_SWAPS.value == "inflation_swaps"
 
+    def test_fx_present(self):
+        assert Domain.FX.value == "fx"
+
 
 class TestDomainMcpServersMapping:
     """Every Domain enum member MUST resolve to a non-empty MCP-server
@@ -114,6 +117,18 @@ class TestDomainMcpServersMapping:
             "inflation_swaps": MCP_SERVERS["inflation_swaps_agent"],
         }
 
+    def test_fx_uses_dedicated_subprocess(self):
+        """The FX domain must spawn its own MCP subprocess, distinct
+        from every rates / OIS / inflation subprocess.  Sharing would
+        let rates-side tools answer FX queries via the same MCP
+        client — a P11 proxy violation (rates and FX are different
+        instrument families with disjoint substrate tables)."""
+        cfg = DOMAIN_MCP_SERVERS[Domain.FX]
+        assert cfg, "fx domain has empty MCP server config"
+        assert cfg == {
+            "fx": MCP_SERVERS["fx_agent"],
+        }
+
 
 class TestDomainPrompts:
     """Each Domain enum member MUST have a registered system prompt.
@@ -169,6 +184,26 @@ class TestDomainPrompts:
         # breakeven and from OIS rate end-to-end).
         assert "ZCIS" in prompt
 
+    def test_fx_prompt_is_fx_specific(self):
+        """The FX prompt must scope the agent to G10 FX spot / carry
+        tools and explicitly forbid rates / OIS / inflation / credit /
+        equity domains.  Without this, the LLM would route nominal
+        yield or OIS swap questions here and either hit a runtime
+        guard or silently misinterpret the output."""
+        prompts = self._domain_prompts()
+        prompt = prompts[Domain.FX]
+        # G10 pairs it owns.
+        assert "EURUSD" in prompt
+        assert "USDJPY" in prompt
+        # The substrate it operates on.
+        assert "spot" in prompt.lower()
+        assert "carry" in prompt.lower()
+        # Explicit out-of-scope routing for sibling domains.
+        assert "out_of_scope" in prompt or "out of scope" in prompt.lower()
+        # The FX terminology discipline — pair names rather than
+        # base-currency-relative language.
+        assert "G10" in prompt
+
 
 class TestDomainBoundariesLabel:
     """The multi-domain fan-out builds per-domain "stay in your lane"
@@ -201,6 +236,19 @@ class TestDomainBoundariesLabel:
         assert "zero-coupon inflation swaps" in zcis_text
         # And the sibling label survives.
         assert "cash sovereign bonds" in zcis_text
+
+    def test_fx_has_friendly_label(self):
+        from orchestrator.session import _build_domain_boundaries
+
+        boundaries = _build_domain_boundaries(
+            [Domain.SOVEREIGN_BONDS, Domain.FX]
+        )
+        fx_text = boundaries[Domain.FX]
+        # The friendly label, not the bare enum value.
+        assert "G10 FX spot and forwards" in fx_text
+        # And the sibling label survives so the boundary names what
+        # the OTHER agent owns explicitly.
+        assert "cash sovereign bonds" in fx_text
 
 
 class TestSupervisorPromptMentionsLinkerDomain:
@@ -237,6 +285,23 @@ class TestSupervisorPromptMentionsLinkerDomain:
             assert needle in SUPERVISOR_SYSTEM_PROMPT, (
                 f"supervisor prompt missing inflation_swaps signal "
                 f"{needle!r}"
+            )
+
+    def test_supervisor_prompt_advertises_fx_domain(self):
+        from orchestrator.prompts import SUPERVISOR_SYSTEM_PROMPT
+
+        # The domain id is "fx" — assert it's advertised as a routing
+        # target, distinct from incidental mentions of FX in commentary
+        # on other domains' out-of-scope lists.
+        assert "- fx" in SUPERVISOR_SYSTEM_PROMPT, (
+            "supervisor prompt does not advertise the fx domain in its "
+            "AVAILABLE DOMAINS section — the LLM cannot pick a domain "
+            "it has not been told exists."
+        )
+        # The signal vocabulary the supervisor needs to route FX queries.
+        for needle in ("EURUSD", "carry", "spot"):
+            assert needle in SUPERVISOR_SYSTEM_PROMPT, (
+                f"supervisor prompt missing fx signal {needle!r}"
             )
 
 
@@ -277,6 +342,23 @@ class TestDomainAgentSessionConstruction:
             max_tokens=1024,
         )
         assert session.domain is Domain.INFLATION_SWAPS
+        # Construction must not eagerly spawn a subprocess.  The
+        # spawn happens lazily on first use via session.open().
+        assert getattr(session, "_is_open", False) is False
+
+    def test_can_construct_for_fx(self):
+        from orchestrator.domain_agent import DomainAgentSession
+        from orchestrator.session import _DOMAIN_PROMPTS
+
+        session = DomainAgentSession(
+            domain=Domain.FX,
+            system_prompt=_DOMAIN_PROMPTS[Domain.FX],
+            mcp_servers=DOMAIN_MCP_SERVERS[Domain.FX],
+            model_name="claude-test",
+            temperature=0.0,
+            max_tokens=1024,
+        )
+        assert session.domain is Domain.FX
         # Construction must not eagerly spawn a subprocess.  The
         # spawn happens lazily on first use via session.open().
         assert getattr(session, "_is_open", False) is False

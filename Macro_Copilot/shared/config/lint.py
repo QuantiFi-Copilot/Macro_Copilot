@@ -46,13 +46,20 @@ from shared.config.tool_config import ToolConfigError, load_tool_config
 # DISCOVERY
 # ============================================================================
 
-# Conventional layout for tool configs (lands fully in commit 3 of the pilot):
+# Conventional layout for tool configs:
 #
 #   rates_agent/<domain>/tools/<tool_name>/config.yaml
+#   fx_agent/<domain>/tools/<tool_name>/config.yaml
 #
-# This glob walks all of them in one pass.
+# This glob walks all of them in one pass. fx_agent added 2026-05-27 as
+# part of the FX Phase D/E1 compliance follow-up — extends lint coverage
+# to the FX subdomain tools that ship under the same primitive contract
+# (PR3 — 4-file pattern, PR7 — YAML conventions, PR12 — registered
+# methodology sources, PR13 — cross-config consistency). Mirrors the
+# existing pattern; no rates_agent behavioural change.
 _DEFAULT_TOOL_CONFIG_GLOBS: Tuple[str, ...] = (
     "rates_agent/*/tools/*/config.yaml",
+    "fx_agent/*/tools/*/config.yaml",
 )
 
 # Operator configs (build plan v5 / R4) live alongside operator code.

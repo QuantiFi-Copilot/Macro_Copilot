@@ -1,0 +1,1716 @@
+# =============================================================================
+# FX Agent — tool manifest
+# =============================================================================
+# Canonical source of truth for the first FX-agent tool catalogue entries.
+# Same schema as the Rates manifests. Each built entry must resolve to:
+# implementation code, Pydantic schema, compute function, and config.yaml
+# unless config is explicitly N/A for a scanner-style batch surface.
+# =============================================================================
+
+tools:
+  # ---------------------------------------------------------------------------
+  # SPOT SNAPSHOTS
+  # ---------------------------------------------------------------------------
+
+  - name: get_fx_spot_level
+    domain: fx
+    sub_agent: spot
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_spot_level_tool
+      schema: fx_agent/spot/tools/spot_levels/schemas.py::FXSpotLevelInput
+      compute: fx_agent/spot/tools/spot_levels/compute.py::get_fx_spot_level
+      config: fx_agent/spot/tools/spot_levels/config.yaml
+
+    one_liner: >-
+      Single-pair FX spot snapshot — latest spot, daily / weekly /
+      monthly percentage change, rolling 252-day z-score, trailing
+      252-day high / low / percentile, and observation count.
+
+    bucket_rationale: >-
+      Deterministic arithmetic over stored FX spot observations.
+      Methodology and display precision are YAML-locked; no model
+      inference and no LLM-facing override path in V1.
+
+    pm_overridable: []
+
+    related_tools:
+      - scan_fx_spot_tool
+      - calculate_fx_carry_tool
+
+    workflows:
+      - fx_monitor_card
+      - fx_spot_workspace
+
+    references: []
+
+    built_date: 2026-05-20
+    validation_status: >-
+      Structurally aligned; Bloomberg ingestion / parity validation pending.
+
+  # ---------------------------------------------------------------------------
+  # SPOT SCREENING
+  # ---------------------------------------------------------------------------
+
+  - name: scan_fx_spot
+    domain: fx
+    sub_agent: spot
+    bucket: 1A
+    category: screening
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: scan_fx_spot_tool
+      schema: fx_agent/spot/tools/schemas/__init__.py::FXScannerInput
+      compute: fx_agent/spot/tools/scanner.py::run_fx_scanner
+      config: N/A
+
+    one_liner: >-
+      Scans FX spot pairs in the database, ranks the top-N by absolute
+      rolling 252-day z-score, and returns spot, momentum, z-score, and
+      a deterministic signal label per row.
+
+    bucket_rationale: >-
+      Deterministic batch screen over stored FX spot observations.
+      Ranking and labels are pure arithmetic / rules; no model state.
+
+    pm_overridable:
+      - market_scope
+      - top_n
+
+    related_tools:
+      - get_fx_spot_level_tool
+      - calculate_fx_carry_tool
+
+    workflows:
+      - fx_monitor_card
+      - fx_extremes_workspace
+
+    references: []
+
+    built_date: 2026-05-20
+    validation_status: >-
+      Structurally aligned; scanner config extraction pending.
+
+  # ---------------------------------------------------------------------------
+  # FORWARDS / CARRY
+  # ---------------------------------------------------------------------------
+
+  - name: calculate_fx_carry
+    domain: fx
+    sub_agent: forwards
+    bucket: 1A
+    category: forwards_classify
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: calculate_fx_carry_tool
+      schema: fx_agent/forwards/tools/fx_carry/schemas.py::FXCarryInput
+      compute: fx_agent/forwards/tools/fx_carry/compute.py::get_fx_carry
+      config: fx_agent/forwards/tools/fx_carry/config.yaml
+
+    one_liner: >-
+      Cross-sectional FX carry scanner over the deliverable-forward
+      universe at a given tenor. Universe controlled by market_scope:
+      'G10' (default, 6 majors), 'EM' (6 EM deliverable: MXN/ZAR/TRY/
+      PLN/HUF/PHP), or 'ALL' (12 = G10 + EM). NDFs (BRL/KRW/IDR/CNY/INR)
+      are NOT included — outright vs points unit, separate compute path
+      (Phase D's calculate_ndf_implied_carry). Joins per-date spot and
+      forward-points history, converts points into spot units with the
+      JPY-aware divisor, annualises by a trading-day basis, and per pair
+      computes a rolling 252-day z-score / percentile / range on the
+      carry_annualized_pct series. Rows are ranked by signed carry,
+      absolute carry, or absolute carry z-score and optionally capped
+      to top-N.
+
+    bucket_rationale: >-
+      Deterministic forward-points arithmetic over stored spot and forward
+      observations, joined per date so no historical row uses today's
+      spot. Tenor-day, annualization, points-divisor, z-score window, and
+      trailing-range window conventions are YAML-locked. The rolling-stat
+      computation delegates to shared.analytics.levels.compute_level_metrics
+      (the same generic operator the rates yield_levels tool uses).
+      market_scope filter applied on the forwards side via fx_family
+      ANY(:fx_families) — closed set in compute.py mirrors the closed
+      Pydantic Literal in schemas.py so callers fail-loud at both
+      boundaries.
+
+    pm_overridable:
+      - tenor
+      - market_scope
+      - rank_by
+      - top_n
+      - lookback_days
+
+    related_tools:
+      - get_fx_spot_level_tool
+      - scan_fx_spot_tool
+      - get_fx_forward_curve_tool
+
+    workflows:
+      - fx_carry_monitor
+      - fx_forwards_workspace
+      - fx_carry_scanner
+
+    references: []
+
+    built_date: 2026-05-20
+    validation_status: >-
+      Phase A scanner extension shipped 2026-05-24 — 12M annualisation
+      bug fixed, lookahead-free historical z-score on carry_annualized_pct,
+      latest-common-date snapshot alignment. Targeted regression tests
+      pending in the same step-7 PR slice.
+
+  # ---------------------------------------------------------------------------
+  # FORWARDS / TERM STRUCTURE
+  # ---------------------------------------------------------------------------
+
+  - name: get_fx_forward_curve
+    domain: fx
+    sub_agent: forwards
+    bucket: 1A
+    category: forwards_classify
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_forward_curve_tool
+      schema: fx_agent/forwards/tools/forward_curve/schemas.py::FXForwardCurveInput
+      compute: fx_agent/forwards/tools/forward_curve/compute.py::get_fx_forward_curve
+      config: fx_agent/forwards/tools/forward_curve/config.yaml
+
+    one_liner: >-
+      For one G10 pair, returns the full forward-curve term structure
+      across 1W / 1M / 3M / 6M / 12M tenors with raw forward points,
+      spot-unit forward points, outright forward, carry in basis points,
+      annualised carry %, and a rolling 252-day z-score / percentile /
+      range on the spot-unit forward points. Numerically consistent with
+      calculate_fx_carry at any given (pair, tenor).
+
+    bucket_rationale: >-
+      Deterministic per-tenor SQL fetch + the shared per-pair divisor and
+      tenor-day conventions, joined per date. Z-score / percentile / range
+      delegate to shared.analytics.levels.compute_level_metrics. Tenor
+      set, divisor, annualization and rolling-window conventions are all
+      YAML-locked.
+
+    pm_overridable:
+      - pair
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - calculate_fx_carry_tool
+      - get_fx_spot_level_tool
+      - scan_fx_spot_tool
+
+    workflows:
+      - fx_forwards_workspace
+      - fx_carry_monitor
+
+    references: []
+
+    built_date: 2026-05-24
+    validation_status: >-
+      Cross-tool consistency verified: every (EURUSD, tenor) returns
+      identical carry_annualized_pct via calculate_fx_carry and
+      get_fx_forward_curve. Targeted compute / wiring tests pending in
+      the same step-7 PR slice.
+
+  # ---------------------------------------------------------------------------
+  # CROSS-SECTIONAL PANEL (Phase B cornerstone primitive)
+  # ---------------------------------------------------------------------------
+
+  - name: calculate_fx_panel
+    domain: fx
+    sub_agent: spot
+    bucket: 1A
+    category: cross_sectional_panel
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: calculate_fx_panel_tool
+      schema: fx_agent/spot/tools/fx_panel/schemas.py::FXPanelInput
+      compute: fx_agent/spot/tools/fx_panel/compute.py::calculate_fx_panel
+      config: fx_agent/spot/tools/fx_panel/config.yaml
+
+    one_liner: >-
+      Cross-sectional Panel of FX spot levels for a market_scope subset
+      (G10 = 9 majors, EM = 9 EM majors, G10_CROSSES = 11 G10 crosses,
+      ALL = 29 fx_spot instruments). Returns a typed Panel artifact
+      (rows = dates, columns = pair names, units = PRICE) ready for
+      downstream cross-sectional operators (returns, drawdown, realized
+      vol, correlation matrix, carry basket, factor decomposition,
+      regime classifier).
+
+    bucket_rationale: >-
+      Deterministic pivot of stored market_data_daily into a wide
+      Panel with pair-name columns. Filter (market_scope → fx_family)
+      and missing-data / calendar / ffill conventions are YAML-locked.
+      Substrate-primitive discipline: fail-loud on empty fetch /
+      unknown scope / fully-empty pair / strict-policy NaN residual —
+      downstream code cannot mistake a degraded fetch for a valid
+      empty Panel.
+
+    pm_overridable:
+      - market_scope
+      - start_date
+      - end_date
+      - missing_data_policy
+      - field_name
+
+    related_tools:
+      - get_fx_spot_level_tool
+      - scan_fx_spot_tool
+      - calculate_fx_carry_tool
+
+    workflows:
+      - fx_panel_workspace
+      - fx_correlation_monitor
+      - fx_carry_basket_screen
+
+    references:
+      - rates_agent/sovereign_bonds/tools/sovereign_yield_panel
+      - shared/analytics/fx_fetch.py
+
+    built_date: 2026-05-25
+    validation_status: >-
+      Smoke-tested live: G10 returns 9 pairs, EM returns 9 pairs,
+      G10_CROSSES returns 11 pairs, ALL returns 29 pairs. Typed Panel
+      round-trips cleanly via FXPanelOutput.model_validate. Empty
+      window + invalid scope correctly raise ValueError /
+      ValidationError. Targeted compute / wiring / sql_validation tests
+      included.
+
+  # ---------------------------------------------------------------------------
+  # DERIVED SINGLE-PAIR SERIES (Phase B follow-up)
+  # ---------------------------------------------------------------------------
+
+  - name: get_fx_returns_series
+    domain: fx
+    sub_agent: spot
+    bucket: 1A
+    category: derived_series
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_returns_series_tool
+      schema: fx_agent/spot/tools/returns_series/schemas.py::FXReturnsSeriesInput
+      compute: fx_agent/spot/tools/returns_series/compute.py::get_fx_returns_series
+      config: fx_agent/spot/tools/returns_series/config.yaml
+
+    one_liner: >-
+      Single-pair FX log-returns time series at a chosen horizon
+      (daily / weekly / monthly). Returns a clean TimeSeries
+      (closed-enum RATIO) plus a snapshot summary (current return,
+      mean / std / min / max over the lookback window).
+
+    bucket_rationale: >-
+      Deterministic log(P_t) - log(P_t-h) on a single-pair PX_LAST
+      series loaded via shared.analytics.fx_fetch.fetch_fx_spot_series.
+      Horizon mapping (1 / 5 / 22 trading days) is YAML-locked.
+      Closed Literal enforces the horizon vocabulary at the schema
+      layer.
+
+    pm_overridable:
+      - pair
+      - horizon
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_spot_level_tool
+      - calculate_fx_drawdown_tool
+      - get_fx_realized_vol_tool
+
+    workflows:
+      - fx_returns_workspace
+      - fx_carry_basket_screen
+
+    references:
+      - rates_agent/sovereign_bonds/tools/yield_levels
+      - shared/analytics/fx_fetch.py
+
+    built_date: 2026-05-25
+    validation_status: >-
+      9/9 PASS on targeted compute test: 3 horizons run end-to-end;
+      snapshot == time_series.rows[-1].value (strict); log-return
+      math verified against direct spot fetch; observation_count
+      matches non-None row count; unknown pair and invalid horizon
+      both fail-loud; units == 'ratio'.
+
+  - name: calculate_fx_drawdown
+    domain: fx
+    sub_agent: spot
+    bucket: 1A
+    category: derived_series
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: calculate_fx_drawdown_tool
+      schema: fx_agent/spot/tools/drawdown/schemas.py::FXDrawdownInput
+      compute: fx_agent/spot/tools/drawdown/compute.py::calculate_fx_drawdown
+      config: fx_agent/spot/tools/drawdown/config.yaml
+
+    one_liner: >-
+      Running drawdown of an FX spot rate vs its trailing peak over
+      a lookback window. Returns the drawdown TimeSeries (RATIO,
+      always <= 0) plus a snapshot summary (current drawdown, max
+      drawdown, peak / trough dates, recovery date, time-to-recovery
+      in trading days).
+
+    bucket_rationale: >-
+      Deterministic (P_t / running_max(P_0..P_t)) - 1 on a single-
+      pair PX_LAST series loaded via the shared FX fetcher. Running
+      max anchors on the first row of the display window
+      (documented assumption — pre-window peaks are NOT carried in).
+      Sign is raw — no position-direction interpretation.
+
+    pm_overridable:
+      - pair
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_spot_level_tool
+      - get_fx_returns_series_tool
+      - get_fx_realized_vol_tool
+
+    workflows:
+      - fx_risk_workspace
+      - fx_drawdown_alert
+
+    references:
+      - rates_agent/sovereign_bonds/tools/yield_levels
+      - shared/analytics/fx_fetch.py
+
+    built_date: 2026-05-25
+    validation_status: >-
+      9/9 PASS on targeted compute test: all drawdown values <= 0;
+      snapshot current_drawdown == time_series.rows[-1].value
+      (strict); max_drawdown == min(time_series) (strict);
+      max_drawdown_date row matches snapshot value; recovery
+      invariants hold when recovery_date is non-None;
+      observation_count matches row count; unknown pair fails
+      loud; units == 'ratio'.
+
+  - name: get_fx_realized_vol
+    domain: fx
+    sub_agent: spot
+    bucket: 1A
+    category: derived_series
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_realized_vol_tool
+      schema: fx_agent/spot/tools/realized_vol/schemas.py::FXRealizedVolInput
+      compute: fx_agent/spot/tools/realized_vol/compute.py::get_fx_realized_vol
+      config: fx_agent/spot/tools/realized_vol/config.yaml
+
+    one_liner: >-
+      Rolling annualized realized vol of an FX spot pair (default
+      30 trading days, range 5-504). Daily log-returns to rolling
+      std (ddof=1) * sqrt(252) * 100, expressed in PERCENT (8.0 =
+      8% / year). Returns the vol TimeSeries plus a snapshot
+      summary (current vol, mean / min / max over the lookback).
+
+    bucket_rationale: >-
+      Deterministic std-of-log-returns annualized via the locked
+      sqrt(252) convention. Window and lookback are caller-tunable;
+      annualization factor and ddof are YAML-locked. Output unit
+      PERCENT matches the trader convention (and the unit ATM
+      implied vol will use when Phase E lands).
+
+    pm_overridable:
+      - pair
+      - window_days
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_returns_series_tool
+      - calculate_fx_drawdown_tool
+      - get_fx_spot_level_tool
+
+    workflows:
+      - fx_vol_monitor
+      - fx_realized_vs_implied_carry
+
+    references:
+      - rates_agent/sovereign_bonds/tools/yield_levels
+      - shared/analytics/fx_fetch.py
+
+    built_date: 2026-05-25
+    validation_status: >-
+      9/9 PASS on targeted compute test: default args run end-to-end;
+      vol values >= 0; EURUSD mean vol in plausible 2-25 % range
+      (sanity vs accidental ratio output); snapshot ==
+      time_series.rows[-1].value (strict); observation_count
+      matches non-None row count; math verified by hand recompute
+      of std(log-rets) * sqrt(252) * 100; unknown pair fails loud;
+      short lookback + long window works (buffer absorbs); units
+      == 'percent'.
+
+  # ---------------------------------------------------------------------------
+  # NDF TOOLS (Phase D — 2026-05-26)
+  # ---------------------------------------------------------------------------
+
+  - name: get_fx_ndf_outright
+    domain: fx
+    sub_agent: ndf
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_ndf_outright_tool
+      schema: fx_agent/ndf/tools/ndf_outright/schemas.py::FXNDFOutrightInput
+      compute: fx_agent/ndf/tools/ndf_outright/compute.py::get_fx_ndf_outright
+      config: fx_agent/ndf/tools/ndf_outright/config.yaml
+
+    one_liner: >-
+      Single-(NDF family, tenor) outright snapshot — latest outright
+      value (USD per local CCY, NOT forward points), daily / weekly /
+      monthly % change, rolling 252-day z-score, trailing 252-day
+      high / low / percentile. Mirror of get_fx_spot_level but for the
+      NDF outright substrate (CCN+ / IRN+ / BCN+ / KWN+ / IHN+ /
+      NTN+ x 5 tenors = 30 instruments).
+
+    bucket_rationale: >-
+      Deterministic arithmetic over stored NDF observations. Window /
+      annualization YAML-locked; no model inference and no LLM-facing
+      override path in V1.
+
+    pm_overridable:
+      - ndf_code
+      - tenor
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - calculate_fx_ndf_implied_carry_tool
+      - scan_fx_ndf_carry_tool
+      - get_fx_spot_level_tool
+
+    workflows:
+      - fx_ndf_monitor
+
+    references:
+      - fx_agent/playbooks/fx_ndf.yml
+      - fx_agent/spot/tools/spot_levels
+
+    built_date: 2026-05-26
+    validation_status: >-
+      6/6 NDF families return clean data on smoke test (CCN+/IRN+/BCN+/
+      KWN+/IHN+/NTN+) at 1M tenor; non-zero z-scores; observation
+      counts >= 250 trading days for each.
+
+  - name: calculate_fx_ndf_implied_carry
+    domain: fx
+    sub_agent: ndf
+    bucket: 1A
+    category: derived_series
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: calculate_fx_ndf_implied_carry_tool
+      schema: fx_agent/ndf/tools/ndf_implied_carry/schemas.py::FXNDFImpliedCarryInput
+      compute: fx_agent/ndf/tools/ndf_implied_carry/compute.py::calculate_fx_ndf_implied_carry
+      config: fx_agent/ndf/tools/ndf_implied_carry/config.yaml
+
+    one_liner: >-
+      Cross-sectional FX NDF implied carry — for one tenor, joins the
+      latest underlying-spot and same-tenor NDF outright (per
+      trade_date — no lookahead), computes implied annualized carry
+      as (outright/spot - 1) * (252/tenor_days) * 100, and ranks the
+      cross-section. Each row carries a rolling 252-day z-score /
+      percentile / range on its own implied-carry series. Supports
+      'settlement' (textbook) and 'offshore_tradable' (USDCNH for
+      CCN+) spot conventions.
+
+    bucket_rationale: >-
+      Deterministic spot+outright arithmetic over the NDF substrate.
+      No divisor (outright unit), no points-to-spot conversion.
+      Convention switch (spot_convention) is closed-enum; rank_by is
+      closed-enum.
+
+    pm_overridable:
+      - tenor
+      - spot_convention
+      - rank_by
+      - top_n
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_ndf_outright_tool
+      - scan_fx_ndf_carry_tool
+      - calculate_fx_carry_tool
+
+    workflows:
+      - fx_ndf_monitor
+      - fx_ndf_carry_screen
+
+    references:
+      - fx_agent/playbooks/fx_ndf.yml
+      - fx_agent/forwards/tools/fx_carry
+      - shared/analytics/levels
+
+    built_date: 2026-05-26
+    validation_status: >-
+      6/6 NDF families return data at 1M settlement convention; CCN+
+      successfully swaps USDCNY -> USDCNH under offshore_tradable mode
+      with the carry differential surfaced; scanner mode (top_n=3,
+      rank_by=abs_z_score) ranks consistently with the full table.
+
+  - name: scan_fx_ndf_carry
+    domain: fx
+    sub_agent: ndf
+    bucket: 1A
+    category: screening
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: scan_fx_ndf_carry_tool
+      schema: fx_agent/ndf/tools/ndf_implied_carry/schemas.py::FXNDFImpliedCarryInput
+      compute: fx_agent/ndf/tools/ndf_implied_carry/compute.py::calculate_fx_ndf_implied_carry
+      config: fx_agent/ndf/tools/ndf_implied_carry/config.yaml
+
+    one_liner: >-
+      Scanner-mode wrapper around calculate_fx_ndf_implied_carry —
+      returns the top-N most extreme NDF carry rows by absolute z-score
+      at a given tenor. Curated defaults (top_n=5, rank_by='abs_z_score',
+      spot_convention='settlement') for the 'what's the most extreme
+      NDF carry today?' use case. Same compute path as the parent tool.
+
+    bucket_rationale: >-
+      Thin scanner over the same deterministic compute — different
+      surface for a different question (executive summary vs full
+      table).
+
+    pm_overridable:
+      - tenor
+      - top_n
+      - spot_convention
+      - lookback_days
+
+    related_tools:
+      - calculate_fx_ndf_implied_carry_tool
+      - get_fx_ndf_outright_tool
+      - scan_fx_spot_tool
+
+    workflows:
+      - fx_ndf_monitor
+      - fx_extremes_workspace
+
+    references:
+      - fx_agent/playbooks/fx_ndf.yml
+
+    built_date: 2026-05-26
+    validation_status: >-
+      Default top_n=5 + abs_z_score returns the most extreme rows
+      consistently with the full implied-carry compute.
+
+  # ---------------------------------------------------------------------------
+  # ATM VOL TOOLS (Phase E1 — 2026-05-26)
+  # ---------------------------------------------------------------------------
+
+  - name: get_fx_atm_vol_level
+    domain: fx
+    sub_agent: vol
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_atm_vol_level_tool
+      schema: fx_agent/vol/tools/atm_vol_level/schemas.py::FXAtmVolLevelInput
+      compute: fx_agent/vol/tools/atm_vol_level/compute.py::get_fx_atm_vol_level
+      config: fx_agent/vol/tools/atm_vol_level/config.yaml
+
+    one_liner: >-
+      Single-(pair, tenor) FX ATM implied vol snapshot — latest vol in
+      PERCENT, daily / weekly / monthly absolute vol-point changes,
+      rolling 252-day z-score, trailing 252-day high / low / percentile,
+      observation count. Mirror of get_fx_spot_level for the ATM vol
+      substrate (115 std-tenor instruments across 23 pairs x 5 tenors).
+
+    bucket_rationale: >-
+      Deterministic SQL query + rolling pandas stats. Window /
+      annualization YAML-locked.
+
+    pm_overridable:
+      - pair
+      - tenor
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_vol_term_structure_tool
+      - scan_fx_vol_tool
+      - get_fx_vol_z_score_tool
+      - get_fx_realized_vol_tool
+
+    workflows:
+      - fx_vol_monitor
+
+    references:
+      - fx_agent/playbooks/fx_vol.yml
+      - fx_agent/spot/tools/spot_levels
+
+    built_date: 2026-05-26
+    validation_status: >-
+      Smoke test PASSED on EURUSD, USDJPY, USDMXN, USDCNH, USDTWD,
+      EURJPY, GBPCHF at 1M — z-score consistent with snapshot output.
+
+  - name: get_fx_vol_term_structure
+    domain: fx
+    sub_agent: vol
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_vol_term_structure_tool
+      schema: fx_agent/vol/tools/vol_term_structure/schemas.py::FXVolTermStructureInput
+      compute: fx_agent/vol/tools/vol_term_structure/compute.py::get_fx_vol_term_structure
+      config: fx_agent/vol/tools/vol_term_structure/config.yaml
+
+    one_liner: >-
+      Single-pair ATM vol term structure — one row per standard tenor
+      (1W / 1M / 3M / 6M / 12M, short → long) with current vol,
+      absolute vol-point changes, rolling 252-day z-score / high / low /
+      percentile. Mirror of get_fx_forward_curve for the ATM vol
+      substrate.
+
+    bucket_rationale: >-
+      Iterates atm_vol_level across the standard tenor strip; same
+      deterministic compute / YAML-locked stats.
+
+    pm_overridable:
+      - pair
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_atm_vol_level_tool
+      - scan_fx_vol_tool
+      - get_fx_forward_curve_tool
+
+    workflows:
+      - fx_vol_monitor
+
+    references:
+      - fx_agent/playbooks/fx_vol.yml
+      - fx_agent/forwards/tools/forward_curve
+
+    built_date: 2026-05-26
+    validation_status: >-
+      EURUSD term structure returns 5/5 standard tenors short-to-long
+      with per-tenor z-scores.
+
+  - name: scan_fx_vol
+    domain: fx
+    sub_agent: vol
+    bucket: 1A
+    category: screening
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: scan_fx_vol_tool
+      schema: fx_agent/vol/tools/vol_scanner/schemas.py::FXVolScannerInput
+      compute: fx_agent/vol/tools/vol_scanner/compute.py::run_fx_vol_scanner
+      config: fx_agent/vol/tools/vol_scanner/config.yaml
+
+    one_liner: >-
+      Cross-sectional ATM vol scanner — for one tenor + market_scope
+      (G10 / EM / G10_CROSSES / ALL), ranks pairs by signed vol /
+      absolute vol / absolute z-score. Mirror of scan_fx_spot for the
+      ATM vol substrate.
+
+    bucket_rationale: >-
+      Deterministic batch screen over fx_vol substrate. Closed-enum
+      rank_by + market_scope; pure arithmetic ranking.
+
+    pm_overridable:
+      - tenor
+      - market_scope
+      - rank_by
+      - top_n
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_atm_vol_level_tool
+      - get_fx_vol_term_structure_tool
+      - get_fx_vol_z_score_tool
+      - scan_fx_spot_tool
+
+    workflows:
+      - fx_vol_monitor
+      - fx_extremes_workspace
+
+    references:
+      - fx_agent/playbooks/fx_vol.yml
+      - fx_agent/spot/tools/scanner.py
+
+    built_date: 2026-05-26
+    validation_status: >-
+      G10 1M top-5 by abs_z_score returns USDJPY z=-2.12 (vol regime
+      compression). ALL 1M ranks USDCOP top at z=+4.6 (EM vol spike).
+
+  - name: get_fx_vol_z_score
+    domain: fx
+    sub_agent: vol
+    bucket: 1A
+    category: derived_series
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_vol_z_score_tool
+      schema: fx_agent/vol/tools/vol_z_score/schemas.py::FXVolZScoreInput
+      compute: fx_agent/vol/tools/vol_z_score/compute.py::get_fx_vol_z_score
+      config: fx_agent/vol/tools/vol_z_score/config.yaml
+
+    one_liner: >-
+      Rolling 252-day z-score TIME SERIES for one (pair, tenor) ATM vol
+      — useful for visualizing vol-regime trajectory rather than just
+      the current snapshot. Analog of get_fx_returns_series in the
+      derived-series category.
+
+    bucket_rationale: >-
+      Deterministic pandas rolling stats over stored vol observations.
+      No model state.
+
+    pm_overridable:
+      - pair
+      - tenor
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_atm_vol_level_tool
+      - scan_fx_vol_tool
+      - get_fx_returns_series_tool
+      - get_fx_realized_vol_tool
+
+    workflows:
+      - fx_vol_monitor
+
+    references:
+      - fx_agent/playbooks/fx_vol.yml
+      - fx_agent/spot/tools/returns_series
+
+    built_date: 2026-05-26
+    validation_status: >-
+      EURUSD 1M emitted 461 z-score points over a 730-day lookback;
+      last emitted z-score matches the snapshot z-score from
+      get_fx_atm_vol_level exactly (-0.6714).
+
+  # ---------------------------------------------------------------------------
+  # SMILE TOOLS (Phase E2 — 2026-05-27)
+  # ---------------------------------------------------------------------------
+
+  - name: get_fx_risk_reversal
+    domain: fx
+    sub_agent: vol
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_risk_reversal_tool
+      schema: fx_agent/vol/tools/risk_reversal/schemas.py::FXRiskReversalInput
+      compute: fx_agent/vol/tools/risk_reversal/compute.py::get_fx_risk_reversal
+      config: fx_agent/vol/tools/risk_reversal/config.yaml
+
+    one_liner: >-
+      Single-(pair, delta_anchor, tenor) FX risk reversal snapshot — RR
+      is the call_Δ - put_Δ implied-vol differential at the chosen delta
+      anchor (25Δ or 10Δ), the desk-standard skew indicator. Positive
+      RR = call skew dominant; negative = put skew. Quoted in absolute
+      vol points. Mirror of get_fx_atm_vol_level for the smile
+      substrate (instrument_type='fx_vol_smile', smile_point in
+      {'25R','10R'}).
+
+    bucket_rationale: >-
+      Deterministic SQL query against fx_vol_smile substrate + rolling
+      pandas stats. Same recipe as atm_vol_level — z-score / window /
+      annualization YAML-locked. Single methodology knob (delta_anchor)
+      surfaces the genuine 25Δ vs 10Δ structural choice per PR8.
+
+    pm_overridable:
+      - pair
+      - delta_anchor
+      - tenor
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_butterfly_tool
+      - get_fx_vol_smile_tool
+      - get_fx_atm_vol_level_tool
+
+    workflows:
+      - fx_vol_monitor
+      - fx_smile_workspace
+
+    references:
+      - fx_agent/playbooks/fx_vol.yml
+      - fx_agent/vol/tools/atm_vol_level
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Targeted compute + wiring + SQL-validation tests included in
+      Phase E2 PR. EURUSD 25R 1M ticker resolves to EURUSD25R1M Curncy;
+      delta_anchor=10 resolves to EURUSD10R1M. SQL parity against
+      independent baseline within 0.001 vol-pt tolerance on 8 anchor
+      cases across G10 / EM / NDF / crosses.
+
+  - name: get_fx_butterfly
+    domain: fx
+    sub_agent: vol
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_butterfly_tool
+      schema: fx_agent/vol/tools/butterfly/schemas.py::FXButterflyInput
+      compute: fx_agent/vol/tools/butterfly/compute.py::get_fx_butterfly
+      config: fx_agent/vol/tools/butterfly/config.yaml
+
+    one_liner: >-
+      Single-(pair, delta_anchor, tenor) FX butterfly snapshot — BF is
+      the average OTM wing vol minus the ATM vol at the chosen delta
+      anchor (25Δ or 10Δ), the desk-standard kurtosis / wing-richness
+      indicator. Positive BF = wings rich (tail-risk priced); negative
+      = wings cheap. Quoted in absolute vol points. Smile-substrate
+      analog of risk_reversal for the wing leg.
+
+    bucket_rationale: >-
+      Same compute path as risk_reversal — resolves smile_point as
+      f"{delta}B" (25B / 10B) instead of f"{delta}R". Deterministic
+      SQL + rolling pandas stats; YAML-locked conventions.
+
+    pm_overridable:
+      - pair
+      - delta_anchor
+      - tenor
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_risk_reversal_tool
+      - get_fx_vol_smile_tool
+      - get_fx_atm_vol_level_tool
+
+    workflows:
+      - fx_vol_monitor
+      - fx_smile_workspace
+
+    references:
+      - fx_agent/playbooks/fx_vol.yml
+      - fx_agent/vol/tools/risk_reversal
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Targeted compute + wiring + SQL-validation tests included in
+      Phase E2 PR. EURUSD 25B 1M ticker resolves to EURUSD25B1M Curncy;
+      kurtosis sanity check (10B > 0.5 * 25B) passes on EURUSD. SQL
+      parity within 0.001 vol-pt on the same 8 anchor cases as
+      risk_reversal.
+
+  - name: get_fx_vol_smile
+    domain: fx
+    sub_agent: vol
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_vol_smile_tool
+      schema: fx_agent/vol/tools/vol_smile/schemas.py::FXVolSmileInput
+      compute: fx_agent/vol/tools/vol_smile/compute.py::get_fx_vol_smile
+      config: fx_agent/vol/tools/vol_smile/config.yaml
+
+    one_liner: >-
+      Aggregate 5-point FX vol smile snapshot for one (pair, tenor) —
+      ATM (level, from fx_vol substrate) + 25R + 25B + 10R + 10B
+      (differentials, from fx_vol_smile substrate). Each point carries
+      the same snapshot + rolling 252-day z-score / percentile / range
+      as the singleton primitives. Common as_of_date = MIN of per-point
+      latest dates for honest cross-point comparison. Fails loud if
+      ANY of the 5 series is missing.
+
+    bucket_rationale: >-
+      Structural aggregate primitive — composes the same compute logic
+      over 5 series. No central methodology knob per PR4 parsimony
+      (smile shape is fully determined by pair × tenor; per Codex 2026-
+      05-27 correction we do NOT add a fake `include_extended_tenors`
+      knob — that would be a data-availability question, not a
+      methodology choice).
+
+    pm_overridable:
+      - pair
+      - tenor
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_risk_reversal_tool
+      - get_fx_butterfly_tool
+      - get_fx_atm_vol_level_tool
+
+    workflows:
+      - fx_vol_monitor
+      - fx_smile_workspace
+
+    references:
+      - fx_agent/playbooks/fx_vol.yml
+      - fx_agent/vol/tools/risk_reversal
+      - fx_agent/vol/tools/butterfly
+      - fx_agent/vol/tools/atm_vol_level
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Targeted compute + wiring + SQL-validation tests included in
+      Phase E2 PR. EURUSD 1M returns 5 points with correct smile_point
+      labels (ATM / 25R / 25B / 10R / 10B). vol_smile RR/BF values
+      match singleton tools within 0.001 vol-pt. ATM in 2-30 vol-pt
+      level range; RR/BF differentials < 5 vol pt absolute. Aggregate
+      as_of_date = MIN of per-point latest dates. SQL parity within
+      0.001 across 4 anchor (pair, tenor) cases x 5 smile points = 20
+      series.
+
+  # ---------------------------------------------------------------------------
+  # VOL CARRY TOOLS (Phase E3 — 2026-05-27)
+  # ---------------------------------------------------------------------------
+
+  - name: get_fx_vol_risk_premium
+    domain: fx
+    sub_agent: vol
+    bucket: 1A
+    category: derived_series
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_vol_risk_premium_tool
+      schema: fx_agent/vol/tools/vol_risk_premium/schemas.py::FXVolRiskPremiumInput
+      compute: fx_agent/vol/tools/vol_risk_premium/compute.py::get_fx_vol_risk_premium
+      config: fx_agent/vol/tools/vol_risk_premium/config.yaml
+
+    one_liner: >-
+      Single-(pair, tenor) FX vol risk premium snapshot — implied ATM
+      vol minus realized vol over a matched horizon. Positive VRP =
+      implied rich vs realized (vol-seller positive carry); negative =
+      implied cheap (vol-buyer positive carry). Quoted in absolute vol
+      points. The canonical vol-carry primitive. Joins fx_vol implied
+      with fx_spot-derived realized by trade_date.
+
+    bucket_rationale: >-
+      Deterministic inner-join of implied (fx_vol) and realized
+      (fx_spot-derived via shared.analytics.fx_fetch) series, then the
+      standard rolling 252-day stats on the premium series. Single
+      methodology knob (realized_window_basis) surfaces the genuine
+      methodological choice between tenor-matched (default) and fixed
+      30d windows. Other conventions (sqrt(252) annualization, ddof=1,
+      ffill_limit) YAML-locked and aligned with fx_realized_vol.
+
+    pm_overridable:
+      - pair
+      - tenor
+      - realized_window_basis
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_atm_vol_level_tool
+      - get_fx_realized_vol_tool
+      - get_fx_vol_calendar_spread_tool
+
+    workflows:
+      - fx_vol_monitor
+      - fx_vol_carry_workspace
+
+    references:
+      - fx_agent/playbooks/fx_vol.yml
+      - fx_agent/vol/tools/atm_vol_level
+      - fx_agent/spot/tools/realized_vol
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Targeted compute + wiring + SQL-validation + PR15 parity tests
+      shipped in Phase E3 PR. EURUSD 1M VRP = implied 5.885 - realized
+      4.71 = +1.17 vol pts (vol-seller carry, ~+0.5 z-score). Identity
+      check: |VRP - (implied - realized)| < 0.001 across all cases.
+      Tenor → trading-day map (1W→5, 1M→21, 3M→63, 6M→126, 12M→252)
+      sourced from fx_agent.vol._shared.TENOR_TO_TRADING_DAYS.
+
+  - name: get_fx_vol_calendar_spread
+    domain: fx
+    sub_agent: vol
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_vol_calendar_spread_tool
+      schema: fx_agent/vol/tools/vol_calendar_spread/schemas.py::FXVolCalendarSpreadInput
+      compute: fx_agent/vol/tools/vol_calendar_spread/compute.py::get_fx_vol_calendar_spread
+      config: fx_agent/vol/tools/vol_calendar_spread/config.yaml
+
+    one_liner: >-
+      Single-(pair, short_tenor, long_tenor) FX vol calendar spread —
+      ATM implied vol differential between two standard tenors, signed
+      per spread_direction. Captures vol term-structure carry: positive
+      long_minus_short = contango (upward-sloping curve); negative =
+      backwardation. Quoted in absolute vol points. Pydantic model
+      validator enforces short_tenor < long_tenor (trading-day terms).
+
+    bucket_rationale: >-
+      Deterministic inner-join of two ATM implied histories by
+      trade_date, then standard rolling 252-day stats on the signed
+      spread series. Single methodology knob (spread_direction)
+      surfaces the genuine sign-convention choice. Tenor ordering is
+      Pydantic-enforced (short_tenor strictly < long_tenor) so the
+      spread label is unambiguous.
+
+    pm_overridable:
+      - pair
+      - short_tenor
+      - long_tenor
+      - spread_direction
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_atm_vol_level_tool
+      - get_fx_vol_term_structure_tool
+      - get_fx_vol_risk_premium_tool
+
+    workflows:
+      - fx_vol_monitor
+      - fx_vol_carry_workspace
+
+    references:
+      - fx_agent/playbooks/fx_vol.yml
+      - fx_agent/vol/tools/atm_vol_level
+      - fx_agent/vol/tools/vol_term_structure
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Targeted compute + wiring + SQL-validation + PR15 parity tests
+      shipped in Phase E3 PR. EURUSD 1M-3M spread = 0.0 vol pts (short
+      end flat). EURUSD 1M-12M long_minus_short = +0.715 (contango).
+      Sign-flip check: |LMS + SML| < 1e-6 exact negation. Pydantic
+      catches inverted tenors and equal tenors with fail-loud.
+
+  # ---------------------------------------------------------------------------
+  # FORWARDS CARRY EXTENSIONS (Phase B+ — 2026-05-27)
+  # ---------------------------------------------------------------------------
+
+  - name: get_fx_implied_yield_differential
+    domain: fx
+    sub_agent: forwards
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_implied_yield_differential_tool
+      schema: fx_agent/forwards/tools/implied_yield_differential/schemas.py::FXImpliedYieldDifferentialInput
+      compute: fx_agent/forwards/tools/implied_yield_differential/compute.py::get_fx_implied_yield_differential
+      config: fx_agent/forwards/tools/implied_yield_differential/config.yaml
+
+    one_liner: >-
+      Single-(pair, tenor) implied LOCAL-minus-USD rate differential
+      from forward points via Covered Interest Parity (CIP). PM-
+      friendly framing of the same math fx_carry uses internally
+      (carry_annualized_pct = quote-base rate). Sign HARD-LOCKED to
+      local_minus_usd. Pair must contain a USD leg; non-USD G10
+      crosses fail-loud V1. Quoted in PERCENT, annualized at 252
+      trading days.
+
+    bucket_rationale: >-
+      Deterministic SQL join of spot and forward-points history at
+      the requested tenor, JPY-aware divisor (shared helper),
+      annualized to PERCENT, sign-adjusted per usd_leg_position so
+      the output is always local-minus-USD. No PR8 central knob
+      (sign-flipping is presentation not methodology, match
+      vol_smile precedent on PR4 parsimony). Rolling 252-day stats
+      on the differential series via inline pandas (same convention
+      as fx_carry / vol_risk_premium).
+
+    pm_overridable:
+      - pair
+      - tenor
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - calculate_fx_carry_tool
+      - get_fx_forward_curve_tool
+      - get_fx_carry_basket_tool
+
+    workflows:
+      - fx_carry_monitor
+      - fx_forwards_workspace
+
+    references:
+      - fx_agent/playbooks/fx_forwards.yml
+      - fx_agent/forwards/tools/fx_carry
+      - fx_agent/forwards/_shared
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Targeted compute + wiring + SQL-validation + PR15 parity tests
+      shipped in Phase B+ PR. EURUSD 1M = -1.68% (EUR < USD). USDMXN
+      3M = +3.19% (MXN >> USD). USDJPY 1M = -3.05% (JPY << USD).
+      Identity check: |iyd| == |fx_carry.carry_annualized_pct| within
+      5 bp across G10 + EM cases. EURJPY (no USD leg) fails-loud.
+
+  - name: get_fx_cross_currency_basis
+    domain: fx
+    sub_agent: forwards
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_cross_currency_basis_tool
+      schema: fx_agent/forwards/tools/cross_currency_basis/schemas.py::FXCrossCurrencyBasisInput
+      compute: fx_agent/forwards/tools/cross_currency_basis/compute.py::get_fx_cross_currency_basis
+      config: fx_agent/forwards/tools/cross_currency_basis/config.yaml
+
+    one_liner: >-
+      Single-(pair, tenor) FX cross-currency basis (CIP-violation
+      spread). Composes the FX implied yield differential with the
+      observed OIS local-vs-USD spread. SIGN CONVENTION Bloomberg/
+      BCRX-style: NEGATIVE basis = USD scarcity. First fx_agent
+      primitive consuming rates_agent OIS substrate via
+      shared.analytics.rates_fetch.fetch_cross_market_pair. V1 scope
+      G10 USD-leg only (EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD).
+
+    bucket_rationale: >-
+      Deterministic cross-domain compute. FX leg: inline
+      implied_yield_differential math (joined spot+forward + JPY
+      divisor + 252-day annualization + sign-flip per usd_leg_position).
+      OIS leg: shared.analytics.rates_fetch.fetch_cross_market_pair
+      (existing helper, no rates_agent modification). Single
+      methodology choice (sign convention) HARD-LOCKED Bloomberg-style
+      with 3 independent corroborations (Sreeram + Codex + Claude
+      re-derivation). No central PR8 knob — sign-flip would be
+      presentation not methodology.
+
+    pm_overridable:
+      - pair
+      - tenor
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_implied_yield_differential_tool
+      - calculate_fx_carry_tool
+      - rates_agent.ois.tools.rate_level.get_ois_rate_level
+
+    workflows:
+      - fx_carry_monitor
+      - fx_funding_stress_workspace
+
+    references:
+      - fx_agent/playbooks/fx_forwards.yml
+      - fx_agent/forwards/tools/implied_yield_differential
+      - rates_agent/ois/tools/rate_level
+      - shared/analytics/rates_fetch.py::fetch_cross_market_pair
+
+    built_date: 2026-05-27
+    validation_status: >-
+      VALIDATED+FROZEN — sign convention Bloomberg/BCRX-style locked
+      via 4 corroborations (Sreeram + Codex + Claude re-derivation
+      + empirical EURUSD/-30bp test). Live-DB validation PASSED on
+      Sreeram-provided OIS parquet ingested locally via official
+      pipeline helpers: 6/6 SQL validation cases PASS (EURUSD 1M
+      -5.49bp, EURUSD 12M +2.41bp, GBPUSD 3M -3.29bp, USDJPY 1M
+      -22.01bp, AUDUSD 6M +1.81bp, USDCAD 3M -16.44bp — all in
+      textbook DM range). 12/12 compute checks PASS, parity fixture
+      captured + SHA-verified replay PASS, MCP/API/manifest wiring
+      complete.
+
+  - name: get_fx_carry_basket
+    domain: fx
+    sub_agent: forwards
+    bucket: 1A
+    category: derived_series
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_carry_basket_tool
+      schema: fx_agent/forwards/tools/carry_basket/schemas.py::FXCarryBasketInput
+      compute: fx_agent/forwards/tools/carry_basket/compute.py::get_fx_carry_basket
+      config: fx_agent/forwards/tools/carry_basket/config.yaml
+
+    one_liner: >-
+      FX carry basket STRATEGY INDEX — daily mark-to-market excess
+      return of a paper long-top-N / short-bottom-N FX carry
+      portfolio, cross-sectional equal-weight, rebalanced monthly
+      (21 trading days) with 1-day signal lag for no look-ahead.
+      Returns the cumulative index TimeSeries (RATIO) plus snapshot
+      annualized return / vol / Sharpe / max drawdown. NOT an
+      executable backtest — V1 applies NO transaction costs / bid-
+      ask / slippage / forward roll. Real-money equivalent diverges
+      by typically 200-400 bp annualized after frictions.
+
+    bucket_rationale: >-
+      Deterministic cross-sectional compute over the (spot, forward)
+      panel for the market_scope universe. All methodology choices
+      HARD-LOCKED in config (rebalance=21d, signal_lag=1d, weighting=
+      equal_weight, TC=none, sign=long-pair-carry). Single
+      methodology knob (basket_construction) surfaces the genuine
+      zero-cost-cross-sectional vs unidirectional structural choice.
+      Sign convention = -(F/S-1)*(annual/tenor)*100 = r_base - r_quote
+      (carry of going LONG the pair), so high signal = currency to
+      long for canonical FX carry (avoids the easy-to-get-wrong
+      inverted strategy).
+
+    pm_overridable:
+      - market_scope
+      - tenor
+      - top_n
+      - basket_construction
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - calculate_fx_carry_tool
+      - get_fx_implied_yield_differential_tool
+      - calculate_fx_panel_tool
+
+    workflows:
+      - fx_carry_monitor
+      - fx_strategy_workspace
+
+    references:
+      - fx_agent/playbooks/fx_forwards.yml
+      - fx_agent/forwards/tools/fx_carry
+      - fx_agent/spot/tools/fx_panel
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Targeted compute + wiring + SQL-validation + PR15 parity tests
+      shipped in Phase B+ PR. G10 1M long_short canonical
+      constituents: long USDxxx (JPY/CHF/CAD, high USD vs low-yielder
+      carry), short xxxUSD (EUR/GBP/AUD). EM 3M canonical: USDTRY in
+      short leg (highest-yielder long). Long-only returns only the
+      long leg. Sharpe / vol / drawdown numerics in plausible ranges
+      for 2y FX carry backtests (G10 Sharpe near zero in 2024-2026
+      headwind regime; EM Sharpe ~1.4 on TRY/MXN/ZAR carry capture).
+      SQL constituent-selection reproduction matches tool output for
+      G10 / EM / long_short / long_only combos.
+
+  # ===========================================================================
+  # Phase F1 (2026-05-27): 3 cross-sectional panels + 4 scanners
+  #
+  # Asset-agnostic shared-compute discipline (G2): these are pure
+  # fetcher+pivot+package primitives (panels) and pure composition
+  # primitives (scanners). They do NOT duplicate correlation / PCA /
+  # factor loadings / regression — those live in shared/operators and
+  # consume the returned Panel artifact directly.
+  # ===========================================================================
+
+  - name: calculate_fx_vol_panel
+    domain: fx
+    sub_agent: vol
+    bucket: 1A
+    category: cross_sectional_panel
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: calculate_fx_vol_panel_tool
+      schema: fx_agent/vol/tools/fx_vol_panel/schemas.py::FXVolPanelInput
+      compute: fx_agent/vol/tools/fx_vol_panel/compute.py::calculate_fx_vol_panel
+      config: fx_agent/vol/tools/fx_vol_panel/config.yaml
+
+    one_liner: >-
+      Cross-sectional Panel of FX implied vols for a (market_scope,
+      tenor, smile_point) slice. ATM smile_point routes to
+      instrument_type='fx_vol' substrate; 25R/25B/10R/10B routes to
+      instrument_type='fx_vol_smile'. Returns typed Panel
+      (rows=dates, columns=pairs, units=PERCENT) ready for downstream
+      cross-sectional operators (correlation, PCA, factor loadings).
+
+    bucket_rationale: >-
+      Deterministic pivot of the fx_vol / fx_vol_smile substrate into
+      a wide Panel with pair-name columns. Filter (market_scope →
+      fx_family with parallel ATM vs smile family maps) and missing-
+      data / calendar / ffill conventions are YAML-locked. Substrate-
+      primitive discipline: fail-loud on empty fetch / unknown scope.
+
+    pm_overridable:
+      - market_scope
+      - tenor
+      - smile_point
+      - start_date
+      - end_date
+      - missing_data_policy
+      - field_name
+
+    related_tools:
+      - calculate_fx_panel_tool
+      - scan_fx_calendar_spread_tool
+      - scan_fx_vol_skew_tool
+
+    workflows:
+      - fx_vol_workspace
+      - fx_correlation_monitor
+
+    references:
+      - fx_agent/spot/tools/fx_panel
+      - shared/analytics/fx_fetch.py::fetch_fx_vol_panel
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Targeted compute test 9/9 PASS live-DB (G10 1M ATM = 625 obs
+      × 6 pairs; G10 1M 25R = smile substrate routed correctly).
+      Typed Panel round-trips cleanly via FXVolPanelOutput.model_validate.
+      Empty window + invalid scope/tenor/smile_point correctly raise
+      ValueError / ValidationError.
+
+  - name: calculate_fx_forwards_panel
+    domain: fx
+    sub_agent: forwards
+    bucket: 1A
+    category: cross_sectional_panel
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: calculate_fx_forwards_panel_tool
+      schema: fx_agent/forwards/tools/fx_forwards_panel/schemas.py::FXForwardsPanelInput
+      compute: fx_agent/forwards/tools/fx_forwards_panel/compute.py::calculate_fx_forwards_panel
+      config: fx_agent/forwards/tools/fx_forwards_panel/config.yaml
+
+    one_liner: >-
+      Cross-sectional Panel of FX forward points (in pips) for a
+      (market_scope, tenor) slice. Mirror of calculate_fx_panel for
+      the fx_forward substrate. Returns typed Panel (rows=dates,
+      columns=pairs, units=PRICE) ready for downstream operators.
+
+    bucket_rationale: >-
+      Deterministic pivot of the fx_forward substrate. market_scope
+      restricted to G10/EM/ALL (no G10_CROSSES fx_family for fwd
+      substrate). Same conventions stack as fx_panel / fx_vol_panel.
+
+    pm_overridable:
+      - market_scope
+      - tenor
+      - start_date
+      - end_date
+      - missing_data_policy
+      - field_name
+
+    related_tools:
+      - calculate_fx_panel_tool
+      - get_fx_implied_yield_differential_tool
+      - scan_fx_implied_yield_differential_tool
+
+    workflows:
+      - fx_forwards_workspace
+
+    references:
+      - fx_agent/spot/tools/fx_panel
+      - shared/analytics/fx_fetch.py::fetch_fx_forwards_panel
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Targeted compute test 10/10 PASS live-DB (G10 1M = 625 obs
+      × 6 pairs; ALL ≥ G10 ∪ EM coverage). G10_CROSSES correctly
+      rejected at Pydantic boundary (no fwd substrate for crosses).
+
+  - name: calculate_fx_basis_panel
+    domain: fx
+    sub_agent: forwards
+    bucket: 1A
+    category: cross_sectional_panel
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: calculate_fx_basis_panel_tool
+      schema: fx_agent/forwards/tools/fx_basis_panel/schemas.py::FXBasisPanelInput
+      compute: fx_agent/forwards/tools/fx_basis_panel/compute.py::calculate_fx_basis_panel
+      config: fx_agent/forwards/tools/fx_basis_panel/config.yaml
+
+    one_liner: >-
+      Cross-sectional Panel of CIP basis (in bps) for the V1 closed
+      pair set {EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD}. Composition
+      of FX implied yield differential + OIS rate differential at one
+      tenor. Sign convention HARD-LOCKED Bloomberg BCRX-style
+      (NEGATIVE = USD scarcity) — inherited from cross_currency_basis
+      primitive (PR #239) which validated the sign convention via
+      four independent corroborations. Returns typed Panel (rows=
+      dates, columns=pairs, units=BPS).
+
+    bucket_rationale: >-
+      Composition primitive. Per-pair basis math is INLINED here
+      (duplicates cross_currency_basis math intentionally for self-
+      containedness — both use the same divisors, same annualisation,
+      same sign convention). V1 closed pair set wire-frozen at the
+      5 G10 pairs with both FX-forward AND local/USD OIS coverage.
+
+    pm_overridable:
+      - tenor
+      - start_date
+      - end_date
+      - missing_data_policy
+      - field_name
+
+    related_tools:
+      - get_fx_cross_currency_basis_tool
+      - scan_fx_cross_currency_basis_tool
+
+    workflows:
+      - fx_basis_monitor
+
+    references:
+      - fx_agent/forwards/tools/cross_currency_basis
+      - shared/analytics/rates_fetch.py::fetch_cross_market_pair
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Targeted compute test 8/8 PASS live-DB (G10_BASIS_V1 1M = 624
+      obs × 5 pairs). sign_convention round-trips as
+      'bloomberg_bcrx_usd_scarcity_negative'. Sign-sanity check
+      verifies DM basis avg < 5bp (USD-scarcity convention).
+
+  - name: scan_fx_cross_currency_basis
+    domain: fx
+    sub_agent: forwards
+    bucket: 1A
+    category: cross_sectional_scanner
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: scan_fx_cross_currency_basis_tool
+      schema: fx_agent/forwards/tools/scan_fx_cross_currency_basis/schemas.py::FXBasisScannerInput
+      compute: fx_agent/forwards/tools/scan_fx_cross_currency_basis/compute.py::run_fx_cross_currency_basis_scanner
+      config: fx_agent/forwards/tools/scan_fx_cross_currency_basis/config.yaml
+
+    one_liner: >-
+      Cross-sectional CIP basis ranker over the V1 closed pair set.
+      Pure composition primitive: consumes calculate_fx_basis_panel
+      and ranks pairs by current basis level / |basis| / |z-score|.
+      rank_by='basis_signed' puts the most-negative basis at rank #1
+      (greatest USD scarcity first).
+
+    bucket_rationale: >-
+      Pure composition — does NOT duplicate basis math (that lives
+      in cross_currency_basis + fx_basis_panel). Z-score uses
+      ddof=1, min_periods=60 on 252d trailing window (YAML-locked).
+      Sign convention inherited.
+
+    pm_overridable:
+      - tenor
+      - rank_by
+      - top_n
+      - lookback_days
+
+    related_tools:
+      - calculate_fx_basis_panel_tool
+      - get_fx_cross_currency_basis_tool
+
+    workflows:
+      - fx_basis_monitor
+
+    references:
+      - fx_agent/forwards/tools/fx_basis_panel
+      - fx_agent/forwards/tools/cross_currency_basis
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Phase F1 scanner compute tests 8/8 PASS (basis ranking
+      monotone for both 'basis_signed' and 'abs_basis' modes).
+
+  - name: scan_fx_implied_yield_differential
+    domain: fx
+    sub_agent: forwards
+    bucket: 1A
+    category: cross_sectional_scanner
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: scan_fx_implied_yield_differential_tool
+      schema: fx_agent/forwards/tools/scan_fx_implied_yield_differential/schemas.py::FXIYDScannerInput
+      compute: fx_agent/forwards/tools/scan_fx_implied_yield_differential/compute.py::run_fx_implied_yield_differential_scanner
+      config: fx_agent/forwards/tools/scan_fx_implied_yield_differential/config.yaml
+
+    one_liner: >-
+      Cross-sectional FX implied yield differential scanner — carry
+      leader-board. For each pair in market_scope, computes the
+      FX-implied (local-USD) annualised rate spread series via joined
+      spot+forward history and ranks the cross-section. Math inlined
+      from implied_yield_differential primitive (PR #237) — same
+      divisors, same annualisation, same sign convention.
+
+    bucket_rationale: >-
+      Math is intentionally INLINED to keep the scanner self-contained
+      without re-touching the frozen implied_yield_differential PR.
+      Single math source of truth via the per-pair primitive (the
+      scanner's math is byte-identical via shared.fx_agent.forwards.
+      _shared helpers).
+
+    pm_overridable:
+      - market_scope
+      - tenor
+      - rank_by
+      - top_n
+      - lookback_days
+
+    related_tools:
+      - get_fx_implied_yield_differential_tool
+      - calculate_fx_forwards_panel_tool
+      - calculate_fx_carry_basket_tool
+
+    workflows:
+      - fx_carry_monitor
+
+    references:
+      - fx_agent/forwards/tools/implied_yield_differential
+      - fx_agent/forwards/_shared.py
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Phase F1 scanner compute tests PASS (G10 top-5 iyd_signed
+      ranking monotone; EM scope returns non-empty result).
+
+  - name: scan_fx_calendar_spread
+    domain: fx
+    sub_agent: vol
+    bucket: 1A
+    category: cross_sectional_scanner
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: scan_fx_calendar_spread_tool
+      schema: fx_agent/vol/tools/scan_fx_calendar_spread/schemas.py::FXCalendarSpreadScannerInput
+      compute: fx_agent/vol/tools/scan_fx_calendar_spread/compute.py::run_fx_calendar_spread_scanner
+      config: fx_agent/vol/tools/scan_fx_calendar_spread/config.yaml
+
+    one_liner: >-
+      Cross-sectional ATM vol calendar-spread scanner — vol term-
+      structure ranker. Composes calculate_fx_vol_panel at
+      (front_tenor, ATM) and (back_tenor, ATM); inner-joins per pair;
+      computes spread = front - back; ranks cross-section.
+
+    bucket_rationale: >-
+      Pure composition — does NOT duplicate vol math (that lives
+      in fx_vol_panel + per-pair vol_calendar_spread primitive).
+      Z-score on 252d trailing window (ddof=1, min_periods=60).
+      Pydantic guard ensures front_tenor ≠ back_tenor.
+
+    pm_overridable:
+      - market_scope
+      - front_tenor
+      - back_tenor
+      - rank_by
+      - top_n
+      - lookback_days
+
+    related_tools:
+      - calculate_fx_vol_panel_tool
+      - get_fx_vol_calendar_spread_tool
+      - get_fx_vol_term_structure_tool
+
+    workflows:
+      - fx_vol_workspace
+
+    references:
+      - fx_agent/vol/tools/fx_vol_panel
+      - fx_agent/vol/tools/vol_calendar_spread
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Phase F1 scanner compute tests PASS (G10 1M-vs-3M top-3
+      ranking monotone; spread = front - back identity verified
+      to 0.01 vol pct; front==back rejected at Pydantic boundary).
+
+  - name: scan_fx_vol_skew
+    domain: fx
+    sub_agent: vol
+    bucket: 1A
+    category: cross_sectional_scanner
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: scan_fx_vol_skew_tool
+      schema: fx_agent/vol/tools/scan_fx_vol_skew/schemas.py::FXVolSkewScannerInput
+      compute: fx_agent/vol/tools/scan_fx_vol_skew/compute.py::run_fx_vol_skew_scanner
+      config: fx_agent/vol/tools/scan_fx_vol_skew/config.yaml
+
+    one_liner: >-
+      Cross-sectional FX vol skew (risk-reversal / butterfly)
+      scanner. Composes calculate_fx_vol_panel at the requested
+      smile_point ('25R'/'10R'/'25B'/'10B') and ranks pairs by
+      current skew level / |skew| / |z-score|.
+
+    bucket_rationale: >-
+      Pure composition — does NOT duplicate smile-point math (lives
+      in fx_vol_panel substrate routing + per-pair risk_reversal /
+      butterfly primitives). Sign convention inherited from substrate.
+
+    pm_overridable:
+      - market_scope
+      - tenor
+      - smile_point
+      - rank_by
+      - top_n
+      - lookback_days
+
+    related_tools:
+      - calculate_fx_vol_panel_tool
+      - get_fx_risk_reversal_tool
+      - get_fx_butterfly_tool
+      - get_fx_vol_smile_tool
+
+    workflows:
+      - fx_vol_workspace
+
+    references:
+      - fx_agent/vol/tools/fx_vol_panel
+      - fx_agent/vol/tools/risk_reversal
+      - fx_agent/vol/tools/butterfly
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Phase F1 scanner compute tests PASS (G10 1M 25R skew_signed
+      ranking monotone; G10 1M 25B butterfly returns non-empty).

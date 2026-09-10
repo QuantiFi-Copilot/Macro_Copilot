@@ -1,0 +1,92 @@
+# =============================================================================
+# calculate_fx_drawdown_tool — tool configuration
+# =============================================================================
+# Single-pair FX drawdown series. Substrate: spot_fx history fetched
+# via shared.analytics.fx_fetch.fetch_fx_spot_series. Output: clean
+# TimeSeries (closed-enum RATIO units) + snapshot summary.
+#
+# Drawdown formula (V1, locked):
+#   DD_t = (P_t / running_max(P_0..P_t)) - 1
+#
+# Conventions are loaded by ``shared.config.load_tool_config`` at
+# compute() time.
+# =============================================================================
+
+tool:
+  name: calculate_fx_drawdown_tool
+  domain: spot_fx
+  description: |
+    Compute the running drawdown of an FX spot rate against its
+    trailing peak over a lookback window. Returns the drawdown time
+    series (closed-enum RATIO, always ≤ 0) plus a snapshot summary
+    (current drawdown, max drawdown, peak / trough dates, recovery
+    date / time).
+
+conventions:
+
+  default_field_name:
+    value: PX_LAST
+    source: industry_standard_close
+    rationale: >-
+      End-of-day spot is the canonical price for FX drawdown.
+
+  ffill_limit_days:
+    value: 5
+    source: team_judgment
+    rationale: >-
+      Bridge up to one trading week of missing spot observations
+      across local holidays before computing drawdown. Same convention
+      as get_fx_returns_series and yield_levels.
+    valid_range: [0, 10]
+
+  drawdown_round_decimals:
+    value: 6
+    source: precision_choice
+    rationale: >-
+      6 decimals on a drawdown ratio (matches return_round_decimals on
+      get_fx_returns_series). 1bp precision is enough to distinguish
+      meaningful drawdowns without overstating false precision.
+    valid_range: [2, 10]
+
+  price_round_decimals:
+    value: 6
+    source: precision_choice
+    rationale: >-
+      6 decimals on peak_value and trough_value. FX spots vary from
+      ~0.5 (USDTRY back-adjusted, 2000) to ~45 (USDTRY today) and
+      ~17,000 (USDIDR) — 6 decimals captures meaningful precision
+      across that range without overstating it.
+    valid_range: [2, 10]
+
+methodology:
+
+  what_it_does: |
+    1. Fetch single-pair PX_LAST history via
+       shared.analytics.fx_fetch.fetch_fx_spot_series.
+    2. Clean via shared.analytics.levels.clean_single_series (coerce,
+       dedupe, ffill up to ffill_limit_days).
+    3. Slice to the display window (anchored to today minus
+       lookback_days).
+    4. Compute the running max P_max_t = cummax(P_0..P_t) on the
+       display slice.
+    5. Compute drawdown ratio DD_t = (P_t / P_max_t) - 1. Always ≤ 0.
+    6. Identify max_drawdown_date (date of min(DD)) and the
+       associated peak_date / peak_value (the running max immediately
+       before the trough) and trough_value.
+    7. Search for recovery_date: first date AFTER max_drawdown_date
+       where spot >= peak_value. None if not yet recovered within
+       the window.
+    8. Build snapshot + canonical TimeSeries (RATIO, rounded).
+
+  assumptions:
+    - "Drawdown is computed on the raw spot series (PX_LAST), no sign flipping. Position-direction interpretation is the consumer's call."
+    - "Running max anchors on the first row of the display window — pre-window peaks are NOT carried in. Consumers wanting a longer-memory peak should pass a larger lookback_days."
+    - "Recovery_date is the first day spot >= peak_value AFTER max_drawdown_date — not after peak_date. A new trough that briefly exceeds peak_value would count as a recovery; further drawdowns after that would create a new running max and new drawdown cycle, but this tool reports the FIRST recovery within the window."
+    - "If max_drawdown == 0 (no drawdown observed — monotonic uptrend), max_drawdown_date == peak_date == as_of_date, trough_value == peak_value, recovery_date is None, time_to_recovery_days is None."
+
+  citations: []
+
+  planned_extensions:
+    - "Peak persistence across windows: anchor the running max to the global all-time max in the DB, not the window's first row. Requires an explicit 'peak_anchor' input field."
+    - "Multi-drawdown decomposition: identify multiple drawdown cycles (peak-trough-recovery) instead of just the single worst one. Useful for risk reporting workflows."
+    - "Position-aware drawdown: flip sign if input specifies position='short' so drawdown is reported relative to P&L direction."

@@ -104,6 +104,7 @@ export const CATEGORY_TONE: Record<string, 'data' | 'analysis' | 'anomaly'> = {
 };
 
 export const SUB_AGENT_LABELS: Record<string, string> = {
+<<<<<<< HEAD
   sovereign_bonds:         'Sovereign Bonds',
   ois:                     'OIS',
   // Stage 1 — sub-agents present in manifests on `build` today.  Without
@@ -113,10 +114,17 @@ export const SUB_AGENT_LABELS: Record<string, string> = {
   inflation_swaps:         'Inflation Swaps',
   bond_futures:            'Bond Futures',
   policy_futures:          'Policy Futures',
+=======
+  sovereign_bonds: 'Sovereign Bonds',
+  ois:             'OIS',
+  spot:            'Spot',
+  forwards:        'Forwards',
+>>>>>>> origin/codex/fx-ui-wave2-widgets
 };
 
 export const AGENT_LABELS: Record<string, string> = {
   rates_agent: 'Rates Agent',
+  fx_agent:    'FX Agent',
 };
 
 export const BUCKET_LABELS: Record<string, string> = {

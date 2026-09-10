@@ -4,3 +4,24 @@ secure_keys/
 tmp
 ingestion/temp_processing/
 utils/temp_rendered/
+
+# Graphify cache (regenerable) — clears ~463 untracked entries from
+# `git status` and removes irrelevant noise from grep/find.
+graphify-out/cache/
+
+# Claude Code working directory (local agent state, do not commit)
+.claude/
+
+# macOS / iCloud cloud-sync duplicate artifacts. These are exact-byte
+# copies of legit files where the OS resolved a sync conflict by
+# appending " 2", " 3", etc. before the extension. Pattern is
+# distinctive (space before digit) and does NOT match any legit
+# project file (project convention uses underscores / hyphens, not
+# spaces). Verified 2026-05-27 against the 149 non-cache matches.
+* [2-9].py
+* [2-9].yml
+* [2-9].yaml
+* [2-9].json
+* [2-9].md
+* [2-9].sql
+* [2-9].lock

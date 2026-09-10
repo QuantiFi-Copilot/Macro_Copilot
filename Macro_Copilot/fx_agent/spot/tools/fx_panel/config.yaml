@@ -1,0 +1,125 @@
+# =============================================================================
+# calculate_fx_panel_tool — tool configuration
+# =============================================================================
+# Cross-sectional Panel of FX spot levels for a market_scope subset of
+# the universe. Phase B cornerstone primitive — every later cross-
+# sectional FX tool (returns, drawdown, realized vol, carry basket,
+# correlation matrix, factor decomposition) consumes a Panel produced
+# by this primitive.
+#
+# Conventions are loaded by ``shared.config.load_tool_config`` at
+# compute() time. Bumping any value here is a deliberate methodology
+# change with downstream impact on every cross-sectional FX workflow.
+# =============================================================================
+
+tool:
+  name: calculate_fx_panel_tool
+  domain: spot_fx
+  description: |
+    Assemble a wide multi-instrument Panel of FX spot levels keyed by
+    <pair> (e.g. EURUSD, USDMXN). Pivots raw market_data_daily rows
+    (filtered by market_scope ∈ {G10, EM, G10_CROSSES, ALL} and
+    instrument_type='fx_spot') into a date-indexed DataFrame ready
+    for consumption by downstream cross-sectional FX operators.
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Default Bloomberg field for FX spot legs
+  # ---------------------------------------------------------------------------
+  default_field_name:
+    value: PX_LAST
+    source: industry_standard_close
+    rationale: >-
+      PX_LAST is the canonical end-of-day spot for FX. Bid/ask
+      (PX_BID / PX_ASK) work too if a caller needs them and they
+      have been ingested. Override via FXPanelInput.field_name.
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for holiday gaps
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across local
+      holidays so the cross-sectional panel has comparable observations
+      across all pairs. Same convention as sovereign_yield_panel.
+      Critical for EM pairs whose local calendars (e.g. IDR national
+      holidays, BRL Carnival) create per-pair gaps that the cross
+      section should smooth over. Set to 0 to disable forward-fill
+      entirely (strict-coverage panels for correlation work where
+      a single missing obs would propagate).
+    valid_range: [0, 10]
+
+  # ---------------------------------------------------------------------------
+  # Missing-data policy (after ffill)
+  # ---------------------------------------------------------------------------
+  # NB: enum constraint is enforced at runtime in compute.py +
+  # input-validation in schemas.py; ToolConfig's Convention schema
+  # only supports ``valid_range`` (numeric), so the allowed-values
+  # set is declared in the rationale text instead of a dedicated
+  # field — mirrors sovereign_yield_panel's convention for enum
+  # knobs.
+  default_missing_data_policy:
+    value: forward_fill_only
+    source: operator_v1_default
+    rationale: >-
+      Allowed values:
+        - ``forward_fill_only`` (V1 default) — return the panel as-is
+          after the ffill_limit-day forward-fill. Holes remaining
+          outside that bound are left as NaN; downstream code handles
+          them.
+        - ``raise`` — strictest; any NaN cell after ffill halts the
+          workflow. Use when downstream code cannot tolerate NaN
+          (e.g. correlation matrix on raw levels).
+        - ``drop_rows_any_missing`` — shrinks to fully-observed dates
+          only. Useful for cross-pair statistical workflows that
+          require a balanced panel.
+      Per-call override via FXPanelInput.missing_data_policy.
+
+  # ---------------------------------------------------------------------------
+  # Calendar policy
+  # ---------------------------------------------------------------------------
+  calendar_policy:
+    value: business_days
+    source: operator_v1_default
+    rationale: >-
+      Allowed values:
+        - ``business_days`` (V1 default) — restrict the output index
+          to Mon-Fri observations. Holiday-aware calendars (per-pair
+          local FX market hours) require a holiday-table ingestion
+          step not yet built.
+        - ``instrument_native`` — pass through every observed date
+          verbatim from the DB. Use when the panel will be merged
+          with a cross-calendar partner downstream (e.g. paired with
+          a rates panel).
+      Documented on the workspace methodology card.
+
+methodology:
+
+  what_it_does: |
+    For the requested market_scope subset of the FX spot universe,
+    fetches the field_name observations from
+    macro_data.market_data_daily (joined to instrument_master for
+    metadata) over [start_date, end_date], pivots into a wide
+    DataFrame keyed by <pair> (NOT vendor ticker — cleaner for
+    downstream code), forward-fills holiday gaps up to
+    ``ffill_limit_days``, applies the missing-data policy, and emits
+    a typed Panel artifact with PRICE units (FX spot is a price
+    level, not a percent rate).
+
+  assumptions:
+    - "FX spot stored as price level in DB (e.g. USDMXN = 17.34 ⇒ 1 USD = 17.34 MXN)."
+    - "Every pair in one panel uses the same calendar policy."
+    - "Column order in the output Panel is alphabetical by pair name."
+    - "Closed-enum market_scope: G10 / EM / G10_CROSSES / ALL. New scope = enum extension here + in schemas.py and shared/analytics/fx_fetch.py."
+    - "instrument_type filter pinned to 'fx_spot' inside fx_fetch — this primitive never accidentally pulls forward / vol / NDF rows even if the universe grows."
+
+  citations: []
+
+  planned_extensions:
+    - "Per-pair unit override (e.g. mixing PX_LAST levels with PX_BID/PX_ASK in one panel for spread analysis)."
+    - "Holiday-aware calendar policy (requires per-currency holiday-table ingestion)."
+    - "Frequency resampling (weekly / monthly closes for low-frequency cross-sectional workflows)."
+    - "Returns transformation as a sibling primitive (calculate_fx_returns_series) — keeps this primitive as a pure level loader."

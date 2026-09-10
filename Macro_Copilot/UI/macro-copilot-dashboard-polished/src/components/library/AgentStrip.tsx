@@ -32,7 +32,7 @@ type AgentDef = {
 
 const AGENTS: AgentDef[] = [
   { id: 'rates_agent',  label: 'Rates Agent',  icon: <Layers size={12} />,      status: 'live' },
-  { id: 'fx_agent',     label: 'FX Agent',     icon: <LineChart size={12} />,   status: 'soon' },
+  { id: 'fx_agent',     label: 'FX Agent',     icon: <LineChart size={12} />,   status: 'live' },
   { id: 'credit_agent', label: 'Credit Agent', icon: <Activity size={12} />,    status: 'soon' },
   { id: 'macro_equity', label: 'Macro Equity', icon: <Gauge size={12} />,       status: 'soon' },
   { id: 'policy_agent', label: 'Policy / Events', icon: <ShieldCheck size={12} />, status: 'soon' },

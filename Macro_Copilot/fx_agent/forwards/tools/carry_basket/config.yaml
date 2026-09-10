@@ -1,0 +1,258 @@
+tool:
+  name: get_fx_carry_basket_tool
+  domain: fx_forwards
+  description: |
+    FX carry basket STRATEGY INDEX — daily mark-to-market excess
+    return of a paper long-top-N / short-bottom-N FX carry portfolio,
+    cross-sectional and equal-weighted, rebalanced monthly with a
+    1-day signal lag (no look-ahead). Returns the cumulative index
+    TimeSeries plus snapshot Sharpe / vol / max drawdown / annualized
+    return.
+
+    POSITIONING SIGNAL ONLY — NOT an executable backtest. V1 applies
+    NO transaction costs, NO bid-ask, NO slippage, NO forward-roll
+    mechanics, NO EM forward liquidity constraints. The real-money
+    equivalent typically diverges by 200-400 bp annualized after
+    those frictions. Use this index for relative-value / historical-
+    regime analysis, NOT as a forecast of executable returns.
+
+    Central methodology knob: basket_construction ∈
+    {long_short_top_n (default, zero-cost cross-sectional),
+    long_only_top_n (unidirectional bet)}.
+  category: desk_invariant_primitive
+
+conventions:
+  default_fx_spot_field:
+    value: PX_LAST
+    source: bloomberg_field_convention
+    rationale: >-
+      Bloomberg PX_LAST is the canonical spot observation.
+
+  default_fx_forward_field:
+    value: PX_LAST
+    source: bloomberg_field_convention
+    rationale: >-
+      Bloomberg PX_LAST is the canonical forward-points observation.
+
+  default_market_scope:
+    value: G10
+    source: team_judgment_pending_review
+    rationale: >-
+      G10 is the cleanest universe — every pair has a deep deliverable
+      forward and a tight spot quote. EM brings in liquidity / FX
+      regime variability that needs care to interpret.
+
+  default_tenor:
+    value: 1M
+    source: team_judgment_pending_review
+    rationale: >-
+      1M matches the rebalance frequency (21 trading days) so the
+      carry signal at signal_lag is the same horizon as the holding
+      period.
+
+  default_top_n:
+    value: 3
+    source: team_judgment_pending_review
+    rationale: >-
+      With G10 universe of 6 deliverable pairs, top_n=3 is the canonical
+      'top half vs bottom half' split for long-short. For EM (6 pairs)
+      same logic. For ALL (12 pairs) top_n=3 picks ~25% of universe per
+      leg, conservative.
+
+  default_basket_construction:
+    value: long_short_top_n
+    source: team_judgment_pending_review
+    rationale: >-
+      Long-short zero-cost is the academic / Sharpe-comparable
+      convention. long_only_top_n is exposed to USD-direction risk and
+      is harder to compare cross-regime.
+
+  rebalance_frequency_days:
+    value: 21
+    source: legacy_default_pre_pilot
+    rationale: >-
+      V1 HARD-LOCK at monthly = 21 trading days. Matches the 1M
+      forward tenor convention and standard FX carry-basket literature
+      (AQR / MSCI / Deutsche). Other rebalance frequencies require a
+      separate methodology decision (intra-monthly TC implications,
+      different return definition) — Phase B++ if needed.
+    valid_range: [21, 21]
+
+  signal_lag_days:
+    value: 1
+    source: legacy_default_pre_pilot
+    rationale: >-
+      V1 HARD-LOCK at 1 trading day. Signal at close t-1 → position at
+      open t. Prevents look-ahead bias; matches BoE / academic carry
+      basket convention. Other lag conventions (T-0, T+1) are
+      methodology choices reserved for a future variant.
+    valid_range: [1, 1]
+
+  weighting_scheme:
+    value: equal_weight
+    source: legacy_default_pre_pilot
+    rationale: >-
+      V1 HARD-LOCK at equal-weight within each leg. Risk-parity / vol-
+      scaled / signal-weighted alternatives are real methodology
+      changes (need separate validation) — Phase B++ if a downstream
+      consumer requests. valid_range omitted because the convention
+      is a closed string enum, not a numeric range.
+
+  transaction_cost_basis:
+    value: none
+    source: legacy_default_pre_pilot
+    rationale: >-
+      V1 HARD-LOCK at no TC. This is a STRATEGY INDEX, not an
+      executable backtest. Adding TC requires per-pair spread
+      estimates + roll mechanics — Phase B++ or workflow-level
+      executable variant. valid_range omitted because the convention
+      is a closed string enum, not a numeric range.
+
+  annualization_days:
+    value: 252
+    source: industry_standard_trading_year
+    rationale: >-
+      Trading-day annualization for return / vol / Sharpe. Coherent
+      with fx_carry / forward_curve / vol_risk_premium.
+
+  std_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: Sample (Bessel-corrected) standard deviation.
+    valid_range: [0, 1]
+
+  annualization_min_obs_days:
+    value: 60
+    source: industry_standard_1y_window
+    rationale: >-
+      Minimum daily basket-return observations before annualized
+      return / vol / Sharpe are emitted. Below this the stats are too
+      noisy.
+    valid_range: [21, 252]
+
+  ffill_limit_days:
+    value: 5
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Forward-fill window for missing daily observations before a gap
+      is treated as a true NA. 5 trading days covers standard holiday
+      clusters. Matches fx_carry / forward_curve.
+    valid_range: [0, 10]
+
+  jpy_forward_points_divisor:
+    value: 100
+    source: bloomberg_field_convention
+    rationale: >-
+      JPY pairs quote forward points in hundredths of one spot unit.
+      Same convention as fx_carry / forward_curve.
+    valid_range: [1, 10000]
+
+  default_forward_points_divisor:
+    value: 10000
+    source: bloomberg_field_convention
+    rationale: >-
+      Non-JPY pairs quote forward points in ten-thousandths of one
+      spot unit. Same convention as fx_carry / forward_curve.
+    valid_range: [1, 100000]
+
+  tenor_1w_days:
+    value: 5
+    source: trading_day_convention
+    rationale: One FX trading week.
+    valid_range: [3, 10]
+
+  tenor_1m_days:
+    value: 21
+    source: trading_day_convention
+    rationale: One FX trading month — same as rebalance_frequency_days for V1.
+    valid_range: [15, 30]
+
+  tenor_3m_days:
+    value: 63
+    source: trading_day_convention
+    rationale: Three FX trading months.
+    valid_range: [45, 90]
+
+  tenor_6m_days:
+    value: 126
+    source: trading_day_convention
+    rationale: Six FX trading months.
+    valid_range: [90, 180]
+
+  tenor_12m_days:
+    value: 252
+    source: trading_day_convention
+    rationale: One FX trading year.
+    valid_range: [240, 270]
+
+  return_pct_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: Four decimals for return / vol / Sharpe (platform-wide).
+    valid_range: [2, 6]
+
+  index_round_decimals:
+    value: 6
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Six decimals for the cumulative excess return ratio (preserves
+      precision over multi-year compounding).
+    valid_range: [4, 8]
+
+methodology:
+  what_it_does: |
+    For one (market_scope, tenor, top_n, basket_construction):
+      1. Fetch the panel of (spot, forward_points) for every pair in
+         market_scope over the lookback window.
+      2. Compute per-pair carry signal series at the specified tenor.
+         The signal is "carry of going LONG the pair" = r_base - r_quote
+         = -((fp_spot_units / spot) * (252 / tenor_days) * 100).
+         Negating the raw CIP differential is the correct convention
+         for a canonical FX carry strategy: high signal = currency pair
+         where being LONG captures positive carry (long high-yielder).
+         Without the negation we'd systematically long LOW-yielders.
+      3. Compute per-pair daily log spot returns.
+      4. At each rebalance date (every 21 trading days):
+           - signal_date = rebalance_date - signal_lag_days (= prior close)
+           - rank pairs by carry_annualized_pct[signal_date] descending
+           - long leg = top top_n pairs (equal weight 1/top_n each)
+           - if long_short_top_n: short leg = bottom top_n pairs
+                                  (equal weight -1/top_n each)
+           - if long_only_top_n: no short leg
+      5. For each trading day in the rebalance period, compute:
+           - daily_spot_return_leg = mean(weighted log returns in leg)
+           - daily_carry_accrual_leg = mean(carry_annualized_pct / 252 / 100)
+              applied to held positions (signal value at rebalance,
+              constant within the period)
+           - daily_basket_return = (long_spot_return + long_carry_accrual)
+                                   - (short_spot_return + short_carry_accrual)
+              for long_short_top_n, OR
+                                   (long_spot_return + long_carry_accrual)
+              for long_only_top_n
+      6. Compound daily basket returns into the cumulative index:
+            cum_index_t = ∏(1 + daily_basket_return_t) - 1
+      7. Snapshot stats: annualized return (geometric), annualized vol
+         (sqrt(252) * std), Sharpe, max drawdown, observation count.
+
+    NO transaction costs, NO bid-ask, NO slippage, NO forward roll
+    mechanics. This is a paper STRATEGY INDEX, NOT an executable
+    backtest. Conventions HARD-LOCKED: rebalance=21d, signal_lag=1d,
+    weighting=equal_weight, TC=none. Pair universe locked by
+    market_scope; methodology knob = basket_construction.
+  assumptions:
+    - "STRATEGY INDEX, NOT EXECUTABLE BACKTEST. The real-money equivalent diverges from this index by typically 200-400 bp annualized after TC / bid-ask / forward liquidity / slippage costs. V1 applies NONE of these."
+    - "Signal sign convention: carry_signal = r_base - r_quote = -(fp_spot_units / spot) * (annual / tenor) * 100. This is the CARRY OF GOING LONG THE PAIR, which is the correct ranking signal for a canonical carry strategy. The raw CIP differential fx_carry emits is r_quote - r_base (the negation of this signal). Going long the highest carry_signal pairs = long high-yielder currencies, as the standard literature defines."
+    - "Signal lag = 1 day prevents look-ahead bias. Position determined at the close of t-1 by carry ranking, held from open t until next rebalance."
+    - "Rebalance frequency hard-locked at 21 trading days (monthly). Within a rebalance period, positions are held FLAT (no intra-period re-ranking, no daily rebalancing)."
+    - "Daily carry accrual model: carry_annualized_pct / 252 / 100 added to spot return per held day. This is the daily-mark approximation; the cleaner alternative is realised period return = (spot_t+h - forward_t) / spot_t. Daily-mark is simpler for charting and convergent in expectation."
+    - "Equal-weight within long and short legs. Risk-parity / vol-scaled / signal-weighted are real methodology changes (Phase B++)."
+    - "Long_short_top_n is zero-cost cross-sectional (USD-direction neutral). long_only_top_n is exposed to USD-direction risk — treat its Sharpe with care vs the long-short variant."
+    - "Carry signal date = rebalance_date - signal_lag_days; uses fx_carry-style per-date carry_annualized_pct computation (spot and forward joined per trade_date, JPY-aware divisor, 252-day annualization)."
+    - "Sharpe is computed WITHOUT risk-free deduction — the excess return is implicitly vs USD funding (the carry signal IS the rate spread). Treat as a SIGNAL Sharpe, not an executable Sharpe."
+    - "Max drawdown is on the cumulative index (peak-to-trough), expressed as the percentage decline."
+  citations: []
+  planned_extensions:
+    - "Add transaction-cost-aware variant once per-pair spread estimates land — would multiply by an executable indicator."
+    - "Add risk-parity / vol-scaled weighting once a workflow consumer needs it."
+    - "Add NDF carry basket variant (separate compute path; outright units, no points divisor) once NDF carry stabilises."
+    - "Add daily-rebalance / weekly-rebalance variants under different rebalance_frequency configs once the V1 monthly index is bedded in."

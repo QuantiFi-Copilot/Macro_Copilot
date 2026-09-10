@@ -3,10 +3,11 @@
 // ----------------------------------------------------------------------------
 // Composition (top → bottom):
 //   1. WORKSPACE   — Home (single row)
-//   2. AGENTS      — six rows, two-line each.  Live agents (Rates) are
-//                    expandable with a chevron and reveal sub-items
-//                    (sovereign bonds, OIS, swap spreads, saved
-//                    analyses).  Dimmed agents show their planned
+//   2. AGENTS      — six rows, two-line each.  Live agents (Rates, FX)
+//                    are expandable with a chevron and reveal sub-items
+//                    (Rates: sovereign bonds, OIS, swap spreads; FX:
+//                    spot, forwards, volatility, NDFs; both end with
+//                    saved analyses).  Dimmed agents show their planned
 //                    scope as a single subtext line, no expansion.
 //   3. TODAY       — small live-state panel: market session, scanner
 //                    summary, last data refresh.  Reads from the
@@ -40,6 +41,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { useOptionalRatesDataContext } from '@/components/monitor/RatesDataProvider';
+import { useOptionalFxDataContext } from '@/components/monitor/FXDataProvider';
 
 // ----------------------------------------------------------------------------
 // Agent registry — single source of truth for sidebar agent rows.
@@ -110,9 +112,19 @@ const AGENTS: AgentItem[] = [
     label: 'FX Agent',
     to: '/fx',
     icon: <LineChart size={13} />,
-    // PR 11: per the Phase 0 deck, FX is the NEXT agent to ship.
-    status: 'next',
+    status: 'live',
     scope: 'G10 · EM',
+    subItems: [
+      // V1: sub-items are navigation anchors to the FX surface, mirroring
+      // the Rates Agent pattern.  V2 will read a `?scope=...` query param
+      // to filter the widget catalog to that FX sub-domain (matching the
+      // fx_agent/{spot,forwards,vol,ndf} backend split).
+      { label: 'Spot', to: '/fx' },
+      { label: 'Forwards', to: '/fx' },
+      { label: 'Volatility', to: '/fx' },
+      { label: 'NDFs', to: '/fx' },
+      { label: 'Saved analyses', hint: 'V2' },
+    ],
   },
   {
     label: 'Credit Agent',
@@ -169,6 +181,15 @@ export function Sidebar() {
     ? `${data.yieldSnapshot.curve_families.length} curves · ${data.yieldSnapshot.tenors.length} tenors`
     : null;
 
+  // Same pattern for the FX Agent row.  FXDataProvider is mounted
+  // alongside RatesDataProvider in AppShell so this context is
+  // available on every widget surface.
+  const fxCtx = useOptionalFxDataContext();
+  const fxData = fxCtx?.data ?? null;
+  const fxLiveScope = fxData
+    ? `${fxData.scanner.rows.length} pairs · ${fxData.carry.rows.length} carry`
+    : null;
+
   return (
     <aside className="relative flex h-full min-h-0 flex-col overflow-hidden border-r border-line-subtle">
       {/* Scrollable nav area — sections stack here, footer pinned below.
@@ -193,12 +214,17 @@ export function Sidebar() {
               manualExpand[agent.to] ??
               // Default: live agents auto-expand on their own route.
               (agent.status === 'live' && isActive);
-            // Substitute live data for the Rates Agent's scope when
+            // Substitute live data for the Rates / FX Agent rows when
             // available; other agents always use their static scope.
-            const resolvedAgent =
-              agent.to === '/rates' && ratesLiveScope
-                ? { ...agent, scope: ratesLiveScope }
-                : agent;
+            const liveScope =
+              agent.to === '/rates'
+                ? ratesLiveScope
+                : agent.to === '/fx'
+                  ? fxLiveScope
+                  : null;
+            const resolvedAgent = liveScope
+              ? { ...agent, scope: liveScope }
+              : agent;
             return (
               <AgentRow
                 key={agent.to}

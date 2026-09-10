@@ -1,0 +1,54 @@
+playbook_name: "fx_macro_indices"
+playbook_version: "1.0"
+asset_class: "fx"
+dataset_name: "fx_macro_indices"
+description: "Daily FX macro / cross-pair benchmark indices. v1.0 (Warehouse seeding 2026-05-25) seeds the substrate with 4 broadly-watched FX-macro benchmarks discovered + verified in Phase 1 of the BBG warehouse session: ICE Dollar Index (DXY), Bloomberg Dollar Spot Index (BBDXY), JPMorgan G7 Volatility Index (JPMVXYG7), JPMorgan EM Volatility Index (JPMVXYEM). These are reference series — not directly tradable — used downstream by Phase F tools (get_fx_index_level, regime classifiers, dashboard headers). instrument_type='fx_macro_index' is a NEW type, kept distinct from fx_spot to make it explicit they are composite benchmarks. DXY uses BBG yellow-key 'Curncy' by convention (it trades on ICE futures but is quoted as a currency basket); BBDXY / JPMVXYG7 / JPMVXYEM use 'Index'. Histories: DXY back to 1971 (BDH-bounded to 2000-01-03), JPMVXY* back to ~2000-2007, BBDXY launched Dec 2004. Other macro proxies considered but archive-only for now: USDX (patchy), ADXY (invalid format), EURTWI (invalid format). CFTC positioning + BIS REER were also tested in Phase 1 discovery — both failed all ticker-format candidates and are deferred to a future BBG session that uncovers a working format."
+
+extraction:
+  start_date: "2000-01-01"
+  incremental_window_days: 14
+
+target_metrics:
+  - metric_id: "index_level"
+    bloomberg_field: "PX_LAST"
+
+reference_metrics:
+  - column_name: "security_name"
+    bloomberg_field: "SECURITY_DES"
+
+universe:
+  - ticker: "DXY Curncy"
+    instrument_type: "fx_macro_index"
+    fx_family: "FX_DOLLAR_INDEX"
+    market_scope: "G10"
+    region: "Global"
+    pair: "DXY"
+    index_family: "ICE_USD"
+    description: "ICE U.S. Dollar Index — trade-weighted basket of 6 G10 currencies (EUR 57.6%, JPY 13.6%, GBP 11.9%, CAD 9.1%, SEK 4.2%, CHF 3.6%) launched 1973. Reference benchmark for broad USD direction."
+
+  - ticker: "BBDXY Index"
+    instrument_type: "fx_macro_index"
+    fx_family: "FX_DOLLAR_INDEX"
+    market_scope: "ALL"
+    region: "Global"
+    pair: "BBDXY"
+    index_family: "BLOOMBERG_USD"
+    description: "Bloomberg Dollar Spot Index — trade + liquidity-weighted basket of 10 currencies (G10 + EM majors) launched 31 Dec 2004 (base 1000). Broader USD exposure than DXY, includes CNY/MXN/BRL — better proxy for true USD strength against modern trade partners."
+
+  - ticker: "JPMVXYG7 Index"
+    instrument_type: "fx_macro_index"
+    fx_family: "FX_VOL_INDEX"
+    market_scope: "G10"
+    region: "Global"
+    pair: "JPMVXYG7"
+    index_family: "JPM_VXY"
+    description: "JPMorgan G7 Volatility Index — turnover-weighted 3M implied volatility across G7 USD-crosses (EUR, JPY, GBP, AUD, CAD, CHF, NZD). Headline gauge of G10 FX vol regime."
+
+  - ticker: "JPMVXYEM Index"
+    instrument_type: "fx_macro_index"
+    fx_family: "FX_VOL_INDEX"
+    market_scope: "EM"
+    region: "Global"
+    pair: "JPMVXYEM"
+    index_family: "JPM_VXY"
+    description: "JPMorgan Emerging Markets Volatility Index — turnover-weighted 3M implied vol across major EM USD-crosses. Companion to JPMVXYG7 — together cover the global FX vol regime split G10 vs EM."

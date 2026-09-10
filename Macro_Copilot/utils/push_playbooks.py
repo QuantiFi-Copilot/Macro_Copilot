@@ -5,7 +5,29 @@ import yaml
 from google.cloud import storage
 
 # --- CONFIGURATION ---
-BUCKET_NAME = "macro-storage-bucket"
+# Default bucket is the shared rates-aligned bucket; override at runtime
+# via the ``GCP_BUCKET_NAME`` env var (same convention as the
+# historical_extractor / incremental_extractor scripts). Useful while
+# the FX agent maintains its own bucket during Wave 1 — see
+# fx_agent/ROADMAP.md for the migration plan to a single shared bucket.
+BUCKET_NAME = os.getenv("GCP_BUCKET_NAME", "macro-storage-bucket")
+
+
+def _discover_playbook_files(project_root: Path) -> list[Path]:
+    """Return every agent-owned playbook in deterministic order."""
+    files: list[Path] = []
+    for playbooks_dir in sorted(project_root.glob("*_agent/playbooks")):
+        files.extend(sorted(playbooks_dir.glob("*.yml")))
+        files.extend(sorted(playbooks_dir.glob("*.yaml")))
+    return sorted(files)
+
+
+def _duplicate_playbook_names(files: list[Path]) -> dict[str, list[Path]]:
+    """Find names that would collide under the flat GCS playbooks/ prefix."""
+    by_name: dict[str, list[Path]] = {}
+    for file_path in files:
+        by_name.setdefault(file_path.name, []).append(file_path)
+    return {name: paths for name, paths in by_name.items() if len(paths) > 1}
 
 
 def _has_enabled_resolver(file_path: Path) -> bool:
@@ -49,9 +71,8 @@ def push_playbooks_to_gcp():
     current_dir = Path(__file__).parent
     project_root = current_dir.parent
 
-    # Dynamically find the key and playbooks relative to the project root
+    # Dynamically find the key relative to the project root
     gcp_key_path = project_root / "secure_keys" / "library-extractor-key.json"
-    playbooks_dir = project_root / "rates_agent" / "playbooks"
 
     # Verify the key actually exists before trying to authenticate
     if not gcp_key_path.exists():
@@ -68,17 +89,19 @@ def push_playbooks_to_gcp():
         print(f"Failed to authenticate with GCP: {e}")
         return
 
-    if not playbooks_dir.exists():
-        print(f"Error: Could not find playbooks directory at {playbooks_dir}")
-        return
-
-    print(f"Scanning for playbooks in: {playbooks_dir}")
-
-    # Grab all .yml and .yaml files
-    playbook_files = list(playbooks_dir.glob("*.yml")) + list(playbooks_dir.glob("*.yaml"))
+    print(f"Scanning for agent playbooks under: {project_root}")
+    playbook_files = _discover_playbook_files(project_root)
 
     if not playbook_files:
         print("No YAML playbooks found to upload.")
+        return
+
+    duplicate_names = _duplicate_playbook_names(playbook_files)
+    if duplicate_names:
+        print("Error: duplicate playbook filenames would overwrite each other in GCS:")
+        for name, paths in sorted(duplicate_names.items()):
+            locations = ", ".join(str(path.relative_to(project_root)) for path in paths)
+            print(f"  - {name}: {locations}")
         return
 
     print(f"Found {len(playbook_files)} playbook(s). Syncing to GCP bucket '{BUCKET_NAME}'...")
@@ -107,7 +130,11 @@ def push_playbooks_to_gcp():
 
             # Execute the upload
             blob.upload_from_filename(str(file_path))
-            print(f"  [SUCCESS] Uploaded {file_path.name} -> gs://{BUCKET_NAME}/{blob_name}")
+            relative_path = file_path.relative_to(project_root)
+            print(
+                f"  [SUCCESS] Uploaded {relative_path} -> "
+                f"gs://{BUCKET_NAME}/{blob_name}"
+            )
             success_count += 1
         except Exception as e:
             print(f"  [FAILED] Could not upload {file_path.name}: {e}")

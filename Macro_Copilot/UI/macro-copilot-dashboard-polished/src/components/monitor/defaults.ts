@@ -1,5 +1,5 @@
 // ============================================================================
-// Default layouts — Monitor (Home) and Rates Agent
+// Default layouts — Monitor (Home), Rates Agent, FX Agent
 // ----------------------------------------------------------------------------
 // The first time a user lands on a widget surface, they get a sensible
 // default layout so the page isn't empty.  After that, their custom
@@ -13,6 +13,12 @@
 //   - Rates Agent: rates-deep.  Same backbone + a UST 2s10s spread
 //     chart, a BTP-Bund cross-market spread, and individual yield
 //     levels for the four major curves.
+//   - FX Agent: spot snapshot + scanner + carry scanner + forward
+//     curve. Spot snapshot + scanner are pre-aggregated (read from
+//     FXDataProvider context); carry scanner + forward curve are
+//     parameterized (own per-instance fetch via fxApi). The carry
+//     scanner's defaults match the pre-scanner behaviour so legacy
+//     localStorage layouts with empty params still render the same.
 //
 // "Reset to default" inside the Customize menu writes one of these back.
 // ============================================================================
@@ -108,6 +114,53 @@ export function defaultRatesAgentLayout(): LayoutState {
       {
         size: 'small',
         params: { curve_family: 'IT_BTP', tenor: '10Y', lookback_days: '252' },
+      },
+    ],
+  ]);
+}
+
+export function defaultFxAgentLayout(): LayoutState {
+  return buildLayout([
+    ['fx_spot_snapshot'],
+    ['fx_scanner'],
+    [
+      'fx_carry',
+      {
+        params: {
+          tenor: '1M',
+          rank_by: 'carry_signed',
+          top_n: 6,
+          lookback_days: '365',
+        },
+      },
+    ],
+    [
+      'fx_forward_curve',
+      {
+        params: { pair: 'EURUSD', lookback_days: '365' },
+      },
+    ],
+    [
+      'fx_carry_basket',
+      {
+        params: {
+          market_scope: 'G10',
+          tenor: '1M',
+          top_n: 3,
+          basket_construction: 'long_short_top_n',
+        },
+      },
+    ],
+    [
+      'fx_vol_smile',
+      {
+        params: { pair: 'EURUSD', tenor: '1M', lookback_days: '365' },
+      },
+    ],
+    [
+      'fx_cross_currency_basis',
+      {
+        params: { pair: 'EURUSD', tenor: '1M', lookback_days: '365' },
       },
     ],
   ]);

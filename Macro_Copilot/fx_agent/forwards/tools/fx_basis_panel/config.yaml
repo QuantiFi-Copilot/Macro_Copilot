@@ -1,0 +1,129 @@
+tool:
+  name: calculate_fx_basis_panel_tool
+  domain: fx_forwards
+  description: |
+    Cross-sectional FX CIP basis Panel for the V1 closed pair
+    set {EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD} at one tenor.
+    Composition of FX implied yield differential + OIS rate
+    differential — same math as cross_currency_basis but emitted
+    as a wide Panel of basis bps series. Returns typed Panel
+    (rows=dates, columns=pairs, values=basis bps) ready for
+    consumption by shared cross-sectional operators (correlation
+    matrix, PCA, factor loadings, etc.) — those operators are
+    NOT duplicated FX-side per the asset-agnostic shared-compute
+    discipline.
+  category: desk_invariant_primitive
+
+conventions:
+  default_fx_spot_field:
+    value: PX_LAST
+    source: bloomberg_field_convention
+    rationale: Canonical FX spot observation; same default as cross_currency_basis.
+
+  default_ois_field:
+    value: PX_LAST
+    source: bloomberg_field_convention
+    rationale: Canonical OIS rate observation; same default as cross_currency_basis.
+
+  usd_ois_curve:
+    value: USD_SOFR_OIS
+    source: rates_agent_v1_convention
+    rationale: V1 single-curve USD leg. Hard-locked; promotion to multi-curve future-work.
+
+  default_tenor:
+    value: 1M
+    source: team_judgment_pending_review
+    rationale: 1M is the standard basis monitor tenor.
+
+  default_missing_data_policy:
+    value: forward_fill_only
+    source: industry_standard_1y_window
+    rationale: >-
+      Mirror of fx_panel / fx_vol_panel default. ffill bridges
+      holiday gaps without injecting fake data; residual NaN
+      flagged downstream.
+
+  ffill_limit_days:
+    value: 5
+    source: legacy_default_pre_pilot
+    rationale: 5 trading days covers standard holiday clusters.
+    valid_range: [0, 10]
+
+  calendar_policy:
+    value: business_days
+    source: industry_standard_1y_window
+    rationale: Filter to weekdays only — FX + OIS substrates are BD-only.
+
+  jpy_forward_points_divisor:
+    value: 100.0
+    source: bloomberg_fx_forward_convention
+    rationale: JPY pairs quote points in 1/100; same as fx_carry / cross_currency_basis.
+
+  default_forward_points_divisor:
+    value: 10000.0
+    source: bloomberg_fx_forward_convention
+    rationale: Non-JPY G10 pairs quote points in 1/10000; same as fx_carry / cross_currency_basis.
+
+  annualization_days:
+    value: 252
+    source: industry_standard_business_days
+    rationale: Trading-day count per year for FX iyd annualisation.
+
+  tenor_1w_days:
+    value: 5
+    source: industry_standard_business_days
+    rationale: 1W tenor expressed in trading days.
+
+  tenor_1m_days:
+    value: 21
+    source: industry_standard_business_days
+    rationale: 1M tenor expressed in trading days.
+
+  tenor_3m_days:
+    value: 63
+    source: industry_standard_business_days
+    rationale: 3M tenor expressed in trading days.
+
+  tenor_6m_days:
+    value: 126
+    source: industry_standard_business_days
+    rationale: 6M tenor expressed in trading days.
+
+  tenor_12m_days:
+    value: 252
+    source: industry_standard_business_days
+    rationale: 12M tenor expressed in trading days.
+
+methodology:
+  what_it_does: |
+    For each pair in {EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD}:
+      1. Fetch joined FX (spot, forward) history → compute FX
+         implied yield differential series in PERCENT, using the
+         same math as the implied_yield_differential primitive
+         (LOCAL minus USD).
+      2. Fetch (local OIS, USD OIS) via shared.analytics.rates_fetch.
+         fetch_cross_market_pair → compute (local_ois - usd_ois)
+         series in PERCENT.
+      3. Inner-join FX iyd × OIS diff by trade_date.
+      4. basis_bps = (fx_iyd - ois_diff) * 100  (sign convention
+         HARD-LOCKED Bloomberg BCRX-style: NEGATIVE = USD scarcity).
+    Then:
+      5. Pivot pair-keyed basis_bps series → wide Panel.
+      6. Apply calendar_policy (business_days only) and
+         missing_data_policy (ffill_limit_days then raise/drop/None).
+      7. Construct typed Panel artifact with BPS units + lineage step.
+      8. Fail-loud on empty fetch, fully-empty columns, post-policy empty.
+  assumptions:
+    - "Panel values are CIP basis in BASIS POINTS (e.g. -30.0 = -30 bps). NEGATIVE = USD scarcity (Bloomberg BCRX convention)."
+    - "Units = TimeSeriesUnits.BPS."
+    - "V1 closed pair set: EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD — only pairs with both FX-forward AND local/USD OIS coverage. Inherited from cross_currency_basis primitive (PR #239)."
+    - "Sign convention HARD-LOCKED 'bloomberg_bcrx_usd_scarcity_negative', validated via four corroborations in PR #239 (Sreeram via Bloomberg ref, Codex algebraic, Claude concrete EURUSD/-30bp, empirical end-to-end PASS)."
+    - "FX 12M → OIS 1Y tenor alias applied automatically (rates_agent OIS exposes 1Y, not 12M)."
+    - "Returns typed Panel artifact (shared.artifacts.types.Panel) consumable by any cross-sectional operator (correlation_matrix, panel_pca, etc.) — those operators belong in shared/, NOT in fx_agent."
+    - "Per-pair basis math is currently INLINED here (duplicates cross_currency_basis). Future refactor: extract _compute_pair_basis_bps_series to fx_agent/forwards/_shared.py once cross_currency_basis lands."
+  citations:
+    - "cross_currency_basis PR #239 (sign convention validated FROZEN 2026-05-27)."
+  planned_extensions:
+    - "Multi-tenor Panel (3D-indexed) once consumers need full term structure."
+    - "EM extension once rates_agent ingests EM OIS curves (BRL, MXN, etc.)."
+    - "Extended G10 (USDCHF, NZDUSD, USDNOK, USDSEK) once rates_agent ingests their OIS curves."
