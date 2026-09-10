@@ -36,7 +36,9 @@ The LLM does zero math. The compute layer is named, versioned Python tools backe
 | Conversational orchestration — supervisor + per-domain agents over MCP | LIVE |
 | Frontend — Monitor, Library, Ask, Workspace (V1) | LIVE |
 | **Persistent state, working set, replayable workspaces** | **In progress (Phase 0)** |
-| Backtest archetype, second domain agent (FX) | Scoping |
+| Primitives — FX: spot, forwards, NDF, ATM vol, vol smile | **Built — 30 tools across 6 data substrates (695 instruments)**, on the FX branch series pending integration |
+| Frontend — FX surfaces: carry, forward curves, vol smile, cross-currency basis | **Built**, on the FX branch series |
+| Backtest archetype | Scoping |
 | Bond futures, inflation, STIR primitives | Scoping |
 
 Validation: a 30-prompt rates-agent gauntlet has run at 29/29 correct routings, 29/29 correct tool selections, and 59/59 mathematically accurate outputs against SQL ground-truth values.
@@ -51,6 +53,7 @@ Validation: a 30-prompt rates-agent gauntlet has run at 29/29 correct routings, 
 │   ├── api/                        # FastAPI server (REST + WebSocket)
 │   ├── orchestrator/               # LangGraph supervisor, per-domain agents, routing
 │   ├── rates_agent/                # Sovereign bonds + OIS primitives, workflow templates, MCP servers
+│   ├── fx_agent/                   # FX primitives (spot, forwards, NDF, vol), playbooks, MCP server
 │   ├── shared/                     # Typed substrate: artifacts, operators, workflow executor, bridge
 │   ├── ingestion/                  # Parquet → TimescaleDB ingestion
 │   ├── database/                   # Schema + connection helpers
@@ -136,7 +139,7 @@ Macro Copilot is a joint Applied Project (MSc Finance, Imperial College London),
 | **Rates / OIS domain** — sovereign bonds + OIS primitives, workflow templates, platform architecture (L1–L5), orchestration, frontend platform | **Sreeram Andra** ([@Sreeram1503](https://github.com/Sreeram1503)) |
 | **FX domain** — 6 data substrates (spot, forwards, NDF, ATM vol, vol smile, macro indices; 695 instruments), 30 FX tools (carry, CIP / cross-currency basis, vol surface, cross-sectional scanners), FX dashboard widgets | **Sacha Mimoun** ([@sacha-mimoun](https://github.com/sacha-mimoun)) |
 
-The FX domain is developed on a stacked PR series ([#178 → #244](https://github.com/QuantiFi-Copilot/QFin/pulls?q=is%3Apr+author%3Asacha-mimoun)) pending integration into the mainline; the PR and branch history carry the full commit-level record of each author's work.
+The FX domain is developed on a stacked PR series ([#178 → #244](https://github.com/QuantiFi-Copilot/Macro_Copilot/pulls?q=is%3Apr+author%3Asacha-mimoun)) pending integration into the mainline; the PR and branch history carry the full commit-level record of each author's work.
 
 ---
 
